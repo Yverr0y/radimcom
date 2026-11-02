@@ -29,6 +29,8 @@ Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
 - **REC:** records the audio of the selected VFO to a WAV file.
 - **TX with LimeSDR** (optional, off by default), see below.
 
+![WFM broadcast on VFO C: stereo (ST), RDS station name and RadioText, 200 kHz filter](docs/images/fm_with_rds.png)
+
 ## Requirements
 
 - Windows and Python 3.9+. The simplest way is the installer package (`install.bat`, see `installer\INSTALL.txt`),
@@ -125,6 +127,8 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
     images (saved to `data\sstv\`). Modes Martin M1/M2, Scottie S1/S2/DX, Robot 36/72, PD 50–290;
     AFC and slant correction are automatic. Filter at least 2.7 kHz.
   - ACARS: channel buttons (131.525 / 131.725 / 131.825 / 136.900 MHz), CLR; click the registration or flight to open the ADS-B map.
+
+  ![DECODERS tab with the FT8 decoder on 80 m: one 15 s cycle of decoded messages, CQ calls in green](docs/images/decoders_ft8.png)
 
   ![DECODERS tab with the ACARS decoder: messages with aircraft type and position from ADS-B](docs/images/decoders.png)
 
