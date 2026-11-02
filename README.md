@@ -119,6 +119,9 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
   **DECODERS** tab next to SPECTRUM; turning a decoder on opens it, a green dot signals a new message/image.
   Every panel has a LOG checkbox for the daily log:
   - FT8: band buttons (160 m – 10 m) and CLR.
+
+    ![DECODERS tab with the FT8 decoder on 80 m: one 15 s cycle of decoded messages, CQ calls in green](docs/images/decoders_ft8.png)
+
   - WEFAX: stations (DWD Pinneberg 3855/7880/13882.5 kHz, Northwood GYA 2618.5/4610/8040/11086.5 kHz), LPM/IOC (Auto or fixed),
     NEW and PNG; a click in the image sets that spot as the left edge. Finished images are saved to `data\wefax\`.
   - CW: TUNE switches to CW and tunes to the detected tone, CLR clears the text.
@@ -128,9 +131,7 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
     AFC and slant correction are automatic. Filter at least 2.7 kHz.
   - ACARS: channel buttons (131.525 / 131.725 / 131.825 / 136.900 MHz), CLR; click the registration or flight to open the ADS-B map.
 
-  ![DECODERS tab with the FT8 decoder on 80 m: one 15 s cycle of decoded messages, CQ calls in green](docs/images/decoders_ft8.png)
-
-  ![DECODERS tab with the ACARS decoder: messages with aircraft type and position from ADS-B](docs/images/decoders.png)
+    ![DECODERS tab with the ACARS decoder: messages with aircraft type and position from ADS-B](docs/images/decoders.png)
 
 - **AUDIO**:
   - STEREO: WFM stereo on/off (mono = less noise on weak stations).
