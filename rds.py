@@ -1,16 +1,16 @@
-"""RDS dekodér z MPX signálu WFM: PI, PS (názov stanice), RadioText, PTY, TP/TA a čas (CT).
+"""RDS decoder from the WFM MPX signal: PI, PS (station name), RadioText, PTY, TP/TA and clock (CT).
 
-Postup: zmiešanie 57 kHz nosnej na 0 Hz, dolná priepusť a decimácia na ~24 kHz, fáza nosnej
-z druhej mocniny signálu (BPSK; nejednoznačnosť π rieši diferenciálne kódovanie), prispôsobený
-filter na bifázový symbol, časovanie bitov podľa energie v 32 fázach periódy bitu,
-diferenciálne dekódovanie, synchronizácia blokov cez syndróm a dekódovanie skupín 0, 2 a 4A.
+Method: mixing the 57 kHz carrier to 0 Hz, low-pass and decimation to ~24 kHz, carrier phase
+from the squared signal (BPSK; the π ambiguity is resolved by differential coding), matched
+filter for the biphase symbol, bit timing by the energy in 32 phases of the bit period,
+differential decoding, block synchronisation via the syndrome and decoding of groups 0, 2 and 4A.
 """
 import numpy as np
 
 BIT_RATE = 1187.5
 SUBCARRIER = 57e3
 POLY = 0x5B9                      # g(x) = x^10 + x^8 + x^7 + x^5 + x^4 + x^3 + 1
-OFFSETS = {0x0FC: 0, 0x198: 1, 0x168: 2, 0x350: 2, 0x1B4: 3}   # A, B, C, C', D -> poradie v skupine
+OFFSETS = {0x0FC: 0, 0x198: 1, 0x168: 2, 0x350: 2, 0x1B4: 3}   # A, B, C, C', D -> position in the group
 TIMING_BINS = 32
 
 PTY_NAMES = (
@@ -20,7 +20,7 @@ PTY_NAMES = (
     "Leisure", "Jazz Music", "Country Music", "National Music", "Oldies Music", "Folk Music",
     "Documentary", "Alarm Test", "Alarm")
 
-# Znaková sada RDS (EN 50067, príloha E): 0x20–0x7D ako ASCII, vyššie kódy podľa tabuľky.
+# RDS character set (EN 50067, annex E): 0x20–0x7D as ASCII, higher codes from the table.
 _HIGH = ("áàéèíìóòúùÑÇŞβ¡Ĳâäêëîïôöûüñçşğıĳªα©‰Ğěňőπ€£$←↑→↓º¹²³±İńűµ¿÷°¼½¾§"
          "ÁÀÉÈÍÌÓÒÚÙŘČŠŽĐĿÂÄÊËÎÏÔÖÛÜřčšžđŀÃÅÆŒŷÝÕØÞŊŔĆŚŹŦðãåæœŵýõøþŋŕćśźŧ ")
 
@@ -34,7 +34,7 @@ def rds_char(code):
 
 
 def syndrome(word):
-    """Zvyšok 26-bitového bloku po delení g(x); pre platný blok sa rovná jeho ofsetovému slovu."""
+    """Remainder of a 26-bit block after division by g(x); for a valid block it equals its offset word."""
     for i in range(25, 9, -1):
         if word >> i & 1:
             word ^= POLY << (i - 10)
@@ -43,8 +43,8 @@ def syndrome(word):
 
 class RdsDecoder:
     def __init__(self, fs):
-        from sdr import Decimator   # neskorý import: sdr importuje tento modul
-        # Mocnina 2, aby delila dĺžku bloku MPX (Decimator potrebuje celé násobky).
+        from sdr import Decimator   # late import: sdr imports this module
+        # Power of 2, so it divides the MPX block length (Decimator needs whole multiples).
         self.d = 1
         while fs / (self.d * 2) >= 20000:
             self.d *= 2
@@ -59,10 +59,10 @@ class RdsDecoder:
 
     def reset(self):
         self.ph = 0.0
-        self.sq = 0j                       # vyhladená druhá mocnina (fáza nosnej)
+        self.sq = 0j                       # smoothed square (carrier phase)
         self.carrier = 0.0
         self.hist = np.zeros(len(self.mf) - 1, np.float32)
-        self.n0 = 0                        # absolútny index prvej vzorky bloku (pri self.rate)
+        self.n0 = 0                        # absolute index of the block's first sample (at self.rate)
         self.bins = np.zeros(TIMING_BINS)
         self.next_t = None
         self.prev_raw = 0
@@ -84,7 +84,7 @@ class RdsDecoder:
         self.rt_ab = None
         self.ct = None
 
-    # ---------- signál -> bity ----------
+    # ---------- signal -> bits ----------
 
     def process(self, mpx):
         n = len(mpx)
@@ -93,7 +93,7 @@ class RdsDecoder:
         z = self.dec.process(mpx.astype(np.float32) * mix)
         if not len(z):
             return
-        # Fáza BPSK nosnej z z²; z dvoch možností (φ, φ+π) berieme tú bližšiu k predošlej.
+        # BPSK carrier phase from z²; of the two options (φ, φ+π) we take the one closer to the previous.
         self.sq = 0.6 * self.sq + 0.4 * complex(np.sum(z.astype(np.complex128) ** 2)) / len(z)
         phi = np.angle(self.sq) / 2
         if abs(np.angle(np.exp(1j * (phi - self.carrier)))) > np.pi / 2:
@@ -119,12 +119,12 @@ class RdsDecoder:
             raw = 1 if v > 0 else 0
             self._bit(raw ^ self.prev_raw)
             self.prev_raw = raw
-            # Jemné doťahovanie hodín bitov k najsilnejšej fáze.
+            # Fine adjustment of the bit clock to the strongest phase.
             err = (tau - self.next_t % self.tb + self.tb / 2) % self.tb - self.tb / 2
             self.next_t += self.tb + 0.05 * err
         self.n0 += len(y)
 
-    # ---------- bity -> bloky -> skupiny ----------
+    # ---------- bits -> blocks -> groups ----------
 
     def _bit(self, bit):
         self.reg = ((self.reg << 1) | bit) & 0x3FFFFFF
@@ -198,7 +198,7 @@ class RdsDecoder:
             hour, minute = (c & 1) << 4 | d >> 12, d >> 6 & 63
             off = (d & 31) * 30 * (-1 if d >> 5 & 1 else 1)
             if hour < 24 and minute < 60:
-                # MJD -> dátum (EN 50067, príloha G)
+                # MJD -> date (EN 50067, annex G)
                 yp = int((mjd - 15078.2) / 365.25)
                 mp = int((mjd - 14956.1 - int(yp * 365.25)) / 30.6001)
                 day = mjd - 14956 - int(yp * 365.25) - int(mp * 30.6001)

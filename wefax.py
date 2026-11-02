@@ -1,12 +1,12 @@
-"""WEFAX (rádiofax) dekodér z basebandu prijímača s automatickou detekciou formátu.
+"""WEFAX (radio fax) decoder from the receiver's baseband with automatic format detection.
 
-Signál: FM subnosná, čierna = stred - 400 Hz, biela = stred + 400 Hz (pri USB ladení na
-priradenú frekvenciu - 1,9 kHz je stred na 1900 Hz). Priebeh vysielania:
-  štart tón (300 Hz = IOC 576, 675 Hz = IOC 288) -> fázovanie (riadky s impulzom na začiatku)
-  -> obrázok -> stop tón 450 Hz.
-Automatika: AFC nájde stred signálu v okolí ±3 kHz od ladenej frekvencie, IOC sa určí zo štart
-tónu, rýchlosť riadkov (LPM) z autokorelácie a začiatok riadku z fázovacích impulzov. Bez štart
-tónu (zapnuté uprostred vysielania) sa obrázok spustí sám, keď je v signáli periodicita riadkov.
+Signal: FM subcarrier, black = centre - 400 Hz, white = centre + 400 Hz (with USB tuned to the
+assigned frequency - 1.9 kHz the centre is at 1900 Hz). Course of a transmission:
+  start tone (300 Hz = IOC 576, 675 Hz = IOC 288) -> phasing (lines with a pulse at the start)
+  -> image -> stop tone 450 Hz.
+Automation: AFC finds the signal centre within ±3 kHz of the tuned frequency, IOC is taken from the start
+tone, the line rate (LPM) from autocorrelation and the line start from the phasing pulses. Without the start
+tone (turned on in the middle of a transmission) the image starts by itself when the signal has a line periodicity.
 """
 import base64
 import math
@@ -23,15 +23,15 @@ from sdr import lowpass
 
 LPMS = (60, 90, 120, 240)
 IOCS = (576, 288)
-DEV = 400.0            # Hz, odchýlka čierna/biela od stredu
+DEV = 400.0            # Hz, black/white offset from the centre
 DEFAULT_CENTER = 1900.0
-RATE = 8000.0          # Hz, vzorkovanie po FM demodulácii
+RATE = 8000.0          # Hz, sample rate after FM demodulation
 START_TONES = {300.0: 576, 675.0: 288}
 STOP_TONE = 450.0
-TONE_BLOCKS = 8        # tón musí trvať 8 × 0,25 s
+TONE_BLOCKS = 8        # a tone must last 8 × 0.25 s
 SAVE_DIR = data("wefax")
-# Priradené frekvencie DWD Pinneberg a Northwood GYA (Royal Navy, UK; 2618,5 kHz hlavne v noci),
-# obe 120 LPM, IOC 576.
+# Assigned frequencies of DWD Pinneberg and Northwood GYA (Royal Navy, UK; 2618.5 kHz mainly at night),
+# both 120 LPM, IOC 576.
 WEFAX_FREQS = ((3855000, "DWD 3855"), (7880000, "DWD 7880"), (13882500, "DWD 13882"),
                (2618500, "GYA 2618"), (4610000, "GYA 4610"), (8040000, "GYA 8040"), (11086500, "GYA 11086"))
 
@@ -41,7 +41,7 @@ def ioc_width(ioc):
 
 
 def png_gray(rows, width):
-    """8-bitový šedotónový PNG bez ďalších knižníc."""
+    """8-bit greyscale PNG without extra libraries."""
     def chunk(kind, data):
         body = kind + data
         return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
@@ -72,7 +72,7 @@ class WefaxDecoder:
         self._fs = None
         self._state_at = 0.0
 
-    # ---------- ovládanie ----------
+    # ---------- control ----------
 
     def set_enabled(self, on):
         with self.lock:
@@ -84,7 +84,7 @@ class WefaxDecoder:
         self._emit_state()
 
     def command(self, b):
-        """Príkazy z webu: action new/phase, lpm_mode, ioc_mode."""
+        """Commands from the web page: action new/phase, lpm_mode, ioc_mode."""
         with self.lock:
             if "lpm_mode" in b:
                 m = str(b["lpm_mode"])
@@ -107,7 +107,7 @@ class WefaxDecoder:
             if b.get("action") == "new" and self._fs:
                 self._start_image("free")
             if b.get("action") == "phase" and self._fs and self.state != "idle":
-                # Klik do obrázka: zvolené miesto sa stane ľavým okrajom ďalších riadkov.
+                # Click in the image: the chosen spot becomes the left edge of the following lines.
                 x = float(b.get("x", 0)) % 1.0
                 self.pos += (x - 1 if x > 0.5 else x) * self._line_len()
         self._emit_state()
@@ -127,11 +127,11 @@ class WefaxDecoder:
                 return None
             return png_gray(list(self.rows), len(self.rows[0]))
 
-    # ---------- spracovanie signálu ----------
+    # ---------- signal processing ----------
 
     @property
     def n(self):
-        """Absolútny index nasledujúcej vzorky za koncom bufra."""
+        """Absolute index of the next sample after the end of the buffer."""
         return self.v0 + len(self.v)
 
     def _setup(self, fs):
@@ -202,7 +202,7 @@ class WefaxDecoder:
         self.v = np.concatenate((self.v, np.clip((f + DEV) / (2 * DEV), 0, 1)))
 
     def _coarse_afc(self, base, fs):
-        """Bez zámku AFC: stred = stred najsilnejšieho 900 Hz okna v ±3 kHz."""
+        """Without AFC lock: centre = centre of the strongest 900 Hz window within ±3 kHz."""
         if self.afc_lock:
             self.spec = None
             return
@@ -222,18 +222,18 @@ class WefaxDecoder:
             self.center = float(fr[k + win // 2])
 
     def _fine_afc(self):
-        """Stred z percentilov okamžitej frekvencie (čierna a biela sú ±400 Hz)."""
+        """Centre from percentiles of the instantaneous frequency (black and white are ±400 Hz)."""
         if self.n < self.next_afc:
             return
         self.next_afc = self.n + int(2 * self.r)
         f = self.f[-int(2 * self.r):]
         if len(f) < self.r:
             return
-        # Signál je prítomný, keď okamžitá frekvencia ostáva v pásme ±600 Hz (šum ju rozhádže
-        # po celom ±4 kHz). Doladenie len keď sú v signáli obe úrovne (čierna aj biela).
+        # The signal is present when the instantaneous frequency stays within ±600 Hz (noise scatters it
+        # over the whole ±4 kHz). Fine tuning only when both levels (black and white) are in the signal.
         present = float(np.mean(np.abs(f) < 600)) > 0.8
         lo, hi = np.percentile(f, [2, 98])
-        self.levels_ok = present and 550 < hi - lo < 1600  # 800 Hz + šum na okrajoch
+        self.levels_ok = present and 550 < hi - lo < 1600  # 800 Hz + noise at the edges
         if self.levels_ok:
             self.center += 0.7 * float(lo + hi) / 2
         self.afc_bad = 0 if present else self.afc_bad + 1
@@ -261,7 +261,7 @@ class WefaxDecoder:
             if self.tone_cnt[tone] == TONE_BLOCKS:
                 if tone == STOP_TONE:
                     if self.state != "idle":
-                        # Riadky zo stop tónu (okno 1 s + 2 s potvrdenia) do obrázka nepatria.
+                        # Lines from the stop tone (1 s window + 2 s confirmation) do not belong in the image.
                         drop = min(len(self.rows), math.ceil(3.0 * self.lpm / 60))
                         del self.rows[len(self.rows) - drop:]
                         self.on_event("wefaxtrim", {"id": self.image_id, "rows": len(self.rows)})
@@ -280,7 +280,7 @@ class WefaxDecoder:
         if len(x) < 3 * self.r or self.lpm_mode != "auto" and self.state != "idle":
             return
         x = x - x.mean()
-        # Signál WEFAX: AFC zachytené (odchýlka ±400 Hz) a jas sa naozaj mení; inak šum či nosná.
+        # WEFAX signal: AFC locked (offset ±400 Hz) and the brightness really changes; otherwise noise or a carrier.
         sig_ok = self.afc_lock and self.levels_ok and x.std() > 0.15
         self.nolock = 0 if self.afc_lock else self.nolock + 1
         scores = {}
@@ -293,7 +293,7 @@ class WefaxDecoder:
         if not scores:
             return
         best = max(scores.values())
-        # Násobky periódy korelujú tiež: z takmer rovnako dobrých berieme najkratšiu periódu.
+        # Multiples of the period correlate too: of the almost equally good ones we take the shortest period.
         pick = max(l for l, c in scores.items() if c >= 0.85 * best)
         if self.lpm_mode != "auto":
             pick = int(self.lpm_mode)
@@ -306,12 +306,12 @@ class WefaxDecoder:
                 self.lpm = pick
                 self._start_image("free")
         elif self.state == "phasing":
-            # Po zarovnaní (16 riadkov) už LPM nemeníme: okno by zachytilo prechod do obrázka.
+            # After alignment (16 lines) the LPM is not changed any more: the window would catch the transition into the image.
             if best > 0.5 and pick != self.lpm and self.lpm_mode == "auto" and len(self.phase_rows) < 16:
                 self.lpm = pick
                 self.phase_rows, self.pending = [], []
         elif self.state == "rx":
-            # Po riadnom štarte a fázovaní je formát známy, sledujeme len koniec signálu.
+            # After a proper start and phasing the format is known, we only watch for the end of the signal.
             if self.weak >= 15 or self.nolock >= 10:
                 self._finish()
                 self.state = "idle"
@@ -319,7 +319,7 @@ class WefaxDecoder:
             if sig_ok and best > 0.7 and pick != self.lpm and self.vote[1] >= 3:
                 self.lpm = pick
                 self._start_image("free")
-            elif self.weak >= 15 or self.nolock >= 5:  # signál zmizol alebo nemá riadkovú štruktúru
+            elif self.weak >= 15 or self.nolock >= 5:  # the signal disappeared or has no line structure
                 self._finish()
                 self.state = "idle"
 
@@ -339,7 +339,7 @@ class WefaxDecoder:
         cs = np.concatenate(([0.0], np.cumsum(self.v, dtype=np.float64)))
         grid = np.arange(len(cs))
         while self.pos + L <= self.n:
-            # Priemer vzoriek v rámci každého bodu (integrál cez kumulatívny súčet).
+            # Mean of the samples within each pixel (integral via a cumulative sum).
             edges = self.pos - self.v0 + np.arange(W + 1) * (L / W)
             row = np.diff(np.interp(edges, grid, cs)) / (L / W)
             self.pos += L
@@ -354,7 +354,7 @@ class WefaxDecoder:
                 return
             if k > 16:
                 W = len(row)
-                # Vyhladenie, aby šum (pri 240 LPM ~1 vzorka na bod) nevyzeral ako obsah obrázka.
+                # Smoothing, so noise (at 240 LPM ~1 sample per pixel) does not look like image content.
                 k = max(3, W // 100)
                 r = np.convolve(self.phase_rows[-1], np.ones(k) / k, mode="same")
                 rest = r[int(0.1 * W):-k]
@@ -376,7 +376,7 @@ class WefaxDecoder:
         self.on_event("wefaxrow", {"id": self.image_id, "row": base64.b64encode(row.tobytes()).decode()})
 
     def _align(self):
-        """Fázovanie: impulz na začiatku riadku posunieme na ľavý okraj."""
+        """Phasing: the pulse at the start of the line is moved to the left edge."""
         prof = np.mean(self.phase_rows[-8:], axis=0)
         W = len(prof)
         d = np.abs(prof - np.median(prof))
@@ -405,7 +405,7 @@ class WefaxDecoder:
         self._emit_state()
 
     def _finish(self):
-        """Uloží dokončený obrázok (aspoň 30 riadkov) do priečinka wefax/."""
+        """Saves the finished image (at least 30 lines) to the wefax/ folder."""
         if len(self.rows) < 30 or self._saved_id == self.image_id:
             return
         os.makedirs(self.save_dir, exist_ok=True)

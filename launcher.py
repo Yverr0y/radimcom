@@ -1,8 +1,8 @@
-"""Spúšťač VFO A–D: pre každé VFO z vfos.json pustí samostatný proces prijímača (app.py --vfo X)
-s vlastnou kľúčenkou (podľa sériového čísla), portom a nastaveniami, a sám na hlavnom porte
-podáva stránku a zoznam VFO. Stránka potom hovorí s prijímačmi priamo cez ich porty.
+"""VFO A–D launcher: for every VFO in vfos.json it starts a separate receiver process (app.py --vfo X)
+with its own dongle (by serial number), port and settings, and itself serves the page and the VFO list
+on the main port. The page then talks to the receivers directly through their ports.
 
-Nastavenia VFO (config_X.json) vzniknú pri prvom spustení z config.json a z položky "init" vo vfos.json.
+VFO settings (config_X.json) are created at the first start from config.json and the "init" entry in vfos.json.
 """
 import copy
 import json
@@ -43,7 +43,7 @@ def main():
 
     procs = []
     for v in vfos:
-        # Kľúčenky sa otvárajú postupne; súčasné otváranie cez libusb býva nespoľahlivé.
+        # Dongles are opened one after another; opening them at the same time through libusb is unreliable.
         procs.append(subprocess.Popen([sys.executable, os.path.join(BASE, "app.py"), "--vfo", v["name"]],
                                       stdin=subprocess.PIPE, cwd=BASE))
         time.sleep(1.5)

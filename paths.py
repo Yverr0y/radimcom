@@ -1,7 +1,7 @@
-"""Spoločné cesty: program v koreni, dáta tohto PC (nastavenia, pamäte, logy, nahrávky) v data/.
+"""Shared paths: the program in the root folder, this PC's data (settings, memories, logs, recordings) in data/.
 
-Pri prvom importe presunie dáta zo starého umiestnenia (koreň) do data/, aby staršie inštalácie
-fungovali po aktualizácii bez zásahu. config.json z inštalačky (šablóna) sa tiež presunie do data/.
+On the first import, data from the old location (root) is moved to data/, so older installations
+keep working after an update without any manual steps. config.json from the installer (template) is moved to data/ too.
 """
 import os
 import shutil

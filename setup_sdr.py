@@ -1,13 +1,13 @@
-"""Prvotná konfigurácia kľúčeniek: nájde pripojené RTL-SDR a LimeSDR, priradí ich k VFO A, B, C…
-a zapíše vfos.json. Kľúčenky sa potom otvárajú podľa sériového čísla, takže na poradí USB nezáleží.
+"""Initial dongle setup: finds the connected RTL-SDRs and LimeSDRs, assigns them to VFO A, B, C…
+and writes vfos.json. Dongles are then opened by serial number, so the USB order does not matter.
 
-RTL-SDR kľúčenky mávajú rovnaké sériové číslo (napr. 00000001); vtedy sa nedajú rozlíšiť a sprievodca
-ponúkne zápis jedinečného čísla do EEPROM (záloha EEPROM ide do eeprom_backup/).
+RTL-SDR dongles often have the same serial number (e.g. 00000001); then they cannot be told apart and the wizard
+offers to write a unique number into the EEPROM (the EEPROM backup goes to eeprom_backup/).
 
-  python setup_sdr.py          sprievodca
-  python setup_sdr.py --list   len vypíše pripojené zariadenia
+  python setup_sdr.py          wizard
+  python setup_sdr.py --list   only lists the connected devices
 
-Prijímač (start.bat) musí byť počas konfigurácie vypnutý, inak sú kľúčenky obsadené.
+The receiver (start.bat) must be stopped during setup, otherwise the dongles are busy.
 """
 import json
 import os
@@ -51,7 +51,7 @@ def rtl_devices():
 
 
 def lime_devices():
-    """[{serial, name}] pripojených LimeSDR; prázdne, ak LimeSuite.dll chýba."""
+    """[{serial, name}] of connected LimeSDRs; empty if LimeSuite.dll is missing."""
     try:
         import lime
         out = []
@@ -59,7 +59,7 @@ def lime_devices():
             serial = next((p.split("=", 1)[1] for p in d["name"].split(",") if p.strip().startswith("serial=")), "")
             out.append({"serial": serial.strip(), "name": d["name"].split(",")[0]})
         return out
-    except Exception as e:  # chýba DLL alebo ovládač D3XX
+    except Exception as e:  # DLL or D3XX driver missing
         print(f"  (LimeSDR not checked: {e})")
         return []
 
@@ -78,7 +78,7 @@ def show(rtl, limes):
 
 
 def unique_serial(old, taken):
-    """Nové sériové číslo rovnakej dĺžky ako pôvodné (EEPROM má na reťazec pevné miesto)."""
+    """New serial number of the same length as the original (the EEPROM has a fixed place for the string)."""
     n = len(old)
     prefix = "SDR"[:max(n - 2, 0)]
     for i in range(1, 10 ** max(n - len(prefix), 1)):
@@ -89,7 +89,7 @@ def unique_serial(old, taken):
 
 
 def fix_serials(rtl):
-    """Ponúkne zápis jedinečných sériových čísel do EEPROM pri duplicitných alebo prázdnych číslach."""
+    """Offers to write unique serial numbers into the EEPROM when numbers are duplicate or empty."""
     import eeprom_tool
     serials = [d["serial"] for d in rtl]
     bad = [d for d in rtl if not d["serial"] or serials.count(d["serial"]) > 1]
@@ -102,7 +102,7 @@ def fix_serials(rtl):
         return False
     taken = set(serials)
     os.makedirs(eeprom_tool.BACKUP_DIR, exist_ok=True)
-    # prvú kľúčenku s daným (neprázdnym) číslom necháme, ostatné prepíšeme
+    # keep the first dongle with a given (non-empty) number, rewrite the others
     seen = set()
     for d in bad:
         if d["serial"] and d["serial"] not in seen:
@@ -137,20 +137,20 @@ def label(d):
 
 
 def present():
-    """Kľúče (driver, serial) práve pripojených zariadení, s počtom pri duplicitných číslach."""
+    """Keys (driver, serial) of the devices connected right now, with a count for duplicate numbers."""
     keys = [("rtl", d["serial"]) for d in rtl_devices()] + [("lime", d["serial"]) for d in lime_devices()]
     return {k: keys.count(k) for k in keys}
 
 
 def find_unplugged(free, devs):
-    """Ktoré z voľných zariadení chýba oproti pôvodnému zoznamu devs; None, ak nechýba žiadne."""
+    """Which of the free devices is missing compared to the original list devs; None if none is missing."""
     keys = [(d["driver"], d["serial"]) for d in devs]
     before = {k: keys.count(k) for k in keys}
     for _ in range(3):
         now = present()
         gone = [d for d in free if now.get((d["driver"], d["serial"]), 0) < before.get((d["driver"], d["serial"]), 0)
                 or (d["driver"], d["serial"]) not in now]
-        # rovnaké zariadenie môže byť v zozname dvakrát (duplicitné číslo): stačí prvé
+        # the same device can be in the list twice (duplicate number): the first one is enough
         gone = list({(d["driver"], d["serial"]): d for d in gone}.values())
         if len(gone) == 1:
             return gone[0]
@@ -162,8 +162,8 @@ def find_unplugged(free, devs):
 
 
 def assign(devs):
-    """Priradenie zariadení k VFO A, B, C… Zariadenie sa vyberie číslom zo zoznamu alebo tak, že ho
-    používateľ na chvíľu odpojí (sériové číslo na kľúčenke nie je vidieť, pripojenie áno)."""
+    """Assigning devices to VFO A, B, C… A device is chosen by its number in the list or by the
+    user unplugging it for a moment (the serial number is not visible on the dongle, the connection is)."""
     free = list(devs)
     out = []
     print("Assign the devices to VFOs. For each VFO either type the device number,")
@@ -188,7 +188,7 @@ def assign(devs):
                 continue
             print(f"  found: {label(d)} -> VFO {name}. Plug it back in and press Enter.")
             input()
-            for _ in range(10):  # počkať, kým ho Windows znova ohlási
+            for _ in range(10):  # wait until Windows reports it again
                 if (d["driver"], d["serial"]) in present():
                     break
                 time.sleep(1)
@@ -203,7 +203,7 @@ def assign(devs):
 
 
 def configure(dev, name, port):
-    """Otázky k jednému zariadeniu -> položka vfos.json."""
+    """Questions about one device -> vfos.json entry."""
     lime = dev["driver"] == "lime"
     print(f"\nVFO {name}: {'LimeSDR' if lime else 'RTL-SDR'} serial '{dev['serial']}'")
     entry = {"name": name, "serial": dev["serial"], "port": port, "config": f"config_{name}.json"}
@@ -213,8 +213,8 @@ def configure(dev, name, port):
     if yes("  Is it connected through an HF upconverter (e.g. Ham It Up)?", False):
         while True:
             lo = ask_num("  Upconverter LO in MHz (e.g. 100 or 100.0021)", 100)
-            # LO pod 30 MHz by posunulo KV do pásma, ktoré tuner nevie (pod 24 MHz)
-            if 30 <= lo / 1e6 <= 1000:   # zadané v Hz
+            # an LO below 30 MHz would shift HF into a range the tuner cannot receive (below 24 MHz)
+            if 30 <= lo / 1e6 <= 1000:   # entered in Hz
                 lo /= 1e6
                 print(f"  taken as Hz: {f'{lo:.6f}'.rstrip('0').rstrip('.')} MHz")
             if 30 <= lo <= 1000:
@@ -225,7 +225,7 @@ def configure(dev, name, port):
     else:
         init.update(upconv="off", lo_offset_hz=0, tune_hz=145500000, mode="FM")
         entry["note"] = ("LimeSDR, " if lime else "") + "VHF/UHF direct"
-    init["center_hz"] = init["tune_hz"] + 409600   # ladená frekvencia mimo stredu (stred má DC špičku)
+    init["center_hz"] = init["tune_hz"] + 409600   # tuned frequency off-centre (the centre has a DC spike)
     if lime:
         init.update(gain=35, bias_tee=False, rtl_agc=False)
     note = ask("  Description shown on the VFO button", entry["note"])
@@ -268,7 +268,7 @@ def main():
         if yes("Save this configuration?"):
             break
         print("\nStarting the assignment again.")
-    # Staré nastavenia VFO patria iným kľúčenkám: zálohujú sa a vzniknú nové z "init".
+    # Old VFO settings belong to other dongles: they are backed up and new ones are created from "init".
     stamp = time.strftime("%Y%m%d_%H%M%S")
     old = [f for f in os.listdir(DATA) if f == "vfos.json" or (f.startswith("config_") and f.endswith(".json"))]
     if old:
@@ -280,11 +280,11 @@ def main():
     with open(VFOS_PATH, "w", encoding="utf-8") as f:
         json.dump({"port": 8434, "vfos": vfos}, f, indent=2, ensure_ascii=False)
     print(f"\nSaved {VFOS_PATH}: " + ", ".join(f"VFO {v['name']} = {v['serial']}" for v in vfos))
-    # install.bat sa na spustenie pýta sám až na konci (--no-start)
+    # install.bat asks about starting by itself at the end (--no-start)
     if "--no-start" in sys.argv:
         return
     if yes("Start the receiver now?"):
-        os.startfile(os.path.join(BASE, "start.bat"))   # vlastné okno; stránka sa otvorí sama
+        os.startfile(os.path.join(BASE, "start.bat"))   # own window; the page opens by itself
     else:
         print("Start it later with the RADIMCOM shortcut (start.bat).")
         input("Press Enter to exit.")

@@ -1,7 +1,7 @@
-"""LimeSDR (cez LimeSuite.dll z PothosSDR a ctypes) s rovnakým rozhraním ako RtlSdr v sdr.py.
+"""LimeSDR (via LimeSuite.dll from PothosSDR and ctypes) with the same interface as RtlSdr in sdr.py.
 
-Príjem: RX kanál 0; read_async posiela bloky už ako komplexné vzorky complex64 v rozsahu ±1.
-Vysielanie: TX kanál 0 sa zapína len počas PTT (tx_start/tx_stop); zatiaľ nemodulovaná nosná.
+Receive: RX channel 0; read_async sends blocks already as complex samples complex64 in the range ±1.
+Transmit: TX channel 0 is turned on only during PTT (tx_start/tx_stop); FM from audio or an unmodulated carrier.
 """
 import ctypes
 import os
@@ -9,20 +9,20 @@ import threading
 
 import numpy as np
 
-# LimeSuite.dll: najprv z priečinka lib (pribalená v inštalačke), inak z nainštalovaného PothosSDR
+# LimeSuite.dll: first from the lib folder (bundled in the installer), otherwise from the installed PothosSDR
 _LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib")
 LIME_BIN = _LIB if os.path.exists(os.path.join(_LIB, "LimeSuite.dll")) else r"C:\Program Files\PothosSDR\bin"
 RX = False
 TX = True
 FMT_F32 = 0
-TX_GAIN = 0.6       # normalizovaný zisk TX 0..1 pre prvé skúšky (nie plný výkon)
-TX_LEVEL = 0.7      # amplitúda vzoriek nosnej (rezerva pred orezaním DAC)
+TX_GAIN = 0.6       # normalised TX gain 0..1 for first tests (not full power)
+TX_LEVEL = 0.7      # amplitude of the carrier samples (headroom before DAC clipping)
 GAIN_MAX = 73
-GAIN_AUTO = 50  # Lime nemá AGC tunera; „auto“ = rozumný stredný zisk
-LO_MIN_HZ = 30e6  # pod touto frekvenciou LimeSuite ladí cez NCO (LO ostáva na 30 MHz)
-# S-meter: Lime pri zisku 0 dB ukazuje o toľkoto menej než VFO A (RTL, zisk 22,9 dB) na rovnakom
-# signáli zo splittera. Zmerané pri ziskoch 14–64 dB, údaj rastie so ziskom ~1 dB/dB.
-# Meralo sa na KV cez up-konvertor; Lime je odvtedy na VHF anténe, na VHF to nie je overené.
+GAIN_AUTO = 50  # Lime has no tuner AGC; "auto" = a reasonable middle gain
+LO_MIN_HZ = 30e6  # below this frequency LimeSuite tunes via the NCO (the LO stays at 30 MHz)
+# S-meter: at 0 dB gain the Lime shows this much less than VFO A (RTL, gain 22.9 dB) on the same
+# signal from a splitter. Measured at gains of 14–64 dB, the reading rises with gain by ~1 dB/dB.
+# Measured on HF through an upconverter; the Lime has since been on a VHF antenna, on VHF this is not verified.
 SMETER_REF_DB = 52.0
 
 
@@ -80,8 +80,8 @@ def list_devices():
 
 
 class FmSource:
-    """FM modulátor: audio (float, ±1, vzorkovanie audio_rate) dookola -> komplexné vzorky pri fs.
-    Audio sa na fs prevzorkuje lineárnou interpoláciou (má byť už obmedzené na ~3 kHz)."""
+    """FM modulator: audio (float, ±1, sample rate audio_rate) in a loop -> complex samples at fs.
+    The audio is resampled to fs by linear interpolation (it should already be limited to ~3 kHz)."""
 
     def __init__(self, audio, audio_rate, fs, dev_hz):
         self.audio = np.asarray(audio, np.float64)
@@ -101,7 +101,7 @@ class FmSource:
 
 
 class LimeSdr:
-    """Tenký obal nad LimeSuite.dll, metódy zodpovedajú RtlSdr."""
+    """Thin wrapper over LimeSuite.dll, the methods match RtlSdr."""
 
     gains = list(range(GAIN_MAX + 1))
     has_bias_tee = False
@@ -114,7 +114,7 @@ class LimeSdr:
         n = max(lib.LMS_GetDeviceList(infos), 0)
         names = [infos[i].value.decode(errors="replace") for i in range(n)]
         if serial:
-            # Info reťazec obsahuje „serial=1D3C042ED93935“; podľa neho, nie podľa poradia.
+            # The info string contains "serial=<serial number>"; open by it, not by the order.
             index = next((i for i, s in enumerate(names) if f"serial={serial}".lower() in s.lower()), -1)
             if index < 0:
                 raise RuntimeError(f"LimeSDR {serial} not found (connected: {n})")
@@ -128,7 +128,7 @@ class LimeSdr:
         self.freq = None
         self.lpf, self.lpf_hf = None, None
         self.retunes = 0
-        self.lost = 0      # vzorky stratené v LimeSuite/USB (medzery v časových značkách)
+        self.lost = 0      # samples lost in LimeSuite/USB (gaps in the timestamps)
         self.gaps = 0
         self.ppm = 0
         self._stop = threading.Event()
@@ -149,31 +149,31 @@ class LimeSdr:
         self._check(self.lib.LMS_SetSampleRate(self.dev, self.rate, 0), "sample rate")
         self.lpf = None
         if self.freq is not None:
-            self._tune()   # zmena vzorkovania v LimeSuite môže zmeniť nastavenie NCO
+            self._tune()   # changing the sample rate in LimeSuite may change the NCO setting
 
     def set_center_freq(self, hz):
-        # Prijímač posiela stred pri každom kroku ladenia, aj keď sa nemení. RTL to nevadí, ale Lime
-        # pri každom nastavení LO znova ladí PLL a v prúde vzoriek vznikne výpadok (praskanie).
+        # The receiver sends the centre on every tuning step, even if it does not change. RTL does not mind, but the Lime
+        # retunes the PLL on every LO setting and the sample stream gets a gap (crackling).
         if self.freq == float(hz):
             return
         self.freq = float(hz)
         self._tune()
 
     def _tune(self):
-        # Lime nemá korekciu ppm v hardvéri: posunieme LO o chybu oscilátora.
+        # The Lime has no ppm correction in hardware: we shift the LO by the oscillator error.
         self._check(self.lib.LMS_SetLOFrequency(self.dev, RX, 0, self.freq * (1 + self.ppm * 1e-6)), "frequency")
         self.retunes += 1
         self._set_lpf()
 
     def _set_lpf(self):
-        """Analógový filter RX. Nad 30 MHz o niečo širší než zobrazené pásmo (LimeSuite pod 1,4 MHz
-        nejde). Pod 30 MHz LimeSuite ladí LO na 30 MHz a zvyšok posúva NCO, takže filter musí
-        prepustiť aj tento posun, inak KV signál odreže."""
+        """Analogue RX filter. Above 30 MHz a bit wider than the displayed band (LimeSuite does not go below
+        1.4 MHz). Below 30 MHz LimeSuite tunes the LO to 30 MHz and the NCO shifts the rest, so the filter must
+        also pass this shift, otherwise it cuts off the HF signal."""
         if self.rate is None or self.freq is None:
             return
         f = self.freq
         bw = max(self.rate * 1.2, 1.5e6) if f >= LO_MIN_HZ else 2 * (LO_MIN_HZ - f) + 2 * self.rate
-        # Kalibrácia filtra trvá; pri ladení po kúskoch ho nastavíme len pri väčšej zmene.
+        # Filter calibration takes time; when tuning in small steps it is set only on a larger change.
         if self.lpf and abs(bw - self.lpf) < 0.1 * self.lpf and self.lpf_hf == (f < LO_MIN_HZ):
             return
         self._check(self.lib.LMS_SetLPFBW(self.dev, RX, 0, bw), "RX filter")
@@ -183,14 +183,14 @@ class LimeSdr:
         g = GAIN_AUTO if gain in ("auto", "", None) else int(round(float(gain)))
         g = max(0, min(GAIN_MAX, g))
         self._check(self.lib.LMS_SetGaindB(self.dev, RX, 0, g), "gain")
-        # Korekcia S-metra a squelchu: údaj nezávisí od zisku a zhoduje sa s VFO A.
+        # Correction of the S-meter and squelch: the reading does not depend on gain and matches VFO A.
         self.smeter_offset = SMETER_REF_DB - g
 
     def set_bias_tee(self, on):
-        pass  # LimeSDR Mini nemá bias-tee
+        pass  # LimeSDR Mini has no bias-tee
 
     def set_rtl_agc(self, on):
-        pass  # digitálne AGC je len v RTL2832
+        pass  # digital AGC exists only in the RTL2832
 
     def set_ppm(self, ppm):
         self.ppm = int(ppm)
@@ -198,17 +198,17 @@ class LimeSdr:
             self._tune()
 
     def calibrate(self):
-        """Kalibrácia DC a IQ nerovnováhy RX; na nízkych frekvenciách môže zlyhať, nie je povinná."""
+        """Calibration of the RX DC and IQ imbalance; may fail at low frequencies, it is not mandatory."""
         ok = self.lib.LMS_Calibrate(self.dev, RX, 0, max(self.rate or 0, 2.5e6), 0) == 0
         self.lpf = None
-        self._set_lpf()   # kalibrácia mení nastavenie analógového filtra
+        self._set_lpf()   # calibration changes the analogue filter setting
         return ok
 
     def reset_buffer(self):
-        pass  # stream sa zakladá nanovo v read_async
+        pass  # the stream is created anew in read_async
 
     def read_async(self, on_block):
-        """Blokuje, kým sa nezavolá cancel_async; posiela bloky po self.block vzoriek."""
+        """Blocks until cancel_async is called; sends blocks of self.block samples."""
         lib = self.lib
         st = _Stream(isTx=RX, channel=0, fifoSize=self.block * 8, throughputVsLatency=0.5, dataFmt=FMT_F32)
         self._check(lib.LMS_SetupStream(self.dev, ctypes.byref(st)), "stream setup")
@@ -252,11 +252,11 @@ class LimeSdr:
                 "gaps": self.gaps, "lost": self.lost, "retunes": self.retunes,
                 "rate": s.sampleRate, "link_mbs": round(s.linkRate / 1e6, 2)}
 
-    # ---------- vysielanie ----------
+    # ---------- transmitting ----------
 
     def tx_start(self, hz, gain=TX_GAIN, fm=None):
-        """Zapne TX kanál na frekvencii hz a vysiela, kým sa nezavolá tx_stop: FM z audia
-        fm = (audio, audio_rate, zdvih_hz), inak nemodulovanú nosnú."""
+        """Turns on the TX channel at frequency hz and transmits until tx_stop is called: FM from audio
+        fm = (audio, audio_rate, deviation_hz), otherwise an unmodulated carrier."""
         with self._tx_lock:
             if self.tx_on:
                 return self.tx_info
@@ -265,7 +265,7 @@ class LimeSdr:
                 self._check(lib.LMS_EnableChannel(self.dev, TX, 0, True), "enabling TX")
                 ant = self._tx_antenna(hz)
                 self._check(lib.LMS_SetLOFrequency(self.dev, TX, 0, hz * (1 + self.ppm * 1e-6)), "TX frequency")
-                lib.LMS_SetLPFBW(self.dev, TX, 0, 10e6)   # nepovinné; niektoré verzie majú iné minimum
+                lib.LMS_SetLPFBW(self.dev, TX, 0, 10e6)   # optional; some versions have a different minimum
                 self._check(lib.LMS_SetNormalizedGain(self.dev, TX, 0, max(0.0, min(1.0, gain))), "TX gain")
                 g = ctypes.c_uint()
                 lib.LMS_GetGaindB(self.dev, TX, 0, ctypes.byref(g))
@@ -285,7 +285,7 @@ class LimeSdr:
             return self.tx_info
 
     def _tx_antenna(self, hz):
-        """Mini má dve TX cesty: BAND1 (vyššie pásma) a BAND2 (do ~2 GHz). Vyberieme podľa frekvencie."""
+        """The Mini has two TX paths: BAND1 (higher bands) and BAND2 (up to ~2 GHz). Chosen by frequency."""
         lib = self.lib
         n = lib.LMS_GetAntennaList(self.dev, TX, 0, None)
         names = (ctypes.c_char * 16 * max(n, 1))()
@@ -298,7 +298,7 @@ class LimeSdr:
         return names[i] if 0 <= i < len(names) else str(i)
 
     def _tx_loop(self, src):
-        buf = np.full(self.block, TX_LEVEL, np.complex64)   # DC v basebande = nosná presne na LO
+        buf = np.full(self.block, TX_LEVEL, np.complex64)   # DC in the baseband = carrier exactly on the LO
         meta = _Meta()
         st = self._tx_stream
         while self.tx_on:
@@ -324,7 +324,7 @@ class LimeSdr:
             self._tx_stream = None
         if self.dev:
             lib.LMS_SetNormalizedGain(self.dev, TX, 0, 0.0)
-            lib.LMS_EnableChannel(self.dev, TX, 0, False)   # vypnutý TX = žiadny únik LO do antény
+            lib.LMS_EnableChannel(self.dev, TX, 0, False)   # TX off = no LO leakage into the antenna
 
     def close(self):
         if self.tx_on or self._tx_stream is not None:

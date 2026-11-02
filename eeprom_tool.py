@@ -1,12 +1,12 @@
-"""Čítanie a zmena sériového čísla v EEPROM RTL-SDR kľúčenky (ako rtl_eeprom, cez librtlsdr.dll).
+"""Reading and changing the serial number in the EEPROM of an RTL-SDR dongle (like rtl_eeprom, via librtlsdr.dll).
 
-  python eeprom_tool.py                    vypíše EEPROM všetkých kľúčeniek a uloží zálohy do eeprom_backup/
-  python eeprom_tool.py write INDEX SERIAL nastaví sériové číslo kľúčenky INDEX (rovnaká dĺžka ako pôvodné)
-  python eeprom_tool.py restore INDEX FILE vráti EEPROM zo zálohy
+  python eeprom_tool.py                    prints the EEPROM of all dongles and saves backups to eeprom_backup/
+  python eeprom_tool.py write INDEX SERIAL sets the serial number of dongle INDEX (same length as the original)
+  python eeprom_tool.py restore INDEX FILE restores the EEPROM from a backup
 
-Server prijímača musí byť zastavený. Nové sériové číslo sa prejaví po odpojení a pripojení kľúčenky.
-Formát EEPROM (rtl-sdr rtl_eeprom.c): 0x28 0x32, VID, PID, 0xA5 = sériové číslo zapnuté, príznaky,
-od adresy 0x09 tri USB reťazce (výrobca, produkt, sériové číslo) ako dĺžka, 0x03, UTF-16LE.
+The receiver server must be stopped. The new serial number takes effect after unplugging and replugging the dongle.
+EEPROM format (rtl-sdr rtl_eeprom.c): 0x28 0x32, VID, PID, 0xA5 = serial number enabled, flags,
+from address 0x09 three USB strings (manufacturer, product, serial number) as length, 0x03, UTF-16LE.
 """
 import ctypes
 import os
@@ -50,7 +50,7 @@ def read(index):
 
 
 def strings(data):
-    """[(pozícia, dĺžka, text)] pre výrobcu, produkt a sériové číslo; None pri neplatnom formáte."""
+    """[(position, length, text)] for manufacturer, product and serial number; None if the format is invalid."""
     out, pos = [], STR_OFFSET
     for _ in range(3):
         n = data[pos]

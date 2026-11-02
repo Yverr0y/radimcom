@@ -1,12 +1,12 @@
-"""ACARS dekodér (VHF letecké pásmo, AM, MSK 2400 bit/s, tóny 1200/2400 Hz) z basebandu prijímača.
+"""ACARS decoder (VHF airband, AM, MSK 2400 bit/s, tones 1200/2400 Hz) from the receiver's baseband.
 
-Postup: AM demodulácia (obálka) nezávisle od módu prijímača -> koherentná MSK demodulácia:
-zmiešanie audia nosnou 1800 Hz (NCO doladovaný fázovým závesom), prispôsobený filter (polvlna
-600 Hz cez 2 bity) a rozhodnutie striedavo z reálnej a imaginárnej zložky (MSK = OQPSK). Hodiny
-bitov sú zviazané s fázou nosnej (2400 = 4/3 · 1800). Polaritu bitov skúšajú dva rámcovače naraz.
+Method: AM demodulation (envelope) independent of the receiver mode -> coherent MSK demodulation:
+mixing the audio with an 1800 Hz carrier (NCO tracked by a phase-locked loop), matched filter (half-wave
+600 Hz over 2 bits) and decision alternately from the real and imaginary part (MSK = OQPSK). The bit
+clock is tied to the carrier phase (2400 = 4/3 · 1800). Two framers try both bit polarities at once.
 
-Rámec (ARINC 618): ... '+' '*' SYN SYN SOH mód adresa(7) ACK návestie(2) blok STX text ETX/ETB BCS(2) DEL.
-Znaky: 7 bitov ASCII + nepárna parita, najnižší bit prvý. BCS = CRC-16 (CCITT, zrkadlené) od módu po ETX.
+Frame (ARINC 618): ... '+' '*' SYN SYN SOH mode address(7) ACK label(2) block STX text ETX/ETB BCS(2) DEL.
+Characters: 7-bit ASCII + odd parity, lowest bit first. BCS = CRC-16 (CCITT, reflected) from mode to ETX.
 """
 import cmath
 import collections
@@ -25,26 +25,26 @@ from paths import data
 from sdr import lowpass
 
 BAUD = 2400.0
-CENTER = 1800.0              # stred medzi tónmi 1200 a 2400 Hz
-RATE_MAX = 32000.0           # pracovné vzorkovanie po decimácii
-PLL_G = 38e-4                # zisk fázového závesu nosnej
-PLL_C = 0.52                 # vyhladenie korekcie frekvencie
+CENTER = 1800.0              # centre between the tones 1200 and 2400 Hz
+RATE_MAX = 32000.0           # working sample rate after decimation
+PLL_G = 38e-4                # gain of the carrier phase-locked loop
+PLL_C = 0.52                 # smoothing of the frequency correction
 ACARS_FREQS = (131525000, 131725000, 131825000, 136900000)
 
-# Typ a poloha lietadla podľa registrácie z verejných ADS-B sietí (adsb.fi má aj popis typu).
+# Aircraft type and position by registration from public ADS-B networks (adsb.fi also has the type description).
 LOOKUP_URLS = ("https://opendata.adsb.fi/api/v2/registration/{}", "https://api.adsb.lol/v2/reg/{}")
-LOOKUP_CACHE_S = 60          # poloha sa mení: tú istú registráciu nanovo najskôr po minúte
-LOOKUP_GAP_S = 1.1           # adsb.fi dovolí 1 dopyt za sekundu
-LOG_DIR = data("acars")   # denný log acars_RRRR-MM-DD.txt (UTC)
+LOOKUP_CACHE_S = 60          # the position changes: the same registration again after a minute at the earliest
+LOOKUP_GAP_S = 1.1           # adsb.fi allows 1 request per second
+LOG_DIR = data("acars")   # daily log acars_YYYY-MM-DD.txt (UTC)
 
-SYNC = 0x011616             # SYN SYN SOH (s paritou), prijaté zľava doprava = nižší bajt prvý
-SOH, STX, ETX, ETB, DEL = 0x01, 0x82, 0x83, 0x97, 0x7F   # s nepárnou paritou
+SYNC = 0x011616             # SYN SYN SOH (with parity), received left to right = lower byte first
+SOH, STX, ETX, ETB, DEL = 0x01, 0x82, 0x83, 0x97, 0x7F   # with odd parity
 MAX_LEN = 250
 MAX_PARITY_ERR = 3
 
 
 def crc16(data):
-    """CRC-16 CCITT zrkadlené (polynóm 0x8408, štart 0); vrátane BCS vyjde 0."""
+    """CRC-16 CCITT reflected (polynomial 0x8408, start 0); including the BCS the result is 0."""
     crc = 0
     for b in data:
         crc ^= b
@@ -58,7 +58,7 @@ def odd_parity_ok(b):
 
 
 class _Framer:
-    """Hľadá synchronizáciu a skladá znaky z jedného prúdu bitov."""
+    """Searches for synchronisation and assembles characters from one bit stream."""
 
     def __init__(self, on_frame):
         self.on_frame = on_frame
@@ -71,7 +71,7 @@ class _Framer:
         self.nbits = 0
         self.data = []
         self.perr = 0
-        self.tail = -1           # koľko bajtov BCS ešte čakáme po ETX/ETB
+        self.tail = -1           # how many BCS bytes we still wait for after ETX/ETB
 
     def bit(self, b):
         if not self.inframe:
@@ -84,7 +84,7 @@ class _Framer:
         if self.nbits < 8:
             return
         c, self.byte, self.nbits = self.byte, 0, 0
-        if self.tail < 0 and not odd_parity_ok(c):     # BCS (CRC) nemá paritu
+        if self.tail < 0 and not odd_parity_ok(c):     # BCS (CRC) has no parity
             self.perr += 1
             if self.perr > MAX_PARITY_ERR:
                 self.reset()
@@ -102,8 +102,8 @@ class _Framer:
             self.reset()
 
 
-# Význam bežných návestí (label) ACARS. Veľa návestí si definuje každá letecká spoločnosť sama,
-# tie dostanú všeobecný popis.
+# Meaning of common ACARS labels. Many labels are defined by each airline itself;
+# those get a generic description.
 LABELS = {
     "_\x7f": "General response / acknowledgement (no data)",
     "Q0": "Data link test",
@@ -120,7 +120,7 @@ LABELS = {
     "QE": "Flight event report (gate out / takeoff / landing / gate in)",
     "QF": "Flight event report (gate out / takeoff / landing / gate in)",
 }
-# H1 = správa z/do palubného systému; ktorého, prezradí začiatok textu
+# H1 = message from/to an onboard system; which one is told by the start of the text
 H1_PREFIX = {
     "#CFB": "Maintenance computer report (system status / faults)",
     "#DFB": "Flight data report (engine and performance data)",
@@ -128,13 +128,13 @@ H1_PREFIX = {
     "#M2B": "Flight management computer message",
     "#M3B": "Flight management computer message",
 }
-# podľa obsahu textu (ak návestie nič nepovie)
+# by the text content (if the label says nothing)
 TEXT_HINTS = (("POS", "Position report"), ("METAR", "Weather (METAR)"), ("TAF", "Weather forecast (TAF)"),
               ("LOADSHEET", "Load sheet"), ("ETA", "Estimated arrival time"), ("FUEL", "Fuel report"))
 
 
 def describe(label, text):
-    """Popis správy v bežnej reči (orientačný: význam časti návestí závisí od leteckej spoločnosti)."""
+    """Message description in plain language (approximate: the meaning of some labels depends on the airline)."""
     if label in LABELS:
         return LABELS[label]
     t = text.lstrip()
@@ -152,8 +152,8 @@ def describe(label, text):
 
 
 def parse(frame, perr):
-    """frame: SOH ... ETX/ETB BCS BCS (s paritou). Vráti slovník správy."""
-    body = frame[1:]                                  # od módu po BCS
+    """frame: SOH ... ETX/ETB BCS BCS (with parity). Returns the message dictionary."""
+    body = frame[1:]                                  # from mode to BCS
     crc_ok = crc16(body) == 0
     chars = [b & 0x7F for b in body[:-2]]
     end = chars[-1]
@@ -161,7 +161,7 @@ def parse(frame, perr):
     mode, addr, ack, label, blk = txt[0:1], txt[1:8], txt[8:9], txt[9:11], txt[11:12]
     text = txt[13:] if len(txt) > 12 and chars[12] == 0x02 else ""
     flight = msgno = ""
-    if blk.isdigit() and len(text) >= 10:             # downlink (z lietadla): číslo správy + let
+    if blk.isdigit() and len(text) >= 10:             # downlink (from the aircraft): message number + flight
         msgno, flight, text = text[:4], text[4:10].strip(), text[10:]
     clean = lambda s: "".join(ch if 32 <= ord(ch) < 127 else ("\n" if ch in "\r\n" else "·") for ch in s)
     return {
@@ -177,9 +177,9 @@ def parse(frame, perr):
 class AcarsDecoder:
     def __init__(self, on_event, tag="", log_dir=LOG_DIR):
         self.on_event = on_event
-        self.tag = tag            # názov VFO v logu (log zdieľajú všetky VFO)
+        self.tag = tag            # VFO name in the log (the log is shared by all VFOs)
         self.log_dir = log_dir
-        self.log_on = False       # denný log len po zapnutí LOG v karte ACARS
+        self.log_on = False       # daily log only after LOG is turned on in the ACARS card
         self.enabled = False
         self.lock = threading.Lock()
         self.msgs = collections.deque(maxlen=300)
@@ -188,13 +188,13 @@ class AcarsDecoder:
         self.crc_errors = 0
         self.level = 0.0
         self._fs = None
-        self._recent = collections.deque(maxlen=16)   # (čas, bajty) proti duplicitám z dvoch prúdov
+        self._recent = collections.deque(maxlen=16)   # (time, bytes) against duplicates from the two streams
         self._next_id = 1
-        self._cache = {}                              # registrácia -> (čas, údaje z ADS-B alebo None)
+        self._cache = {}                              # registration -> (time, ADS-B data or None)
         self._lookups = queue.Queue(maxsize=50)
         threading.Thread(target=self._lookup_worker, name="acars-adsb", daemon=True).start()
 
-    # ---------- ovládanie ----------
+    # ---------- control ----------
 
     def set_enabled(self, on):
         with self.lock:
@@ -211,32 +211,32 @@ class AcarsDecoder:
         return {"enabled": self.enabled, "count": self.count, "crc_errors": self.crc_errors,
                 "level_db": round(self.level, 1), "messages": list(self.msgs)}
 
-    # ---------- spracovanie signálu ----------
+    # ---------- signal processing ----------
 
     def _setup(self, fs):
         self._fs = fs
         self.D = max(1, int(fs // RATE_MAX))
         self.r = fs / self.D
-        self.h_am = lowpass(4000.0, fs, 127).astype(np.complex64)    # AM kanál ±4 kHz
+        self.h_am = lowpass(4000.0, fs, 127).astype(np.complex64)    # AM channel ±4 kHz
         self.hist_am = np.zeros(len(self.h_am) - 1, np.complex64)
         self.dec_off = 0
         self.dc = 0.0
-        # MSK: prispôsobený filter = polvlna 600 Hz cez 2 bity
+        # MSK: matched filter = half-wave 600 Hz over 2 bits
         self.flen = int(round(self.r / 1200.0))
         k = np.arange(self.flen) - (self.flen - 1) / 2
         self.h_msk = np.cos(2 * np.pi * 600.0 / self.r * k).astype(np.complex128)
         self.mbuf = np.zeros(self.flen, np.complex128)
         self.midx = 0
         self.step = 2 * np.pi * CENTER / self.r
-        self.phi = 0.0            # fáza NCO nosnej
-        self.clk = 0.0            # hodiny bitov vo fáze nosnej (bit každých 3π/2)
-        self.df = 0.0             # korekcia frekvencie z fázového závesu (rad/vzorka)
-        self.ms = 0               # poradie bitu: striedanie I/Q a znamienka
+        self.phi = 0.0            # carrier NCO phase
+        self.clk = 0.0            # bit clock in carrier phase (a bit every 3π/2)
+        self.df = 0.0             # frequency correction from the phase-locked loop (rad/sample)
+        self.ms = 0               # bit order: alternating I/Q and sign
         self.framers = [_Framer(self._frame) for _ in range(2)]
         self.since_state = 0
 
     def feed(self, base, fs, dial_hz):
-        """base: komplexný baseband (ladená frekvencia = 0 Hz) pri vzorkovaní fs."""
+        """base: complex baseband (tuned frequency = 0 Hz) at sample rate fs."""
         if not self.enabled:
             return
         with self.lock:
@@ -250,7 +250,7 @@ class AcarsDecoder:
             env = np.abs(z)
             p = float(np.mean(env ** 2)) + 1e-20
             self.level = 10 * np.log10(p)
-            # AM: odstránenie nosnej (jednosmernej zložky obálky)
+            # AM: removing the carrier (DC component of the envelope)
             self.dc = float(env.mean()) if self.dc == 0.0 else 0.9 * self.dc + 0.1 * float(env.mean())
             audio = (env - self.dc) / (self.dc + 1e-9)
             self._demod(audio.astype(np.float32))
@@ -260,7 +260,7 @@ class AcarsDecoder:
             self._emit_state()
 
     def _demod(self, audio):
-        """Koherentná MSK demodulácia vzorku po vzorke (fázový záves mení NCO priebežne)."""
+        """Coherent MSK demodulation sample by sample (the phase-locked loop adjusts the NCO continuously)."""
         flen, h, buf = self.flen, self.h_msk, self.mbuf
         phi, clk, df, idx, ms = self.phi, self.clk, self.df, self.midx, self.ms
         two_pi, bit_ph = 2 * math.pi, 1.5 * math.pi
@@ -275,7 +275,7 @@ class AcarsDecoder:
             if clk < bit_ph:
                 continue
             clk -= bit_ph
-            v = complex(np.dot(np.roll(buf, -idx), h))       # prispôsobený filter cez posledné 2 bity
+            v = complex(np.dot(np.roll(buf, -idx), h))       # matched filter over the last 2 bits
             lvl = abs(v) + 1e-12
             vr, vi = v.real / lvl, v.imag / lvl
             if ms & 1:
@@ -304,7 +304,7 @@ class AcarsDecoder:
             return
         if not m["crc_ok"]:
             self.crc_errors += 1
-            if perr:              # chybný CRC aj parita: šum, nezobrazíme
+            if perr:              # bad CRC and parity: noise, not shown
                 return
         m["time"] = time.strftime("%H:%M:%S", time.gmtime(now))
         m["freq_hz"] = round(self.dial)
@@ -317,14 +317,14 @@ class AcarsDecoder:
         m["date"] = time.strftime("%Y-%m-%d", time.gmtime(now))
         if len(m["reg"]) >= 3 and self.crc_ok_reg(m):
             try:
-                self._lookups.put_nowait(m)      # do logu ide až s údajmi z ADS-B
+                self._lookups.put_nowait(m)      # goes to the log only with the ADS-B data
                 return
             except queue.Full:
                 pass
         self._log(m)
 
     def _log(self, m):
-        """Riadok do denného logu (UTC); viacriadkový text odsadený. Údaje z ADS-B v [ADS-B: ...]."""
+        """Line to the daily log (UTC); multi-line text indented. ADS-B data in [ADS-B: ...]."""
         if not self.log_on:
             return
         head = [f"{m['date']} {m['time']}Z", f"{m['freq_hz'] / 1e6:.3f}", f"VFO-{self.tag}" if self.tag else "",
@@ -350,7 +350,7 @@ class AcarsDecoder:
     def crc_ok_reg(m):
         return m["crc_ok"] and m["reg"].replace("-", "").isalnum()
 
-    # ---------- typ a poloha lietadla z ADS-B (adsb.fi, adsb.lol) ----------
+    # ---------- aircraft type and position from ADS-B (adsb.fi, adsb.lol) ----------
 
     def _lookup_worker(self):
         last = 0.0
@@ -373,7 +373,7 @@ class AcarsDecoder:
 
     @staticmethod
     def _fetch(reg):
-        """Vráti údaje o lietadle, ktoré práve vidí ADS-B sieť, alebo None."""
+        """Returns data about the aircraft currently seen by the ADS-B network, or None."""
         for url in LOOKUP_URLS:
             try:
                 req = urllib.request.Request(url.format(urllib.parse.quote(reg)), headers={"User-Agent": "RADIMCOM"})

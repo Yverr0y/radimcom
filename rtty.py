@@ -1,10 +1,10 @@
-"""RTTY dekodér (Baudot/ITA2) z basebandu s automatickou detekciou posunu, rýchlosti a polarity.
+"""RTTY decoder (Baudot/ITA2) from the baseband with automatic detection of shift, speed and polarity.
 
-Postup: decimácia na 8 kHz -> AFC v spektre posledných 4 s nájde dvojicu tónov mark/space
-(posun 90–1000 Hz, alebo zadaný) -> každý tón zmiešaný na 0 Hz a kĺzavý priemer dĺžky jedného
-bitu -> rozdiel obálok (m - s)/(m + s) -> rýchlosť z polôh hrán (hrany ležia na mriežke 1/baud)
--> asynchrónny prijímač (štart, 5 bitov, stop) pre obe polarity naraz; text ide z tej, ktorá
-má menej chýb rámca. Mark je vyšší tón na RF (bežná „normal“ polarita), nezávisle od módu.
+Method: decimation to 8 kHz -> AFC in the spectrum of the last 4 s finds the mark/space tone pair
+(shift 90–1000 Hz, or as set) -> each tone mixed to 0 Hz and a moving average one bit long
+-> envelope difference (m - s)/(m + s) -> speed from the edge positions (edges lie on a 1/baud grid)
+-> asynchronous receiver (start, 5 bits, stop) for both polarities at once; the text comes from the one
+with fewer framing errors. Mark is the higher tone on RF (the usual "normal" polarity), independent of the mode.
 """
 import collections
 import threading
@@ -13,18 +13,18 @@ import numpy as np
 
 from sdr import lowpass
 
-RATE = 8000.0          # Hz, vzorkovanie po decimácii
-NFFT = 2048            # rozlíšenie AFC ≈ 4 Hz
-AFC_SEC = 4            # okno AFC
-MIN_SNR = 5.0          # výkon slabšieho z tónov voči šumu (≈ 7 dB)
+RATE = 8000.0          # Hz, sample rate after decimation
+NFFT = 2048            # AFC resolution ≈ 4 Hz
+AFC_SEC = 4            # AFC window
+MIN_SNR = 5.0          # power of the weaker tone relative to noise (≈ 7 dB)
 SHIFTS = (170, 200, 425, 450, 850)
 BAUDS = (45.45, 50.0, 75.0, 100.0)
-EDGE_SEC = 8           # okno odhadu rýchlosti
-FAST_BOX = 24          # 3 ms, rýchly filter na polohu hrán
-OVERSAMPLE = 16        # vzoriek na bit pre prijímač znakov
-MAX_BOX = int(RATE / 40) + 1   # najdlhší filter bitu (pod 45,45 Bd)
+EDGE_SEC = 8           # window of the speed estimate
+FAST_BOX = 24          # 3 ms, fast filter for the edge positions
+OVERSAMPLE = 16        # samples per bit for the character receiver
+MAX_BOX = int(RATE / 40) + 1   # longest bit filter (below 45.45 Bd)
 
-# ITA2 v americkom variante (bežný v rádioamatérskom RTTY); kód = bity v poradí vysielania, LSB prvý.
+# ITA2 in the US variant (usual in amateur RTTY); code = bits in transmit order, LSB first.
 LTRS = ["", "E", "\n", "A", " ", "S", "I", "U", "\r", "D", "R", "J", "N", "F", "C", "K",
         "T", "Z", "L", "W", "H", "Y", "P", "Q", "O", "B", "G", None, "M", "X", "V", None]
 _FIG = {"E": "3", "A": "-", "S": "", "I": "8", "U": "7", "D": "$", "R": "4", "J": "'", "N": ",",
@@ -35,24 +35,24 @@ FIGS_CODE, LTRS_CODE = 27, 31
 
 
 class _Uart:
-    """Asynchrónny prijímač znakov pre jednu polaritu. Vstup: kladné = mark, záporné = space."""
+    """Asynchronous character receiver for one polarity. Input: positive = mark, negative = space."""
 
     def __init__(self, sign):
         self.sign = sign
-        self.events = collections.deque(maxlen=40)   # True = dobrý znak, False = chyba rámca
+        self.events = collections.deque(maxlen=40)   # True = good character, False = framing error
         self.reset()
 
     def reset(self):
-        self.pos = None          # None = čaká na štart bit
+        self.pos = None          # None = waiting for the start bit
         self.prev = 1.0
         self.figs = False
         self.events.clear()
 
     def step(self, v, T):
-        """Jedna vzorka; T = dĺžka bitu vo vzorkách. Vráti kód znaku, -1 pri chybe rámca, inak None.
-        Kĺzavý priemer oneskorí prechod o pol bitu, preto stred bitu k je v (k + 0,5)·T od prechodu."""
+        """One sample; T = bit length in samples. Returns the character code, -1 on a framing error, otherwise None.
+        The moving average delays the transition by half a bit, so the middle of bit k is at (k + 0.5)·T from the transition."""
         if self.pos is None:
-            if self.prev > 0 >= v:          # mark -> space: začiatok štart bitu
+            if self.prev > 0 >= v:          # mark -> space: start of the start bit
                 self.pos, self.k, self.bits = 0, 0, 0
             self.prev = v
             return None
@@ -61,12 +61,12 @@ class _Uart:
             return None
         bit = v > 0
         if self.k == 0:
-            if bit:                         # záblesk šumu, nie štart bit
+            if bit:                         # noise burst, not a start bit
                 self.pos, self.prev = None, v
                 return None
         elif self.k <= 5:
             self.bits |= int(bit) << (self.k - 1)
-        else:                               # stop bit musí byť mark
+        else:                               # the stop bit must be mark
             self.pos, self.prev = None, v
             self.events.append(bool(bit))
             return self.bits if bit else -1
@@ -97,7 +97,7 @@ class RttyDecoder:
         self.text = collections.deque(maxlen=8000)
         self.dial = 0.0
         self.opts = {"shift": "auto", "baud": "auto", "polarity": "auto"}
-        self.center = None       # Hz voči ladenej frekvencii, stred medzi tónmi
+        self.center = None       # Hz relative to the tuned frequency, centre between the tones
         self.shift = None
         self.baud = BAUDS[0]
         self.snr = 0.0
@@ -105,7 +105,7 @@ class RttyDecoder:
         self.sel = 0
         self._fs = None
 
-    # ---------- ovládanie ----------
+    # ---------- control ----------
 
     def set_enabled(self, on):
         with self.lock:
@@ -118,7 +118,7 @@ class RttyDecoder:
             self.text.clear()
 
     def set_options(self, opts):
-        """shift: "auto" alebo Hz; baud: "auto" alebo Bd; polarity: auto/normal/reverse."""
+        """shift: "auto" or Hz; baud: "auto" or Bd; polarity: auto/normal/reverse."""
         with self.lock:
             o = dict(self.opts)
             if "shift" in opts:
@@ -154,7 +154,7 @@ class RttyDecoder:
             "text": "".join(self.text),
         }
 
-    # ---------- spracovanie signálu ----------
+    # ---------- signal processing ----------
 
     def _setup(self, fs):
         self._fs = fs
@@ -172,7 +172,7 @@ class RttyDecoder:
         self._unlock()
 
     def _unlock(self):
-        """Nové ladenie alebo nastavenia: zabudnúť tóny, hrany a rozpracované znaky."""
+        """New tuning or settings: forget the tones, edges and unfinished characters."""
         self.center = self.shift = None
         self.present = False
         self.snr = 0.0
@@ -188,7 +188,7 @@ class RttyDecoder:
             u.reset()
 
     def feed(self, base, fs, dial_hz, band):
-        """base: komplexný baseband (ladená frekvencia = 0 Hz); band: (od, do) Hz hľadania tónov."""
+        """base: complex baseband (tuned frequency = 0 Hz); band: (from, to) Hz to search for the tones."""
         if not self.enabled:
             return
         with self.lock:
@@ -219,7 +219,7 @@ class RttyDecoder:
             self._emit_state()
 
     def _afc(self, band):
-        """Dvojica tónov s posunom v povolenom rozsahu; súčasnú drží, kým je aspoň polovične silná."""
+        """Tone pair with a shift in the allowed range; keeps the current one while it is at least half as strong."""
         if len(self.buf) < NFFT:
             return
         segs = self.buf[-(len(self.buf) // NFFT) * NFFT:].reshape(-1, NFFT) * np.hanning(NFFT)
@@ -274,7 +274,7 @@ class RttyDecoder:
 
     @staticmethod
     def _refine(ps, f, i):
-        """Parabolická interpolácia vrcholu."""
+        """Parabolic interpolation of the peak."""
         if 0 < i < len(ps) - 1:
             a, b, c = ps[i - 1], ps[i], ps[i + 1]
             d = a - 2 * b + c
@@ -283,10 +283,10 @@ class RttyDecoder:
         return float(f[i])
 
     def _estimate_baud(self):
-        """Rýchlosť z dĺžok úsekov medzi hranami: žiadny nie je kratší ako bit a každý je násobkom
-        pol bitu (1,5 stop bitu). Dvojnásobnej rýchlosti (100 pri 50 Bd) vyhovie každý signál,
-        preto berieme najnižšiu vyhovujúcu; pomalšia, než je skutočná, má priveľa krátkych úsekov
-        (jednotlivé bity). Medzi blízkymi (45,45 / 50) rozhodne lepšia zhoda."""
+        """Speed from the lengths of the segments between edges: none is shorter than a bit and each is a multiple
+        of half a bit (1.5 stop bits). Every signal fits double the speed (100 at 50 Bd),
+        so we take the lowest that fits; a speed slower than the real one has too many short segments
+        (single bits). Between close ones (45.45 / 50) the better match decides."""
         if self.opts["baud"] != "auto" or not self.present:
             return
         e = np.array(self.edges, float)
@@ -294,13 +294,13 @@ class RttyDecoder:
         if len(e) < 16:
             return
         iv = np.diff(e) / self.r
-        iv = iv[iv < 0.2]                     # dlhé pokoje (mark) neurčujú rýchlosť
+        iv = iv[iv < 0.2]                     # long idle periods (mark) do not determine the speed
         if len(iv) < 12:
             return
         ok = []
         for b in BAUDS:
-            ub = iv * b                       # v bitoch
-            if np.mean(ub < 0.72) > 0.15:     # 75 Bd voči 50 je 0,67 bitu
+            ub = iv * b                       # in bits
+            if np.mean(ub < 0.72) > 0.15:     # 75 Bd relative to 50 is 0.67 bit
                 continue
             fit = float(np.mean(np.abs(ub * 2 - np.round(ub * 2)) < 0.24))
             if fit >= 0.6:
@@ -313,7 +313,7 @@ class RttyDecoder:
         if b == self.baud:
             self.baud_cand = None
             return
-        # zmenu prijmeme po troch zhodných odhadoch za sebou
+        # a change is accepted after three matching estimates in a row
         self.baud_cand = (b, self.baud_cand[1] + 1) if self.baud_cand and self.baud_cand[0] == b else (b, 1)
         if self.baud_cand[1] >= 3:
             self.baud = b
@@ -322,7 +322,7 @@ class RttyDecoder:
                 u.reset()
 
     def _box(self, key, z, L):
-        """|kĺzavý priemer| dĺžky L pre každú novú vzorku z."""
+        """|moving average| of length L for each new sample z."""
         h = self.box_hist[key]
         buf = np.concatenate((h, z))
         self.box_hist[key] = buf[-(MAX_BOX - 1):]
@@ -340,7 +340,7 @@ class RttyDecoder:
         L = int(np.clip(round(self.r / self.baud), FAST_BOX, MAX_BOX))
         m, s = self._box("m", zm, L), self._box("s", zs, L)
         d = (m - s) / (m + s + 1e-12)
-        # rýchly filter: poloha hrán pre odhad rýchlosti (prechod cez ±0,3 s hysterézou)
+        # fast filter: edge positions for the speed estimate (crossing ±0.3 with hysteresis)
         mf, sf = self._fast(zm, zs)
         df = (mf - sf) / (mf + sf + 1e-12)
         if self.present:
@@ -352,7 +352,7 @@ class RttyDecoder:
                 ch = nz[(v != prev) & (prev != 0)]
                 self.edges.extend((self.n + ch).tolist())
                 self.fstate = int(v[-1])
-        # prijímač znakov: ~16 vzoriek na bit
+        # character receiver: ~16 samples per bit
         k = max(1, int(self.r / (self.baud * OVERSAMPLE)))
         du = d[self.u_off::k]
         self.u_off = (self.u_off - len(d)) % k
@@ -376,7 +376,7 @@ class RttyDecoder:
         return "".join(out)
 
     def _fast(self, zm, zs):
-        """Obálky tónov s krátkym (3 ms) filtrom; vlastná história, nezávislá od dĺžky bitu."""
+        """Tone envelopes with a short (3 ms) filter; own history, independent of the bit length."""
         res = []
         for i, z in enumerate((zm, zs)):
             buf = np.concatenate((self.fast_hist[i], z))
@@ -387,7 +387,7 @@ class RttyDecoder:
 
     @staticmethod
     def _good(u):
-        """Text púšťame, len kým väčšina posledných znakov má správny rámec (šum ho nemá)."""
+        """Text is let through only while most of the recent characters have a correct frame (noise does not)."""
         ev = list(u.events)[-20:]
         return len(ev) < 4 or sum(ev) >= 0.6 * len(ev)
 

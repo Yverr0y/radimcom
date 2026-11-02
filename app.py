@@ -1,8 +1,8 @@
-"""RADIMCOM: RTL-SDR (KV cez up-konvertor, VKV/UKV priamo), waterfall, ladenie a audio v prehliadači.
+"""RADIMCOM: RTL-SDR (HF via upconverter, VHF/UHF direct), waterfall, tuning and audio in the browser.
 
-Frekvencie v rozhraní sú skutočné frekvencie. Na KV sa kľúčenka ladí na frekvenciu
-+ lo_offset_hz (LO up-konvertora, napr. 100 MHz: 3,6 MHz -> 103,6 MHz), nad 30 MHz
-(režim up-konvertora „auto“) priamo.
+Frequencies in the interface are real frequencies. On HF the dongle is tuned to the frequency
++ lo_offset_hz (upconverter LO, e.g. 100 MHz: 3.6 MHz -> 103.6 MHz), above 30 MHz
+(upconverter mode "auto") directly.
 """
 import base64
 import json
@@ -20,7 +20,7 @@ from paths import BASE, data
 
 VFOS_PATH = data("vfos.json")
 
-# Bez argumentov a s vfos.json: spúšťač, ktorý pustí jeden prijímač (proces) na každé VFO.
+# Without arguments and with vfos.json: the launcher, which starts one receiver (process) per VFO.
 if __name__ == "__main__" and "--vfo" not in sys.argv and os.path.exists(VFOS_PATH):
     import launcher
     launcher.main()
@@ -38,7 +38,7 @@ from sdr import MODES, SQUELCH_OFF, UPCONV_MAX_HZ, ZOOMS, Receiver, list_devices
 
 
 def vfo_from_args():
-    """--vfo NAME: tento proces je prijímač VFO NAME z vfos.json (vlastná kľúčenka, port, nastavenia)."""
+    """--vfo NAME: this process is the receiver of VFO NAME from vfos.json (own dongle, port, settings)."""
     if "--vfo" not in sys.argv:
         return None
     name = sys.argv[sys.argv.index("--vfo") + 1]
@@ -58,7 +58,7 @@ def load_config():
 
 
 class Hub:
-    """Rozosiela waterfall/stav (SSE) a audio (HTTP stream) pripojeným prehliadačom."""
+    """Broadcasts waterfall/state (SSE) and audio (HTTP stream) to connected browsers."""
 
     def __init__(self):
         self.lock = threading.Lock()
@@ -82,7 +82,7 @@ class Hub:
             try:
                 q.put_nowait(item)
             except queue.Full:
-                # Pomalý klient: zahodíme najstaršiu položku, nech nerastie oneskorenie.
+                # Slow client: drop the oldest item so the delay does not grow.
                 try:
                     q.get_nowait()
                     q.put_nowait(item)
@@ -110,7 +110,7 @@ save_timer = None
 
 
 def save_config_later():
-    """Uloží nastavenia (frekvenciu, mód…) s oneskorením, aby sa pri ladení nezapisovalo stále."""
+    """Saves the settings (frequency, mode…) with a delay, so tuning does not write all the time."""
     global save_timer
 
     def save():
@@ -127,7 +127,7 @@ def save_config_later():
     save_timer.start()
 
 
-# ---------- denné logy dekodérov (zapína sa LOG v karte dekodéra) ----------
+# ---------- daily decoder logs (turned on with LOG in the decoder card) ----------
 
 LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars")
 _tag = cfg.get("vfo") or ""
@@ -145,7 +145,7 @@ def _mhz(hz):
 
 
 def decoder_event(kind, data):
-    """Udalosť dekodéra do prehliadača a (ak je LOG zapnutý) riadok do denného logu."""
+    """Decoder event to the browser and (if LOG is on) a line to the daily log."""
     hub.event(kind, data)
     try:
         if kind == "ft8" and log_on("ft8"):
@@ -158,7 +158,7 @@ def decoder_event(kind, data):
             logs["rtty"].add(data["t"], f"{_mhz(cfg['tune_hz'])} {cfg['mode']} {rtty.baud} Bd "
                                         f"{round(rtty.shift or 0)} Hz")
         elif kind in ("sstvdone", "wefaxstate", "wefaxnew"):
-            # obrázok sa práve uložil: názov súboru do logu (každý len raz)
+            # an image was just saved: file name to the log (each only once)
             key = "sstv" if kind == "sstvdone" else "wefax"
             dec = sstv if key == "sstv" else wefax
             name = getattr(dec, "saved", None)
@@ -167,7 +167,7 @@ def decoder_event(kind, data):
                 if log_on(key):
                     logs[key].write(f"{_mhz(cfg['tune_hz'])} {cfg['mode']} | saved {key}/{name}")
     except Exception:
-        pass            # chyba logu nesmie zastaviť dekodér
+        pass            # a log error must not stop the decoder
 
 
 ft8 = Ft8Decoder(on_decode=lambda d: decoder_event("ft8", d),
@@ -184,7 +184,7 @@ _saved_logged.update(wefax=getattr(wefax, "saved", None), sstv=getattr(sstv, "sa
 
 
 def tx_capable():
-    """VFO vie vysielať (LimeSDR); vysielanie sa ešte musí povoliť v SET (tx_enabled)."""
+    """The VFO can transmit (LimeSDR); transmitting must still be enabled in SET (tx_enabled)."""
     return cfg.get("driver") == "lime" or hasattr(receiver.sdr, "tx_start")
 
 
@@ -197,7 +197,7 @@ def state():
 
 
 def cw_band():
-    """Kde hľadať CW tón voči ladenej frekvencii: v priepustnom pásme aktuálneho módu."""
+    """Where to look for the CW tone relative to the tuned frequency: in the passband of the current mode."""
     mode = cfg["mode"]
     bw = float(cfg.get("bandwidth", {}).get(mode, 3000))
     if mode == "USB":
@@ -241,7 +241,7 @@ app = Flask(__name__, static_folder="static")
 
 @app.after_request
 def cors(resp):
-    # Stránka VFO beží na porte spúšťača a s prijímačmi jednotlivých VFO hovorí cez ich porty.
+    # The VFO page runs on the launcher's port and talks to the receivers of the individual VFOs through their ports.
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
     resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
@@ -259,18 +259,18 @@ def api_state():
     return jsonify(dict(state(), sample_rates=SAMPLE_RATES, modes=MODES, ft8_freqs=FT8_FREQS, acars_freqs=ACARS_FREQS))
 
 
-# ---------- vysielanie (PTT) ----------
-# Prehliadač posiela počas držania PTT {"ptt": true} každých ~300 ms. Keď neprídu (zatvorená karta,
-# výpadok spojenia, stratené pustenie klávesu), strážca vysielanie do TX_HOLD_S vypne. TX_MAX_S je
-# pevný strop jedného vysielania.
+# ---------- transmitting (PTT) ----------
+# While PTT is held the browser sends {"ptt": true} every ~300 ms. If they stop coming (closed tab,
+# lost connection, missed key release), a watchdog turns transmitting off within TX_HOLD_S. TX_MAX_S is
+# a fixed limit for one transmission.
 TX_HOLD_S = 1.5
 TX_MAX_S = 120
-# Vysielanie je predvolene vypnuté; povoľuje sa v SET (cfg "tx_enabled", len pri LimeSDR).
-# V móde FM sa pri PTT vysiela dookola skúšobná relácia z tx_audio/test_message.wav (ak existuje),
-# inak nemodulovaná nosná.
+# Transmitting is off by default; it is enabled in SET (cfg "tx_enabled", LimeSDR only).
+# In FM mode PTT transmits the test message from tx_audio/test_message.wav in a loop (if it exists),
+# otherwise an unmodulated carrier.
 TX_AUDIO = data("tx_audio", "test_message.wav")
-TX_FM_DEV = 2500.0     # zdvih pre kanál 12,5 kHz
-TX_GAP_S = 0.7         # ticho medzi opakovaniami relácie
+TX_FM_DEV = 2500.0     # deviation for a 12.5 kHz channel
+TX_GAP_S = 0.7         # silence between repetitions of the message
 tx_lock = threading.Lock()
 tx_seen = 0.0
 tx_since = 0.0
@@ -278,7 +278,7 @@ tx_audio = None
 
 
 def load_tx_audio():
-    """WAV (mono, 16 bit) -> (audio ±1 obmedzené na 3 kHz, vzorkovanie); načíta sa raz."""
+    """WAV (mono, 16 bit) -> (audio ±1 limited to 3 kHz, sample rate); loaded once."""
     global tx_audio
     if tx_audio is None:
         with wave.open(TX_AUDIO) as w:
@@ -450,7 +450,7 @@ def api_acars_cmd():
 def api_devices():
     try:
         return jsonify(list_devices())
-    except OSError as e:  # chýba librtlsdr.dll a pod.
+    except OSError as e:  # librtlsdr.dll missing etc.
         return jsonify({"error": str(e)}), 500
 
 
@@ -495,8 +495,8 @@ def api_set():
                 raise ValueError("unknown upconverter mode")
             changes["upconv"] = body["upconv"]
         if "tune_hz" in changes or "upconv" in changes:
-            # KV pod spodnou hranicou tunera (R820T 24 MHz, LimeSDR Mini 10 MHz) sa dá prijímať len cez
-            # up-konvertor; horná hranica R820T 1766 MHz, LimeSDR Mini 3500 MHz.
+            # HF below the tuner's lower limit (R820T 24 MHz, LimeSDR Mini 10 MHz) can only be received through
+            # an upconverter; upper limit R820T 1766 MHz, LimeSDR Mini 3500 MHz.
             tune = changes.get("tune_hz", cfg["tune_hz"])
             mode = changes.get("upconv", cfg.get("upconv", "auto"))
             lo = 0.0 if mode == "off" or (mode == "auto" and tune >= UPCONV_MAX_HZ) else cfg.get("lo_offset_hz", 0)
@@ -573,7 +573,7 @@ def api_set():
             if k in LOG_KEYS:
                 cur[k] = bool(v)
                 if not v and k in ("cw", "rtty"):
-                    logs[k].flush()          # rozpísaný riadok ešte zapíšeme
+                    logs[k].flush()          # write out the unfinished line
         cfg["logs"] = cur
         acars.log_on = log_on("acars")
         save_config_later()
@@ -631,7 +631,7 @@ def api_events():
 
 @app.route("/api/audio")
 def api_audio():
-    """Nekonečný prúd 16-bit stereo PCM (L, R striedavo, little endian) pri frekvencii audio_rate."""
+    """Endless stream of 16-bit stereo PCM (L, R interleaved, little endian) at audio_rate."""
     q = hub._add(hub.audio, 12)
 
     def gen():
@@ -650,7 +650,7 @@ def api_audio():
 
 
 def exit_with_parent():
-    """VFO proces skončí, keď skončí spúšťač (zavrie sa mu vstup)."""
+    """The VFO process ends when the launcher ends (its input is closed)."""
     sys.stdin.read()
     os._exit(0)
 

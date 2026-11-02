@@ -1,12 +1,12 @@
-"""SSTV dekodér z demodulovaného audia (USB/LSB na KV, FM napr. ISS 145,800 MHz).
+"""SSTV decoder from the demodulated audio (USB/LSB on HF, FM e.g. ISS 145.800 MHz).
 
-Tóny: synchronizácia 1200 Hz, čierna 1500 Hz, biela 2300 Hz. Pred obrázkom ide VIS kód:
-  vodiaci tón 1900 Hz (300 ms) -> prerušenie 1200 Hz -> vodiaci tón 300 ms -> štart bit 1200 Hz
-  -> 7 dátových bitov + parita (30 ms, 1100 Hz = 1, 1300 Hz = 0, LSB prvý) -> stop bit 1200 Hz.
-Automatika: VIS určí režim a začiatok obrázka, odchýlka vodiaceho tónu od 1900 Hz je AFC (zle
-naladené SSB). Bez VIS (zapnuté uprostred vysielania) sa obrázok spustí, keď sa v signáli nájdu
-synchronizačné impulzy s periódou riadku niektorého režimu. Čas riadku sa dolaďuje podľa
-synchronizačných impulzov (náklon obrázka); hotový obrázok sa s konečným odhadom vykreslí znova.
+Tones: sync 1200 Hz, black 1500 Hz, white 2300 Hz. The image is preceded by a VIS code:
+  leader tone 1900 Hz (300 ms) -> break 1200 Hz -> leader tone 300 ms -> start bit 1200 Hz
+  -> 7 data bits + parity (30 ms, 1100 Hz = 1, 1300 Hz = 0, LSB first) -> stop bit 1200 Hz.
+Automation: VIS sets the mode and the start of the image, the offset of the leader tone from 1900 Hz is the AFC (badly
+tuned SSB). Without VIS (turned on in the middle of a transmission) the image starts when the signal contains
+sync pulses with the line period of one of the modes. The line time is fine-tuned by the
+sync pulses (image slant); the finished image is drawn again with the final estimate.
 """
 import base64
 import os
@@ -20,18 +20,18 @@ import numpy as np
 from paths import data
 from sdr import lowpass
 
-RATE = 12000.0          # Hz, vzorkovanie okamžitej frekvencie
-MIX = 1700.0            # Hz, stred pásma SSTV (1100–2300 Hz)
-SYNC_HZ = 1350.0        # pod touto frekvenciou je synchronizačný impulz (1200 Hz)
-IDLE_KEEP = 6.0         # s histórie bez obrázka (VIS + hľadanie impulzov)
-MAX_KEEP = 420.0        # s, najdlhší režim PD290 trvá ~290 s
+RATE = 12000.0          # Hz, sample rate of the instantaneous frequency
+MIX = 1700.0            # Hz, centre of the SSTV band (1100–2300 Hz)
+SYNC_HZ = 1350.0        # below this frequency there is a sync pulse (1200 Hz)
+IDLE_KEEP = 6.0         # s of history without an image (VIS + pulse search)
+MAX_KEEP = 420.0        # s, the longest mode PD290 takes ~290 s
 SAVE_DIR = data("sstv")
 SSTV_FREQS = ((3735000, "80m", "LSB"), (7165000, "40m", "LSB"), (14230000, "20m", "USB"),
               (21340000, "15m", "USB"), (28680000, "10m", "USB"), (145800000, "ISS", "FM"))
 
 
 class Mode:
-    """Režim: segmenty jedného rámca (ms) a spôsob skladania farieb."""
+    """Mode: segments of one frame (ms) and the way colours are assembled."""
 
     def __init__(self, name, vis, w, h, color, segs, start=0.0):
         self.name, self.vis, self.w, self.h, self.color, self.start = name, vis, w, h, color, start
@@ -43,9 +43,9 @@ class Mode:
             elif kind != "gap":
                 self.chans[kind] = (t, ms)
             t += ms
-        self.P = t                                  # ms na rámec
-        self.rows = 2 if color == "yc2" else 1     # obrazových riadkov na rámec
-        self.spacing = t / len(self.syncs)          # ms medzi synchronizačnými impulzmi
+        self.P = t                                  # ms per frame
+        self.rows = 2 if color == "yc2" else 1     # image lines per frame
+        self.spacing = t / len(self.syncs)          # ms between sync pulses
 
 
 def _martin(name, vis, px):
@@ -56,7 +56,7 @@ def _martin(name, vis, px):
 
 def _scottie(name, vis, px):
     s = 320 * px
-    # Pred prvým riadkom ide ešte jeden synchronizačný impulz 9 ms.
+    # Before the first line there is one more 9 ms sync pulse.
     return Mode(name, vis, 320, 256, "gbr", [("gap", 1.5), ("G", s), ("gap", 1.5), ("B", s), ("sync", 9.0),
                                             ("gap", 1.5), ("R", s)], start=9.0)
 
@@ -69,7 +69,7 @@ def _pd(name, vis, w, h, px):
 MODES = [
     _martin("Martin M1", 44, 0.4576), _martin("Martin M2", 40, 0.2288),
     _scottie("Scottie S1", 60, 0.4320), _scottie("Scottie S2", 56, 0.2752), _scottie("Scottie DX", 76, 1.08),
-    # Robot 36: párny riadok nesie R-Y (oddeľovač 1500 Hz), nepárny B-Y (2300 Hz); rámec = 2 riadky.
+    # Robot 36: the even line carries R-Y (separator 1500 Hz), the odd one B-Y (2300 Hz); frame = 2 lines.
     Mode("Robot 36", 8, 320, 240, "yc2", [("sync", 9.0), ("gap", 3.0), ("Y0", 88.0), ("SEP", 4.5), ("gap", 1.5),
                                           ("RY", 44.0), ("sync", 9.0), ("gap", 3.0), ("Y1", 88.0), ("gap", 6.0),
                                           ("BY", 44.0)]),
@@ -84,7 +84,7 @@ BY_NAME = {m.name: m for m in MODES}
 
 
 def png_rgb(rows, width):
-    """24-bitový RGB PNG bez ďalších knižníc."""
+    """24-bit RGB PNG without extra libraries."""
     def chunk(kind, data):
         body = kind + data
         return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
@@ -94,7 +94,7 @@ def png_rgb(rows, width):
 
 
 def ycc_rgb(y, ry, by):
-    """YCrCb (0–255, ako slowrx) na RGB."""
+    """YCrCb (0–255, like slowrx) to RGB."""
     r = (100 * y + 140 * ry - 17850) / 100
     g = (100 * y - 71 * ry - 33 * by + 13260) / 100
     b = (100 * y + 178 * by - 22695) / 100
@@ -120,7 +120,7 @@ class SstvDecoder:
         self._fs = None
         self._state_at = 0.0
 
-    # ---------- ovládanie ----------
+    # ---------- control ----------
 
     def set_enabled(self, on):
         with self.lock:
@@ -132,7 +132,7 @@ class SstvDecoder:
         self._emit_state()
 
     def command(self, b):
-        """Príkazy z webu: mode (auto alebo názov režimu), action stop."""
+        """Commands from the web page: mode (auto or a mode name), action stop."""
         with self.lock:
             if "mode" in b:
                 m = str(b["mode"])
@@ -167,14 +167,14 @@ class SstvDecoder:
                 return None
             return png_rgb(rows, self.mode.w)
 
-    # ---------- spracovanie signálu ----------
+    # ---------- signal processing ----------
 
     def S(self, ms):
         return ms * self.r / 1000.0
 
     @property
     def n(self):
-        """Absolútny index nasledujúcej vzorky za koncom bufra."""
+        """Absolute index of the next sample after the end of the buffer."""
         return self.f0 + len(self.f)
 
     def _setup(self, fs):
@@ -215,7 +215,7 @@ class SstvDecoder:
             self._emit_state()
 
     def _demod(self, x, fs):
-        """Okamžitá frekvencia audia: zmiešanie 1700 Hz na nulu, dolná priepusť, diskriminátor."""
+        """Instantaneous audio frequency: mixing 1700 Hz to zero, low-pass, discriminator."""
         n = len(x)
         step = -2 * np.pi * MIX / fs
         mix = np.exp(1j * (self.nco + step * np.arange(n))).astype(np.complex64)
@@ -233,7 +233,7 @@ class SstvDecoder:
         self.f = np.concatenate((self.f, f.astype(np.float32)))
 
     def _mean(self, a, b):
-        """Priemer frekvencie na absolútnom intervale vzoriek [a, b)."""
+        """Mean frequency over the absolute sample interval [a, b)."""
         i, j = int(round(a)) - self.f0, int(round(b)) - self.f0
         if i < 0 or j > len(self.f) or j <= i:
             return None
@@ -271,7 +271,7 @@ class SstvDecoder:
 
     def _read_vis(self, cand, off):
         S = self.S
-        # Hrana štart bitu: prvé miesto, kde 2 ms priemer klesne pod polovicu medzi 1900 a 1200 Hz.
+        # Edge of the start bit: the first place where the 2 ms mean drops below half way between 1900 and 1200 Hz.
         edge = None
         for e in range(int(cand - S(15)), int(cand + S(15))):
             g = self._mean(e, e + S(2))
@@ -311,10 +311,10 @@ class SstvDecoder:
         self._start(mode, edge + S(300 + mode.start), off)
         return True
 
-    # ---------- štart bez VIS ----------
+    # ---------- start without VIS ----------
 
     def _find_free(self):
-        """Synchronizačné impulzy s periódou riadku niektorého režimu (zapnuté uprostred obrázka)."""
+        """Sync pulses with the line period of one of the modes (turned on in the middle of an image)."""
         S = self.S
         a = max(self.pscan - self.f0, 0)
         b = len(self.f) - int(S(30))
@@ -328,10 +328,10 @@ class SstvDecoder:
         starts, ends = np.flatnonzero(d == 1), np.flatnonzero(d == -1)
         tail = 0
         for s, e in zip(starts, ends):
-            if e == len(q):                         # impulz ešte neskončil: dokončí sa v ďalšom bloku
+            if e == len(q):                         # the pulse has not ended yet: it is completed in the next block
                 tail = e - s
                 break
-            if s == 0 and a == 0:                   # začiatok bufra: impulz mohol začať skôr
+            if s == 0 and a == 0:                   # start of the buffer: the pulse may have started earlier
                 continue
             ms = (e - s) / self.r * 1000
             if ms >= 3:
@@ -346,12 +346,12 @@ class SstvDecoder:
             sp = S(m.spacing)
             if all(abs((ps[i + 1][0] - ps[i][0]) / sp - 1) < 0.006 for i in range(3)):
                 off = float(np.median([p[2] for p in ps])) - 1200
-                # Posledný impulz = prvý impulz rámca; rámec začína o jeho posun skôr.
+                # The last pulse = the first pulse of the frame; the frame starts its offset earlier.
                 self.vis = None
                 self._start(m, ps[-1][0] - S(m.syncs[0]), off, free=True)
                 return
 
-    # ---------- obrázok ----------
+    # ---------- image ----------
 
     def _start(self, mode, t0, off, free=False):
         self.mode = mode
@@ -372,11 +372,11 @@ class SstvDecoder:
         self._emit_state()
 
     def _time(self, x_ms):
-        """Absolútny čas vzorky pre nominálny posun x (ms) od začiatku obrázka."""
+        """Absolute time of the sample for the nominal offset x (ms) from the start of the image."""
         return self.t0 + self.lam * self.S(x_ms)
 
     def _fit(self):
-        """Začiatok a mierka času z nameraných impulzov (lineárna regresia, odľahlé body preč)."""
+        """Start and time scale from the measured pulses (linear regression, outliers removed)."""
         if not self.pts:
             return
         x = np.array([p[0] for p in self.pts]) * self.r / 1000
@@ -396,7 +396,7 @@ class SstvDecoder:
         self.t0, self.lam = t0, lam
 
     def _sync_at(self, x_ms):
-        """Nájde synchronizačný impulz pri nominálnom čase x; vráti jeho absolútnu polohu alebo None."""
+        """Finds the sync pulse near the nominal time x; returns its absolute position or None."""
         m = self.mode
         L = max(2, int(self.S(m.sync_ms)))
         exp = self._time(x_ms)
@@ -431,11 +431,11 @@ class SstvDecoder:
                     found += 1
             self._fit()
             self.nosync = 0 if found else self.nosync + 1
-            if self.nosync >= 10:                   # signál zmizol
+            if self.nosync >= 10:                   # the signal disappeared
                 self._finish()
                 return
             if m.name == "Robot 36" and self.k == 0 and self.free:
-                # Bez VIS nevieme, či sme začali párnym riadkom: oddeľovač 2300 Hz = nepárny (B-Y).
+                # Without VIS we do not know whether we started with an even line: separator 2300 Hz = odd (B-Y).
                 o, d = m.chans["SEP"]
                 v = self._mean(self._time(o), self._time(o + d))
                 if v is not None and v - self.off > 1900:
@@ -453,7 +453,7 @@ class SstvDecoder:
         self._finish()
 
     def _px(self, x_ms, dur_ms, w):
-        """Jas w bodov v kanáli (priemer okamžitej frekvencie cez každý bod), 0–255."""
+        """Brightness of w pixels in the channel (mean instantaneous frequency over each pixel), 0–255."""
         a = self._time(x_ms)
         L = self.lam * self.S(dur_ms)
         i0 = int(a) - 1
@@ -476,7 +476,7 @@ class SstvDecoder:
         return [ycc_rgb(ch["Y0"], ch["RY"], ch["BY"]), ycc_rgb(ch["Y1"], ch["RY"], ch["BY"])]
 
     def _finish(self):
-        """Koniec obrázka: prekreslenie s konečným odhadom času, uloženie do priečinka sstv/."""
+        """End of the image: redraw with the final time estimate, save to the sstv/ folder."""
         m = self.mode
         if self.state == "idle" or m is None:
             return

@@ -1,8 +1,8 @@
-"""Denné logy dekodérov: logs/<dekodér>_RRRR-MM-DD.txt (UTC), jeden riadok na správu.
+"""Daily decoder logs: logs/<decoder>_YYYY-MM-DD.txt (UTC), one line per message.
 
-Log zdieľajú všetky VFO (každé beží vo vlastnom procese), preto každý riadok nesie názov VFO
-a zapisuje sa naraz celý. Textové dekodéry (CW, RTTY) posielajú znaky po jednom; skladáme
-ich do riadkov: koniec riadku, 80 znakov alebo 5 s ticha.
+The log is shared by all VFOs (each runs in its own process), so every line carries the VFO name
+and is written in one piece. Text decoders (CW, RTTY) send characters one by one; they are joined
+into lines: end of line, 80 characters or 5 s of silence.
 """
 import os
 import threading
@@ -35,11 +35,11 @@ class DayLog:
             with self.lock, open(self.path(t), "a", encoding="utf-8") as f:
                 f.write(f"{stamp(t)} {self.tag} {line}\n")
         except OSError:
-            pass            # plný disk / zamknutý súbor nesmie zastaviť prijímač
+            pass            # a full disk / locked file must not stop the receiver
 
 
 class TextLog(DayLog):
-    """Log pre znakové dekodéry: riadok = začiatok (čas, frekvencia) + text."""
+    """Log for character decoders: line = start (time, frequency) + text."""
 
     def __init__(self, name, tag="", log_dir=LOG_DIR):
         super().__init__(name, tag, log_dir)
@@ -50,7 +50,7 @@ class TextLog(DayLog):
         threading.Thread(target=self._idle, name=f"log-{name}", daemon=True).start()
 
     def add(self, text, prefix):
-        """text: nové znaky; prefix: napr. frekvencia, zapíše sa na začiatok riadku."""
+        """text: new characters; prefix: e.g. the frequency, written at the start of the line."""
         with self.lock:
             now = time.time()
             for ch in text:

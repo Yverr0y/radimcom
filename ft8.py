@@ -1,8 +1,8 @@
-"""FT8 dekodér: USB pásmo 0–3,1 kHz nad ladenou (dial) frekvenciou, dekódovanie cez PyFT8.
+"""FT8 decoder: USB passband 0–3.1 kHz above the tuned (dial) frequency, decoding with PyFT8.
 
-PyFT8 je stavaný na zvukovú kartu a hodiny PC (15 s cykly podľa UTC). Zvukovú kartu nahrádzame:
-baseband z prijímača prefiltrujeme, prevzorkujeme na 12 kHz a plníme ním jeho časovo-frekvenčnú
-mriežku v reálnom čase. Jeho vlastné vlákno potom v každom cykle hľadá a dekóduje signály.
+PyFT8 is built for a sound card and the PC clock (15 s cycles by UTC). We replace the sound card:
+the receiver's baseband is filtered, resampled to 12 kHz and fed into its time-frequency
+grid in real time. Its own thread then searches for and decodes signals in every cycle.
 """
 import collections
 import sys
@@ -16,16 +16,16 @@ import numpy as np
 try:
     import pyaudio  # noqa: F401
 except ImportError:
-    # PyFT8 importuje pyaudio, no zvukovú kartu nepoužívame (vzorky dodávame sami). Pre nové verzie
-    # Pythonu nemusí existovať hotový PyAudio, preto stačí prázdny modul.
+    # PyFT8 imports pyaudio, but we do not use a sound card (we supply the samples ourselves). For new
+    # Python versions a ready-made PyAudio may not exist, so an empty module is enough.
     sys.modules["pyaudio"] = types.ModuleType("pyaudio")
 
 try:
     with warnings.catch_warnings():
-        # PyFT8 pri importe prepína všetky warnings na výnimky pre celý proces; catch_warnings to vráti.
+        # On import PyFT8 turns all warnings into exceptions for the whole process; catch_warnings undoes that.
         from PyFT8 import receiver as pft8
     IMPORT_ERROR = None
-except Exception as e:  # bez PyFT8 prijímač beží ďalej, len FT8 dekodér nie je k dispozícii
+except Exception as e:  # without PyFT8 the receiver keeps running, only the FT8 decoder is unavailable
     IMPORT_ERROR = f"FT8 decoder not available ({e})"
     pft8 = types.SimpleNamespace(AudioIn=object, Receiver=object, SAMP_RATE=12000)
 
@@ -37,7 +37,7 @@ FT8_FREQS = (1840000, 3573000, 5357000, 7074000, 10136000, 14074000, 18100000, 2
 
 
 class _Grid(pft8.AudioIn):
-    """AudioIn z PyFT8 bez zvukovej karty: vzorky (12 kHz) dodávame cez feed()."""
+    """PyFT8 AudioIn without a sound card: samples (12 kHz) are supplied through feed()."""
 
     def __init__(self, max_freq):
         hop = int(FT8_RATE / (pft8.SYM_RATE * pft8.HPS))
@@ -61,7 +61,7 @@ class _Grid(pft8.AudioIn):
             self.pending = self.pending[self.hop:]
 
     def _hop(self, samples):
-        # Rovnaké ako AudioIn._callback, len s float vstupom a bez log(0).
+        # Same as AudioIn._callback, only with float input and without log(0).
         ns = len(samples)
         self.audio_buffer[:-ns] = self.audio_buffer[ns:]
         self.audio_buffer[-ns:] = samples
@@ -80,7 +80,7 @@ class _NoUdp:
 
 
 class _Decoder(pft8.Receiver):
-    """Receiver z PyFT8 bez UDP a zvukovej karty; výsledky posiela do on_message."""
+    """PyFT8 Receiver without UDP and sound card; results are sent to on_message."""
 
     def __init__(self, grid, on_message):
         self.latest_decode = 2
@@ -106,7 +106,7 @@ class _Decoder(pft8.Receiver):
     def _cycle(self):
         try:
             self.manage_cycle()
-        except Exception as e:  # chyba v knižnici nesmie zhodiť aplikáciu
+        except Exception as e:  # an error in the library must not crash the application
             self.on_message({"mtype": "error", "info": str(e)})
 
     def send_output(self, msg_dict, noprint=False):
@@ -114,7 +114,7 @@ class _Decoder(pft8.Receiver):
 
 
 class Ft8Decoder:
-    """Zapína/vypína dekódovanie a pripravuje 12 kHz audio z basebandu prijímača."""
+    """Turns decoding on/off and prepares 12 kHz audio from the receiver's baseband."""
 
     def __init__(self, on_decode, on_cycle=None):
         self.on_decode = on_decode
@@ -143,7 +143,7 @@ class Ft8Decoder:
             self.enabled = bool(on)
 
     def _setup(self, fs):
-        """Komplexná pásmová priepusť 0..3,2 kHz (USB) a stav prevzorkovania."""
+        """Complex band-pass 0..3.2 kHz (USB) and resampling state."""
         self._fs = fs
         taps = 255
         n = np.arange(taps) - (taps - 1) / 2
@@ -154,7 +154,7 @@ class Ft8Decoder:
         self._last = 0.0
 
     def feed(self, base, fs, dial_hz):
-        """base: komplexný baseband (ladená frekvencia = 0 Hz) pri vzorkovaní fs."""
+        """base: complex baseband (tuned frequency = 0 Hz) at sample rate fs."""
         grid = self._grid
         if grid is None:
             return
@@ -164,7 +164,7 @@ class Ft8Decoder:
         buf = np.concatenate((self._hist, base))
         self._hist = buf[-(len(self._h) - 1):]
         usb = np.convolve(buf, self._h, mode="valid").real
-        # Lineárna interpolácia na 12 kHz; signál je už obmedzený na 3,2 kHz.
+        # Linear interpolation to 12 kHz; the signal is already limited to 3.2 kHz.
         y = np.concatenate(([self._last], usb))
         step = fs / FT8_RATE
         pos = np.arange(self._t, len(y) - 1, step)

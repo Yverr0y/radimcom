@@ -1,9 +1,9 @@
-"""RTL-SDR (cez librtlsdr a ctypes) alebo LimeSDR (lime.py) a DSP pre RADIMCOM
-(KV cez up-konvertor, VKV/UKV priamo).
+"""RTL-SDR (via librtlsdr and ctypes) or LimeSDR (lime.py) and DSP for RADIMCOM
+(HF via upconverter, VHF/UHF direct).
 
-Reťazec: IQ vzorky -> posun na ladenú frekvenciu (NCO) -> polyfázový FIR a decimácia /64
--> kanálový filter podľa módu (AM/FM/LSB/USB) -> demodulácia -> AGC -> 16-bit audio.
-Z tých istých vzoriek sa počíta aj riadok waterfallu.
+Chain: IQ samples -> shift to the tuned frequency (NCO) -> polyphase FIR and decimation /64
+-> channel filter by mode (AM/FM/LSB/USB) -> demodulation -> AGC -> 16-bit audio.
+The waterfall line is computed from the same samples.
 """
 import ctypes
 import os
@@ -16,36 +16,36 @@ import numpy as np
 BASE = os.path.dirname(os.path.abspath(__file__))
 LIB_DIR = os.path.join(BASE, "lib")
 
-DECIM = 64            # vstupná frekvencia / DECIM = frekvencia kanála aj audia
-READ_SAMPLES = 131072  # vzoriek na jedno čítanie (~85 ms pri 1,536 MS/s)
-WF_BINS = 1024        # bodov v riadku waterfallu, ktorý ide do prehliadača
-WF_FFT = 32768        # jemná FFT (47 Hz/bod pri 1,536 MS/s); zoom z nej vyberá výrez
+DECIM = 64            # input rate / DECIM = channel and audio rate
+READ_SAMPLES = 131072  # samples per read (~85 ms at 1.536 MS/s)
+WF_BINS = 1024        # points in the waterfall line sent to the browser
+WF_FFT = 32768        # fine FFT (47 Hz/point at 1.536 MS/s); the zoom takes a section of it
 WF_SEGMENTS = READ_SAMPLES // WF_FFT
-ZOOMS = (1, 2, 4, 8, 16, 32)   # pri 32× má výrez práve WF_BINS bodov jemnej FFT
+ZOOMS = (1, 2, 4, 8, 16, 32)   # at 32× the section has exactly WF_BINS points of the fine FFT
 WF_DB_MIN = -130.0
 WF_DB_STEP = 0.5
 MODES = ("AM", "FM", "WFM", "LSB", "USB", "CW")
-UPCONV_MAX_HZ = 30e6   # v režime auto ide cez up-konvertor len KV (pod 30 MHz)
-TUNER_MIN_HZ = 24e6    # rozsah tunera R820T bez konvertora
+UPCONV_MAX_HZ = 30e6   # in auto mode only HF (below 30 MHz) goes through the upconverter
+TUNER_MIN_HZ = 24e6    # R820T tuner range without a converter
 TUNER_MAX_HZ = 1766e6
-# Rozsah ladenia podľa typu zariadenia (driver vo vfos.json / configu).
-# LimeSDR Mini je oficiálne od 10 MHz; nižšie (cez NCO) prijíma slabšie, ale použiteľne.
+# Tuning range by device type (driver in vfos.json / config).
+# LimeSDR Mini officially starts at 10 MHz; lower (via the NCO) it receives weaker, but usable.
 TUNER_LIMITS = {"rtl": (TUNER_MIN_HZ, TUNER_MAX_HZ), "lime": (1e6, 3500e6)}
-SSB_LOW_CUT = 300.0   # Hz, spodný okraj SSB pásma
-CW_PITCH = 700.0      # Hz, výška tónu CW signálu naladeného presne na frekvenciu
-SQUELCH_OFF = -120.0  # dBFS, squelch na tejto úrovni a nižšie je vypnutý
-SQUELCH_HANG_S = 0.2  # s, kým squelch po poklese signálu ešte drží otvorený
-FM_NARROW_MAX = 18000.0   # FM do tejto šírky v úzkom kanáli (vstup / DECIM), širšie cez WideFm (do 50 kHz)
-SQUELCH_SUB = 8      # squelch rozhoduje 8× za blok (~8 ms), aby neodsekol začiatok relácie
-SQUELCH_MODES = ("AM", "FM", "WFM")   # každý mód má vlastnú úroveň (letecké AM iná ako rozhlas)
-NOTCH_MODES = ("AM", "LSB", "USB")    # automatický notch (v CW by vyrezal samotný signál)
-AGC_MODES = ("AM", "LSB", "USB", "CW")  # audio AGC (ALC); FM a WFM majú stálu úroveň z demodulátora
-AGC_TARGET = 0.3                        # cieľová špička audia pri AGC
+SSB_LOW_CUT = 300.0   # Hz, lower edge of the SSB passband
+CW_PITCH = 700.0      # Hz, tone pitch of a CW signal tuned exactly to the frequency
+SQUELCH_OFF = -120.0  # dBFS, squelch at this level and below is off
+SQUELCH_HANG_S = 0.2  # s, how long the squelch stays open after the signal drops
+FM_NARROW_MAX = 18000.0   # FM up to this width in the narrow channel (input / DECIM), wider via WideFm (up to 50 kHz)
+SQUELCH_SUB = 8      # the squelch decides 8× per block (~8 ms) so it does not cut off the start of a transmission
+SQUELCH_MODES = ("AM", "FM", "WFM")   # each mode has its own level (airband AM differs from broadcast)
+NOTCH_MODES = ("AM", "LSB", "USB")    # automatic notch (in CW it would cut out the signal itself)
+AGC_MODES = ("AM", "LSB", "USB", "CW")  # audio AGC (ALC); FM and WFM have a constant level from the demodulator
+AGC_TARGET = 0.3                        # target audio peak with AGC
 READ_CB = ctypes.CFUNCTYPE(None, ctypes.POINTER(ctypes.c_ubyte), ctypes.c_uint32, ctypes.c_void_p)
 
 
 class ResetRequested(Exception):
-    """Používateľ chce kľúčenku zatvoriť a znova otvoriť."""
+    """The user wants to close and reopen the dongle."""
 
 
 _lib = None
@@ -75,8 +75,8 @@ def load_lib():
 
 
 def list_devices():
-    """Pripojené kľúčenky [{index, name, vendor, product, serial}]. USB údaje sa nemusia dať
-    prečítať z kľúčenky, ktorá je práve otvorená; potom ostanú prázdne."""
+    """Connected dongles [{index, name, vendor, product, serial}]. The USB data may not be readable
+    from a dongle that is currently open; then they stay empty."""
     lib = load_lib()
     out = []
     for i in range(lib.rtlsdr_get_device_count()):
@@ -89,7 +89,7 @@ def list_devices():
 
 
 def index_by_serial(serial):
-    """Poradie kľúčenky so sériovým číslom (poradie sa po prepojení USB môže zmeniť, číslo nie)."""
+    """Index of the dongle with a serial number (the index may change after replugging USB, the number does not)."""
     lib = load_lib()
     lib.rtlsdr_get_index_by_serial.argtypes = [ctypes.c_char_p]
     idx = lib.rtlsdr_get_index_by_serial(serial.encode())
@@ -99,7 +99,7 @@ def index_by_serial(serial):
 
 
 def open_device(cfg):
-    """Otvorí zariadenie podľa cfg["driver"] (rtl / lime); obe triedy majú rovnaké rozhranie."""
+    """Opens the device by cfg["driver"] (rtl / lime); both classes have the same interface."""
     serial = cfg.get("serial")
     if cfg.get("driver", "rtl") == "lime":
         from lime import LimeSdr
@@ -108,7 +108,7 @@ def open_device(cfg):
 
 
 class RtlSdr:
-    """Tenký obal nad librtlsdr.dll."""
+    """Thin wrapper over librtlsdr.dll."""
 
     has_bias_tee = True
     has_rtl_agc = True
@@ -142,26 +142,26 @@ class RtlSdr:
             self.lib.rtlsdr_set_tuner_gain(self.dev, int(round(float(gain) * 10)))
 
     def set_rtl_agc(self, on):
-        """Digitálne AGC v RTL2832 (zosilnenie za A/D prevodníkom), nezávislé od zisku tunera."""
+        """Digital AGC in the RTL2832 (gain after the A/D converter), independent of the tuner gain."""
         self._check(self.lib.rtlsdr_set_agc_mode(self.dev, 1 if on else 0), "RTL2832 AGC")
 
     def set_bias_tee(self, on):
-        """Napätie 4,5 V do anténneho konektora (napr. pre up-konvertor alebo LNA)."""
+        """4.5 V on the antenna connector (e.g. for an upconverter or LNA)."""
         self._check(self.lib.rtlsdr_set_bias_tee(self.dev, 1 if on else 0), "bias-tee")
 
     def set_ppm(self, ppm):
-        # Vráti -2, ak je hodnota rovnaká ako aktuálna; to nie je chyba.
+        # Returns -2 if the value is the same as the current one; that is not an error.
         self.lib.rtlsdr_set_freq_correction(self.dev, int(ppm))
 
     def reset_buffer(self):
         self.lib.rtlsdr_reset_buffer(self.dev)
 
     def read_async(self, on_block):
-        """Blokuje, kým sa nezavolá cancel_async. librtlsdr drží viac USB prenosov naraz,
-        takže sa vzorky nestrácajú ani počas spracovania (na rozdiel od read_sync)."""
+        """Blocks until cancel_async is called. librtlsdr keeps several USB transfers at once,
+        so no samples are lost even during processing (unlike read_sync)."""
         def cb(ptr, length, _ctx):
             on_block(np.frombuffer(ctypes.string_at(ptr, length), np.uint8))
-        self._cb = READ_CB(cb)  # referencia musí žiť, kým beží čítanie
+        self._cb = READ_CB(cb)  # the reference must live while reading runs
         rc = self.lib.rtlsdr_read_async(self.dev, self._cb, None, 8, READ_SAMPLES * 2)
         if rc != 0:
             raise RuntimeError(f"read failed (code {rc})")
@@ -181,14 +181,14 @@ class RtlSdr:
 
 
 def lowpass(cutoff, fs, taps):
-    """FIR dolná priepusť (windowed sinc, Blackman), jednotkový zisk v DC."""
+    """FIR low-pass (windowed sinc, Blackman), unity gain at DC."""
     n = np.arange(taps) - (taps - 1) / 2
     h = np.sinc(2 * cutoff / fs * n) * np.blackman(taps)
     return (h / h.sum()).astype(np.float32)
 
 
 class Decimator:
-    """Polyfázový FIR s decimáciou: y[m] = sum_k h[k] x[m*D + P-1 - k]."""
+    """Polyphase FIR with decimation: y[m] = sum_k h[k] x[m*D + P-1 - k]."""
 
     def __init__(self, fs, cutoff, decim=DECIM, phases=32):
         self.d = decim
@@ -201,7 +201,7 @@ class Decimator:
     def process(self, x):
         x = np.concatenate((self.hist, x))
         if len(x) < 65536:
-            # Krátke bloky (WFM audio, RDS): rýchlejšie cez FFT, výsledok je rovnaký.
+            # Short blocks (WFM audio, RDS): faster via FFT, the result is the same.
             from scipy.signal import oaconvolve
             self.hist = x[-(self.t - 1) * self.d:]
             return oaconvolve(x, self.h, mode="valid")[::self.d].astype(np.complex64)
@@ -215,24 +215,24 @@ class Decimator:
 
 
 class Wfm:
-    """Široké FM (rozhlas 88–108 MHz) priamo zo vstupných vzoriek: decimácia na ~256 kHz,
-    FM diskriminátor (zdvih 75 kHz), stereo dekodér, deemfáza 50 µs, dolná priepusť 15 kHz
-    a decimácia na frekvenciu audia (vstup / DECIM). Z MPX signálu dekóduje aj RDS.
+    """Wide FM (broadcast 88–108 MHz) directly from the input samples: decimation to ~256 kHz,
+    FM discriminator (75 kHz deviation), stereo decoder, 50 µs de-emphasis, 15 kHz low-pass
+    and decimation to the audio rate (input / DECIM). RDS is also decoded from the MPX signal.
 
-    Stereo: pilot 19 kHz má presnú frekvenciu, preto jeho fázu meriame koherentne cez celý blok
-    (šírka pásma ~16 Hz, aj pri zašumenom MPX) a medzi blokmi sledujeme malý frekvenčný posun.
-    L−R sa demoduluje nosnou 38 kHz = 2× pilot. Bez pilota alebo pri zašumenom pilote ide mono."""
+    Stereo: the 19 kHz pilot has an exact frequency, so its phase is measured coherently over the whole block
+    (bandwidth ~16 Hz, even with a noisy MPX) and a small frequency drift is tracked between blocks.
+    L−R is demodulated with a 38 kHz carrier = 2× pilot. Without a pilot or with a noisy pilot it is mono."""
 
     DEVIATION = 75e3
-    DEEMPHASIS = 50e-6   # Európa (USA 75 µs)
+    DEEMPHASIS = 50e-6   # Europe (USA 75 µs)
     PILOT = 19e3
-    PILOT_REF = 19.6e3   # tu pilot ani audio nie je: odhad šumu pre porovnanie s pilotom
+    PILOT_REF = 19.6e3   # neither pilot nor audio here: noise estimate for comparison with the pilot
 
     def __init__(self, fs, bw):
         from scipy.signal import lfilter
         from rds import RdsDecoder
         self._lfilter = lfilter
-        d1 = 8 if fs / 8 >= 240e3 else 4        # DECIM musí byť deliteľné d1
+        d1 = 8 if fs / 8 >= 240e3 else 4        # DECIM must be divisible by d1
         self.r1 = fs / d1
         self.dec1 = Decimator(fs, cutoff=min(bw / 2, 0.45 * self.r1), decim=d1, phases=32)
         self.dec2 = Decimator(self.r1, cutoff=min(15e3, 0.45 * fs / DECIM), decim=DECIM // d1, phases=64)
@@ -244,27 +244,27 @@ class Wfm:
         self.wref = 2 * np.pi * self.PILOT_REF / self.r1
         self.ph19 = self.phref = 0.0
         self.q_prev = None
-        self.drift = 0.0                         # rad/blok: posun fázy pilota medzi blokmi
+        self.drift = 0.0                         # rad/block: pilot phase drift between blocks
         self.pilot_snr = 0.0
-        self.stereo = False                      # pilot zachytený (príznak ST)
-        self.allow_stereo = True                 # False = vynútené mono (tlačidlo STEREO vypnuté)
+        self.stereo = False                      # pilot locked (ST flag)
+        self.allow_stereo = True                 # False = forced mono (STEREO button off)
         self.st_count = 0
         self.rds = RdsDecoder(self.r1)
 
     def process(self, iq):
-        """iq: vstup posunutý tak, že ladená frekvencia je na 0 Hz.
-        Vráti (stereo audio tvaru (n, 2), výkon v dBFS)."""
+        """iq: input shifted so that the tuned frequency is at 0 Hz.
+        Returns (stereo audio of shape (n, 2), power in dBFS)."""
         z = self.dec1.process(iq)
         pw = np.abs(z) ** 2
         power = float(np.mean(pw)) + 1e-20
-        self.sub_db = 10 * np.log10(pw.reshape(SQUELCH_SUB, -1).mean(axis=1) + 1e-20)   # pre squelch
+        self.sub_db = 10 * np.log10(pw.reshape(SQUELCH_SUB, -1).mean(axis=1) + 1e-20)   # for the squelch
         prev = np.concatenate(([self.prev], z[:-1]))
         self.prev = z[-1]
         mpx = (np.angle(z * np.conj(prev)) * (self.r1 / (2 * np.pi * self.DEVIATION))).astype(np.float32)
         n = len(mpx)
         self.rds.process(mpx)
 
-        # Pilot: q = (A/2)·e^{jφ} pre pilot A·cos(ω·n + φ) v strede bloku.
+        # Pilot: q = (A/2)·e^{jφ} for the pilot A·cos(ω·n + φ) in the middle of the block.
         ph0 = self.ph19
         k = np.arange(n)
         osc = np.exp(1j * (ph0 + self.w19 * k)).astype(np.complex64)
@@ -279,7 +279,7 @@ class Wfm:
         level = 2 * abs(q)
         self.pilot_snr = 0.8 * self.pilot_snr + 0.2 * 20 * np.log10(abs(q) / (ref + 1e-12) + 1e-12)
         good = level > 0.02 and self.pilot_snr > 10
-        # Hysterézia: stereo po 3 dobrých blokoch, mono po 3 zlých.
+        # Hysteresis: stereo after 3 good blocks, mono after 3 bad ones.
         self.st_count = min(self.st_count + 1, 3) if good else max(self.st_count - 1, 0)
         if self.st_count == 3:
             self.stereo = True
@@ -287,8 +287,8 @@ class Wfm:
             self.stereo = False
 
         if self.stereo and self.allow_stereo:
-            # Fáza pilota v bloku: nameraná v strede + sledovaný posun. Pilot odčítame (inak by
-            # 19 kHz presakoval do audia), potom nosná 38 kHz: sin(2θ'), kde pilot = sin(θ') = cos(θ),
+            # Pilot phase in the block: measured in the middle + tracked drift. The pilot is subtracted (otherwise
+            # 19 kHz would leak into the audio), then the 38 kHz carrier: sin(2θ'), where pilot = sin(θ') = cos(θ),
             # θ' = θ + π/2  ->  −sin(2θ).
             c = osc * np.exp(1j * (np.angle(q) + self.drift * (k - n / 2) / n)).astype(np.complex64)
             mpx = mpx - level * c.real
@@ -303,33 +303,33 @@ class Wfm:
 
 
 def fm_deviation(bw):
-    """Predpokladaný zdvih FM pre šírku kanála: 12 kHz -> 5 kHz, úmerne (hlasitosť nezávisí od šírky)."""
+    """Assumed FM deviation for the channel width: 12 kHz -> 5 kHz, proportionally (volume does not depend on the width)."""
     return max(bw, 300.0) * 5000.0 / 12000.0
 
 
 class WideFm:
-    """FM so šírkou nad FM_NARROW_MAX (do 50 kHz): úzky kanál (vstup / DECIM) by ho orezal,
-    preto ako Wfm: decimácia zo vstupu, kanálový filter, diskriminátor a decimácia audia na vstup / DECIM."""
+    """FM wider than FM_NARROW_MAX (up to 50 kHz): the narrow channel (input / DECIM) would cut it,
+    so like Wfm: decimation from the input, channel filter, discriminator and audio decimation to input / DECIM."""
 
     def __init__(self, fs, bw):
-        d1 = 16 if fs / 16 >= 1.25 * bw else 8        # DECIM musí byť deliteľné d1
+        d1 = 16 if fs / 16 >= 1.25 * bw else 8        # DECIM must be divisible by d1
         self.r1 = fs / d1
         self.dec1 = Decimator(fs, cutoff=min(0.6 * bw, 0.45 * self.r1), decim=d1, phases=32)
-        self.h = lowpass(bw / 2, self.r1, 127).astype(np.complex64)   # presný kanálový filter
+        self.h = lowpass(bw / 2, self.r1, 127).astype(np.complex64)   # exact channel filter
         self.hist = np.zeros(len(self.h) - 1, np.complex64)
         self.dec2 = Decimator(self.r1, cutoff=min(15e3, 0.45 * fs / DECIM), decim=DECIM // d1, phases=32)
         self.scale = self.r1 / (2 * np.pi * fm_deviation(bw))
         self.prev = np.complex64(1)
 
     def process(self, iq):
-        """iq: vstup posunutý tak, že ladená frekvencia je na 0 Hz. Vráti (audio, výkon v dBFS)."""
+        """iq: input shifted so that the tuned frequency is at 0 Hz. Returns (audio, power in dBFS)."""
         buf = np.concatenate((self.hist, self.dec1.process(iq)))
         self.hist = buf[-(len(self.h) - 1):]
         z = np.convolve(buf, self.h, mode="valid").astype(np.complex64)
         pw = np.abs(z) ** 2
         power = float(np.mean(pw)) + 1e-20
         pw = pw[:len(pw) - len(pw) % SQUELCH_SUB]
-        self.sub_db = 10 * np.log10(pw.reshape(SQUELCH_SUB, -1).mean(axis=1) + 1e-20)   # pre squelch
+        self.sub_db = 10 * np.log10(pw.reshape(SQUELCH_SUB, -1).mean(axis=1) + 1e-20)   # for the squelch
         prev = np.concatenate(([self.prev], z[:-1]))
         self.prev = z[-1]
         audio = (np.angle(z * np.conj(prev)) * self.scale).astype(np.complex64)
@@ -338,15 +338,15 @@ class WideFm:
 
 
 class AutoNotch:
-    """Automatický notch: v krátkodobom spektre (STFT, 75 % prekrytie) hľadá ustálené tóny
-    (hvízdanie, nosné) a vyreže ich. Tón = priemer výkonu v bode za ~1 s je aspoň NOTCH_DB nad
-    mediánom okolia; reč sa hýbe, preto v dlhom priemere nevynikne. Oneskorenie N vzoriek."""
+    """Automatic notch: in the short-time spectrum (STFT, 75 % overlap) it looks for steady tones
+    (whistles, carriers) and cuts them out. Tone = mean power in a bin over ~1 s is at least NOTCH_DB above
+    the median of its neighbourhood; speech moves, so it does not stand out in a long average. Delay N samples."""
 
     N, H = 512, 128
     TAU_S = 1.0
     NOTCH_DB = 15.0
-    REF_BINS = 31          # okolie pre medián (±15 bodov)
-    WIDEN = 2              # vyrezať aj ±2 susedné body (hlavný lalok Hannovho okna)
+    REF_BINS = 31          # neighbourhood for the median (±15 bins)
+    WIDEN = 2              # also cut ±2 neighbouring bins (main lobe of the Hann window)
 
     def __init__(self, fs):
         self.fs = fs
@@ -370,7 +370,7 @@ class AutoNotch:
         out = np.empty(nf * H, np.float32)
         half = self.REF_BINS // 2
         thr = 10 ** (self.NOTCH_DB / 10)
-        lo = int(250 * N / self.fs)          # pod 250 Hz nič (DC, základný tón hlasu; SSB tam aj tak reže)
+        lo = int(250 * N / self.fs)          # nothing below 250 Hz (DC, voice fundamental; SSB cuts there anyway)
         for k in range(nf):
             X = np.fft.rfft(buf[k * H:k * H + N] * w)
             self.avg = self.a * self.avg + (1 - self.a) * (X.real ** 2 + X.imag ** 2)
@@ -386,8 +386,8 @@ class AutoNotch:
                 tone = t
                 tone[:lo] = False
             target = np.where(tone, 0.01, 1.0).astype(np.float32)
-            self.gain += (target - self.gain) * 0.3   # plynulo, aby necvakalo
-            y = np.fft.irfft(X * self.gain, N).astype(np.float32) * w / 1.5   # Hann² pri 75 % = 1,5
+            self.gain += (target - self.gain) * 0.3   # smoothly, so it does not click
+            y = np.fft.irfft(X * self.gain, N).astype(np.float32) * w / 1.5   # Hann² at 75 % = 1.5
             self.ola += y
             out[k * H:(k + 1) * H] = self.ola[:H]
             self.ola = np.concatenate((self.ola[H:], np.zeros(H, np.float32)))
@@ -399,7 +399,7 @@ class AutoNotch:
 
 
 class Channel:
-    """Kanálový filter, demodulácia a AGC pri frekvencii fs (= vstup / DECIM)."""
+    """Channel filter, demodulation and AGC at rate fs (= input / DECIM)."""
 
     def __init__(self, fs):
         self.fs = fs
@@ -415,21 +415,21 @@ class Channel:
         self.h = None
         self.notch_on = False
         self.notch = AutoNotch(fs)
-        self.agc_on = True       # vypnuté = pevný zisk zamrazený pri vypnutí (hlasitosť už len posuvníkom)
+        self.agc_on = True       # off = fixed gain frozen when turned off (volume only with the slider)
         self.fixed_level = None
 
     def configure(self, mode, bw):
         if (mode, bw) == (self.mode, self.bw):
             return
         self.mode, self.bw = mode, bw
-        # Úzke filtre (CW, FM 500 Hz) potrebujú dlhší FIR (prechodové pásmo Blackmana ~ 5,5·fs/taps).
+        # Narrow filters (CW, FM 500 Hz) need a longer FIR (Blackman transition band ~ 5.5·fs/taps).
         taps = 1023 if mode == "CW" or bw < 2500 else 255
         if taps != self.taps:
             self.taps = taps
             self.hist = np.zeros(taps - 1, np.complex64)
         n = np.arange(self.taps) - (self.taps - 1) / 2
         if mode in ("LSB", "USB"):
-            # Komplexná pásmová priepusť: dolná priepusť posunutá do stredu SSB pásma.
+            # Complex band-pass: low-pass shifted to the centre of the SSB passband.
             width = max(bw - SSB_LOW_CUT, 300.0)
             mid = SSB_LOW_CUT + width / 2
             if mode == "LSB":
@@ -443,14 +443,14 @@ class Channel:
         self.notch.reset()
 
     def process(self, x):
-        """Vráti (audio float32 v ±1, výkon v kanáli v dBFS)."""
+        """Returns (audio float32 in ±1, channel power in dBFS)."""
         buf = np.concatenate((self.hist, x))
         self.hist = buf[-(self.taps - 1):]
         ch = np.convolve(buf, self.h, mode="valid").astype(np.complex64)
         pw = np.abs(ch) ** 2
         power = float(np.mean(pw)) + 1e-20
         smeter = 10 * np.log10(power)
-        self.sub_db = 10 * np.log10(pw.reshape(SQUELCH_SUB, -1).mean(axis=1) + 1e-20)   # pre squelch
+        self.sub_db = 10 * np.log10(pw.reshape(SQUELCH_SUB, -1).mean(axis=1) + 1e-20)   # for the squelch
 
         if self.mode == "FM":
             prev = np.concatenate(([self.prev], ch[:-1]))
@@ -460,12 +460,12 @@ class Channel:
 
         if self.mode == "AM":
             env = np.abs(ch)
-            # Nosná = jednosmerná zložka obálky; prvý blok ju nastaví hneď, potom ju sledujeme.
+            # Carrier = DC component of the envelope; the first block sets it at once, then it is tracked.
             m = float(env.mean())
             self.dc = m if self.dc == 0.0 else 0.6 * self.dc + 0.4 * m
             audio = env - self.dc
         elif self.mode == "CW":
-            # BFO: signál na ladenej frekvencii (0 Hz) posunieme na CW_PITCH, aby bol počuť ako tón.
+            # BFO: the signal on the tuned frequency (0 Hz) is shifted to CW_PITCH so it is heard as a tone.
             step = 2 * np.pi * CW_PITCH / self.fs
             bfo = np.exp(1j * (self.bfo_phase + step * np.arange(len(ch)))).astype(np.complex64)
             self.bfo_phase = (self.bfo_phase + step * len(ch)) % (2 * np.pi)
@@ -473,20 +473,20 @@ class Channel:
         else:
             audio = ch.real
         audio = audio.astype(np.float32)
-        if self.notch_on and self.mode in NOTCH_MODES:   # pred AGC, aby hvízdanie nestláčalo zisk
+        if self.notch_on and self.mode in NOTCH_MODES:   # before the AGC, so whistles do not push the gain down
             audio = self.notch.process(audio)
         else:
             self.notch.notched = 0
         if self.agc_on:
             self.fixed_level = None
             return self.agc(audio), smeter
-        # Bez AGC: zisk z poslednej úrovne AGC (najviac 40 dB, aby po štarte s vypnutým AGC nerevalo).
+        # Without AGC: gain from the last AGC level (at most 40 dB, so it does not roar after starting with AGC off).
         if self.fixed_level is None:
             self.fixed_level = max(self.level, AGC_TARGET / 100)
         return np.clip(audio * (AGC_TARGET / self.fixed_level), -1, 1), smeter
 
     def agc(self, x, block=120, target=AGC_TARGET):
-        """Blokové AGC s rýchlym nábehom, podržaním 0,4 s a pomalým poklesom."""
+        """Block AGC with fast attack, 0.4 s hold and slow decay."""
         nb = len(x) // block
         if nb == 0:
             return x
@@ -512,14 +512,14 @@ class Channel:
 
 
 class Receiver:
-    """Vlákno, ktoré číta z kľúčenky a vyrába riadky waterfallu a audio."""
+    """Thread that reads from the dongle and produces waterfall lines and audio."""
 
     def __init__(self, cfg, on_row, on_audio, on_status, on_baseband=None, on_demod=None):
         self.cfg = cfg
         cfg.setdefault("bandwidth", {}).setdefault("CW", 500)
         cfg["bandwidth"].setdefault("WFM", 200000)
         sq = cfg.get("squelch")
-        if not isinstance(sq, dict):               # staršia verzia: jedna úroveň pre FM aj WFM
+        if not isinstance(sq, dict):               # older version: one level for FM and WFM
             cfg["squelch"] = {} if sq is None else {"FM": float(sq), "WFM": float(sq)}
         if str(cfg["device"]) not in cfg.get("dongles", {}):
             self._save_profile()
@@ -542,13 +542,13 @@ class Receiver:
         self.thread = None
         self._stop = threading.Event()
 
-    # --- ovládanie z webu (aplikuje sa vo vlákne prijímača medzi čítaniami) ---
+    # --- control from the web page (applied in the receiver thread between reads) ---
 
     def update(self, changes):
         with self.lock:
             self.pending.update(changes)
-            # Kľúčenka v chybe (napr. zlé LO -> frekvencia mimo rozsahu tunera): zmeny nastavení
-            # kľúčenky zapíšeme hneď, aby ich použil ďalší pokus o otvorenie a chyba sa dala opraviť v SET.
+            # Dongle in error (e.g. wrong LO -> frequency outside the tuner range): dongle setting changes
+            # are written immediately, so the next open attempt uses them and the error can be fixed in SET.
             if self.status == "error":
                 for k in ("lo_offset_hz", "upconv", "ppm"):
                     if k in changes:
@@ -559,8 +559,8 @@ class Receiver:
         return float(self.cfg["sample_rate"])
 
     def lo_for(self, tune_hz):
-        """LO up-konvertora pre danú frekvenciu: KV ide cez konvertor, VKV/UKV priamo do kľúčenky.
-        upconv: "auto" (konvertor do UPCONV_MAX_HZ), "on" (vždy), "off" (nikdy)."""
+        """Upconverter LO for the given frequency: HF goes through the converter, VHF/UHF directly to the dongle.
+        upconv: "auto" (converter up to UPCONV_MAX_HZ), "on" (always), "off" (never)."""
         mode = self.cfg.get("upconv", "auto")
         if mode == "off" or (mode == "auto" and tune_hz >= UPCONV_MAX_HZ):
             return 0.0
@@ -578,7 +578,7 @@ class Receiver:
     def tuner_max(self):
         return TUNER_LIMITS[self.cfg.get("driver", "rtl")][1]
 
-    # Nastavenia, ktoré patria ku konkrétnej kľúčenke (konvertor, LO, korekcia kryštálu).
+    # Settings that belong to a specific dongle (converter, LO, crystal correction).
     PROFILE_KEYS = ("upconv", "lo_offset_hz", "ppm")
 
     def _save_profile(self):
@@ -587,7 +587,7 @@ class Receiver:
             "upconv": c.get("upconv", "auto"), "lo_offset_hz": c.get("lo_offset_hz", 0), "ppm": c.get("ppm", 0)}
 
     def _load_profile(self):
-        """Po prepnutí kľúčenky: jej uložené nastavenia; nová kľúčenka prevezme aktuálne."""
+        """After switching dongles: its saved settings; a new dongle takes over the current ones."""
         c = self.cfg
         p = c.get("dongles", {}).get(str(c["device"]))
         if p:
@@ -595,7 +595,7 @@ class Receiver:
         else:
             self._save_profile()
         if not self.tuner_min <= c["tune_hz"] + self.lo <= self.tuner_max:
-            # Napr. KV frekvencia na kľúčenke bez konvertora -> prejdeme na 2 m.
+            # E.g. an HF frequency on a dongle without a converter -> switch to 2 m.
             c["tune_hz"], c["mode"] = 145.5e6, "FM"
             self._recenter(c["tune_hz"])
 
@@ -622,7 +622,7 @@ class Receiver:
                 self.has_bias_tee, self.has_rtl_agc = sdr.has_bias_tee, sdr.has_rtl_agc
                 self._configure(sdr)
                 if hasattr(sdr, "calibrate"):
-                    # LimeSDR: kalibrácia DC a IQ pri otvorení (na KV môže zlyhať, nevadí).
+                    # LimeSDR: DC and IQ calibration when opening (may fail on HF, does not matter).
                     self.status = "calibrating"
                     self.on_status()
                     sdr.calibrate()
@@ -644,7 +644,7 @@ class Receiver:
             except ResetRequested:
                 self.status = "restarting dongle"
                 self.on_status()
-            except Exception as e:  # chyba zariadenia: ukážeme ju a skúsime znova
+            except Exception as e:  # device error: show it and try again
                 self.error = str(e)
                 self.status = "error"
                 self.on_status()
@@ -664,7 +664,7 @@ class Receiver:
         sdr.set_rtl_agc(c.get("rtl_agc", False))
         sdr.set_bias_tee(c.get("bias_tee", False))
         sdr.set_center_freq(c["center_hz"] + self.lo)
-        # ±10 kHz, aby prešiel aj filter 18 kHz (AM/FM); pri nízkom vzorkovaní menej (alias).
+        # ±10 kHz, so that the 18 kHz filter (AM/FM) also passes; less at a low sample rate (alias).
         self.dec = Decimator(self.fs, cutoff=min(10000.0, self.fs / DECIM / 3))
         self.chan = Channel(self.fs / DECIM)
         self.wfm, self.wfm_key = None, None
@@ -686,7 +686,7 @@ class Receiver:
             self._recenter(c["tune_hz"])
             self._configure(sdr)
         if "tune_hz" in changes and changes["tune_hz"] != c["tune_hz"] and isinstance(self.wfm, Wfm):
-            self.wfm.rds.reset()                    # iná stanica: staré RDS údaje neplatia
+            self.wfm.rds.reset()                    # another station: old RDS data is not valid
         for k in ("tune_hz", "mode", "zoom"):
             if k in changes:
                 c[k] = changes[k]
@@ -733,12 +733,12 @@ class Receiver:
             self._load_profile()
             raise ResetRequested()
         if changes.get("reset"):
-            # Zatvorí a znova otvorí kľúčenku (slučka v _run ju hneď otvorí).
+            # Closes and reopens the dongle (the loop in _run opens it again at once).
             raise ResetRequested()
         self.on_status()
 
     def _recenter(self, tune, only_if_outside=False):
-        """Ladená frekvencia mimo zobrazeného pásma -> posunieme stred (mimo DC špičky)."""
+        """Tuned frequency outside the displayed band -> move the centre (away from the DC spike)."""
         c = self.cfg
         half = self.fs / 2 * 0.9
         if only_if_outside and abs(tune - c["center_hz"]) < half:
@@ -746,8 +746,8 @@ class Receiver:
         c["center_hz"] = max(tune + self.fs * 0.2, self.fs / 2)
 
     def _request_view(self, view_hz):
-        """Ťahanie vodopádu: stred výrezu určuje web. Ak výrez vybehne z prijímaného pásma,
-        preladíme kľúčenku tak, aby bol výrez v jej strede."""
+        """Dragging the waterfall: the centre of the section is set by the web page. If the section leaves the received band,
+        the dongle is retuned so that the section is in its centre."""
         c = self.cfg
         span = self.fs / int(c.get("zoom", 1))
         self.view_req = view_hz
@@ -755,15 +755,15 @@ class Receiver:
             c["center_hz"] = max(view_hz, self.fs / 2)
 
     def _waterfall(self, iq):
-        """Riadok waterfallu: jemná FFT celého pásma, z nej výrez podľa zoomu (WF_BINS bodov).
+        """Waterfall line: fine FFT of the whole band, from which a section is taken by zoom (WF_BINS points).
 
-        Výrez sa posúva, len keď sa ladená frekvencia priblíži k jeho okraju, aby obraz neskákal
-        pri každom kroku ladenia.
+        The section moves only when the tuned frequency comes close to its edge, so the picture does not jump
+        on every tuning step.
         """
         segs = iq[:WF_SEGMENTS * WF_FFT].reshape(WF_SEGMENTS, WF_FFT) * self.win
         power = np.fft.fftshift(np.mean(np.abs(np.fft.fft(segs, axis=1)) ** 2, axis=0)) * self.wf_norm
         mid = WF_FFT // 2
-        power[mid] = (power[mid - 1] + power[mid + 1]) / 2  # DC špička RTL-SDR
+        power[mid] = (power[mid - 1] + power[mid + 1]) / 2  # RTL-SDR DC spike
 
         c = self.cfg
         zoom = int(c.get("zoom", 1))
@@ -773,7 +773,7 @@ class Receiver:
         tune_bin = (c["tune_hz"] - lo_edge) / bin_hz
         start = self.view_start
         if self.view_req is not None:
-            # Výrez nastavený ťahaním z webu platí, kým je ladená frekvencia v ňom a nezmení sa zoom.
+            # A section set by dragging on the web page is valid while the tuned frequency is in it and the zoom does not change.
             req = int(round((self.view_req - lo_edge) / bin_hz - span_bins / 2))
             req = max(0, min(WF_FFT - span_bins, req))
             if self.view_key and self.view_key[0] == zoom and req <= tune_bin <= req + span_bins:
@@ -801,7 +801,7 @@ class Receiver:
             except queue.Empty:
                 raise RuntimeError("dongle is not sending data" if reader.is_alive() else "dongle reading stopped")
             if raw.dtype == np.complex64:
-                iq = raw                            # LimeSDR: už normalizované komplexné vzorky
+                iq = raw                            # LimeSDR: already normalised complex samples
             elif len(raw) != READ_SAMPLES * 2:
                 continue
             else:
@@ -811,7 +811,7 @@ class Receiver:
 
             self._waterfall(iq)
 
-            # Kanál: posun ladenej frekvencie na nulu, decimácia, demodulácia.
+            # Channel: shift of the tuned frequency to zero, decimation, demodulation.
             c = self.cfg
             offset = c["tune_hz"] - c["center_hz"]
             n = len(iq)
@@ -825,7 +825,7 @@ class Receiver:
             mode = c["mode"]
             bw = float(c.get("bandwidth", {}).get(mode, 3000))
             if mode == "WFM" or (mode == "FM" and bw > FM_NARROW_MAX):
-                # Široké FM nevojde do úzkeho kanála: demoduluje sa zo vstupných vzoriek.
+                # Wide FM does not fit the narrow channel: it is demodulated from the input samples.
                 if self.wfm_key != (self.fs, mode, bw):
                     self.wfm = Wfm(self.fs, bw) if mode == "WFM" else WideFm(self.fs, bw)
                     self.wfm_key = (self.fs, mode, bw)
@@ -838,14 +838,14 @@ class Receiver:
                 self.chan.agc_on = bool(c.get("audio_agc", True))
                 audio, self.smeter = self.chan.process(base)
                 sub_db = self.chan.sub_db
-            cal = getattr(self.sdr, "smeter_offset", 0.0)   # Lime: zladenie s RTL, RTL: 0
+            cal = getattr(self.sdr, "smeter_offset", 0.0)   # Lime: matched to RTL, RTL: 0
             if cal:
                 self.smeter += cal
                 sub_db = sub_db + cal
-            if self.on_demod:                       # demodulované audio pred squelchom (SSTV)
+            if self.on_demod:                       # demodulated audio before the squelch (SSTV)
                 self.on_demod(audio if audio.ndim == 1 else audio.mean(axis=1), self.fs / DECIM)
             audio = self._squelch(audio, mode, sub_db)
-            if audio.ndim == 1:                     # do prehliadača ide vždy stereo (L, R striedavo)
+            if audio.ndim == 1:                     # the browser always gets stereo (L, R interleaved)
                 audio = np.repeat(audio[:, None], 2, axis=1)
             self.on_audio((audio * 32767).astype("<i2").tobytes())
 
@@ -855,10 +855,10 @@ class Receiver:
                 self.on_status()
 
     def _squelch(self, audio, mode, sub_db):
-        """Squelch pre AM/FM/WFM: stlmí zvuk, kým je výkon v kanáli pod úrovňou módu.
-        Rozhoduje po častiach bloku (sub_db, ~8 ms), s hysteréziou 2 dB a podržaním SQUELCH_HANG_S.
-        Pri AM sa meria aj nosná, takže squelch otvára nosná vysielania (letecké pásmo).
-        Zmena hlasitosti ide plynulo cez jednu časť, aby necvakalo."""
+        """Squelch for AM/FM/WFM: mutes the sound while the channel power is below the mode's level.
+        It decides per part of a block (sub_db, ~8 ms), with 2 dB hysteresis and SQUELCH_HANG_S hold.
+        In AM the carrier is measured too, so the squelch is opened by the transmission's carrier (airband).
+        The volume change goes smoothly over one part, so it does not click."""
         level = self.squelch_level(mode)
         parts = len(sub_db)
         gains = np.ones(parts, np.float32)
@@ -884,7 +884,7 @@ class Receiver:
         return audio * (env[:, None] if audio.ndim == 2 else env)
 
     def tune_range(self):
-        """(od, do) Hz, kam sa dá naladiť: podľa konvertora a voliteľného limitu max_hz (KV VFO)."""
+        """(from, to) Hz that can be tuned: by the converter and the optional limit max_hz (HF VFO)."""
         c = self.cfg
         mode, lo = c.get("upconv", "auto"), float(c.get("lo_offset_hz", 0))
         tmin, tmax = self.tuner_min, self.tuner_max
@@ -903,7 +903,7 @@ class Receiver:
 
     def state(self):
         c = self.cfg
-        wfm = getattr(self, "wfm", None) if c["mode"] == "WFM" else None   # pred štartom vlákna ešte nie je
+        wfm = getattr(self, "wfm", None) if c["mode"] == "WFM" else None   # does not exist yet before the thread starts
         return {
             "stereo": bool(wfm and wfm.stereo),
             "stereo_on": bool(c.get("stereo_on", True)),
@@ -912,7 +912,7 @@ class Receiver:
             "notch_active": bool(getattr(getattr(self, "chan", None), "notch", None)
                                  and self.chan.notch.notched and c["mode"] in NOTCH_MODES),
             "rds": wfm.rds.info() if wfm else None,
-            "squelch": self.squelch_level(c["mode"]),      # úroveň pre aktuálny mód
+            "squelch": self.squelch_level(c["mode"]),      # level for the current mode
             "squelch_levels": {m: self.squelch_level(m) for m in SQUELCH_MODES},
             "squelch_open": self.sq_open,
             "status": self.status,
@@ -927,7 +927,7 @@ class Receiver:
             "tune_hz": c["tune_hz"],
             "center_hz": c["center_hz"],
             "lo_offset_hz": c.get("lo_offset_hz", 0),
-            "lo_hz": self.lo,                       # práve použitý LO (0 = priamo bez konvertora)
+            "lo_hz": self.lo,                       # LO currently used (0 = direct without a converter)
             "upconv": c.get("upconv", "auto"),
             "sample_rate": c["sample_rate"],
             "audio_rate": c["sample_rate"] / DECIM,
@@ -941,7 +941,7 @@ class Receiver:
             "smeter": round(self.smeter, 1),
             "dropped": self.dropped,
             "opened": self.opened,
-            # LimeSDR: stav prúdu v LimeSuite (straty vzoriek, preladenia PLL) na diagnostiku
+            # LimeSDR: stream state in LimeSuite (lost samples, PLL retunes) for diagnostics
             "hw": self.sdr.stream_status() if hasattr(self.sdr, "stream_status") else None,
             "can_tx": hasattr(self.sdr, "tx_start"),
             "tx": bool(getattr(self.sdr, "tx_on", False)),

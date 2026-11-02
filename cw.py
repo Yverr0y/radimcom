@@ -1,10 +1,10 @@
-"""CW (Morse) dekodér z basebandu prijímača s automatickým doladením tónu a rýchlosti.
+"""CW (Morse) decoder from the receiver's baseband with automatic tracking of tone and speed.
 
-Postup: decimácia na 8 kHz -> AFC nájde najsilnejší tón v pásme prijímača (Welchovo spektrum
-posledných 6 s) -> zmiešanie tónu na 0 Hz a filter (kĺzavý priemer) so šírkou podľa rýchlosti
--> obálka každé 2 ms -> adaptívny prah s hysterézou -> dĺžky značiek a medzier -> bodka/čiarka
--> znaky podľa Morseovej tabuľky. Rýchlosť sa raz za sekundu odhaduje z posledných 15 s obálky
-(vyhladenie s najlepším odstupom značka/šum, rozdelenie značiek na krátke a dlhé).
+Method: decimation to 8 kHz -> AFC finds the strongest tone in the receiver passband (Welch spectrum
+of the last 6 s) -> mixing the tone to 0 Hz and a filter (moving average) with a width set by the speed
+-> envelope every 2 ms -> adaptive threshold with hysteresis -> mark and space lengths -> dot/dash
+-> characters from the Morse table. Once a second the speed is estimated from the last 15 s of the envelope
+(smoothing with the best mark/noise separation, splitting marks into short and long).
 """
 import collections
 import threading
@@ -14,13 +14,13 @@ from scipy.ndimage import maximum_filter1d
 
 from sdr import lowpass
 
-RATE = 8000.0          # Hz, vzorkovanie po decimácii
-TICK = 16              # vzoriek na jeden krok obálky (2 ms)
-BOX = 64               # najkratší kĺzavý priemer (8 ms ≈ 125 Hz šírka filtra) pre rýchle CW
-MAX_BOX = 800          # najdlhší (100 ms ≈ 10 Hz) pre veľmi pomalé CW
-NFFT = 4096            # rozlíšenie AFC ≈ 2 Hz
-AFC_SEC = 6            # okno AFC; aj pri pomalom CW musí obsiahnuť niekoľko značiek
-MIN_SNR = 6.0          # pomer výkonu tónu k šumu v spektre (≈ 8 dB), pod ním dekodér mlčí
+RATE = 8000.0          # Hz, sample rate after decimation
+TICK = 16              # samples per envelope step (2 ms)
+BOX = 64               # shortest moving average (8 ms ≈ 125 Hz filter width) for fast CW
+MAX_BOX = 800          # longest (100 ms ≈ 10 Hz) for very slow CW
+NFFT = 4096            # AFC resolution ≈ 2 Hz
+AFC_SEC = 6            # AFC window; even for slow CW it must contain several marks
+MIN_SNR = 6.0          # tone-to-noise power ratio in the spectrum (≈ 8 dB), below it the decoder stays silent
 
 MORSE = {
     ".-": "A", "-...": "B", "-.-.": "C", "-..": "D", ".": "E", "..-.": "F", "--.": "G",
@@ -37,9 +37,9 @@ MORSE = {
 
 
 def dot_from_marks(marks):
-    """Dĺžka bodky z dĺžok značiek: najlepšie rozdelenie na krátke a dlhé (v log mierke),
-    čiarka = 3 bodky. Vráti (bodka ms, podiel značiek, ktoré sedia na bodku alebo čiarku ±40 %),
-    alebo None, ak značiek je málo alebo nie sú dve zreteľné skupiny."""
+    """Dot length from mark lengths: the best split into short and long (on a log scale),
+    dash = 3 dots. Returns (dot ms, share of marks that fit a dot or dash ±40 %),
+    or None if there are too few marks or no two clear groups."""
     m = np.sort(np.log(np.asarray(marks, float)))
     if len(m) < 6:
         return None
@@ -59,8 +59,8 @@ def dot_from_marks(marks):
 
 
 def otsu(s):
-    """Najlepší prah medzi dvoma úrovňami (značka/šum) a jeho kvalita: rozdiel stredov
-    delený súčtom rozptylov. Delenia s menej ako 10 % na jednej strane sa nepočítajú."""
+    """The best threshold between two levels (mark/noise) and its quality: difference of the means
+    divided by the sum of the variances. Splits with less than 10 % on one side are not counted."""
     v = np.sort(s)
     n = len(v)
     c1, c2 = np.cumsum(v), np.cumsum(v * v)
@@ -75,7 +75,7 @@ def otsu(s):
 
 
 def smooth_runs(on, k):
-    """Zacelí medzery kratšie ako k krokov a potom zmaže značky kratšie ako k (uzáver + otvorenie)."""
+    """Fills gaps shorter than k steps and then removes marks shorter than k (closing + opening)."""
     if k < 2:
         return on
     box = np.ones(k)
@@ -95,13 +95,13 @@ class CwDecoder:
         self.lock = threading.Lock()
         self.text = collections.deque(maxlen=6000)
         self.dial = 0.0
-        self.tone = None         # Hz voči ladenej frekvencii
+        self.tone = None         # Hz relative to the tuned frequency
         self.snr = 0.0
         self.dot_ms = 60.0       # 20 WPM
         self.present = False
         self._fs = None
 
-    # ---------- ovládanie ----------
+    # ---------- control ----------
 
     def set_enabled(self, on):
         with self.lock:
@@ -121,7 +121,7 @@ class CwDecoder:
             "text": "".join(self.text),
         }
 
-    # ---------- spracovanie signálu ----------
+    # ---------- signal processing ----------
 
     def _setup(self, fs):
         self._fs = fs
@@ -130,27 +130,27 @@ class CwDecoder:
         self.h = lowpass(0.45 * self.r, fs, 63)
         self.hist = np.zeros(len(self.h) - 1, np.complex64)
         self.dec_off = 0
-        self.buf = np.zeros(0, np.complex64)       # posledných AFC_SEC sekúnd pre AFC
+        self.buf = np.zeros(0, np.complex64)       # the last AFC_SEC seconds for the AFC
         self.since_afc = 0
         self.nco = 0.0
         self.box_hist = np.zeros(MAX_BOX - 1, np.complex64)
         self.tick_off = 0
         self.ticks = 0
         self.jump = None
-        self.fine = collections.deque(maxlen=7500)  # obálka s 8 ms filtrom za posledných 15 s
+        self.fine = collections.deque(maxlen=7500)  # envelope with the 8 ms filter over the last 15 s
         self.tone = None
         self.snr = 0.0
         self.present = False
         self.lo = self.hi = None
         self.key = False
         self.cand_n = 0
-        self.run = 0              # počet krokov v aktuálnom stave kľúča
+        self.run = 0              # number of steps in the current key state
         self.symbol = ""
-        self.space_done = 0       # 0 = nič, 1 = znak ukončený, 2 = aj medzera slova
+        self.space_done = 0       # 0 = nothing, 1 = character finished, 2 = word space too
         self.since_state = 0
 
     def feed(self, base, fs, dial_hz, band):
-        """base: komplexný baseband (ladená frekvencia = 0 Hz); band: (od, do) Hz hľadania tónu."""
+        """base: complex baseband (tuned frequency = 0 Hz); band: (from, to) Hz to search for the tone."""
         if not self.enabled:
             return
         with self.lock:
@@ -175,7 +175,7 @@ class CwDecoder:
             self._emit_state()
 
     def _afc(self, band):
-        """Najsilnejší tón v pásme; preskočí na iný len ak je výrazne silnejší ako ten súčasný."""
+        """The strongest tone in the band; jumps to another only if it is clearly stronger than the current one."""
         if len(self.buf) < NFFT:
             return
         segs = self.buf[-(len(self.buf) // NFFT) * NFFT:].reshape(-1, NFFT) * np.hanning(NFFT)
@@ -185,16 +185,16 @@ class CwDecoder:
         sel = (f >= lo) & (f <= hi)
         if sel.sum() < 8:
             return
-        ps = np.convolve(p, np.ones(5) / 5, mode="same")   # ±5 Hz, tón nie je presne v jednom koši
+        ps = np.convolve(p, np.ones(5) / 5, mode="same")   # ±5 Hz, the tone is not exactly in one bin
         noise = float(np.median(p[sel])) + 1e-20
         i = int(np.argmax(np.where(sel, ps, 0)))
         best, fbest = float(ps[i]), float(f[i])
         if self.tone is not None and lo <= self.tone <= hi:
             j = int(np.argmin(np.abs(f - self.tone)))
             cur = float(ps[j])
-            if cur * 2 > best and cur / noise >= MIN_SNR:   # ostávame na súčasnej stanici
+            if cur * 2 > best and cur / noise >= MIN_SNR:   # stay on the current station
                 i, best, fbest = j, cur, self.tone
-        # Parabolická interpolácia vrcholu.
+        # Parabolic interpolation of the peak.
         if 0 < i < len(ps) - 1:
             a, b, c = ps[i - 1], ps[i], ps[i + 1]
             d = a - 2 * b + c
@@ -225,11 +225,11 @@ class CwDecoder:
         buf = np.concatenate((self.box_hist, z))
         self.box_hist = buf[-(MAX_BOX - 1):]
         c = np.concatenate(([0], np.cumsum(buf)))
-        end = np.arange(MAX_BOX, len(c))            # koniec okna pre každú novú vzorku
+        end = np.arange(MAX_BOX, len(c))            # end of the window for each new sample
         idx = np.arange(self.tick_off, len(end), TICK)
         self.tick_off = (idx[-1] + TICK - len(end)) if idx.size else self.tick_off - len(end)
         end = end[idx]
-        # Šírka filtra podľa rýchlosti: okno ≈ tretina bodky (pomalé CW = úzky filter, lepší SNR).
+        # Filter width by speed: window ≈ a third of a dot (slow CW = narrow filter, better SNR).
         n = int(np.clip(self.dot_ms / 3 * self.r / 1000, BOX, MAX_BOX))
         self.fine.extend(np.abs(c[end] - c[end - BOX]) / BOX)
         for e in np.abs(c[end] - c[end - n]) / n:
@@ -239,10 +239,10 @@ class CwDecoder:
                 self._estimate_speed()
 
     def _estimate_speed(self):
-        """Rýchlosť z posledných 15 s obálky. Vyhladenie volíme podľa najlepšieho odstupu úrovní
-        značka/šum: krátke necháva šum, príliš dlhé zlieva prvky. Obálku delíme miestnym maximom
-        (≈ AGC), aby úniky (QSB) neposúvali prah. Odhad sa použije, len ak dĺžky značiek naozaj
-        sedia na bodky a čiarky."""
+        """Speed from the last 15 s of the envelope. The smoothing is chosen by the best separation of the
+        mark/noise levels: short leaves noise, too long merges elements. The envelope is divided by the local maximum
+        (≈ AGC) so that fading (QSB) does not move the threshold. The estimate is used only if the mark lengths really
+        fit dots and dashes."""
         x = np.array(self.fine)
         if len(x) < 1500 or not self.present:
             return
@@ -255,7 +255,7 @@ class CwDecoder:
             if best is None or q > best[0]:
                 best = (q, w, s > th)
         _, w, on = best
-        # Krátke medzery (úniky) zacelíme, krátke záblesky šumu odstránime.
+        # Short gaps (fading) are filled, short noise bursts removed.
         on = smooth_runs(on, max(1, int(0.75 * w / 2)))
         edges = np.flatnonzero(np.diff(on.astype(np.int8)))
         if len(edges) < 6:
@@ -266,12 +266,12 @@ class CwDecoder:
             return
         found = res[0]
         if abs(np.log(found / self.dot_ms)) > np.log(1.5):
-            # Veľký skok (iná stanica, úvodný odhad) prijmeme až po 3 zhodných odhadoch za sebou.
+            # A big jump (another station, initial estimate) is accepted only after 3 matching estimates in a row.
             if self.jump and abs(np.log(found / self.jump[0])) < np.log(1.3):
                 self.jump = (found, self.jump[1] + 1)
             else:
                 self.jump = (found, 1)
-            if self.jump[1] >= 3 or self.ticks < 5000:   # na začiatku (prvých 10 s) hneď
+            if self.jump[1] >= 3 or self.ticks < 5000:   # at the start (first 10 s) immediately
                 self.dot_ms = found
                 self.jump = None
         else:
@@ -280,7 +280,7 @@ class CwDecoder:
         self.dot_ms = float(np.clip(self.dot_ms, 20, 400))
 
     def _tick(self, e):
-        # Sledovanie úrovne značky (hi) a šumu (lo); časové konštanty ≈ 20 bodiek.
+        # Tracking of the mark level (hi) and noise (lo); time constants ≈ 20 dots.
         if self.lo is None:
             self.lo = self.hi = e
         slow = 2 / (20 * self.dot_ms)
@@ -296,7 +296,7 @@ class CwDecoder:
         on = e > self.lo + (0.4 if self.key else 0.6) * span
         if not self.present or self.hi < 1.8 * self.lo:
             on = False
-        # Potlačenie zákmitov a krátkych únikov: zmena musí trvať aspoň tretinu bodky.
+        # Suppressing glitches and short fades: a change must last at least a third of a dot.
         deb = max(2, int(self.dot_ms / 2 * 0.35))
         if on != self.key:
             self.cand_n += 1
@@ -312,14 +312,14 @@ class CwDecoder:
             self._space_check(self.run * 2)
 
     def _edge(self, dur_ms):
-        """Koniec stavu kľúča trvajúceho dur_ms."""
-        if self.key:   # končí značka
+        """End of a key state that lasted dur_ms."""
+        if self.key:   # a mark ends
             self._mark(dur_ms)
         else:
             self.space_done = 0
 
     def _mark(self, ms):
-        if ms > 10 * self.dot_ms and ms > 600:   # nosná alebo ladenie, nie značka
+        if ms > 10 * self.dot_ms and ms > 600:   # a carrier or tuning, not a mark
             return
         self.symbol += "." if ms < 2 * self.dot_ms else "-"
         if len(self.symbol) > 9:

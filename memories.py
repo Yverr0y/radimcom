@@ -1,7 +1,7 @@
-"""Pamäte frekvencií (memories.json) a import zo SDR# (frequencies.xml).
+"""Frequency memories (memories.json) and import from SDR# (frequencies.xml).
 
-Použitie importu:  python memories.py C:\\sdrsharpSW\\frequencies.xml
-Importujú sa len záznamy s posunom -LO up-konvertora (KV cez up-konvertor); duplicity sa preskočia.
+Import usage:  python memories.py C:\\sdrsharpSW\\frequencies.xml
+Only entries shifted by -LO of the upconverter are imported (HF via upconverter); duplicates are skipped.
 """
 import json
 import os
@@ -35,7 +35,7 @@ def _save(items):
 
 
 def make(name, group, freq_hz, mode, bw, fav=False):
-    """Overí a vytvorí záznam; ValueError pri neplatných údajoch."""
+    """Validates and creates an entry; ValueError on invalid data."""
     name = str(name).strip()[:80]
     group = (str(group).strip() or "Moje")[:40]
     freq_hz = int(round(float(freq_hz)))
@@ -84,7 +84,7 @@ def delete(mid):
 
 
 def import_sdrsharp(path, lo_offset_hz=100_000_000):
-    """Vráti (pridané, preskočené)."""
+    """Returns (added, skipped)."""
     root = ET.parse(path).getroot()
     with _lock:
         items = load()
@@ -112,4 +112,4 @@ def import_sdrsharp(path, lo_offset_hz=100_000_000):
 
 if __name__ == "__main__":
     a, s = import_sdrsharp(sys.argv[1])
-    print(f"pridané {a}, preskočené {s}, spolu {len(load())}")
+    print(f"added {a}, skipped {s}, total {len(load())}")

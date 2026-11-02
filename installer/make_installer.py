@@ -1,10 +1,10 @@
-"""Zostaví inštalačný balík pre iné PC: RADIMCOM_install_v<verzia>.zip v priečinku dist.
-Verzia sa berie z loga v static/index.html (<span class="r-ver">Ver. 0.1xx</span>); priečinok v zipe zostáva RADIMCOM.
+"""Builds the installer package for another PC: RADIMCOM_install_v<version>.zip in the dist folder.
+The version is taken from the logo in static/index.html (<span class="r-ver">Ver. 0.1xx</span>); the folder in the zip stays RADIMCOM.
 
   python installer/make_installer.py
 
-Do balíka idú len program, webové rozhranie, knižnice a ovládače. Nejdú tam nastavenia tohto PC
-(vfos.json, config_X.json, pamäte, zálohy EEPROM, nahrávky), tie si nové PC vytvorí pri inštalácii.
+Only the program, web interface, libraries and drivers go into the package. Not the settings of this PC
+(vfos.json, config_X.json, memories, EEPROM backups, recordings); the new PC creates those during installation.
 """
 import os
 import re
@@ -34,14 +34,14 @@ CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "lime.py", "rds.py", "cw.
         "memories.py", "eeprom_tool.py", "setup_sdr.py", "start.bat", "setup.bat", "README.md"]
 LIBS = ["lib/librtlsdr.dll", "lib/libusb-1.0.dll"]
 FROM_INSTALLER = ["install.bat", "requirements.txt", "config.json", "DRIVERS.txt", "INSTALL.txt"]
-# súbory z tohto PC, ktoré sa pribalia (cieľ v balíku: zdroj)
+# files from this PC that are bundled (target in the package: source)
 EXTERNAL = {
     "lib/LimeSuite.dll": r"C:\Program Files\PothosSDR\bin\LimeSuite.dll",
     "drivers/zadig.exe": os.path.expanduser(r"~\Downloads\sdrsharp-x64\zadig.exe"),
 }
 D3XX_ZIP = os.path.expanduser(r"~\Downloads\FTD3XXDriver_WHQLCertified_v1.3.0.4_Installer.exe_.zip")
 D3XX_EXE = "FTD3XXDriver_WHQLCertified_v1.3.0.4_Installer.exe"
-# v balíku nesmie zostať značka stanice (sériové čísla, nahrávky…) okrem podpisu autora na stránke
+# no station marks may remain in the package (serial numbers, recordings…) except the author's signature on the page
 FORBIDDEN = [b"OM2AMR", b"om2amr", "OM2AMR".encode("utf-16-le")]
 ALLOWED = [b"By Radim Mutina OM2AMR"]
 
@@ -68,7 +68,7 @@ def main():
         with zipfile.ZipFile(D3XX_ZIP) as z:
             with z.open(D3XX_EXE) as s, open(os.path.join(build, "drivers", D3XX_EXE), "wb") as d:
                 shutil.copyfileobj(s, d)
-        # kontrola stôp
+        # check for traces
         bad = []
         for dirpath, _, files in os.walk(build):
             for f in files:
