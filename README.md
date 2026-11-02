@@ -127,7 +127,7 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
   - CW: TUNE switches to CW and tunes to the detected tone, CLR clears the text.
   - RTTY: SHIFT, BAUD and POLARITY (Auto or fixed), CLR.
 
-    ![RTTY decoder: 75 Bd, 838 Hz shift and reverse polarity detected automatically, text on a green phosphor terminal](docs/images/decoders_rtty.png)
+    ![RTTY decoder receiving the DWD weather broadcast: 50 Bd, 445 Hz shift and reverse polarity detected automatically](docs/images/decoders_rtty.png)
 
   - SSTV: frequencies (80m–10m, ISS FM), mode selection (Auto by VIS), STOP, PNG and a gallery of recent
     images (saved to `data\sstv\`). Modes Martin M1/M2, Scottie S1/S2/DX, Robot 36/72, PD 50–290;
