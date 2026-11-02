@@ -4,6 +4,8 @@ A receiver for RTL-SDR dongles and LimeSDR Mini controlled from a web browser: H
 The screen looks like a transceiver: S-meter, 7-segment displays, spectrum, waterfall and function keys.
 Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
 
+![RADIMCOM main screen: four VFOs, function keys, band buttons, spectrum and waterfall](docs/images/main.png)
+
 ## Features
 
 - **Up to four VFOs, A–D.** Each VFO has its own SDR (RTL-SDR or LimeSDR Mini, selected by serial number)
@@ -123,6 +125,9 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
     images (saved to `data\sstv\`). Modes Martin M1/M2, Scottie S1/S2/DX, Robot 36/72, PD 50–290;
     AFC and slant correction are automatic. Filter at least 2.7 kHz.
   - ACARS: channel buttons (131.525 / 131.725 / 131.825 / 136.900 MHz), CLR; click the registration or flight to open the ADS-B map.
+
+  ![DECODERS tab with the ACARS decoder: messages with aircraft type and position from ADS-B](docs/images/decoders.png)
+
 - **AUDIO**:
   - STEREO: WFM stereo on/off (mono = less noise on weak stations).
   - NOTCH: automatic notch for AM/LSB/USB, finds and removes steady tones (whistles, carriers) by ~40 dB and
