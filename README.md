@@ -43,7 +43,8 @@ Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
 - LimeSDR Mini with the FTDI D3XX driver.
 
 Third-party binaries are **not in this git repository** (folders `lib\` and `drivers\` are in `.gitignore`).
-The installer package (`RADIMCOM_install_v<version>.zip`) contains them all. When running from the git sources,
+The installer package (`RADIMCOM_install_v<version>.zip`, download it from
+[Releases](https://github.com/om2amr/RADIMCOM/releases)) contains them all. When running from the git sources,
 put them there yourself:
 
 | File | Purpose | Source |
