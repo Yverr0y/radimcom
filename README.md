@@ -1,14 +1,16 @@
 # RADIMCOM
 
-A receiver for RTL-SDR dongles controlled from a web browser: HF through an upconverter, VHF/UHF directly.
+A receiver for RTL-SDR dongles and LimeSDR Mini controlled from a web browser: HF through an upconverter, VHF/UHF directly.
 The screen looks like a transceiver: S-meter, 7-segment displays, spectrum, waterfall and function keys.
-Three dongles work as three VFOs (A, B, C), switched with a single button.
+Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
 
 ## Features
 
-- **Three VFOs, A/B/C.** Each VFO has its own dongle (selected by serial number) and its own settings.
-  All three frequencies are shown side by side: the active VFO is lit, inactive ones are grey but show the
-  actual tuned frequency. The waterfall of every VFO keeps running, so its history is visible right after switching.
+- **Up to four VFOs, A–D.** Each VFO has its own SDR (RTL-SDR or LimeSDR Mini, selected by serial number)
+  and its own settings. All frequencies are shown side by side: the active VFO is lit, inactive ones are grey
+  but show the actual tuned frequency. The waterfall of every VFO keeps running, so its history is visible
+  right after switching. With fewer than four SDRs the remaining VFO windows stay in place, greyed out ("NO SDR").
+- **RF GAIN and SQUELCH sliders** under each VFO display.
 - **Modes:** AM, FM, WFM, LSB, USB and CW with selectable filter width.
 - **WFM stereo** (19 kHz pilot, **ST** flag) and **RDS**: station name (PS), RadioText, PI, PTY, TP/TA and clock (CT).
 - **Squelch** for AM, FM and WFM, each mode with its own level. It decides every ~8 ms, so it does not cut off
@@ -19,7 +21,11 @@ Three dongles work as three VFOs (A, B, C), switched with a single button.
 - **Frequency memories** (MEM) with favourites and import from SDR# (`frequencies.xml`).
 - **Upconverter:** HF is tuned via the LO (e.g. 100 MHz). For a VFO with a manual converter switch, crossing
   30 MHz shows a warning whether the converter must be switched on (CONV) or set to BYPASS.
-- **Audio** starts automatically when the page opens and always comes from the active VFO.
+- **Audio** starts automatically when the page opens and comes from the active VFO.
+- **CUE:** keep listening to other VFOs at a separate CUE level while one VFO is selected;
+  MAIN and CUE volume faders, stereo level meter, MUTE.
+- **REC:** records the audio of the selected VFO to a WAV file.
+- **TX with LimeSDR** (optional, off by default), see below.
 
 ## Requirements
 
@@ -30,6 +36,7 @@ Three dongles work as three VFOs (A, B, C), switched with a single button.
   ```
 
 - RTL-SDR dongles with the WinUSB driver (e.g. via Zadig). `librtlsdr.dll` and `libusb-1.0.dll` are in the `lib` folder.
+- LimeSDR Mini with the FTDI D3XX driver; `LimeSuite.dll` in the `lib` folder.
 - For FT8 the PC clock must be accurate (±1 s).
 
 ## Running
@@ -53,7 +60,7 @@ On Windows just double-click `start.bat`. Then open **http://localhost:8434** in
 
 | Action | How |
 |---|---|
-| Switch VFO | **VFO-A / VFO-B / VFO-C** button or click on a grey display |
+| Switch VFO | **VFO-A … VFO-D** button or click on a grey display |
 | Enter a frequency | click on the active VFO display, type e.g. `7100` (kHz) or `145.5` (MHz), Enter (Esc cancels) |
 | Step by 1 / 10 steps | `‹ ›` / `« »` buttons under the display, ← → arrow keys |
 | Tune to a point | click in the spectrum or waterfall |
@@ -136,7 +143,7 @@ When squelch is on for an inactive VFO and it opens, that VFO's button lights up
 python setup_sdr.py
 ```
 
-The wizard (`setup.bat` on Windows) finds the connected RTL-SDRs and LimeSDRs and assigns them to VFO A, B, C…:
+The wizard (`setup.bat` on Windows) finds the connected RTL-SDRs and LimeSDRs and assigns them to VFO A, B, C, D:
 the device for a VFO is chosen by number or by unplugging it for a moment (the wizard detects which one is
 missing). Then it asks about the upconverter and ppm and writes `vfos.json`. If the dongles share the same serial
 number (commonly `00000001`), it offers to write a unique number to the EEPROM. Old `vfos.json` and `config_X.json`
@@ -181,7 +188,7 @@ python memories.py C:\sdrsharpSW\frequencies.xml
 | File | Contents |
 |---|---|
 | `app.py` | receiver server (Flask): API, events (SSE) and audio |
-| `launcher.py` | VFO A/B/C launcher |
+| `launcher.py` | VFO A–D launcher |
 | `sdr.py` | RTL-SDR via librtlsdr (ctypes) and DSP: tuning, filters, demodulation, squelch, waterfall |
 | `rds.py` | RDS decoder |
 | `ft8.py`, `wefax.py`, `cw.py`, `rtty.py`, `sstv.py`, `acars.py` | decoders |

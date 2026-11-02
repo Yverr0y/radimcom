@@ -1,4 +1,4 @@
-"""Spúšťač VFO A/B/C: pre každé VFO z vfos.json pustí samostatný proces prijímača (app.py --vfo X)
+"""Spúšťač VFO A–D: pre každé VFO z vfos.json pustí samostatný proces prijímača (app.py --vfo X)
 s vlastnou kľúčenkou (podľa sériového čísla), portom a nastaveniami, a sám na hlavnom porte
 podáva stránku a zoznam VFO. Stránka potom hovorí s prijímačmi priamo cez ich porty.
 
