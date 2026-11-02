@@ -126,6 +126,9 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
     NEW and PNG; a click in the image sets that spot as the left edge. Finished images are saved to `data\wefax\`.
   - CW: TUNE switches to CW and tunes to the detected tone, CLR clears the text.
   - RTTY: SHIFT, BAUD and POLARITY (Auto or fixed), CLR.
+
+    ![RTTY decoder: 75 Bd, 838 Hz shift and reverse polarity detected automatically, text on a green phosphor terminal](docs/images/decoders_rtty.png)
+
   - SSTV: frequencies (80m–10m, ISS FM), mode selection (Auto by VIS), STOP, PNG and a gallery of recent
     images (saved to `data\sstv\`). Modes Martin M1/M2, Scottie S1/S2/DX, Robot 36/72, PD 50–290;
     AFC and slant correction are automatic. Filter at least 2.7 kHz.
