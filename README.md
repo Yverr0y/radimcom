@@ -60,13 +60,16 @@ On Windows just double-click `start.bat`. Then open **http://localhost:8434** in
 
 | Action | How |
 |---|---|
-| Switch VFO | **VFO-A … VFO-D** button or click on a grey display |
-| Enter a frequency | click on the active VFO display, type e.g. `7100` (kHz) or `145.5` (MHz), Enter (Esc cancels) |
-| Step by 1 / 10 steps | `‹ ›` / `« »` buttons under the display, ← → arrow keys |
+| Switch VFO | **VFO-A … VFO-D** button or click on an inactive (grey) display |
+| Enter a frequency | click on the active VFO display, type e.g. `7100` (kHz) or `145.5` (MHz), units `k` / `M` / `Hz` also work; Enter (Esc cancels) |
+| Tune by one step | ← → arrow keys, or mouse wheel over the spectrum or waterfall (step set by STEP) |
+| Tune by a digit | mouse wheel over a digit of a VFO display tunes by that digit's place (1 Hz … 1 GHz); works on inactive VFOs too, without switching |
 | Tune to a point | click in the spectrum or waterfall |
-| Move the band | drag with the mouse in the waterfall |
-| Fine tuning | mouse wheel over the spectrum or waterfall (one step) |
-| Band | buttons in the groups HF HAM, HF BROADCAST, VHF/UHF HAM, FM BROADCAST, OTHER |
+| Move the band | drag with the mouse in the spectrum or waterfall |
+| Filter width | drag the filter edge in the spectrum |
+| Band | buttons in the groups HF HAM, HF BROADCAST, VHF / UHF HAM, OTHER (FM BCAST tunes the last FM station listened to) |
+
+Hovering over the spectrum or waterfall shows the frequency under the mouse.
 
 If a band or memory is outside the range of the active VFO, the receiver switches by itself to a VFO that can
 receive it (e.g. an HF band to the VFO with the converter).
