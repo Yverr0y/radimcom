@@ -29,11 +29,15 @@ Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
 
 ## Requirements
 
-- Windows, Python 3 and the packages `flask`, `numpy`, `scipy` and `PyFT8` (needed only for FT8):
+- Windows and Python 3.9+. The simplest way is the installer package (`install.bat`, see `installer\INSTALL.txt`),
+  which creates `.venv` and installs everything. By hand:
 
   ```bash
-  pip install flask numpy scipy PyFT8
+  pip install -r installer\requirements.txt
+  pip install --no-deps PyFT8
   ```
+
+  (`flask`, `numpy`, `scipy`; `PyFT8` is needed only for the FT8 decoder.)
 
 - RTL-SDR dongles with the WinUSB driver (e.g. via Zadig). `librtlsdr.dll` and `libusb-1.0.dll` are in the `lib` folder.
 - LimeSDR Mini with the FTDI D3XX driver; `LimeSuite.dll` in the `lib` folder.
@@ -51,8 +55,8 @@ On Windows just double-click `start.bat`. Then open **http://localhost:8434** in
   own port for each VFO and serves the page itself on port 8434. Closing the launcher also closes the receivers.
 - Without `vfos.json` a single receiver runs with the settings from `data\config.json`.
 - Only one such server can run at a time, because the dongles are shared.
-- If the browser does not allow sound without a click, *"click anywhere to start audio"* blinks next to the MUTE button.
-  Sound starts after the first click or key press on the page.
+- If the browser does not allow sound without a click, the page shows *"Click anywhere to start audio"*.
+  Sound starts after the first click on the page.
 
 ## Controls
 
@@ -74,6 +78,13 @@ Hovering over the spectrum or waterfall shows the frequency under the mouse.
 If a band or memory is outside the range of the active VFO, the receiver switches by itself to a VFO that can
 receive it (e.g. an HF band to the VFO with the converter).
 
+### VFO window
+
+Each VFO window shows a status flag (USB icon = SDR running, WAIT / OPENING / CAL while starting,
+OFFLINE on error or disconnection; hover for details), the mode, a **CUE** flag (click to toggle CUE for
+that VFO without switching), the frequency display and the **RF GAIN** and **SQUELCH** sliders with their values
+(squelch only in AM/FM/WFM). The sliders work on inactive VFOs too, without switching.
+
 ### Frequency display
 
 - Below 30 MHz in **kHz**: `7.016.500` kHz, the first dot separates thousands, the second is the decimal point.
@@ -83,37 +94,53 @@ receive it (e.g. an HF band to the VFO with the converter).
 ### Function keys
 
 - **MODE**: demodulation. **FILTER**: bandwidth for the current mode.
-- **STEP**: tuning step. **ZOOM**: spectrum and waterfall span.
+- **GAIN**: AGC switches automatic tuner gain on/off (manual gain with the RF GAIN slider or in SET).
+- **STEP**: tuning step (10 Hz – 10 kHz). **ZOOM**: spectrum and waterfall span (1×–32×).
 - **DECODE**: turns on the FT8, WEFAX, CW, RTTY, SSTV or ACARS decoder. The panels are in the
-  **DECODERS** tab next to SPECTRUM; turning a decoder on opens it, a green dot signals a new message/image:
-  - FT8: band selection and CLR.
-  - WEFAX: stations (DWD Pinneberg 3855/7880/13882.5 kHz, Northwood GYA 2618.5/4610/8040/11086.5 kHz), LPM/IOC, NEW and PNG (images are saved to `data\wefax\`).
-  - CW: TUNE tunes to the detected tone, CLR clears the text.
+  **DECODERS** tab next to SPECTRUM; turning a decoder on opens it, a green dot signals a new message/image.
+  Every panel has a LOG checkbox for the daily log:
+  - FT8: band buttons (160 m – 10 m) and CLR.
+  - WEFAX: stations (DWD Pinneberg 3855/7880/13882.5 kHz, Northwood GYA 2618.5/4610/8040/11086.5 kHz), LPM/IOC (Auto or fixed),
+    NEW and PNG; a click in the image sets that spot as the left edge. Finished images are saved to `data\wefax\`.
+  - CW: TUNE switches to CW and tunes to the detected tone, CLR clears the text.
+  - RTTY: SHIFT, BAUD and POLARITY (Auto or fixed), CLR.
   - SSTV: frequencies (80m–10m, ISS FM), mode selection (Auto by VIS), STOP, PNG and a gallery of recent
     images (saved to `data\sstv\`). Modes Martin M1/M2, Scottie S1/S2/DX, Robot 36/72, PD 50–290;
     AFC and slant correction are automatic. Filter at least 2.7 kHz.
-- **AUDIO**: STEREO (WFM) and NOTCH: automatic notch for AM/LSB/USB, finds and removes steady
-  tones (whistles, carriers) by ~40 dB and leaves speech. It also feeds the SSTV decoder, so turn it off for SSTV.
-  Volume is on the slider at the top right; the speaker icon below it is MUTE.
-- **SET**: settings of the active VFO.
+  - ACARS: channel buttons (131.525 / 131.725 / 131.825 / 136.900 MHz), CLR; click the registration or flight to open the ADS-B map.
+- **AUDIO**:
+  - STEREO: WFM stereo on/off (mono = less noise on weak stations).
+  - NOTCH: automatic notch for AM/LSB/USB, finds and removes steady tones (whistles, carriers) by ~40 dB and
+    leaves speech. It also feeds the SSTV decoder, so turn it off for SSTV.
+  - ALC: automatic audio level in AM/LSB/USB/CW; off = fixed gain.
+  - CUE: keep hearing this VFO (at the CUE level) when another VFO is selected.
+- **Volume** (top right): vertical MAIN (active VFO) and CUE faders, stereo L/R level meter, the speaker icon
+  below them is MUTE, and **REC** records the audio of the active VFO to a WAV file.
+- **MENU → SET**: settings of the active VFO.
   - Squelch for the current mode.
-  - Gain (manual or automatic).
-  - Upconverter LO and converter mode (off / on / auto).
-  - ppm correction.
-  - Bias-tee 4.5 V. Turn it on only when the antenna or preamplifier really needs it.
+  - Tuner gain (manual or automatic), RTL2832 digital AGC (RTL-SDR only).
+  - Display width (sample rate).
+  - Upconverter LO and ppm correction.
+  - Bias-tee 4.5 V (if the SDR has it). Turn it on only when the upconverter or preamplifier really needs it.
+  - Enable TX (LimeSDR only), see below.
+  - S-meter calibration (S9 level) and waterfall colour range / offset.
   - RESET DONGLE.
-- **MEM**: frequency memories. ＋ SAVE CURRENT stores the frequency, mode and width; ★ marks a favourite.
+  - Without `vfos.json` (single receiver) also the dongle selection and the upconverter mode (auto / on / off).
+- **MENU → MEM**: frequency memories with groups, search and favourites. ＋ SAVE CURRENT stores the frequency,
+  mode and width under a name and group; ★ marks a favourite.
+
+The clock (top right) switches between local time and UTC with a click.
 
 ### Flags next to the S-meter
 
 | Flag | Meaning |
 |---|---|
-| RX | receiver is running |
+| RX / TX | receiving; TX (red) while transmitting with the LimeSDR |
 | mode, width | current demodulation and filter |
-| SQL | squelch is on; lit when open |
-| ST | WFM: stereo pilot received |
+| SQL | squelch is on (shown only then); lit when open |
+| ST | WFM only: lit when the stereo pilot is received |
 | ALC | AM/SSB/CW: automatic audio level (grey = off) |
-| CONV / BYPASS | required position of the manual upconverter switch |
+| CONV / BYPASS | required position of the manual upconverter switch (VFOs with upconverter mode auto) |
 
 When squelch is on for an inactive VFO and it opens, that VFO's button lights up green.
 

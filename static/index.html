@@ -169,7 +169,7 @@
       <div class="ft8-head">
         <b>CW</b>
         <span class="txt-info" id="cwInfo"></span>
-        <label class="wf-opt log-opt" title="Write to the daily log logs\cw_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="cw">LOG</label>
+        <label class="wf-opt log-opt" title="Write to the daily log data\logs\cw_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="cw">LOG</label>
         <button id="cwTune" class="key small" title="Switches to CW and tunes exactly to the detected tone">TUNE</button>
         <button id="cwClear" class="key small" title="Clear text">CLR</button>
       </div>
@@ -189,7 +189,7 @@
           <select id="rttyPol"><option value="auto">Auto</option><option value="normal">Normal</option><option value="reverse">Reverse</option></select>
         </label>
         <span class="txt-info" id="rttyInfo"></span>
-        <label class="wf-opt log-opt" title="Write to the daily log logs\rtty_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="rtty">LOG</label>
+        <label class="wf-opt log-opt" title="Write to the daily log data\logs\rtty_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="rtty">LOG</label>
         <button id="rttyClear" class="key small" title="Clear text">CLR</button>
       </div>
       <p class="note">Baudot (ITA2). Shift, speed and polarity are detected automatically from the two tones in the filter passband
@@ -203,7 +203,7 @@
         <b>FT8 decoder</b>
         <div class="bands" id="ft8Bands"></div>
         <span id="ft8Info" class="muted"></span>
-        <label class="wf-opt log-opt" title="Write to the daily log logs\ft8_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="ft8">LOG</label>
+        <label class="wf-opt log-opt" title="Write to the daily log data\logs\ft8_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="ft8">LOG</label>
         <button id="ft8Clear" class="key small">CLR</button>
       </div>
       <p class="note">Decodes the USB passband 0–3 kHz above the tuned frequency in 15 s cycles timed by the PC clock (must be accurate to ±1 s).</p>
@@ -221,7 +221,7 @@
         <b>ACARS</b>
         <div class="bands" id="acarsBands"></div>
         <span id="acarsInfo" class="muted"></span>
-        <label class="wf-opt log-opt" title="Write to the daily log acars\acars_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="acars">LOG</label>
+        <label class="wf-opt log-opt" title="Write to the daily log data\acars\acars_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="acars">LOG</label>
         <button id="acarsClear" class="key small">CLR</button>
       </div>
       <p class="note">Aircraft data link on the VHF airband (AM, 2400 bit/s). Works in any mode: the decoder demodulates AM itself.
@@ -250,12 +250,12 @@
         <label class="wf-opt">IOC
           <select id="wefaxIoc"><option value="auto">Auto</option><option>576</option><option>288</option></select>
         </label>
-        <label class="wf-opt log-opt" title="Write to the daily log logs\wefax_YYYY-MM-DD.txt (names of saved images) (UTC, shared by all VFOs)"><input type="checkbox" data-log="wefax">LOG</label>
+        <label class="wf-opt log-opt" title="Write to the daily log data\logs\wefax_YYYY-MM-DD.txt (names of saved images) (UTC, shared by all VFOs)"><input type="checkbox" data-log="wefax">LOG</label>
         <button id="wefaxNew" class="key small">NEW</button>
         <button id="wefaxSave" class="key small">PNG</button>
       </div>
       <p class="note">Format (IOC from the start tone, LPM, line start from phasing) and fine tuning (AFC ±3 kHz) are detected automatically.
-        Finished images are saved to the <code>wefax</code> folder. Click in the image = that spot becomes the left edge.</p>
+        Finished images are saved to the <code>data\wefax</code> folder. Click in the image = that spot becomes the left edge.</p>
       <div class="wefax-wrap" id="wefaxWrap">
         <div id="wefaxEmpty" class="ft8-empty">Waiting for a signal… Tune a WEFAX station (e.g. DWD), the image starts by itself.</div>
       </div>
@@ -269,13 +269,13 @@
       </div>
       <div class="ft8-head">
         <label class="wf-opt">MODE <select id="sstvMode"><option value="auto">Auto (VIS)</option></select></label>
-        <label class="wf-opt log-opt" title="Write to the daily log logs\sstv_YYYY-MM-DD.txt (names of saved images) (UTC, shared by all VFOs)"><input type="checkbox" data-log="sstv">LOG</label>
+        <label class="wf-opt log-opt" title="Write to the daily log data\logs\sstv_YYYY-MM-DD.txt (names of saved images) (UTC, shared by all VFOs)"><input type="checkbox" data-log="sstv">LOG</label>
         <button id="sstvStop" class="key small" title="End the current image and save it">STOP</button>
         <button id="sstvSave" class="key small">PNG</button>
       </div>
       <p class="note">Decodes the demodulated audio (USB/LSB on HF, FM e.g. ISS 145.800). Mode and start from the VIS code; without VIS the image
         starts from the line sync pulses. Fine tuning (AFC) and slant are corrected automatically. Use a filter of at least 2.7 kHz.
-        Finished images are saved to the <code>sstv</code> folder.</p>
+        Finished images are saved to the <code>data\sstv</code> folder.</p>
       <div class="sstv-main">
         <div class="sstv-wrap"><canvas id="sstvCanvas" width="320" height="256"></canvas>
           <div id="sstvEmpty" class="ft8-empty">Waiting for a signal… The image starts by itself on the VIS code.</div></div>
@@ -298,7 +298,7 @@
     <div class="setting" id="vfoSetting" hidden>
       <div class="row"><span>Settings for</span></div>
       <p class="note" id="vfoSettingText"></p>
-      <p class="note">Each VFO keeps its own settings. Dongles and VFO assignment are in <code>vfos.json</code>.</p>
+      <p class="note">Each VFO keeps its own settings. Dongles and VFO assignment are in <code>data\vfos.json</code>.</p>
     </div>
     <div class="setting" id="deviceSetting">
       <div class="row"><span>Dongle</span><button id="devRefresh" class="key small" title="Search for connected dongles again">⟳</button></div>
