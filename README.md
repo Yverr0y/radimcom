@@ -39,8 +39,22 @@ Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
 
   (`flask`, `numpy`, `scipy`; `PyFT8` is needed only for the FT8 decoder.)
 
-- RTL-SDR dongles with the WinUSB driver (e.g. via Zadig). `librtlsdr.dll` and `libusb-1.0.dll` are in the `lib` folder.
-- LimeSDR Mini with the FTDI D3XX driver; `LimeSuite.dll` in the `lib` folder.
+- RTL-SDR dongles with the WinUSB driver (installed with Zadig).
+- LimeSDR Mini with the FTDI D3XX driver.
+
+Third-party binaries are **not in this git repository** (folders `lib\` and `drivers\` are in `.gitignore`).
+The installer package (`RADIMCOM_install_v<version>.zip`) contains them all. When running from the git sources,
+put them there yourself:
+
+| File | Purpose | Source |
+|---|---|---|
+| `lib\librtlsdr.dll`, `lib\libusb-1.0.dll` | required for RTL-SDR | Windows release of the RTL-SDR Blog driver (`rtl-sdr-blog`, supports the V4) |
+| `lib\LimeSuite.dll` | only for LimeSDR | PothosSDR (`C:\Program Files\PothosSDR\bin`); if it is not in `lib\`, it is loaded from the PothosSDR installation |
+| `drivers\zadig.exe` | WinUSB driver for RTL-SDR | zadig.akeo.ie |
+| `drivers\FTD3XXDriver_WHQLCertified_v1.3.0.4_Installer.exe` | D3XX driver for LimeSDR | FTDI (ftdichip.com, D3XX drivers) |
+
+`installer\make_installer.py` takes the RTL-SDR DLLs from `lib\`, `LimeSuite.dll` from PothosSDR and the drivers
+from `Downloads` on this PC.
 - For FT8 the PC clock must be accurate (±1 s).
 
 ## Running
