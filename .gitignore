@@ -3,10 +3,10 @@
 __pycache__/
 *.pyc
 
-# dáta tohto PC (nastavenia, pamäte, logy, nahrávky, zálohy)
+# data of this PC (settings, memories, logs, recordings, backups)
 data/
 
-# staré umiestnenie dát (pred presunom do data/)
+# old data location (before the move to data/)
 /config.json
 /config_*.json
 /vfos.json
@@ -19,15 +19,15 @@ data/
 /config_backup/
 /tx_audio/
 
-# zostavené balíky
+# built packages
 dist/
 *.zip
 
-# binárky tretích strán (make_installer ich berie z tohto PC)
+# third-party binaries (make_installer takes them from this PC)
 /lib/
 /drivers/
 
-# kópie z installer/ v koreni (rozbalená inštalácia)
+# copies from installer/ in the root folder (unpacked installation)
 /install.bat
 /INSTALL.txt
 /DRIVERS.txt
