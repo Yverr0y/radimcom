@@ -247,14 +247,40 @@ python memories.py C:\sdrsharpSW\frequencies.xml
 | `paths.py` | data paths (`data\`), migration of data from older versions |
 | `installer/` | building the installer package (`make_installer.py`) and the files it contains; the package is created in `dist\` |
 
-The data of this PC is in `data\` (not in git and not in the installer package):
+## Data folder (`data\`)
 
-| File / folder | Contents |
-|---|---|
-| `config.json` | settings for single-receiver mode and template for new VFOs |
-| `vfos.json`, `config_A/B/C/D.json` | dongle assignment and settings of each VFO |
-| `memories.json` | saved memories |
-| `logs\`, `acars\`, `wefax\`, `sstv\` | daily logs and saved images |
-| `config_backup\`, `eeprom_backup\` | backups of settings and EEPROM |
+RADIMCOM keeps two kinds of files apart:
 
-Older installations kept these files in the main folder; they are moved to `data\` automatically at first start.
+- **Program** (main folder): code, web interface, libraries. Same on every PC; comes from git or the installer package.
+- **Your data** (`data\` folder): your settings, memories, logs, saved images and backups. Different on every PC.
+
+`data\` is never uploaded to GitHub (it is in `.gitignore`) and never packed into the installer, so your
+personal data stays only on your PC, and an update or reinstall of the program does not touch it.
+The paths are defined in `paths.py`.
+
+| File / folder | Contents | Created by |
+|---|---|---|
+| `config.json` | settings for single-receiver mode and template for new VFOs | installer (template), moved here at first start |
+| `vfos.json` | dongle assignment to VFOs (serial numbers, ports) | `setup_sdr.py` / `setup.bat` |
+| `config_A/B/C/D.json` | settings of each VFO (frequency, mode, filters, squelch, gain, ppm, …), saved on every change | launcher at first start, from `config.json` + `init` |
+| `memories.json` | frequency memories | MEM, import from SDR# |
+| `logs\` | daily decoder logs `<decoder>_YYYY-MM-DD.txt` (UTC) | LOG checkbox in decoder cards |
+| `acars\` | ACARS daily log `acars_YYYY-MM-DD.txt` (UTC) | ACARS with LOG on |
+| `wefax\`, `sstv\` | saved WEFAX / SSTV images (PNG) | the decoders |
+| `config_backup\<date_time>\` | previous `vfos.json` and `config_X.json` | `setup_sdr.py` before writing a new assignment |
+| `eeprom_backup\` | dongle EEPROM backups (`.bin`) | `eeprom_tool.py`, `setup_sdr.py` |
+| `tx_audio\test_message.wav` | optional FM test message for TX | you (copy a WAV there) |
+
+**Older versions** kept these files in the main folder. At the first start of a version with `data\` they are moved
+there automatically (`paths.py`). A file is moved only if it is not in `data\` yet; an existing file in `data\` is
+never overwritten (a leftover copy then stays unused in the main folder).
+
+**Backup:** close the receiver first (it saves `config_X.json` while running), then copy or zip the whole `data\`
+folder somewhere outside the RADIMCOM folder.
+
+**Reinstall / update:**
+- Unzipping a new installer package over the old folder keeps `data\` (the package has no `data\`).
+- In a new, empty folder: copy the backed-up `data\` into it before the first start.
+- In `install.bat`, answer **N** to "Run the SDR setup now" to keep the existing VFO assignment; with Y a new
+  assignment is created and the old one is moved to `data\config_backup\`.
+- Do not run two RADIMCOM folders at the same time: they share the dongles and port 8434.
