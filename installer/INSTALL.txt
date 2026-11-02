@@ -49,7 +49,7 @@ All settings, memories, logs and saved images of this PC are kept in the data\ f
 Transmitting (LimeSDR only): SET -> "Enable TX" (off by default). PTT = hold SPACE.
 Only with a suitable antenna or dummy load and on frequencies you are licensed for.
 
-More details: README.md (Slovak).
+More details: README.md.
 
 Change log
 ----------

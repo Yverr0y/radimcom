@@ -1,115 +1,115 @@
 # RADIMCOM
 
-Prijímač s RTL-SDR kľúčenkami ovládaný z prehliadača: KV cez up-konvertor, VKV/UKV priamo.
-Obrazovka vyzerá ako transceiver: S-meter, 7-segmentové displeje, spektrum, vodopád a funkčné klávesy.
-Tri kľúčenky fungujú ako tri VFO (A, B, C), medzi ktorými sa prepína jedným tlačidlom.
+A receiver for RTL-SDR dongles controlled from a web browser: HF through an upconverter, VHF/UHF directly.
+The screen looks like a transceiver: S-meter, 7-segment displays, spectrum, waterfall and function keys.
+Three dongles work as three VFOs (A, B, C), switched with a single button.
 
-## Vlastnosti
+## Features
 
-- **Tri VFO, A/B/C.** Každé VFO má vlastnú kľúčenku (podľa sériového čísla) a vlastné nastavenia.
-  Všetky tri frekvencie sú vedľa seba: aktívne VFO svieti, neaktívne je sivé, ale ukazuje skutočnú
-  nastavenú frekvenciu. Vodopád všetkých VFO beží stále, takže po prepnutí je hneď vidieť jeho históriu.
-- **Módy:** AM, FM, WFM, LSB, USB a CW s voliteľnou šírkou filtra.
-- **WFM stereo** (19 kHz pilot, príznak **ST**) a **RDS**: názov stanice (PS), RadioText, PI, PTY, TP/TA a čas (CT).
-- **Squelch** pre AM, FM a WFM, každý mód s vlastnou úrovňou. Rozhoduje každých ~8 ms, takže neodsekne
-  začiatok relácie (letecké pásmo). Úroveň je na S-metri vyznačená žltou značkou.
-- **Spektrum a vodopád** so zoomom 1×–32×.
-- **Dekodéry:** FT8, WEFAX (rádiofax s automatickou detekciou formátu), CW (Morse s AFC a odhadom rýchlosti), RTTY (Baudot, automatický posun 90–1000 Hz, rýchlosť 45,45/50/75/100 Bd a polarita), SSTV (farebné obrázky, 14 režimov, VIS) a ACARS (dátové správy lietadiel na 131,725 MHz a ďalších, AM, MSK 2400 bit/s, kontrola CRC; typ a poloha lietadla z adsb.fi / adsb.lol).
-- **Denné logy:** zaškrtávadlo LOG v karte každého dekodéra zapisuje do `data\logs\<dekodér>_RRRR-MM-DD.txt` (UTC, riadok na správu; WEFAX/SSTV názvy uložených obrázkov), ACARS do `data\acars\acars_RRRR-MM-DD.txt`.
-- **Pamäte frekvencií** (MEM) s obľúbenými a importom zo SDR# (`frequencies.xml`).
-- **Up-konvertor:** KV sa ladí cez LO (napr. 100 MHz). Pri VFO s ručným prepínačom konvertora sa pri
-  prechode cez 30 MHz zobrazí upozornenie, či ho treba zapnúť (CONV) alebo prepnúť na BYPASS.
-- **Audio** sa spustí samo po otvorení stránky a ide vždy z aktívneho VFO.
+- **Three VFOs, A/B/C.** Each VFO has its own dongle (selected by serial number) and its own settings.
+  All three frequencies are shown side by side: the active VFO is lit, inactive ones are grey but show the
+  actual tuned frequency. The waterfall of every VFO keeps running, so its history is visible right after switching.
+- **Modes:** AM, FM, WFM, LSB, USB and CW with selectable filter width.
+- **WFM stereo** (19 kHz pilot, **ST** flag) and **RDS**: station name (PS), RadioText, PI, PTY, TP/TA and clock (CT).
+- **Squelch** for AM, FM and WFM, each mode with its own level. It decides every ~8 ms, so it does not cut off
+  the start of a transmission (airband). The level is marked on the S-meter with a yellow tick.
+- **Spectrum and waterfall** with 1×–32× zoom.
+- **Decoders:** FT8, WEFAX (radio fax with automatic format detection), CW (Morse with AFC and speed estimation), RTTY (Baudot, automatic shift 90–1000 Hz, speed 45.45/50/75/100 Bd and polarity), SSTV (colour images, 14 modes, VIS) and ACARS (aircraft data messages on 131.725 MHz and others, AM, MSK 2400 bit/s, CRC check; aircraft type and position from adsb.fi / adsb.lol).
+- **Daily logs:** the LOG checkbox in each decoder card writes to `data\logs\<decoder>_YYYY-MM-DD.txt` (UTC, one line per message; WEFAX/SSTV log the names of saved images), ACARS to `data\acars\acars_YYYY-MM-DD.txt`.
+- **Frequency memories** (MEM) with favourites and import from SDR# (`frequencies.xml`).
+- **Upconverter:** HF is tuned via the LO (e.g. 100 MHz). For a VFO with a manual converter switch, crossing
+  30 MHz shows a warning whether the converter must be switched on (CONV) or set to BYPASS.
+- **Audio** starts automatically when the page opens and always comes from the active VFO.
 
-## Požiadavky
+## Requirements
 
-- Windows, Python 3 a balíčky `flask`, `numpy`, `scipy` a `PyFT8` (ten treba len pre FT8):
+- Windows, Python 3 and the packages `flask`, `numpy`, `scipy` and `PyFT8` (needed only for FT8):
 
   ```bash
   pip install flask numpy scipy PyFT8
   ```
 
-- RTL-SDR kľúčenky s ovládačom WinUSB (napr. cez Zadig). `librtlsdr.dll` a `libusb-1.0.dll` sú v priečinku `lib`.
-- Kvôli FT8 musia hodiny PC ísť presne (±1 s).
+- RTL-SDR dongles with the WinUSB driver (e.g. via Zadig). `librtlsdr.dll` and `libusb-1.0.dll` are in the `lib` folder.
+- For FT8 the PC clock must be accurate (±1 s).
 
-## Spustenie
+## Running
 
 ```bash
 python app.py
 ```
 
-Na Windows stačí dvojklik na `start.bat`. Potom otvor v prehliadači **http://localhost:8434**.
+On Windows just double-click `start.bat`. Then open **http://localhost:8434** in the browser.
 
-- Ak existuje `vfos.json`, spustí sa **spúšťač VFO** (`launcher.py`). Pre každé VFO otvorí samostatný
-  prijímač na vlastnom porte a sám na porte 8434 podáva stránku. Ukončením spúšťača sa zavrú aj prijímače.
-- Bez `vfos.json` beží jeden prijímač s nastaveniami z `config.json`.
-- Naraz môže bežať len jeden takýto server, pretože kľúčenky sú zdieľané.
-- Ak prehliadač nedovolí zvuk bez kliknutia, pri tlačidle MUTE bliká *„click anywhere to start audio“*.
-  Zvuk sa spustí po prvom kliknutí alebo stlačení klávesu na stránke.
+- If `data\vfos.json` exists, the **VFO launcher** (`launcher.py`) starts. It opens a separate receiver on its
+  own port for each VFO and serves the page itself on port 8434. Closing the launcher also closes the receivers.
+- Without `vfos.json` a single receiver runs with the settings from `data\config.json`.
+- Only one such server can run at a time, because the dongles are shared.
+- If the browser does not allow sound without a click, *"click anywhere to start audio"* blinks next to the MUTE button.
+  Sound starts after the first click or key press on the page.
 
-## Ovládanie
+## Controls
 
-### Ladenie
+### Tuning
 
-| Akcia | Ako |
+| Action | How |
 |---|---|
-| Prepnúť VFO | tlačidlo **VFO-A / VFO-B / VFO-C** alebo klik na sivý displej |
-| Zadať frekvenciu | klik na displej aktívneho VFO, napísať napr. `7100` (kHz) alebo `145.5` (MHz), Enter (Esc zruší) |
-| Krok o 1 / 10 krokov | tlačidlá `‹ ›` / `« »` pod displejom, šípky ← → na klávesnici |
-| Naladiť bod | klik do spektra alebo vodopádu |
-| Posúvať pásmo | ťahanie myšou vo vodopáde |
-| Jemné ladenie | koliesko myši nad spektrom alebo vodopádom (o jeden krok) |
-| Pásmo | tlačidlá v skupinách HF HAM, HF BROADCAST, VHF/UHF HAM, FM BROADCAST, OTHER |
+| Switch VFO | **VFO-A / VFO-B / VFO-C** button or click on a grey display |
+| Enter a frequency | click on the active VFO display, type e.g. `7100` (kHz) or `145.5` (MHz), Enter (Esc cancels) |
+| Step by 1 / 10 steps | `‹ ›` / `« »` buttons under the display, ← → arrow keys |
+| Tune to a point | click in the spectrum or waterfall |
+| Move the band | drag with the mouse in the waterfall |
+| Fine tuning | mouse wheel over the spectrum or waterfall (one step) |
+| Band | buttons in the groups HF HAM, HF BROADCAST, VHF/UHF HAM, FM BROADCAST, OTHER |
 
-Ak pásmo alebo pamäť nepatrí do rozsahu aktívneho VFO, prijímač sa sám prepne na VFO, ktoré ju prijme
-(napr. KV pásmo na VFO s konvertorom).
+If a band or memory is outside the range of the active VFO, the receiver switches by itself to a VFO that can
+receive it (e.g. an HF band to the VFO with the converter).
 
-### Displej frekvencie
+### Frequency display
 
-- Pod 30 MHz v **kHz**: `7.016.500` kHz, prvá bodka oddeľuje tisíce, druhá je desatinná.
-- Od 30 MHz v **MHz**: `439.475.000` MHz.
-- Posledné tri (menšie) číslice sú Hz.
+- Below 30 MHz in **kHz**: `7.016.500` kHz, the first dot separates thousands, the second is the decimal point.
+- From 30 MHz in **MHz**: `439.475.000` MHz.
+- The last three (smaller) digits are Hz.
 
-### Funkčné klávesy
+### Function keys
 
-- **MODE**: demodulácia. **FILTER**: šírka pásma pre aktuálny mód.
-- **STEP**: krok ladenia. **ZOOM**: výrez spektra a vodopádu.
-- **DECODE**: zapne dekodér FT8, WEFAX, CW, RTTY, SSTV alebo ACARS. Panely sú v záložke
-  **DECODERS** vedľa SPECTRUM; zapnutie dekodéra ju otvorí, zelená bodka hlási novú správu/obrázok:
-  - FT8: výber pásma a CLR.
-  - WEFAX: stanice (DWD Pinneberg 3855/7880/13882,5 kHz, Northwood GYA 2618,5/4610/8040/11086,5 kHz), LPM/IOC, NEW a PNG (obrázky sa ukladajú do `wefax/`).
-  - CW: TUNE doladí na nájdený tón, CLR vymaže text.
-  - SSTV: frekvencie (80m–10m, ISS FM), voľba režimu (Auto podľa VIS), STOP, PNG a galéria posledných
-    obrázkov (ukladajú sa do `sstv/`). Režimy Martin M1/M2, Scottie S1/S2/DX, Robot 36/72, PD 50–290;
-    AFC a korekcia náklonu automaticky. Filter aspoň 2,7 kHz.
-- **AUDIO**: STEREO (WFM) a NOTCH: automatický notch pre AM/LSB/USB, sám nájde a vyreže ustálené
-  tóny (hvízdanie, nosné) o ~40 dB, reč nechá. Ide aj do SSTV dekodéra, preto ho pri SSTV vypni.
-  Hlasitosť je na posuvníku vpravo hore, ikona reproduktora pod ním je MUTE.
-- **SET**: nastavenia aktívneho VFO.
-  - Squelch pre aktuálny mód.
-  - Zisk (ručne alebo automaticky).
-  - LO up-konvertora a režim konvertora (off / on / auto).
-  - Korekcia ppm.
-  - Bias-tee 4,5 V. Zapínaj ho len vtedy, keď ho anténa alebo predzosilňovač naozaj potrebuje.
+- **MODE**: demodulation. **FILTER**: bandwidth for the current mode.
+- **STEP**: tuning step. **ZOOM**: spectrum and waterfall span.
+- **DECODE**: turns on the FT8, WEFAX, CW, RTTY, SSTV or ACARS decoder. The panels are in the
+  **DECODERS** tab next to SPECTRUM; turning a decoder on opens it, a green dot signals a new message/image:
+  - FT8: band selection and CLR.
+  - WEFAX: stations (DWD Pinneberg 3855/7880/13882.5 kHz, Northwood GYA 2618.5/4610/8040/11086.5 kHz), LPM/IOC, NEW and PNG (images are saved to `data\wefax\`).
+  - CW: TUNE tunes to the detected tone, CLR clears the text.
+  - SSTV: frequencies (80m–10m, ISS FM), mode selection (Auto by VIS), STOP, PNG and a gallery of recent
+    images (saved to `data\sstv\`). Modes Martin M1/M2, Scottie S1/S2/DX, Robot 36/72, PD 50–290;
+    AFC and slant correction are automatic. Filter at least 2.7 kHz.
+- **AUDIO**: STEREO (WFM) and NOTCH: automatic notch for AM/LSB/USB, finds and removes steady
+  tones (whistles, carriers) by ~40 dB and leaves speech. It also feeds the SSTV decoder, so turn it off for SSTV.
+  Volume is on the slider at the top right; the speaker icon below it is MUTE.
+- **SET**: settings of the active VFO.
+  - Squelch for the current mode.
+  - Gain (manual or automatic).
+  - Upconverter LO and converter mode (off / on / auto).
+  - ppm correction.
+  - Bias-tee 4.5 V. Turn it on only when the antenna or preamplifier really needs it.
   - RESET DONGLE.
-- **MEM**: pamäte frekvencií. ＋ SAVE CURRENT uloží frekvenciu, mód a šírku; ★ označí obľúbenú.
+- **MEM**: frequency memories. ＋ SAVE CURRENT stores the frequency, mode and width; ★ marks a favourite.
 
-### Príznaky vedľa S-metra
+### Flags next to the S-meter
 
-| Príznak | Význam |
+| Flag | Meaning |
 |---|---|
-| RX | prijímač beží |
-| mód, šírka | aktuálna demodulácia a filter |
-| SQL | squelch je zapnutý; svieti, keď je otvorený |
-| ST | WFM: zachytený stereo pilot |
-| ALC | AM/SSB/CW: automatická úroveň audia (sivé = vypnuté) |
-| CONV / BYPASS | požadovaná poloha ručného prepínača up-konvertora |
+| RX | receiver is running |
+| mode, width | current demodulation and filter |
+| SQL | squelch is on; lit when open |
+| ST | WFM: stereo pilot received |
+| ALC | AM/SSB/CW: automatic audio level (grey = off) |
+| CONV / BYPASS | required position of the manual upconverter switch |
 
-Keď je na neaktívnom VFO zapnutý squelch a otvorí sa, jeho tlačidlo VFO zasvieti nazeleno.
+When squelch is on for an inactive VFO and it opens, that VFO's button lights up green.
 
-## Konfigurácia
+## Configuration
 
-### `vfos.json`: priradenie kľúčeniek k VFO
+### `vfos.json`: assigning dongles to VFOs
 
 ```json
 {
@@ -125,83 +125,83 @@ Keď je na neaktívnom VFO zapnutý squelch a otvorí sa, jeho tlačidlo VFO zas
 }
 ```
 
-- `serial` je sériové číslo kľúčenky v EEPROM (pri LimeSDR jeho sériové číslo, `driver: "lime"`).
-- `port` je port prijímača daného VFO. Stránka s ním komunikuje priamo.
-- `config` je súbor s nastaveniami VFO. Pri prvom spustení vznikne z `config.json` doplneného o hodnoty z `init`.
-  Potom si každé VFO pamätá vlastné ladenie, mód, filtre, squelch, zisk a ppm.
+- `serial` is the dongle's serial number in EEPROM (for a LimeSDR its serial number, `driver: "lime"`).
+- `port` is the port of that VFO's receiver. The page talks to it directly.
+- `config` is the VFO settings file. On first start it is created from `config.json` plus the values from `init`.
+  After that each VFO remembers its own tuning, mode, filters, squelch, gain and ppm.
 
-### Prvotná konfigurácia: `setup_sdr.py`
+### Initial setup: `setup_sdr.py`
 
 ```bash
 python setup_sdr.py
 ```
 
-Sprievodca (na Windows `setup.bat`) nájde pripojené RTL-SDR a LimeSDR a priradí ich k VFO A, B, C…:
-zariadenie pre dané VFO sa vyberie číslom alebo tak, že ho na chvíľu odpojíš (sprievodca zistí, ktoré
-chýba). Potom sa spýta na up-konvertor a ppm a zapíše `vfos.json`. Ak majú kľúčenky rovnaké sériové číslo
-(bežne `00000001`), ponúkne zápis jedinečného čísla do EEPROM. Staré `vfos.json` a `config_X.json`
-presunie do `config_backup/`. Prijímač musí byť počas konfigurácie vypnutý.
+The wizard (`setup.bat` on Windows) finds the connected RTL-SDRs and LimeSDRs and assigns them to VFO A, B, C…:
+the device for a VFO is chosen by number or by unplugging it for a moment (the wizard detects which one is
+missing). Then it asks about the upconverter and ppm and writes `vfos.json`. If the dongles share the same serial
+number (commonly `00000001`), it offers to write a unique number to the EEPROM. Old `vfos.json` and `config_X.json`
+are moved to `data\config_backup\`. The receiver must be stopped during setup.
 
-Korekcia ppm sa nastavuje aj neskôr v SET daného VFO.
+ppm correction can also be set later in the SET menu of each VFO.
 
-### Vysielanie (LimeSDR)
+### Transmitting (LimeSDR)
 
-Pri VFO s LimeSDR je v SET prepínač **Enable TX** (predvolene vypnutý). Keď je zapnutý, PTT je
-držaný medzerník: v FM ide skúšobná relácia z `tx_audio/test_message.wav` (ak existuje), inak nosná.
-Vysiela sa len bez up-konvertora.
+For a VFO with a LimeSDR, SET has an **Enable TX** switch (off by default). When enabled, PTT is
+holding the space bar: in FM a test message from `data\tx_audio\test_message.wav` is sent (if it exists), otherwise a carrier.
+Transmitting works only without the upconverter.
 
-### Sériové čísla kľúčeniek: `eeprom_tool.py`
+### Dongle serial numbers: `eeprom_tool.py`
 
 ```bash
 python eeprom_tool.py
 ```
 
-Vypíše pripojené kľúčenky a zálohuje ich EEPROM do `eeprom_backup/`.
+Lists the connected dongles and backs up their EEPROM to `data\eeprom_backup\`.
 
 ```bash
 python eeprom_tool.py write INDEX SERIAL
 ```
 
-Zapíše nové sériové číslo. Musí mať rovnakú dĺžku ako pôvodné. Po zápise kľúčenku odpoj a znova pripoj.
+Writes a new serial number. It must have the same length as the original. After writing, unplug and replug the dongle.
 
 ```bash
 python eeprom_tool.py restore INDEX FILE
 ```
 
-Obnoví EEPROM zo zálohy.
+Restores the EEPROM from a backup.
 
-### Import pamätí zo SDR#
+### Importing memories from SDR#
 
 ```bash
 python memories.py C:\sdrsharpSW\frequencies.xml
 ```
 
-## Súbory
+## Files
 
-| Súbor | Obsah |
+| File | Contents |
 |---|---|
-| `app.py` | server prijímača (Flask): API, udalosti (SSE) a audio |
-| `launcher.py` | spúšťač VFO A/B/C |
-| `sdr.py` | RTL-SDR cez librtlsdr (ctypes) a DSP: ladenie, filtre, demodulácia, squelch, vodopád |
-| `rds.py` | RDS dekodér |
-| `ft8.py`, `wefax.py`, `cw.py`, `rtty.py`, `sstv.py`, `acars.py` | dekodéry |
-| `daylog.py` | denné logy dekodérov |
-| `memories.py` | pamäte a import zo SDR# |
-| `eeprom_tool.py` | čítanie, zálohovanie a zápis EEPROM kľúčeniek |
-| `setup_sdr.py` | sprievodca prvotnou konfiguráciou kľúčeniek (`vfos.json`) |
-| `lime.py` | LimeSDR cez LimeSuite.dll (príjem a vysielanie) |
-| `static/` | webové rozhranie (`index.html`, `style.css`, `app.js`) |
-| `paths.py` | cesty k dátam (`data\`), presun dát zo starších verzií |
-| `installer/` | tvorba inštalačného balíka (`make_installer.py`) a súbory do neho; balík vzniká v `dist\` |
+| `app.py` | receiver server (Flask): API, events (SSE) and audio |
+| `launcher.py` | VFO A/B/C launcher |
+| `sdr.py` | RTL-SDR via librtlsdr (ctypes) and DSP: tuning, filters, demodulation, squelch, waterfall |
+| `rds.py` | RDS decoder |
+| `ft8.py`, `wefax.py`, `cw.py`, `rtty.py`, `sstv.py`, `acars.py` | decoders |
+| `daylog.py` | daily decoder logs |
+| `memories.py` | memories and import from SDR# |
+| `eeprom_tool.py` | reading, backing up and writing dongle EEPROM |
+| `setup_sdr.py` | initial dongle setup wizard (`vfos.json`) |
+| `lime.py` | LimeSDR via LimeSuite.dll (receive and transmit) |
+| `static/` | web interface (`index.html`, `style.css`, `app.js`) |
+| `paths.py` | data paths (`data\`), migration of data from older versions |
+| `installer/` | building the installer package (`make_installer.py`) and the files it contains; the package is created in `dist\` |
 
-Dáta tohto PC sú v `data\` (nie sú v gite ani v inštalačnom balíku):
+The data of this PC is in `data\` (not in git and not in the installer package):
 
-| Súbor / priečinok | Obsah |
+| File / folder | Contents |
 |---|---|
-| `config.json` | nastavenia pre režim bez VFO a šablóna pre nové VFO |
-| `vfos.json`, `config_A/B/C/D.json` | priradenie kľúčeniek a nastavenia jednotlivých VFO |
-| `memories.json` | uložené pamäte |
-| `logs\`, `acars\`, `wefax\`, `sstv\` | denné logy a uložené obrázky |
-| `config_backup\`, `eeprom_backup\` | zálohy nastavení a EEPROM |
+| `config.json` | settings for single-receiver mode and template for new VFOs |
+| `vfos.json`, `config_A/B/C/D.json` | dongle assignment and settings of each VFO |
+| `memories.json` | saved memories |
+| `logs\`, `acars\`, `wefax\`, `sstv\` | daily logs and saved images |
+| `config_backup\`, `eeprom_backup\` | backups of settings and EEPROM |
 
-Staršie inštalácie mali tieto súbory v koreni; pri prvom spustení sa presunú do `data\` samé.
+Older installations kept these files in the main folder; they are moved to `data\` automatically at first start.
