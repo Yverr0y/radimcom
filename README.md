@@ -126,7 +126,8 @@ When squelch is on for an inactive VFO and it opens, that VFO's button lights up
       "note": "HF via upconverter",
       "init": { "upconv": "auto", "lo_offset_hz": 100000000, "ppm": 0 } },
     { "name": "B", "serial": "SDR00002", "port": 8442, "config": "config_B.json", "init": { "ppm": 0 } },
-    { "name": "C", "driver": "lime", "serial": "1D3C...", "port": 8443, "config": "config_C.json",
+    { "name": "C", "serial": "SDR00003", "port": 8443, "config": "config_C.json", "init": { "ppm": 0 } },
+    { "name": "D", "driver": "lime", "serial": "1D3C...", "port": 8444, "config": "config_D.json",
       "note": "LimeSDR, VHF/UHF direct" }
   ]
 }
