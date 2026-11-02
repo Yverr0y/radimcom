@@ -66,7 +66,7 @@
           </g>
           <circle class="r-logo-ring" cx="294" cy="-46" r="21" fill="none" stroke-width="11"/>
         </svg>
-        <span class="r-ver">Ver. 0.103</span>
+        <span class="r-ver">Ver. 0.104</span>
         </div>
         <!-- RDS: kompaktný rámik pod logom, široký ako hodiny -->
         <div class="rds off" id="rds">
@@ -124,6 +124,7 @@
       <label class="key toggle"><input id="rttyOn" type="checkbox">RTTY</label>
       <label class="key toggle"><input id="sstvOn" type="checkbox">SSTV</label>
       <label class="key toggle"><input id="acarsOn" type="checkbox">ACARS</label>
+      <label class="key toggle" title="CPDLC: controller-pilot messages (FANS-1/A) inside ACARS"><input id="cpdlcOn" type="checkbox">CPDLC</label>
     </div></div>
     <div class="kgroup"><span class="klabel">AUDIO</span><div class="keys">
       <button id="stereoKey" class="key" title="WFM stereo on/off (off = mono, less noise on weak stations)">STEREO</button>
@@ -162,7 +163,7 @@
     <div class="hover-freq" id="hoverFreq" hidden></div>
     <!-- záložka DECODERS: karty dekodérov prekryjú spektrum a vodopád (tie bežia ďalej) -->
     <div class="dec-pane" id="decPane" hidden>
-      <div id="decEmpty" class="ft8-empty">No decoder is on. Turn one on under DECODE (FT8, WEFAX, CW, RTTY, SSTV, ACARS).</div>
+      <div id="decEmpty" class="ft8-empty">No decoder is on. Turn one on under DECODE (FT8, WEFAX, CW, RTTY, SSTV, ACARS, CPDLC).</div>
     <!-- ===== dekodéry ===== -->
     <!-- textové dekodéry (CW, RTTY): text vyplní zvyšok záložky -->
     <section class="card ft8 txtdec" id="cwCard" hidden>
@@ -234,6 +235,28 @@
           <tbody id="acarsRows"></tbody>
         </table>
         <div id="acarsEmpty" class="ft8-empty">No messages yet. ACARS bursts are short and come every few seconds to minutes.</div>
+      </div>
+    </section>
+
+    <section class="card ft8 acars cpdlc" id="cpdlcCard" hidden>
+      <div class="ft8-head">
+        <b>CPDLC</b>
+        <div class="bands" id="cpdlcBands"></div>
+        <span id="cpdlcInfo" class="muted"></span>
+        <label class="wf-opt log-opt" title="Write to the daily log data\acars\cpdlc_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="cpdlc">LOG</label>
+        <button id="cpdlcClear" class="key small">CLR</button>
+      </div>
+      <p class="note">Controller-pilot data link (FANS-1/A, ARINC 622) carried in ACARS messages: clearances from air traffic
+        control (↑ uplink) and pilot requests and position reports (↓ downlink). Uses the ACARS demodulator, so it works
+        with the ACARS card off; the buttons tune the ACARS channels (AM). Messages are rare: FANS-1/A over ACARS is mostly
+        used by long-haul aircraft (e.g. with Maastricht MSTEC7X). European ATN CPDLC runs on VDL Mode 2 and is not decoded here.
+        MIN = message number, MRN = number of the message it answers. ✗ = CRC error.</p>
+      <div class="ft8-table">
+        <table>
+          <thead><tr><th>UTC</th><th>Frequency</th><th>Aircraft</th><th>Flight</th><th title="Ground station (ATC centre) address">Ground</th><th title="MIN / MRN: message number / answered message">Msg</th><th>CPDLC message</th></tr></thead>
+          <tbody id="cpdlcRows"></tbody>
+        </table>
+        <div id="cpdlcEmpty" class="ft8-empty">No CPDLC messages yet. Tune an ACARS channel (131.725 MHz is the busiest).</div>
       </div>
     </section>
 

@@ -16,7 +16,8 @@ Features
   MAIN and CUE volume faders, stereo level meter, MUTE.
 - REC: records the audio of the selected VFO to a WAV file.
 - Decoders: FT8, WEFAX (radio fax), CW (Morse), RTTY (auto shift/speed), SSTV (14 modes),
-  ACARS (aircraft data link, VHF airband); optional daily log for each.
+  ACARS (aircraft data link, VHF airband), CPDLC (controller-pilot messages in ACARS);
+  optional daily log for each.
 - Band buttons (HF/VHF/UHF ham, broadcast, airband, marine, PMR446, CB) and frequency
   memories with groups and favourites (import from SDR#).
 - Frequency correction (ppm), bias-tee, sample rate, waterfall colours, S-meter calibration.
@@ -53,6 +54,18 @@ More details: README.md.
 
 Change log
 ----------
+(also in CHANGELOG.md)
+
+Ver. 0.104
+- CPDLC decoder (FANS-1/A, ARINC 622): controller-pilot messages carried in ACARS
+  (labels AA/BA/H1) decoded to the standard text, e.g. "CLIMB TO AND MAINTAIN FL350",
+  "AT VANDA CONTACT CHRISTCHURCH CONTROL 128.100 MHz", position reports with fixes,
+  ETA, winds and temperature. Message number (MIN), answered message (MRN), ground
+  station, CRC check; long messages split into several ACARS blocks are joined.
+- CPDLC card with its own CPDLC key under DECODE; works with the ACARS card off.
+  Decoded CPDLC text is also shown in the ACARS card. Click a message for the raw text.
+- CPDLC daily log: data\acars\cpdlc_YYYY-MM-DD.txt (UTC) when LOG is on.
+
 Ver. 0.103
 - Settings, memories, logs, saved images and backups moved to the data\ folder
   (program files stay in the main folder). Older installations: the files are moved

@@ -1203,7 +1203,7 @@ function restoreBodyTab() {
 function guessBodyTab() {
   if (!bodyTabGuess) return;
   bodyTabGuess = false;
-  const any = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn"].some((id) => $(id).checked);
+  const any = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "cpdlcOn"].some((id) => $(id).checked);
   setBodyTab(any ? "dec" : "scope");
 }
 
@@ -1219,7 +1219,7 @@ function setBodyTab(tab, save = true) {
 /** Počet zapnutých dekodérov v záložke a text, keď nie je zapnutý žiadny. */
 function renderDecTab() {
   // podľa zaškrtnutí – platí hneď po kliknutí, aj kým server nepotvrdí stav
-  const n = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn"].filter((id) => $(id).checked).length;
+  const n = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "cpdlcOn"].filter((id) => $(id).checked).length;
   $("decCount").textContent = n ? `(${n})` : "";
   $("decEmpty").hidden = n > 0;
 }
@@ -1234,7 +1234,7 @@ $("bodyTabs").addEventListener("click", (e) => {
   if (b) setBodyTab(b.dataset.tab);
 });
 // zapnutie dekodéra (FT8, WEFAX, SSTV, ACARS) otvorí záložku DECODERS a vidno jeho kartu
-for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn"]) {
+for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "cpdlcOn"]) {
   $(id).addEventListener("change", () => {
     if ($(id).checked) setBodyTab("dec");
     renderDecTab();
@@ -1265,7 +1265,9 @@ function addAcars(m, fresh) {
   tr.innerHTML = `<td>${m.time}</td><td class="num">${fmtMHz(m.freq_hz, 3)}</td>` +
     `<td class="reg"></td><td class="flt"></td><td>${arrow} ${esc(m.label)}</td>` +
     `<td class="desc">${esc(m.desc || "")}</td>` +
-    `<td class="msg"><div class="msg-text">${m.crc_ok ? "" : "✗ "}${esc(m.text) || "<span class='muted'>(no text)</span>"}</div></td>`;
+    `<td class="msg">${m.cpdlc ? `<div class="cpdlc-dec" title="Decoded CPDLC (${esc(m.cpdlc.imi)}, ground ${esc(m.cpdlc.gs)})">` +
+      `${m.cpdlc.crc_ok ? "" : "✗ "}CPDLC: ${esc(m.cpdlc.text)}</div>` : ""}` +
+    `<div class="msg-text">${m.crc_ok ? "" : "✗ "}${esc(m.text) || "<span class='muted'>(no text)</span>"}</div></td>`;
   // dlhá správa (technické hlásenia s tabuľkami): skrátená na 3 riadky, klik ju rozbalí/zbalí
   if (m.text.split("\n").length > 3 || m.text.length > 240) tr.querySelector("td.msg").classList.add("long");
   tr._msg = m;
@@ -1301,10 +1303,13 @@ function renderAcarsAircraft(tr, ac) {
 }
 
 function onAcarsInfo(d) {
-  const tr = $("acarsRows").querySelector(`tr[data-id="${d.id}"]`);
-  if (!tr) return;
-  tr._msg.ac = d.ac;
-  renderAcarsAircraft(tr, d.ac);
+  // the same aircraft data for the ACARS row and the CPDLC row of the message
+  for (const tb of ["acarsRows", "cpdlcRows"]) {
+    const tr = $(tb).querySelector(`tr[data-id="${d.id}"]`);
+    if (!tr) continue;
+    tr._msg.ac = d.ac;
+    renderAcarsAircraft(tr, d.ac);
+  }
 }
 
 function renderAcarsInfo(i) {
@@ -1340,6 +1345,78 @@ $("acarsClear").addEventListener("click", () => {
   $("acarsRows").innerHTML = "";
   $("acarsEmpty").hidden = false;
   $("acarsInfo").textContent = "";
+});
+
+// ---------- CPDLC (FANS-1/A inside ACARS) ----------
+
+function renderCpdlcBands(freqs) {
+  $("cpdlcBands").innerHTML = (freqs || []).map((f) =>
+    `<button data-f="${f}" title="${fmtMHz(f, 3)} MHz AM">${fmtMHz(f, 3)}</button>`).join("");
+}
+
+function addCpdlc(c, fresh) {
+  const tb = $("cpdlcRows");
+  $("cpdlcEmpty").hidden = true;
+  const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+  const tr = document.createElement("tr");
+  if (!c.crc_ok || c.error) tr.classList.add("bad");
+  if (fresh) tr.classList.add("new");
+  const up = c.dir === "up";
+  tr.dataset.id = c.id;
+  tr.title = `${c.imi_desc} · ACARS label ${c.label}${c.crc_ok ? "" : " · CRC error"}${c.error ? " · " + c.error : ""}`;
+  const num = [c.min != null ? `MIN ${c.min}` : "", c.mrn != null ? `MRN ${c.mrn}` : ""].filter(Boolean).join("<br>");
+  const lines = c.elements.length
+    ? c.elements.map((e) => `<div class="cp-el"><span class="cp-id">${esc(e.id)}</span>${esc(e.text)}</div>`).join("")
+    : `<div class="cp-el">${esc(c.text || c.imi_desc)}</div>`;
+  tr.innerHTML = `<td>${c.time}${c.ts ? `<div class="ac-sub none" title="Time stamp in the message">${esc(c.ts)}</div>` : ""}</td>` +
+    `<td class="num">${fmtMHz(c.freq_hz, 3)}</td><td class="reg"></td><td class="flt"></td>` +
+    `<td title="${up ? "From" : "To"} ground station ${esc(c.gs)}">${up ? "↑" : "↓"} ${esc(c.gs)}</td>` +
+    `<td class="num">${num}</td>` +
+    `<td class="msg ${up ? "cp-up" : "cp-down"}">${c.crc_ok ? "" : "✗ "}${c.imi !== "AT1" ? `<div class="muted">${esc(c.imi_desc)}</div>` : ""}` +
+    `${lines}${c.error ? `<div class="muted">${esc(c.error)}</div>` : ""}` +
+    `<div class="cp-raw" hidden>${esc(c.raw || "")}</div></td>`;
+  tr._msg = c;
+  renderAcarsAircraft(tr, c.ac);
+  tb.prepend(tr);
+  while (tb.rows.length > ACARS_MAX_ROWS) tb.lastChild.remove();
+}
+
+function renderCpdlcInfo(i) {
+  if (!st) return;
+  $("cpdlcCard").hidden = !st.cpdlc;
+  if (!i) return;
+  $("cpdlcInfo").textContent = i.count ? `${i.count} messages` : "";
+}
+
+$("cpdlcOn").addEventListener("change", () => {
+  st.cpdlc = $("cpdlcOn").checked;
+  renderCpdlcInfo();
+  send({ cpdlc: st.cpdlc });
+});
+$("cpdlcBands").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-f]");
+  if (!b || !st) return;
+  await ensureVfoFor(Number(b.dataset.f));
+  if (!st) return;
+  st.mode = "AM";
+  renderControls();
+  tune(Number(b.dataset.f));
+  const changes = { mode: "AM" };
+  if (!st.cpdlc) { st.cpdlc = true; $("cpdlcOn").checked = true; changes.cpdlc = true; }
+  send(changes);
+});
+// click on a message shows / hides the raw ARINC 622 text
+$("cpdlcRows").addEventListener("click", (e) => {
+  const td = e.target.closest("td.msg");
+  if (!td || e.target.closest("a")) return;
+  const raw = td.querySelector(".cp-raw");
+  raw.hidden = !raw.hidden;
+});
+$("cpdlcClear").addEventListener("click", () => {
+  fetch(vbase + "/api/cpdlc", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"action":"clear"}' });
+  $("cpdlcRows").innerHTML = "";
+  $("cpdlcEmpty").hidden = false;
+  $("cpdlcInfo").textContent = "";
 });
 
 // ---------- WEFAX ----------
@@ -1818,7 +1895,7 @@ function onStatus(s) {
   const rateChanged = st && st.audio_rate !== s.audio_rate;
   // Krátko po lokálnej zmene nenecháme starší stav zo servera prepísať ladenie a výber.
   if (st && Date.now() - localChangeAt < 700) {
-    for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "stereo_on", "notch", "ft8", "wefax", "cw", "rtty", "sstv", "acars", "logs", "upconv", "device", "squelch_levels"]) s[k] = st[k];
+    for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "stereo_on", "notch", "ft8", "wefax", "cw", "rtty", "sstv", "acars", "cpdlc", "logs", "upconv", "device", "squelch_levels"]) s[k] = st[k];
   }
   s.sample_rates = sampleRates;
   st = s;
@@ -1842,6 +1919,8 @@ function onStatus(s) {
   $("sstvCard").hidden = !s.sstv;
   $("acarsOn").checked = !!s.acars;
   $("acarsCard").hidden = !s.acars;
+  $("cpdlcOn").checked = !!s.cpdlc;
+  $("cpdlcCard").hidden = !s.cpdlc;
   renderDecTab();
   guessBodyTab();
   markActiveMem();
@@ -1898,6 +1977,8 @@ function connectEvents(v) {
   on("rttytext", (d) => rttyOut.add(d.t));
   on("rttystate", renderRttyInfo);
   on("acars", (m) => { addAcars(m, true); decActivity(); });
+  on("cpdlc", (c) => { addCpdlc(c, true); decActivity(); });
+  on("cpdlcstate", renderCpdlcInfo);
   on("ft8", decActivity);
   on("cwtext", decActivity);
   on("rttytext", decActivity);
@@ -2106,6 +2187,7 @@ async function selectVfo(v) {
   $("ft8Rows").innerHTML = ""; $("ft8Empty").hidden = false; ft8Cycle = null; ft8Count = 0;
   cwOut.clear(); rttyOut.clear();
   $("acarsRows").innerHTML = ""; $("acarsEmpty").hidden = false;
+  $("cpdlcRows").innerHTML = ""; $("cpdlcEmpty").hidden = false; $("cpdlcInfo").textContent = "";
   $("convWarn").hidden = true;
   if (v.st) {
     onStatus(v.st);
@@ -2148,6 +2230,10 @@ async function loadDecoders() {
   if (v !== active) return;
   for (const m of ac.messages) addAcars(m, false);
   renderAcarsInfo(ac);
+  const cp = await fetch(vbase + "/api/cpdlc").then((r) => r.json());
+  if (v !== active) return;
+  for (const c of cp.messages) addCpdlc(c, false);
+  renderCpdlcInfo(cp);
 }
 
 // ---------- prepínač up-konvertora (VFO s konvertorom v režime Auto) ----------
@@ -2465,6 +2551,7 @@ async function init() {
   sampleRates = info.sample_rates;
   renderFt8Bands(info.ft8_freqs);
   renderAcarsBands(info.acars_freqs);
+  renderCpdlcBands(info.acars_freqs);
   loadMems();
   for (const v of vfos) connectEvents(v);
   startAudio();

@@ -129,7 +129,7 @@ def save_config_later():
 
 # ---------- daily decoder logs (turned on with LOG in the decoder card) ----------
 
-LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars")
+LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars", "cpdlc")
 _tag = cfg.get("vfo") or ""
 logs = {"ft8": DayLog("ft8", _tag), "wefax": DayLog("wefax", _tag), "sstv": DayLog("sstv", _tag),
         "cw": TextLog("cw", _tag), "rtty": TextLog("rtty", _tag)}
@@ -180,6 +180,7 @@ rtty = RttyDecoder(on_event=decoder_event)
 sstv = SstvDecoder(on_event=decoder_event)
 acars = AcarsDecoder(on_event=hub.event, tag=_tag)
 acars.log_on = log_on("acars")
+acars.cpdlc_log_on = log_on("cpdlc")
 _saved_logged.update(wefax=getattr(wefax, "saved", None), sstv=getattr(sstv, "saved", None))
 
 
@@ -191,7 +192,7 @@ def tx_capable():
 def state():
     capable = tx_capable()
     return dict(receiver.state(), ft8=ft8.enabled, ft8_error=ft8.error, wefax=wefax.enabled, cw=cw.enabled, rtty=rtty.enabled,
-                sstv=sstv.enabled, acars=acars.enabled, logs={k: log_on(k) for k in LOG_KEYS},
+                sstv=sstv.enabled, acars=acars.enabled, cpdlc=acars.cpdlc_on, logs={k: log_on(k) for k in LOG_KEYS},
                 tx_capable=capable, tx_enabled=bool(cfg.get("tx_enabled", False)),
                 can_tx=capable and bool(cfg.get("tx_enabled", False)) and hasattr(receiver.sdr, "tx_start"))
 
@@ -235,6 +236,7 @@ except (TypeError, ValueError):
 rtty.set_enabled(cfg.get("rtty", False))
 sstv.set_enabled(cfg.get("sstv", False))
 acars.set_enabled(cfg.get("acars", False))
+acars.set_cpdlc(cfg.get("cpdlc", False))
 
 app = Flask(__name__, static_folder="static")
 
@@ -446,6 +448,18 @@ def api_acars_cmd():
     return jsonify(acars.info())
 
 
+@app.route("/api/cpdlc", methods=["GET"])
+def api_cpdlc():
+    return jsonify(acars.cpdlc_info())
+
+
+@app.route("/api/cpdlc", methods=["POST"])
+def api_cpdlc_cmd():
+    if request.get_json(force=True).get("action") == "clear":
+        acars.clear_cpdlc()
+    return jsonify(acars.cpdlc_info())
+
+
 @app.route("/api/devices")
 def api_devices():
     try:
@@ -576,6 +590,7 @@ def api_set():
                     logs[k].flush()          # write out the unfinished line
         cfg["logs"] = cur
         acars.log_on = log_on("acars")
+        acars.cpdlc_log_on = log_on("cpdlc")
         save_config_later()
         hub.event("status", state())
     if "rtty" in body:
@@ -600,6 +615,11 @@ def api_set():
     if "acars" in body:
         cfg["acars"] = bool(body["acars"])
         acars.set_enabled(cfg["acars"])
+        save_config_later()
+        hub.event("status", state())
+    if "cpdlc" in body:
+        cfg["cpdlc"] = bool(body["cpdlc"])
+        acars.set_cpdlc(cfg["cpdlc"])
         save_config_later()
         hub.event("status", state())
     receiver.update(changes)

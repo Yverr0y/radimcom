@@ -477,6 +477,14 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .acars td.msg.long::after { content: "▾ more"; display: block; font-size: 10px; color: var(--muted); }
 .acars td.msg.long.open::after { content: "▴ less"; }
 .acars td { vertical-align: top; }
+/* CPDLC: decoded text in the ACARS row; in the CPDLC card uplinks (ATC) amber, downlinks (pilot) green */
+.acars .cpdlc-dec { color: #6cff9c; margin-bottom: 2px; white-space: pre-wrap; }
+.cpdlc td.msg { cursor: pointer; white-space: pre-wrap; }
+.cpdlc td.msg.cp-up .cp-el { color: var(--amber); }
+.cpdlc td.msg.cp-down .cp-el { color: #6cff9c; }
+.cpdlc .cp-id { display: inline-block; min-width: 3.6em; font-size: 10px; color: var(--muted); }
+.cpdlc .cp-raw { font-size: 10px; color: var(--dim); word-break: break-all; margin-top: 2px; }
+.cpdlc tr.bad td.msg .cp-el { color: var(--dim); }
 .ft8 tr.new { animation: ft8new 1.5s ease-out; }
 .ft8 tr.cycle td { padding: 2px 10px; font-size: 10px; color: var(--dim); background: rgba(255, 255, 255, .02); }
 @keyframes ft8new { from { background: rgba(255, 216, 74, .15); } to { background: transparent; } }
@@ -556,8 +564,9 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 /* Full HD pri zoome 100 % (~1900 px): užšie tlačidlá a medzery, aby sa riadok tlačidiel aj riadok
    pásiem zmestil do jedného riadku a nezaberal výšku vodopádu. Písmo ostáva rovnaké. */
 @media (max-width: 2100px) {
-  .r-keys, .r-bands { column-gap: 10px; }
-  .r-keys .keys button, .r-keys .key { min-width: 38px; padding-left: 6px; padding-right: 6px; }
+  .r-keys { column-gap: 8px; padding-left: 8px; padding-right: 8px; }
+  .r-bands { column-gap: 10px; }
+  .r-keys .keys button, .r-keys .key { min-width: 32px; padding-left: 4px; padding-right: 4px; }
   .r-keys .keys, .r-bands .bands { gap: 3px; }
   .r-bands .bands button { min-width: 36px; padding-left: 5px; padding-right: 5px; }
 }

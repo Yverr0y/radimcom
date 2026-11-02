@@ -7,6 +7,9 @@ clock is tied to the carrier phase (2400 = 4/3 · 1800). Two framers try both bi
 
 Frame (ARINC 618): ... '+' '*' SYN SYN SOH mode address(7) ACK label(2) block STX text ETX/ETB BCS(2) DEL.
 Characters: 7-bit ASCII + odd parity, lowest bit first. BCS = CRC-16 (CCITT, reflected) from mode to ETX.
+
+CPDLC (FANS-1/A, ARINC 622) messages inside ACARS are decoded by cpdlc.py; the CPDLC card can run alone
+(this demodulator then runs even when the ACARS card is off).
 """
 import cmath
 import collections
@@ -21,6 +24,7 @@ import urllib.request
 
 import numpy as np
 
+import cpdlc
 from paths import data
 from sdr import lowpass
 
@@ -180,7 +184,12 @@ class AcarsDecoder:
         self.tag = tag            # VFO name in the log (the log is shared by all VFOs)
         self.log_dir = log_dir
         self.log_on = False       # daily log only after LOG is turned on in the ACARS card
-        self.enabled = False
+        self.enabled = False      # ACARS card
+        self.cpdlc_on = False     # CPDLC card (uses the same demodulator)
+        self.cpdlc_log_on = False
+        self.cpdlc_msgs = collections.deque(maxlen=300)
+        self.cpdlc_count = 0
+        self._reasm = cpdlc.Reassembler()
         self.lock = threading.Lock()
         self.msgs = collections.deque(maxlen=300)
         self.dial = 0.0
@@ -198,9 +207,25 @@ class AcarsDecoder:
 
     def set_enabled(self, on):
         with self.lock:
+            if not (self.enabled or self.cpdlc_on):
+                self._fs = None   # the demodulator starts again from scratch
             self.enabled = bool(on)
-            self._fs = None
         self._emit_state()
+
+    def set_cpdlc(self, on):
+        with self.lock:
+            if not (self.enabled or self.cpdlc_on):
+                self._fs = None
+            self.cpdlc_on = bool(on)
+        self._emit_cpdlc_state()
+
+    def clear_cpdlc(self):
+        with self.lock:
+            self.cpdlc_msgs.clear()
+            self.cpdlc_count = 0
+
+    def cpdlc_info(self):
+        return {"enabled": self.cpdlc_on, "count": self.cpdlc_count, "messages": list(self.cpdlc_msgs)}
 
     def clear(self):
         with self.lock:
@@ -237,7 +262,7 @@ class AcarsDecoder:
 
     def feed(self, base, fs, dial_hz):
         """base: complex baseband (tuned frequency = 0 Hz) at sample rate fs."""
-        if not self.enabled:
+        if not (self.enabled or self.cpdlc_on):
             return
         with self.lock:
             if fs != self._fs:
@@ -257,7 +282,8 @@ class AcarsDecoder:
             self.since_state += len(audio)
         if self.since_state >= self.r:
             self.since_state = 0
-            self._emit_state()
+            if self.enabled:
+                self._emit_state()
 
     def _demod(self, audio):
         """Coherent MSK demodulation sample by sample (the phase-locked loop adjusts the NCO continuously)."""
@@ -303,18 +329,29 @@ class AcarsDecoder:
         except Exception:
             return
         if not m["crc_ok"]:
-            self.crc_errors += 1
+            if self.enabled:
+                self.crc_errors += 1
             if perr:              # bad CRC and parity: noise, not shown
                 return
         m["time"] = time.strftime("%H:%M:%S", time.gmtime(now))
+        m["date"] = time.strftime("%Y-%m-%d", time.gmtime(now))
         m["freq_hz"] = round(self.dial)
         m["id"] = self._next_id
         self._next_id += 1
         m["ac"] = None
-        self.count += 1
-        self.msgs.append(m)
-        self.on_event("acars", m)
-        m["date"] = time.strftime("%Y-%m-%d", time.gmtime(now))
+        m["cpdlc"] = None
+        c = self._cpdlc(m) if m["crc_ok"] else None
+        if self.enabled:
+            self.count += 1
+            self.msgs.append(m)
+            self.on_event("acars", m)
+        if c and self.cpdlc_on:
+            self.cpdlc_count += 1
+            self.cpdlc_msgs.append(c)
+            self.on_event("cpdlc", c)
+            self._emit_cpdlc_state()
+        if not self.enabled and not (c and self.cpdlc_on):
+            return
         if len(m["reg"]) >= 3 and self.crc_ok_reg(m):
             try:
                 self._lookups.put_nowait(m)      # goes to the log only with the ADS-B data
@@ -323,9 +360,29 @@ class AcarsDecoder:
                 pass
         self._log(m)
 
+    def _cpdlc(self, m):
+        """CPDLC inside the ACARS message (long ones joined from several blocks) -> CPDLC record or None."""
+        if m["label"] not in cpdlc.LABELS:
+            return None
+        full = self._reasm.push(m)
+        if full is None:
+            return None
+        try:
+            r = cpdlc.decode(m["label"], full, m["dir"] == "up")
+        except Exception:
+            return None
+        if not r:
+            return None
+        m["cpdlc"] = {"text": r["text"], "crc_ok": r["crc_ok"], "imi": r["imi"], "gs": r["gs"]}
+        r.update(id=m["id"], time=m["time"], date=m["date"], freq_hz=m["freq_hz"], reg=m["reg"] or r["air"],
+                 flight=m["flight"], label=m["label"], ac=None, raw=full)
+        return r
+
     def _log(self, m):
         """Line to the daily log (UTC); multi-line text indented. ADS-B data in [ADS-B: ...]."""
-        if not self.log_on:
+        if self.cpdlc_on and m.get("cpdlc"):
+            self._log_cpdlc(m)
+        if not (self.log_on and self.enabled):
             return
         head = [f"{m['date']} {m['time']}Z", f"{m['freq_hz'] / 1e6:.3f}", f"VFO-{self.tag}" if self.tag else "",
                 m["reg"] or "-", m["flight"] or "-", f"label {m['label']}", m["dir"],
@@ -342,6 +399,30 @@ class AcarsDecoder:
         try:
             os.makedirs(self.log_dir, exist_ok=True)
             with open(os.path.join(self.log_dir, f"acars_{m['date']}.txt"), "a", encoding="utf-8") as f:
+                f.write(line + "\n")
+        except OSError:
+            pass
+
+    def _log_cpdlc(self, m):
+        """CPDLC daily log cpdlc_YYYY-MM-DD.txt next to the ACARS log."""
+        if not self.cpdlc_log_on:
+            return
+        c = next((x for x in reversed(self.cpdlc_msgs) if x["id"] == m["id"]), None)
+        if not c:
+            return
+        head = [f"{c['date']} {c['time']}Z", f"{c['freq_hz'] / 1e6:.3f}", f"VFO-{self.tag}" if self.tag else "",
+                c["reg"] or "-", c["flight"] or "-", "uplink" if c["dir"] == "up" else "downlink",
+                f"ground {c['gs']}", c["imi"], f"MIN {c['min']}" if c["min"] is not None else "",
+                f"MRN {c['mrn']}" if c["mrn"] is not None else "", c["ts"], "" if c["crc_ok"] else "CRC-ERROR"]
+        line = " ".join(h for h in head if h)
+        ac = m.get("ac")
+        if ac and ac.get("found"):
+            ext = ", ".join(str(x) for x in (ac.get("type"), ac.get("callsign"), ac.get("hex")) if x)
+            line += f" | [ADS-B {ac.get('src', '')}: {ext}]"
+        line += "\n    " + (c["text"] or c["error"]).replace("\n", "\n    ")
+        try:
+            os.makedirs(self.log_dir, exist_ok=True)
+            with open(os.path.join(self.log_dir, f"cpdlc_{c['date']}.txt"), "a", encoding="utf-8") as f:
                 f.write(line + "\n")
         except OSError:
             pass
@@ -368,6 +449,9 @@ class AcarsDecoder:
                 if len(self._cache) > 500:
                     self._cache.clear()
             m["ac"] = info or {"found": False}
+            for c in list(self.cpdlc_msgs):
+                if c["id"] == m["id"]:
+                    c["ac"] = m["ac"]
             self.on_event("acarsinfo", {"id": m["id"], "ac": m["ac"]})
             self._log(m)
 
@@ -392,6 +476,9 @@ class AcarsDecoder:
                 "gs_kt": a.get("gs"), "src": "adsb.fi" if "adsb.fi" in url else "adsb.lol",
             }
         return None
+
+    def _emit_cpdlc_state(self):
+        self.on_event("cpdlcstate", {"enabled": self.cpdlc_on, "count": self.cpdlc_count})
 
     def _emit_state(self):
         i = self.info()

@@ -30,8 +30,8 @@ VERSION = read_version()
 DIST = os.path.join(ROOT, "dist")
 OUT = os.path.join(DIST, f"RADIMCOM_install_v{VERSION}.zip")
 
-CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "lime.py", "rds.py", "cw.py", "rtty.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py",
-        "memories.py", "eeprom_tool.py", "setup_sdr.py", "start.bat", "setup.bat", "README.md"]
+CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "lime.py", "rds.py", "cw.py", "rtty.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py", "cpdlc.py", "cpdlc_schema.py",
+        "memories.py", "eeprom_tool.py", "setup_sdr.py", "start.bat", "setup.bat", "README.md", "CHANGELOG.md"]
 LIBS = ["lib/librtlsdr.dll", "lib/libusb-1.0.dll"]
 FROM_INSTALLER = ["install.bat", "requirements.txt", "config.json", "DRIVERS.txt", "INSTALL.txt"]
 # files from this PC that are bundled (target in the package: source)
@@ -43,7 +43,7 @@ D3XX_ZIP = os.path.expanduser(r"~\Downloads\FTD3XXDriver_WHQLCertified_v1.3.0.4_
 D3XX_EXE = "FTD3XXDriver_WHQLCertified_v1.3.0.4_Installer.exe"
 # no station marks may remain in the package (serial numbers, recordings…) except the author's signature on the page
 FORBIDDEN = [b"OM2AMR", b"om2amr", "OM2AMR".encode("utf-16-le")]
-ALLOWED = [b"By Radim Mutina OM2AMR"]
+ALLOWED = [b"By Radim Mutina OM2AMR", b"github.com/om2amr/RADIMCOM"]   # signature, public repository link
 
 
 def copy(src, dst_rel, build):

@@ -18,8 +18,8 @@ Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
 - **Squelch** for AM, FM and WFM, each mode with its own level. It decides every ~8 ms, so it does not cut off
   the start of a transmission (airband). The level is marked on the S-meter with a yellow tick.
 - **Spectrum and waterfall** with 1×–32× zoom.
-- **Decoders:** FT8, WEFAX (radio fax with automatic format detection), CW (Morse with AFC and speed estimation), RTTY (Baudot, automatic shift 90–1000 Hz, speed 45.45/50/75/100 Bd and polarity), SSTV (colour images, 14 modes, VIS) and ACARS (aircraft data messages on 131.725 MHz and others, AM, MSK 2400 bit/s, CRC check; aircraft type and position from adsb.fi / adsb.lol).
-- **Daily logs:** the LOG checkbox in each decoder card writes to `data\logs\<decoder>_YYYY-MM-DD.txt` (UTC, one line per message; WEFAX/SSTV log the names of saved images), ACARS to `data\acars\acars_YYYY-MM-DD.txt`.
+- **Decoders:** FT8, WEFAX (radio fax with automatic format detection), CW (Morse with AFC and speed estimation), RTTY (Baudot, automatic shift 90–1000 Hz, speed 45.45/50/75/100 Bd and polarity), SSTV (colour images, 14 modes, VIS) and ACARS (aircraft data messages on 131.725 MHz and others, AM, MSK 2400 bit/s, CRC check; aircraft type and position from adsb.fi / adsb.lol) and CPDLC (FANS-1/A controller-pilot messages carried in ACARS: clearances, requests, position reports; decoded to the standard message text, multi-block messages joined).
+- **Daily logs:** the LOG checkbox in each decoder card writes to `data\logs\<decoder>_YYYY-MM-DD.txt` (UTC, one line per message; WEFAX/SSTV log the names of saved images), ACARS to `data\acars\acars_YYYY-MM-DD.txt`, CPDLC to `data\acars\cpdlc_YYYY-MM-DD.txt`.
 - **Frequency memories** (MEM) with favourites and import from SDR# (`frequencies.xml`).
 - **Upconverter:** HF is tuned via the LO (e.g. 100 MHz), see [Shortwave (HF) reception](#shortwave-hf-reception-with-an-upconverter). For a VFO with a manual converter switch, crossing
   30 MHz shows a warning whether the converter must be switched on (CONV) or set to BYPASS.
