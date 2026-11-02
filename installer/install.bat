@@ -1,0 +1,71 @@
+@echo off
+rem Instalacia prijimaca RADIMCOM na novom PC:
+rem Python balicky do .venv, ovladace (Zadig, FTDI D3XX), konfiguracia kluceniek a zastupca na ploche.
+setlocal
+cd /d "%~dp0"
+title RADIMCOM - installation
+echo ============================================
+echo   RADIMCOM receiver - installation
+echo ============================================
+echo.
+
+rem ---- 1. Python 3.9+ ----
+set "PY="
+py -3 -c "import sys; sys.exit(sys.version_info < (3, 9))" >nul 2>nul && set "PY=py -3"
+if not defined PY python -c "import sys; sys.exit(sys.version_info < (3, 9))" >nul 2>nul && set "PY=python"
+if not defined PY (
+  echo Python 3.9 or newer was not found.
+  echo Install it from https://www.python.org/downloads/windows/
+  echo and tick "Add python.exe to PATH" in the installer. Then run install.bat again.
+  start "" https://www.python.org/downloads/windows/
+  pause
+  exit /b 1
+)
+for /f "delims=" %%v in ('%PY% --version') do echo [1/5] %%v found
+
+rem ---- 2. virtualne prostredie a balicky ----
+echo [2/5] Installing Python packages (needs internet, about 60 MB - may take a few minutes)...
+if not exist ".venv\Scripts\python.exe" %PY% -m venv .venv
+if errorlevel 1 (echo Could not create .venv & pause & exit /b 1)
+rem bez -q: pri pomalom internete je vidiet priebeh stahovania
+".venv\Scripts\python.exe" -m pip install --disable-pip-version-check --only-binary=numpy,scipy -r requirements.txt
+if errorlevel 1 (echo Package installation failed - check the internet connection. & pause & exit /b 1)
+rem PyFT8 je len pre FT8 dekoder; ak zlyha, prijimac funguje aj bez neho.
+rem --no-deps: PyAudio (zvukova karta) nepotrebujeme a pre nove verzie Pythonu nema hotovy balik
+".venv\Scripts\python.exe" -m pip install --disable-pip-version-check --no-deps PyFT8
+if errorlevel 1 echo    (PyFT8 not installed - the FT8 decoder will not be available)
+echo    OK
+
+rem ---- 3. ovladace ----
+echo.
+echo [3/5] USB drivers
+echo    RTL-SDR dongles need the WinUSB driver (installed with Zadig).
+echo    In Zadig: Options - List All Devices, select "Bulk-In, Interface (Interface 0)"
+echo    (or "RTL2838UHIDIR"), driver WinUSB, click Replace Driver. Repeat for every dongle.
+choice /c YN /m "   Run Zadig now (RTL-SDR)"
+if not errorlevel 2 start "" /wait "drivers\zadig.exe"
+echo.
+echo    LimeSDR Mini needs the FTDI D3XX driver.
+choice /c YN /m "   Install the FTDI D3XX driver now (LimeSDR)"
+if not errorlevel 2 start "" /wait "drivers\FTD3XXDriver_WHQLCertified_v1.3.0.4_Installer.exe"
+
+rem ---- 4. konfiguracia kluceniek ----
+echo.
+echo [4/5] SDR setup: connect all dongles (and the LimeSDR) now.
+choice /c YN /m "   Run the SDR setup now"
+if not errorlevel 2 ".venv\Scripts\python.exe" setup_sdr.py --no-start
+
+rem ---- 5. zastupca na ploche ----
+echo.
+echo [5/5] Creating desktop shortcuts...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$w = New-Object -ComObject WScript.Shell; $d = [Environment]::GetFolderPath('Desktop');" ^
+  "$s = $w.CreateShortcut(\"$d\RADIMCOM.lnk\"); $s.TargetPath = '%~dp0start.bat'; $s.WorkingDirectory = '%~dp0'; $s.IconLocation = 'shell32.dll,138'; $s.Save();" ^
+  "$s = $w.CreateShortcut(\"$d\RADIMCOM SDR setup.lnk\"); $s.TargetPath = '%~dp0setup.bat'; $s.WorkingDirectory = '%~dp0'; $s.IconLocation = 'shell32.dll,21'; $s.Save()"
+echo.
+echo Done. Start the receiver with the RADIMCOM shortcut (or start.bat);
+echo the page opens at http://localhost:8434
+echo Dongles can be configured again any time with setup.bat.
+echo.
+choice /c YN /m "Start the receiver now"
+if not errorlevel 2 start "RADIMCOM" "%~dp0start.bat"

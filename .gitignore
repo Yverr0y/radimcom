@@ -1,0 +1,34 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# dáta tohto PC (nastavenia, pamäte, logy, nahrávky, zálohy)
+data/
+
+# staré umiestnenie dát (pred presunom do data/)
+/config.json
+/config_*.json
+/vfos.json
+/memories.json
+/logs/
+/acars/
+/wefax/
+/sstv/
+/eeprom_backup/
+/config_backup/
+/tx_audio/
+
+# zostavené balíky
+dist/
+*.zip
+
+# binárky tretích strán (make_installer ich berie z tohto PC)
+/lib/
+/drivers/
+
+# kópie z installer/ v koreni (rozbalená inštalácia)
+/install.bat
+/INSTALL.txt
+/DRIVERS.txt
+/requirements.txt

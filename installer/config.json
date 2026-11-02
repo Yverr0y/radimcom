@@ -1,0 +1,30 @@
+{
+  "device": 0,
+  "lo_offset_hz": 0.0,
+  "sample_rate": 2048000,
+  "gain": 30.0,
+  "ppm": 0,
+  "host": "0.0.0.0",
+  "port": 8434,
+  "tune_hz": 145500000.0,
+  "center_hz": 145909600.0,
+  "mode": "FM",
+  "bandwidth": {
+    "AM": 10000.0,
+    "FM": 12000,
+    "LSB": 3000.0,
+    "USB": 3000.0,
+    "CW": 2900.0,
+    "WFM": 200000.0
+  },
+  "zoom": 1,
+  "ft8": false,
+  "wefax": false,
+  "cw": false,
+  "upconv": "off",
+  "squelch": {
+    "FM": -120.0,
+    "WFM": -120.0,
+    "AM": -120.0
+  }
+}

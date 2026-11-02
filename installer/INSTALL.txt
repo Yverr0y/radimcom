@@ -1,0 +1,91 @@
+RADIMCOM - SDR receiver in the web browser
+==========================================
+
+Features
+--------
+- Up to 4 VFOs (A-D) side by side, each with its own SDR: RTL-SDR dongles and LimeSDR Mini.
+  Fewer SDRs: the remaining VFO windows stay in place, greyed out ("NO SDR").
+- Transceiver-style screen: S-meter, 7-segment frequency displays, spectrum and waterfall
+  (zoom 1x-32x), frequency shown on mouse hover, tuning by click, drag and mouse wheel.
+- Modes AM, FM, WFM, LSB, USB, CW with adjustable filter width (drag the filter edge).
+- WFM stereo and RDS (station name, RadioText, PI, PTY, clock).
+- HF through an upconverter (configurable LO), warning when the manual CONV/BYPASS switch
+  has to be changed.
+- Squelch per mode, RF gain slider under each display (or AGC), audio ALC, automatic notch.
+- CUE: keep listening to other VFOs at a separate CUE level while one VFO is selected;
+  MAIN and CUE volume faders, stereo level meter, MUTE.
+- REC: records the audio of the selected VFO to a WAV file.
+- Decoders: FT8, WEFAX (radio fax), CW (Morse), RTTY (auto shift/speed), SSTV (14 modes),
+  ACARS (aircraft data link, VHF airband); optional daily log for each.
+- Band buttons (HF/VHF/UHF ham, broadcast, airband, marine, PMR446, CB) and frequency
+  memories with groups and favourites (import from SDR#).
+- Frequency correction (ppm), bias-tee, sample rate, waterfall colours, S-meter calibration.
+- TX with LimeSDR (optional, off by default): PTT = hold SPACE, FM test message or carrier.
+- Clock (local / UTC), all settings remembered per VFO.
+
+Installation on a new PC
+------------------------
+1. Unzip RADIMCOM_install_v<version>.zip (e.g. RADIMCOM_install_v0.102.zip) - it contains
+   the RADIMCOM folder; put it e.g. to C:\RADIMCOM (not into Program Files).
+2. Connect the SDR dongles (RTL-SDR, LimeSDR Mini).
+3. Run install.bat. It will:
+   - check Python 3.9+ (if missing, it opens python.org; install it with "Add python.exe to PATH"),
+   - install the Python packages into .venv (needs internet),
+   - offer to install the USB drivers (Zadig for RTL-SDR, FTDI D3XX for LimeSDR) - see DRIVERS.txt,
+   - run the SDR setup (setup_sdr.py): finds the dongles, assigns them to VFO A, B, C...,
+     asks about an upconverter and ppm, and can write unique serial numbers into the EEPROM.
+     Tip: to pick the right dongle for a VFO, simply UNPLUG it when asked and press Enter -
+     the setup detects which one it was (then plug it back in). The USB order says nothing
+     about which dongle is connected to which antenna or upconverter.
+   - create desktop shortcuts "RADIMCOM" and "RADIMCOM SDR setup".
+4. Start the receiver with the RADIMCOM shortcut. The page opens at http://localhost:8434
+   (the first start of a LimeSDR takes ~10 s because of calibration).
+
+Different dongles later: close the receiver and run "RADIMCOM SDR setup" (setup.bat) again.
+Old settings are moved to data\config_backup\.
+
+All settings, memories, logs and saved images of this PC are kept in the data\ folder.
+
+Transmitting (LimeSDR only): SET -> "Enable TX" (off by default). PTT = hold SPACE.
+Only with a suitable antenna or dummy load and on frequencies you are licensed for.
+
+More details: README.md (Slovak).
+
+Change log
+----------
+Ver. 0.103
+- Settings, memories, logs, saved images and backups moved to the data\ folder
+  (program files stay in the main folder). Older installations: the files are moved
+  to data\ automatically at the first start.
+
+Ver. 0.102
+- Decoders (FT8, WEFAX, SSTV, ACARS) moved to a second tab DECODERS next to SPECTRUM,
+  no more scrolling down. The tab shows the number of running decoders and a green dot
+  when something new arrives; turning a decoder on opens the tab.
+- The open tab (SPECTRUM / DECODERS) is remembered for each VFO and restored when switching VFO;
+  a VFO without a saved tab opens DECODERS when a decoder is running on it.
+- RTTY decoder (Baudot/ITA2) with automatic detection of shift (90-1000 Hz), speed
+  (45.45/50/75/100 Bd) and polarity; each can also be set by hand. E.g. amateur RTTY
+  45.45 Bd / 170 Hz, DWD weather 50 Bd / 450 Hz (4583, 7646, 10100.8 kHz).
+  Text shown like on an old green phosphor terminal.
+- CW decoder is now a card in the DECODERS tab; CW and RTTY text fills the whole tab.
+- LOG checkbox in every decoder card: daily log logs\<decoder>_YYYY-MM-DD.txt (UTC, one line
+  per message; WEFAX/SSTV log the names of saved images). ACARS logs to acars\ only when LOG is on.
+
+Ver. 0.101
+- ACARS decoder (VHF airband, 131.725 MHz etc.): coherent MSK demodulation, CRC check,
+  message description in plain English, long messages collapsed (click to expand).
+- ACARS: aircraft type and position looked up on ADS-B (adsb.fi / adsb.lol), shown in blue;
+  click the registration or flight to open the live map.
+- ACARS daily log: acars\acars_YYYY-MM-DD.txt (UTC), including the ADS-B data.
+- SQUELCH slider under RF GAIN for every VFO (dimmed in modes without squelch).
+- FM filter widths 500 Hz - 50 kHz (buttons 0.5 / 3 / 6 / 12 / 25 / 50 kHz).
+- Grey RDS logo when no RDS is received; inactive ALC/SQL flags no longer larger.
+- Setup: upconverter LO is checked (30-1000 MHz, Hz input converted); LO/ppm can be fixed
+  in SET even when the dongle is in error.
+- FT8 works without PyAudio (newer Python); a missing PyFT8 no longer stops the receiver.
+- Installer shows the download progress of the Python packages.
+
+Ver. 0.1
+- First release: 4 VFOs, spectrum/waterfall, AM/FM/WFM/SSB/CW, WFM stereo + RDS, upconverter,
+  CUE, REC, FT8/WEFAX/CW/SSTV decoders, memories, LimeSDR TX, installer with SDR setup.

@@ -1,0 +1,38 @@
+RADIMCOM - USB drivers
+======================
+
+install.bat offers to run both driver installers below. Everything needed is in this folder;
+the links are only for newer versions or if something is missing.
+
+RTL-SDR dongles (R820T / RTL2832U)
+----------------------------------
+Driver: WinUSB, installed with Zadig (drivers\zadig.exe, version 2.4, GPLv3).
+  1. Connect the dongle and run zadig.exe (Windows asks for administrator rights).
+  2. Options -> List All Devices.
+  3. Select "Bulk-In, Interface (Interface 0)" (sometimes "RTL2838UHIDIR").
+     Do NOT select your keyboard, mouse or other devices.
+  4. Driver on the right side: WinUSB -> Replace Driver (or Install Driver).
+  5. Repeat for every dongle (each one shows up separately).
+Download: https://zadig.akeo.ie/
+Guide:    https://www.rtl-sdr.com/rtl-sdr-quick-start-guide/
+The RTL-SDR library (librtlsdr.dll, libusb-1.0.dll) is included in lib\.
+
+LimeSDR Mini
+------------
+Driver: FTDI D3XX (FT601 USB 3.0 chip),
+  drivers\FTD3XXDriver_WHQLCertified_v1.3.0.4_Installer.exe - run it and follow the steps.
+Download: https://ftdichip.com/drivers/d3xx-drivers/
+LimeSuite.dll is included in lib\ (from PothosSDR, Apache 2.0). If it does not work, install PothosSDR:
+          https://downloads.myriadrf.org/builds/PothosSDR/
+LimeSuite: https://github.com/myriadrf/LimeSuite
+
+Python
+------
+Python 3.9 or newer: https://www.python.org/downloads/windows/
+(tick "Add python.exe to PATH" during installation).
+
+Unique serial numbers
+---------------------
+The receiver opens each dongle by its serial number. Cheap dongles often all have "00000001";
+setup.bat then offers to write a unique serial into the dongle EEPROM (a backup is saved to
+eeprom_backup\, restore with: python eeprom_tool.py restore INDEX FILE).
