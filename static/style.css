@@ -468,6 +468,7 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 /* typ a poloha lietadla z ADS-B pod registráciou */
 .acars .ac-sub { font-size: 10px; color: #6cb8ff; white-space: nowrap; }   /* modré = z ADS-B, nie z ACARS */
 .acars .ac-sub.none { color: var(--dim); }
+#vdl2Info.err { color: #ff7b6b; }
 .acars .ext { color: #6cb8ff; }
 .acars td.desc { white-space: normal; min-width: 12em; max-width: 18em; color: var(--text); }
 .acars tr.bad td { color: var(--dim); }
@@ -477,14 +478,24 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .acars td.msg.long::after { content: "▾ more"; display: block; font-size: 10px; color: var(--muted); }
 .acars td.msg.long.open::after { content: "▴ less"; }
 .acars td { vertical-align: top; }
-/* CPDLC: decoded text in the ACARS row; in the CPDLC card uplinks (ATC) amber, downlinks (pilot) green */
-.acars .cpdlc-dec { color: #6cff9c; margin-bottom: 2px; white-space: pre-wrap; }
-.cpdlc td.msg { cursor: pointer; white-space: pre-wrap; }
-.cpdlc td.msg.cp-up .cp-el { color: var(--amber); }
-.cpdlc td.msg.cp-down .cp-el { color: #6cff9c; }
-.cpdlc .cp-id { display: inline-block; min-width: 3.6em; font-size: 10px; color: var(--muted); }
-.cpdlc .cp-raw { font-size: 10px; color: var(--dim); word-break: break-all; margin-top: 2px; }
-.cpdlc tr.bad td.msg .cp-el { color: var(--dim); }
+/* decoded CPDLC / ADS-C / ATN in the row: coloured tag + stripe on the left; uplinks (ATC) amber, downlinks green */
+.type-tag { display: inline-block; font-size: 9px; line-height: 13px; padding: 0 4px; border-radius: 3px;
+  font-weight: 700; letter-spacing: .3px; color: #0b1410; vertical-align: 1px; }
+.type-tag.t-acars { background: #8fa8c4; }
+.type-tag.t-cpdlc { background: #6cff9c; }
+.type-tag.t-adsc { background: #c79bff; }
+.type-tag.t-atn { background: #4fd8d0; }
+.acars tr.r-acars td:first-child { box-shadow: inset 3px 0 #8fa8c4; }
+.acars tr.r-cpdlc td:first-child { box-shadow: inset 3px 0 #6cff9c; }
+.acars tr.r-adsc td:first-child { box-shadow: inset 3px 0 #c79bff; }
+.acars tr.r-atn td:first-child { box-shadow: inset 3px 0 #4fd8d0; }
+.acars .dec { margin-bottom: 3px; white-space: pre-wrap; }
+.acars .dec.cp-up .cp-el { color: var(--amber); }
+.acars .dec.cp-down .cp-el { color: #6cff9c; }
+.acars .dec.d-adsc .cp-el { color: #d9c2ff; }
+.acars .cp-id { display: inline-block; min-width: 4.2em; font-size: 10px; color: var(--muted); }
+.acars tr.bad .dec .cp-el { color: var(--dim); }
+.acars .msg-text.raw { font-size: 10px; color: var(--dim); word-break: break-all; }   /* the ARINC 622 hex under the decode */
 .ft8 tr.new { animation: ft8new 1.5s ease-out; }
 .ft8 tr.cycle td { padding: 2px 10px; font-size: 10px; color: var(--dim); background: rgba(255, 255, 255, .02); }
 @keyframes ft8new { from { background: rgba(255, 216, 74, .15); } to { background: transparent; } }

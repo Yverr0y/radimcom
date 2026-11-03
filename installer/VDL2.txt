@@ -1,0 +1,30 @@
+VDL2 decoder (lib\vdl2)
+=======================
+
+RADIMCOM decodes VDL Mode 2 with dumpvdl2, which runs as a separate program. RADIMCOM sends it the raw
+I/Q samples on its standard input and reads the decoded messages (JSON) from its standard output.
+
+Programs and libraries in this folder:
+
+- dumpvdl2.exe 2.7.0 - Copyright (c) Tomasz Lemiech, GNU General Public License v3.
+  Source: https://github.com/szpajder/dumpvdl2 (tag v2.7.0), built without changes.
+- msys-acars-2-2.dll = libacars 2.2.1 - Copyright (c) Tomasz Lemiech, MIT licence.
+  Source: https://github.com/szpajder/libacars (tag v2.2.1), built without changes.
+- msys-2.0.dll - MSYS2 runtime (Cygwin based), GNU LGPL v3. https://github.com/msys2/msys2-runtime
+- msys-glib-2.0-0.dll (GLib, LGPL 2.1+), msys-xml2-16.dll (libxml2, MIT), msys-z.dll (zlib, zlib licence),
+  msys-iconv-2.dll (libiconv, LGPL), msys-intl-8.dll (gettext, LGPL), msys-pcre2-8-0.dll (PCRE2, BSD),
+  msys-gcc_s-seh-1.dll (GCC runtime, GPL with runtime exception) - MSYS2 packages, sources at
+  https://github.com/msys2/MSYS2-packages
+
+How it was built (MSYS2, "MSYS" environment, gcc 16.2):
+
+  pacman -S gcc cmake ninja pkgconf glib2-devel libxml2-devel zlib-devel
+  libacars:  cmake -S . -B build-msys -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+                   -DCMAKE_C_FLAGS="-D_GNU_SOURCE -include alloca.h"
+             ninja -C build-msys install
+  dumpvdl2:  cmake -S . -B build-msys -G Ninja -DCMAKE_BUILD_TYPE=Release
+                   -DCMAKE_C_FLAGS="-D_GNU_SOURCE -include alloca.h"
+                   -DRTLSDR=OFF -DMIRISDR=OFF -DSDRPLAY=OFF -DSDRPLAY3=OFF -DSOAPYSDR=OFF
+                   -DETSY_STATSD=OFF -DSQLITE=OFF -DZMQ=OFF -DRAW_BINARY_FORMAT=OFF
+             ninja -C build-msys
+  The DLLs are copied from C:\msys64\usr\bin.

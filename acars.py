@@ -184,7 +184,8 @@ class AcarsDecoder:
         self.tag = tag            # VFO name in the log (the log is shared by all VFOs)
         self.log_dir = log_dir
         self.log_on = False       # daily log only after LOG is turned on in the ACARS card
-        self.enabled = False      # ACARS card
+        self.enabled = False      # ACARS card with the classic ACARS demodulator (131.x MHz)
+        self.vdl2_on = False      # messages come from VDL2 (vdl2.py) instead: the demodulator rests
         self.cpdlc_on = False     # CPDLC card (uses the same demodulator)
         self.cpdlc_log_on = False
         self.cpdlc_msgs = collections.deque(maxlen=300)
@@ -212,6 +213,17 @@ class AcarsDecoder:
             self.enabled = bool(on)
         self._emit_state()
 
+    @property
+    def shown(self):
+        """The ACARS card is shown and collects messages (from either link)."""
+        return self.enabled or self.vdl2_on
+
+    def set_vdl2(self, on):
+        with self.lock:
+            self.vdl2_on = bool(on)
+            self._fs = None
+        self._emit_state()
+
     def set_cpdlc(self, on):
         with self.lock:
             if not (self.enabled or self.cpdlc_on):
@@ -233,7 +245,7 @@ class AcarsDecoder:
             self.count = self.crc_errors = 0
 
     def info(self):
-        return {"enabled": self.enabled, "count": self.count, "crc_errors": self.crc_errors,
+        return {"enabled": self.enabled, "vdl2": self.vdl2_on, "count": self.count, "crc_errors": self.crc_errors,
                 "level_db": round(self.level, 1), "messages": list(self.msgs)}
 
     # ---------- signal processing ----------
@@ -262,7 +274,7 @@ class AcarsDecoder:
 
     def feed(self, base, fs, dial_hz):
         """base: complex baseband (tuned frequency = 0 Hz) at sample rate fs."""
-        if not (self.enabled or self.cpdlc_on):
+        if not (self.enabled or self.cpdlc_on) or self.vdl2_on:
             return
         with self.lock:
             if fs != self._fs:
@@ -333,15 +345,49 @@ class AcarsDecoder:
                 self.crc_errors += 1
             if perr:              # bad CRC and parity: noise, not shown
                 return
+        m["freq_hz"] = round(self.dial)
+        m["link"] = "ACARS"
+        self._accept(m, now)
+
+    # ---------- messages from VDL2 (vdl2.py, dumpvdl2 in its own threads) ----------
+
+    def accept_vdl2(self, m):
+        """ACARS message received over VDL2 (dict like parse(), with freq_hz and link "VDL2")."""
+        if not self.vdl2_on:
+            return
+        with self.lock:
+            if not m["crc_ok"]:
+                self.crc_errors += 1
+            m["freq_hz"] = m["vdl2"]["freq_hz"]
+            self._accept(m, time.time())
+        self._emit_state()
+
+    def accept_atn(self, r):
+        """ATN application message over VDL2 (CPDLC card record from vdl2.py)."""
+        if not (self.vdl2_on and self.cpdlc_on):
+            return
+        now = time.time()
+        with self.lock:
+            r.update(id=self._next_id, time=time.strftime("%H:%M:%S", time.gmtime(now)),
+                     date=time.strftime("%Y-%m-%d", time.gmtime(now)), freq_hz=r["vdl2"]["freq_hz"],
+                     reg=r["air"], flight="", label="", ac=None)
+            self._next_id += 1
+            self.cpdlc_count += 1
+            self.cpdlc_msgs.append(r)
+        self.on_event("cpdlc", r)
+        self._emit_cpdlc_state()
+        self._log_cpdlc({"id": r["id"], "ac": None})
+
+    def _accept(self, m, now):
+        """Common path of a received ACARS message (both links): CPDLC, card, ADS-B lookup, log."""
         m["time"] = time.strftime("%H:%M:%S", time.gmtime(now))
         m["date"] = time.strftime("%Y-%m-%d", time.gmtime(now))
-        m["freq_hz"] = round(self.dial)
         m["id"] = self._next_id
         self._next_id += 1
         m["ac"] = None
         m["cpdlc"] = None
         c = self._cpdlc(m) if m["crc_ok"] else None
-        if self.enabled:
+        if self.shown:
             self.count += 1
             self.msgs.append(m)
             self.on_event("acars", m)
@@ -350,7 +396,7 @@ class AcarsDecoder:
             self.cpdlc_msgs.append(c)
             self.on_event("cpdlc", c)
             self._emit_cpdlc_state()
-        if not self.enabled and not (c and self.cpdlc_on):
+        if not self.shown and not (c and self.cpdlc_on):
             return
         if len(m["reg"]) >= 3 and self.crc_ok_reg(m):
             try:
@@ -364,7 +410,13 @@ class AcarsDecoder:
         """CPDLC inside the ACARS message (long ones joined from several blocks) -> CPDLC record or None."""
         if m["label"] not in cpdlc.LABELS:
             return None
-        full = self._reasm.push(m)
+        if m["link"] == "VDL2":
+            # dumpvdl2 (libacars) joins the blocks itself: the last block carries the whole text
+            if m["more"]:
+                return None
+            full = m["text"]
+        else:
+            full = self._reasm.push(m)
         if full is None:
             return None
         try:
@@ -373,18 +425,19 @@ class AcarsDecoder:
             return None
         if not r:
             return None
-        m["cpdlc"] = {"text": r["text"], "crc_ok": r["crc_ok"], "imi": r["imi"], "gs": r["gs"]}
+        m["cpdlc"] = {k: r[k] for k in ("text", "crc_ok", "imi", "imi_desc", "gs", "min", "mrn", "ts", "elements", "error")}
         r.update(id=m["id"], time=m["time"], date=m["date"], freq_hz=m["freq_hz"], reg=m["reg"] or r["air"],
-                 flight=m["flight"], label=m["label"], ac=None, raw=full)
+                 flight=m["flight"], label=m["label"], ac=None, raw=full, link=m["link"])
         return r
 
     def _log(self, m):
         """Line to the daily log (UTC); multi-line text indented. ADS-B data in [ADS-B: ...]."""
         if self.cpdlc_on and m.get("cpdlc"):
             self._log_cpdlc(m)
-        if not (self.log_on and self.enabled):
+        if not (self.log_on and self.shown):
             return
         head = [f"{m['date']} {m['time']}Z", f"{m['freq_hz'] / 1e6:.3f}", f"VFO-{self.tag}" if self.tag else "",
+                "VDL2" if m.get("link") == "VDL2" else "",
                 m["reg"] or "-", m["flight"] or "-", f"label {m['label']}", m["dir"],
                 "" if m["crc_ok"] else "CRC-ERROR"]
         line = " ".join(h for h in head if h) + f" | {m['desc']}"
@@ -411,7 +464,7 @@ class AcarsDecoder:
         if not c:
             return
         head = [f"{c['date']} {c['time']}Z", f"{c['freq_hz'] / 1e6:.3f}", f"VFO-{self.tag}" if self.tag else "",
-                c["reg"] or "-", c["flight"] or "-", "uplink" if c["dir"] == "up" else "downlink",
+                "VDL2" if c.get("link") == "VDL2" else "", c["reg"] or "-", c["flight"] or "-", "uplink" if c["dir"] == "up" else "downlink",
                 f"ground {c['gs']}", c["imi"], f"MIN {c['min']}" if c["min"] is not None else "",
                 f"MRN {c['mrn']}" if c["mrn"] is not None else "", c["ts"], "" if c["crc_ok"] else "CRC-ERROR"]
         line = " ".join(h for h in head if h)

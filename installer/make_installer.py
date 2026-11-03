@@ -30,9 +30,13 @@ VERSION = read_version()
 DIST = os.path.join(ROOT, "dist")
 OUT = os.path.join(DIST, f"RADIMCOM_install_v{VERSION}.zip")
 
-CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "lime.py", "rds.py", "cw.py", "rtty.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py", "cpdlc.py", "cpdlc_schema.py",
+CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "lime.py", "rds.py", "cw.py", "rtty.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py", "cpdlc.py", "cpdlc_schema.py", "adsc.py", "vdl2.py",
         "memories.py", "eeprom_tool.py", "setup_sdr.py", "start.bat", "setup.bat", "README.md", "CHANGELOG.md"]
 LIBS = ["lib/librtlsdr.dll", "lib/libusb-1.0.dll"]
+# VDL2: dumpvdl2 built with MSYS2 (see installer/VDL2.txt), with its MSYS2 runtime DLLs
+LIBS += ["lib/vdl2/" + f for f in ("dumpvdl2.exe", "msys-2.0.dll", "msys-acars-2-2.dll", "msys-gcc_s-seh-1.dll",
+                                   "msys-glib-2.0-0.dll", "msys-iconv-2.dll", "msys-intl-8.dll", "msys-pcre2-8-0.dll",
+                                   "msys-xml2-16.dll", "msys-z.dll")]
 FROM_INSTALLER = ["install.bat", "requirements.txt", "config.json", "DRIVERS.txt", "INSTALL.txt"]
 # files from this PC that are bundled (target in the package: source)
 EXTERNAL = {
@@ -62,6 +66,7 @@ def main():
             copy(os.path.join(ROOT, f), f, build)
         for f in FROM_INSTALLER:
             copy(os.path.join(HERE, f), f, build)
+        copy(os.path.join(HERE, "VDL2.txt"), "lib/vdl2/README.txt", build)   # licences and sources of dumpvdl2
         shutil.copytree(os.path.join(ROOT, "static"), os.path.join(build, "static"))
         for dst, src in EXTERNAL.items():
             copy(src, dst, build)

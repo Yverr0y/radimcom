@@ -527,6 +527,7 @@ class Receiver:
         self.on_audio = on_audio
         self.on_baseband = on_baseband
         self.on_demod = on_demod
+        self.on_raw = None        # raw dongle samples (VDL2), set by app.py
         self.on_status = on_status
         self.lock = threading.Lock()
         self.pending = {}
@@ -800,6 +801,8 @@ class Receiver:
                 raw = blocks.get(timeout=2)
             except queue.Empty:
                 raise RuntimeError("dongle is not sending data" if reader.is_alive() else "dongle reading stopped")
+            if self.on_raw and (raw.dtype == np.complex64 or len(raw) == READ_SAMPLES * 2):
+                self.on_raw(raw, self.fs, self.cfg["center_hz"])   # VDL2: raw samples to dumpvdl2
             if raw.dtype == np.complex64:
                 iq = raw                            # LimeSDR: already normalised complex samples
             elif len(raw) != READ_SAMPLES * 2:

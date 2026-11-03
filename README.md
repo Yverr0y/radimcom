@@ -18,8 +18,8 @@ Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
 - **Squelch** for AM, FM and WFM, each mode with its own level. It decides every ~8 ms, so it does not cut off
   the start of a transmission (airband). The level is marked on the S-meter with a yellow tick.
 - **Spectrum and waterfall** with 1×–32× zoom.
-- **Decoders:** FT8, WEFAX (radio fax with automatic format detection), CW (Morse with AFC and speed estimation), RTTY (Baudot, automatic shift 90–1000 Hz, speed 45.45/50/75/100 Bd and polarity), SSTV (colour images, 14 modes, VIS) and ACARS (aircraft data messages on 131.725 MHz and others, AM, MSK 2400 bit/s, CRC check; aircraft type and position from adsb.fi / adsb.lol) and CPDLC (FANS-1/A controller-pilot messages carried in ACARS: clearances, requests, position reports; decoded to the standard message text, multi-block messages joined).
-- **Daily logs:** the LOG checkbox in each decoder card writes to `data\logs\<decoder>_YYYY-MM-DD.txt` (UTC, one line per message; WEFAX/SSTV log the names of saved images), ACARS to `data\acars\acars_YYYY-MM-DD.txt`, CPDLC to `data\acars\cpdlc_YYYY-MM-DD.txt`.
+- **Decoders:** FT8, WEFAX (radio fax with automatic format detection), CW (Morse with AFC and speed estimation), RTTY (Baudot, automatic shift 90–1000 Hz, speed 45.45/50/75/100 Bd and polarity), SSTV (colour images, 14 modes, VIS) and aircraft data link: ACARS (131.725 MHz and others, AM, MSK 2400 bit/s) and VDL2 (VDL Mode 2, 136.725–136.975 MHz, all channels at once, via dumpvdl2), with CPDLC (FANS-1/A and European ATN) and ADS-C position reports decoded to plain text; aircraft type and position from adsb.fi / adsb.lol. See [Aircraft data link](#aircraft-data-link-acars-vdl2-cpdlc-ads-c).
+- **Daily logs:** the LOG checkbox in each decoder card writes to `data\logs\<decoder>_YYYY-MM-DD.txt` (UTC, one line per message; WEFAX/SSTV log the names of saved images), ACARS / VDL2 to `data\acars\acars_YYYY-MM-DD.txt` and (CPDLC, ADS-C) `data\acars\cpdlc_YYYY-MM-DD.txt`.
 - **Frequency memories** (MEM) with favourites and import from SDR# (`frequencies.xml`).
 - **Upconverter:** HF is tuned via the LO (e.g. 100 MHz), see [Shortwave (HF) reception](#shortwave-hf-reception-with-an-upconverter). For a VFO with a manual converter switch, crossing
   30 MHz shows a warning whether the converter must be switched on (CONV) or set to BYPASS.
@@ -89,48 +89,72 @@ Setup:
 - With several dongles, connect the converter to one of them (e.g. VFO A) and keep the others direct for VHF/UHF.
   A band button outside the active VFO's range switches to the VFO that can receive it.
 
-## CPDLC: controller-pilot data link
+## Aircraft data link: ACARS, VDL2, CPDLC, ADS-C
 
-CPDLC replaces voice between air traffic control and the cockpit with text messages: the controller sends
-clearances ("CLIMB TO AND MAINTAIN FL350", "AT VANDA CONTACT CHRISTCHURCH CONTROL 128.100 MHz"), the pilot
-answers ("WILCO", "UNABLE"), asks for changes and sends position reports. Aircraft with FANS-1/A avionics carry
-these messages inside ordinary ACARS messages (ARINC 622, labels AA / BA / H1), so RADIMCOM decodes them from the
-same VHF signal as ACARS:
+Airliners exchange data with the ground over two VHF links, and RADIMCOM receives both:
 
-- Turn on **CPDLC** under DECODE and tune an ACARS channel with the buttons in the card (AM; 131.725 MHz is the
-  busiest in Europe). The ACARS demodulator runs for CPDLC even when the ACARS card is off.
-- Each message shows the time (and the time stamp inside the message), frequency, aircraft and flight
-  (with ADS-B type and position as in ACARS), the ground station address (e.g. `MSTEC7X` = Maastricht UAC),
-  the direction (↑ uplink from ATC, amber; ↓ downlink from the pilot, green), **MIN** (message number) and
-  **MRN** (number of the message it answers, so you can pair a clearance with its WILCO).
-- The text is the standard CPDLC wording with the values filled in (flight levels, fixes, latitude/longitude,
-  times, speeds, frequencies). Position reports are listed field by field: position, time, altitude, next fix
-  and ETA, destination ETA, wind, temperature, turbulence, speed.
-- The ARINC 622 CRC is checked (✗ = CRC error). Long messages split over several ACARS blocks are joined.
-  Click a message to see the raw text. The ACARS card shows the decoded CPDLC text as well.
-- Connect / disconnect requests (CR1 / CC1 / DR1) are shown too; ADS-C reports (`.ADS`) are recognised
-  but not decoded.
-- LOG writes `data\acars\cpdlc_YYYY-MM-DD.txt` (UTC).
+| | **ACARS** (classic) | **VDL2** (VDL Mode 2) |
+|---|---|---|
+| Frequencies (Europe) | 131.525, 131.725, 131.825, 136.900 MHz | 136.725, 136.775, 136.825, 136.875, 136.975 MHz |
+| Signal | AM, MSK 2400 bit/s | digital D8PSK, 31.5 kbit/s |
+| Carries | ACARS messages, FANS-1/A CPDLC and ADS-C inside them | the same, plus European **ATN CPDLC** (exists only on VDL2) |
+| Traffic | older aircraft, long-haul ADS-C, backup | most airline traffic over Europe today |
 
-**What to expect:** CPDLC over plain ACARS is not frequent. In Europe most CPDLC uses the ATN network on
-VDL Mode 2 (136.x MHz, a different modulation), which RADIMCOM does not decode. FANS-1/A over ACARS is used
-mainly by long-haul aircraft, e.g. with Maastricht (MSTEC7X), so expect far fewer CPDLC messages than
-other ACARS traffic; leave the decoder running with LOG on.
+- **ACARS** and **VDL2** under DECODE open the same card. Only one link at a time: the dongle is either at 131.x
+  or at 136.x MHz. Turning one on turns the other off.
+- **ACARS:** the buttons in the card tune the ACARS channels (AM; 131.725 MHz is the busiest).
+- **VDL2:** the VFO switches to 2.1 MS/s around 136.850 MHz and all five VDL2 channels are decoded at once (the
+  136.850 button re-centres it). Spectrum, waterfall and audio keep working. Decoding is done by
+  [dumpvdl2](https://github.com/szpajder/dumpvdl2) (`lib\vdl2\dumpvdl2.exe`), which runs as a separate program;
+  `vdl2.py` feeds it the raw samples and reads the decoded messages. Turning VDL2 off restores the sample rate.
+- Every message shows time, frequency, aircraft and flight (with type and position from ADS-B, in blue; click
+  the registration or flight for the live map), label, description and text. A **tag** says what it is:
+
+  | Tag | Meaning |
+  |---|---|
+  | **ACARS** (slate) | plain ACARS message (airline, maintenance, weather…) |
+  | **CPDLC** (green) | FANS-1/A controller-pilot message: ↑ from ATC (amber text), ↓ from the aircraft (green) |
+  | **ADS-C** (violet) | automatic position report to air traffic control |
+  | **ATN CPDLC** (teal) | European CPDLC over VDL2 |
+
+- **CPDLC** (FANS-1/A, ARINC 622): the standard wording with the values filled in ("CLIMB TO AND MAINTAIN FL350",
+  "AT VANDA CONTACT CHRISTCHURCH CONTROL 128.100 MHz"), the ground station (e.g. `MSTEC7X` = Maastricht UAC),
+  **MIN** (message number) and **MRN** (number of the message it answers, so a clearance pairs with its WILCO).
+  Position reports are listed field by field. The ARINC 622 CRC is checked (✗ = CRC error); long messages split
+  over several blocks are joined. Connect / disconnect requests (CR1 / CC1 / DR1) are shown too.
+- **ADS-C** (`adsc.py`, ARINC 745): position, altitude, time and accuracy, track, ground speed and vertical rate,
+  heading and Mach, wind and temperature, predicted route, projected intent, flight ID, the ground's contract
+  requests (interval, events) and the aircraft's ACK / NACK.
+- **ATN CPDLC** in a compact form: header (MIN, MRN, time, "ack required") and one line per message element,
+  e.g. `dM6 REQUEST FL360`, `dM106 PREFERRED LEVEL FL350`, `dM0 WILCO`, plus connect / abort / release.
+- **LOG** writes `data\acars\acars_YYYY-MM-DD.txt` and (CPDLC, ADS-C, ATN) `data\acars\cpdlc_YYYY-MM-DD.txt`,
+  UTC; messages from VDL2 are tagged `VDL2`.
+
+**What to expect:** on 131.725 MHz mostly long-haul aircraft (ADS-C reports every few minutes); on VDL2 many
+messages per minute from all airlines and, near busy airspace, European CPDLC (requests, WILCO, logical
+acknowledgements). Ground stations are often too far to hear, so many conversations are one-sided (↓ only).
 
 **Command-line test** (no radio needed; `u` = uplink, `d` = downlink, then the ACARS label and the message text):
 
 ```bash
 python cpdlc.py u AA "/AKLCDYA.AT1.9V-SVG21D0755D84AD067448398722949A7521C8AB4A1C8EAB5CE393"
+python cpdlc.py d B6 "/SKYSWSQ.ADS.9V-SWJ072230905353079195AF1D0E2720EDC000100A987E521814"
 ```
 
 ```
 CPDLC message  ground AKLCDYA  aircraft 9V-SVG  CRC OK
 MIN 3  MRN None  20:07:21Z
 uM118: AT VANDA CONTACT CHRISTCHURCH CONTROL 128.100 MHz
+
+ADS-C report  ground SKYSWSQ  aircraft 9V-SWJ  CRC OK
+BASIC: Basic report: 48.0793N 14.6468E · 31000 FT · 23:23:07.8Z · accuracy <0.25 NM
+EARTH: track 110.0° TRUE · GS 475.5 KT · vertical rate +0 FT/MIN
+METEO: wind 137° TRUE / 10.5 KT · temperature -53.75 °C
 ```
 
-The message set and its wording (RTCA DO-258) are in `cpdlc_schema.py`, generated from
-[libacars](https://github.com/szpajder/libacars) (MIT licence).
+The FANS-1/A message set and its wording (RTCA DO-258) are in `cpdlc_schema.py`, generated from
+[libacars](https://github.com/szpajder/libacars) (MIT licence). dumpvdl2 and libacars for VDL2 are built
+with MSYS2; licences, sources and build steps are in `installer\VDL2.txt` (`lib\vdl2\README.txt` in the package).
 
 ## Running
 
@@ -185,7 +209,7 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
 - **MODE**: demodulation. **FILTER**: bandwidth for the current mode.
 - **GAIN**: AGC switches automatic tuner gain on/off (manual gain with the RF GAIN slider or in SET).
 - **STEP**: tuning step (10 Hz – 10 kHz). **ZOOM**: spectrum and waterfall span (1×–32×).
-- **DECODE**: turns on the FT8, WEFAX, CW, RTTY, SSTV, ACARS or CPDLC decoder. The panels are in the
+- **DECODE**: turns on the FT8, WEFAX, CW, RTTY, SSTV, ACARS or VDL2 decoder. The panels are in the
   **DECODERS** tab next to SPECTRUM; turning a decoder on opens it, a green dot signals a new message/image.
   Every panel has a LOG checkbox for the daily log:
   - FT8: band buttons (160 m – 10 m) and CLR.
@@ -202,12 +226,13 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
   - SSTV: frequencies (80m–10m, ISS FM), mode selection (Auto by VIS), STOP, PNG and a gallery of recent
     images (saved to `data\sstv\`). Modes Martin M1/M2, Scottie S1/S2/DX, Robot 36/72, PD 50–290;
     AFC and slant correction are automatic. Filter at least 2.7 kHz.
-  - ACARS: channel buttons (131.525 / 131.725 / 131.825 / 136.900 MHz), CLR; click the registration or flight to open the ADS-B map.
+  - ACARS / VDL2 (one card): channel buttons (131.525 / 131.725 / 131.825 / 136.900 MHz) or the VDL2 centre
+    button (136.850 MHz), CLR; click the registration or flight to open the ADS-B map.
 
     ![DECODERS tab with the ACARS decoder: messages with aircraft type and position from ADS-B](docs/images/decoders.png)
 
-  - CPDLC: the same channel buttons and CLR; click a message for the raw text. See
-    [CPDLC: controller-pilot data link](#cpdlc-controller-pilot-data-link).
+    CPDLC, ADS-C and ATN CPDLC are shown in the same card with coloured tags, see
+    [Aircraft data link](#aircraft-data-link-acars-vdl2-cpdlc-ads-c).
 
 - **AUDIO**:
   - STEREO: WFM stereo on/off (mono = less noise on weak stations).
@@ -323,7 +348,8 @@ python memories.py C:\sdrsharpSW\frequencies.xml
 | `launcher.py` | VFO A–D launcher |
 | `sdr.py` | RTL-SDR via librtlsdr (ctypes) and DSP: tuning, filters, demodulation, squelch, waterfall |
 | `rds.py` | RDS decoder |
-| `ft8.py`, `wefax.py`, `cw.py`, `rtty.py`, `sstv.py`, `acars.py`, `cpdlc.py` | decoders |
+| `ft8.py`, `wefax.py`, `cw.py`, `rtty.py`, `sstv.py`, `acars.py`, `cpdlc.py`, `adsc.py` | decoders (`adsc.py`: ADS-C reports inside ACARS) |
+| `vdl2.py` | VDL2: runs `lib\vdl2\dumpvdl2.exe`, feeds it the raw samples, turns its messages into ACARS / CPDLC records |
 | `cpdlc_schema.py` | CPDLC message set (generated data) |
 | `CHANGELOG.md` | version history |
 | `daylog.py` | daily decoder logs |
@@ -353,7 +379,7 @@ The paths are defined in `paths.py`.
 | `config_A/B/C/D.json` | settings of each VFO (frequency, mode, filters, squelch, gain, ppm, …), saved on every change | launcher at first start, from `config.json` + `init` |
 | `memories.json` | frequency memories | MEM, import from SDR# |
 | `logs\` | daily decoder logs `<decoder>_YYYY-MM-DD.txt` (UTC) | LOG checkbox in decoder cards |
-| `acars\` | ACARS and CPDLC daily logs `acars_YYYY-MM-DD.txt`, `cpdlc_YYYY-MM-DD.txt` (UTC) | ACARS / CPDLC with LOG on |
+| `acars\` | ACARS / VDL2 and CPDLC / ADS-C daily logs `acars_YYYY-MM-DD.txt`, `cpdlc_YYYY-MM-DD.txt` (UTC) | ACARS / VDL2 with LOG on |
 | `wefax\`, `sstv\` | saved WEFAX / SSTV images (PNG) | the decoders |
 | `config_backup\<date_time>\` | previous `vfos.json` and `config_X.json` | `setup_sdr.py` before writing a new assignment |
 | `eeprom_backup\` | dongle EEPROM backups (`.bin`) | `eeprom_tool.py`, `setup_sdr.py` |

@@ -1203,7 +1203,7 @@ function restoreBodyTab() {
 function guessBodyTab() {
   if (!bodyTabGuess) return;
   bodyTabGuess = false;
-  const any = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "cpdlcOn"].some((id) => $(id).checked);
+  const any = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].some((id) => $(id).checked);
   setBodyTab(any ? "dec" : "scope");
 }
 
@@ -1219,7 +1219,7 @@ function setBodyTab(tab, save = true) {
 /** Počet zapnutých dekodérov v záložke a text, keď nie je zapnutý žiadny. */
 function renderDecTab() {
   // podľa zaškrtnutí – platí hneď po kliknutí, aj kým server nepotvrdí stav
-  const n = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "cpdlcOn"].filter((id) => $(id).checked).length;
+  const n = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].filter((id) => $(id).checked).length;
   $("decCount").textContent = n ? `(${n})` : "";
   $("decEmpty").hidden = n > 0;
 }
@@ -1234,7 +1234,7 @@ $("bodyTabs").addEventListener("click", (e) => {
   if (b) setBodyTab(b.dataset.tab);
 });
 // zapnutie dekodéra (FT8, WEFAX, SSTV, ACARS) otvorí záložku DECODERS a vidno jeho kartu
-for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "cpdlcOn"]) {
+for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"]) {
   $(id).addEventListener("change", () => {
     if ($(id).checked) setBodyTab("dec");
     renderDecTab();
@@ -1246,34 +1246,108 @@ setBodyTab(bodyTab);
 
 const ACARS_MAX_ROWS = 300;
 
-function renderAcarsBands(freqs) {
-  $("acarsBands").innerHTML = (freqs || []).map((f) =>
-    `<button data-f="${f}" title="${fmtMHz(f, 3)} MHz AM">${fmtMHz(f, 3)}</button>`).join("");
+let linkFreqs = { acars: [], vdl2Center: 0, vdl2Rate: 0, vdl2Freqs: [] };
+let linkShown = null;
+
+/** Band buttons, title and notes of the ACARS and CPDLC cards by the active link:
+ *  ACARS = the classic channels, VDL2 = one centre button (all VDL2 channels are received at once). */
+function renderLinkBands() {
+  const vdl2 = !!(st && st.vdl2);
+  if (vdl2 === linkShown) return;
+  linkShown = vdl2;
+  const f = linkFreqs;
+  const html = vdl2
+    ? `<button data-vdl2="1" title="VDL2 centre ${fmtMHz(f.vdl2Center, 3)} MHz, 2.1 MS/s: receives ` +
+      `${f.vdl2Freqs.map((x) => fmtMHz(x, 3)).join(", ")} MHz at once">${fmtMHz(f.vdl2Center, 3)}</button>`
+    : f.acars.map((x) => `<button data-f="${x}" title="${fmtMHz(x, 3)} MHz AM">${fmtMHz(x, 3)}</button>`).join("");
+  $("acarsBands").innerHTML = html;
+  $("acarsTitle").textContent = vdl2 ? "VDL2" : "ACARS";
+  for (const el of document.querySelectorAll("#acarsCard [data-link]")) {
+    el.hidden = el.dataset.link !== (vdl2 ? "vdl2" : "acars");
+  }
 }
 
+/** Click on a band button in the ACARS card. */
+async function onLinkBand(e) {
+  const b = e.target.closest("[data-f], [data-vdl2]");
+  if (!b || !st) return;
+  if (b.dataset.vdl2) {                        // re-centre the VFO for VDL2
+    const f = linkFreqs;
+    st.mode = "AM";
+    renderControls();
+    send({ sample_rate: f.vdl2Rate, center_hz: f.vdl2Center, tune_hz: f.vdl2Center, mode: "AM" });
+    return;
+  }
+  await ensureVfoFor(Number(b.dataset.f));   // VHF -> VFO bez konvertora
+  if (!st) return;
+  st.mode = "AM";
+  renderControls();
+  tune(Number(b.dataset.f));
+  const changes = { mode: "AM" };
+  if (!st.acars) { st.acars = true; st.vdl2 = false; $("acarsOn").checked = true; $("vdl2On").checked = false; changes.acars = true; }
+  send(changes);
+}
+
+/** Tooltip of the frequency cell: signal and noise of a VDL2 burst (the card title already names the link). */
+function freqTitle(m) {
+  const v = m.vdl2;
+  return v && v.sig_db != null ? ` title="signal ${v.sig_db.toFixed(1)} dBFS, noise ${v.noise_db.toFixed(1)} dBFS"` : "";
+}
+
+/** Decoded CPDLC / ADS-C / ATN message: [kind ("cpdlc" | "adsc" | "atn"), HTML block with a coloured tag]. */
+function decodedBlock(c) {
+  const kind = c.imi === "ATN" ? "atn" : c.imi === "ADS" || c.imi === "DIS" ? "adsc" : "cpdlc";
+  const name = kind === "atn" ? (c.imi_desc || "ATN").replace("context management", "CM").toUpperCase()
+    : kind === "adsc" ? "ADS-C" : "CPDLC";
+  const head = [c.gs ? `${c.dir === "up" ? "from" : "to"} ${escHtml(c.gs)}` : "",
+    c.min != null ? `MIN ${c.min}` : "", c.mrn != null ? `MRN ${c.mrn}` : "", c.ts ? escHtml(c.ts) : "",
+    kind === "cpdlc" && c.imi !== "AT1" ? escHtml(c.imi_desc) : ""].filter(Boolean).join(" · ");
+  const els = (c.elements || []).length
+    ? c.elements.map((e) => `<div class="cp-el"><span class="cp-id">${escHtml(e.id)}</span>${escHtml(e.text)}</div>`).join("")
+    : `<div class="cp-el">${escHtml(c.text || c.imi_desc || "")}</div>`;
+  return [kind, `<div class="dec d-${kind} ${c.dir === "up" ? "cp-up" : "cp-down"}">` +
+    `<div><span class="type-tag t-${kind}">${name}</span>${c.crc_ok ? "" : " ✗"} <span class="muted">${head}</span></div>` +
+    `${els}${c.error ? `<div class="muted">${escHtml(c.error)}</div>` : ""}</div>`];
+}
+
+/** One row of the ACARS card: an ACARS message (with decoded CPDLC / ADS-C inside) or an ATN message. */
 function addAcars(m, fresh) {
   const tb = $("acarsRows");
   $("acarsEmpty").hidden = true;
-  const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const tr = document.createElement("tr");
   if (!m.crc_ok) tr.classList.add("bad");
   if (fresh) tr.classList.add("new");
   const arrow = m.dir === "down" ? "↓" : "↑";   // ↓ z lietadla, ↑ zo zeme
-  tr.title = `mode ${m.mode} · block ${m.block}${m.msgno ? " · msg " + m.msgno : ""}${m.ack ? " · ack " + m.ack : ""}` +
-    `${m.crc_ok ? "" : " · CRC error"}${m.more ? " · continues in the next block" : ""}`;
+  tr.title = m.atn ? `${m.desc} · ICAO address ${m.reg}`
+    : `mode ${m.mode} · block ${m.block}${m.msgno ? " · msg " + m.msgno : ""}${m.ack ? " · ack " + m.ack : ""}` +
+      `${m.crc_ok ? "" : " · CRC error"}${m.more ? " · continues in the next block" : ""}`;
   tr.dataset.id = m.id;
-  tr.innerHTML = `<td>${m.time}</td><td class="num">${fmtMHz(m.freq_hz, 3)}</td>` +
-    `<td class="reg"></td><td class="flt"></td><td>${arrow} ${esc(m.label)}</td>` +
-    `<td class="desc">${esc(m.desc || "")}</td>` +
-    `<td class="msg">${m.cpdlc ? `<div class="cpdlc-dec" title="Decoded CPDLC (${esc(m.cpdlc.imi)}, ground ${esc(m.cpdlc.gs)})">` +
-      `${m.cpdlc.crc_ok ? "" : "✗ "}CPDLC: ${esc(m.cpdlc.text)}</div>` : ""}` +
-    `<div class="msg-text">${m.crc_ok ? "" : "✗ "}${esc(m.text) || "<span class='muted'>(no text)</span>"}</div></td>`;
+  let dec = "";
+  if (m.cpdlc) {
+    const [kind, html] = decodedBlock(m.cpdlc);
+    tr.classList.add(`r-${kind}`);
+    dec = html;
+  }
+  // plain ACARS (nothing decoded inside): ACARS tag at the start of the text
+  const tag = m.cpdlc ? "" : `<span class="type-tag t-acars">ACARS</span> `;
+  const text = m.text ? `<div class="msg-text${m.cpdlc ? " raw" : ""}">${tag}${m.crc_ok ? "" : "✗ "}${escHtml(m.text)}</div>`
+    : m.cpdlc ? "" : `<div class="msg-text">${tag}<span class='muted'>(no text)</span></div>`;
+  if (!m.cpdlc) tr.classList.add("r-acars");
+  tr.innerHTML = `<td>${m.time}</td><td class="num"${freqTitle(m)}>${fmtMHz(m.freq_hz, 3)}</td>` +
+    `<td class="reg"></td><td class="flt"></td><td>${arrow} ${escHtml(m.label || "")}</td>` +
+    `<td class="desc">${escHtml(m.desc || "")}</td><td class="msg">${dec}${text}</td>`;
   // dlhá správa (technické hlásenia s tabuľkami): skrátená na 3 riadky, klik ju rozbalí/zbalí
-  if (m.text.split("\n").length > 3 || m.text.length > 240) tr.querySelector("td.msg").classList.add("long");
+  if (m.text && (m.text.split("\n").length > 3 || m.text.length > 240)) tr.querySelector("td.msg").classList.add("long");
   tr._msg = m;
   renderAcarsAircraft(tr, m.ac);
   tb.prepend(tr);
   while (tb.rows.length > ACARS_MAX_ROWS) tb.lastChild.remove();
+}
+
+/** ATN message (European CPDLC over VDL2, no ACARS around it) as a row of the ACARS card. */
+function addAtn(c, fresh) {
+  addAcars({ id: c.id, time: c.time, freq_hz: c.freq_hz, link: c.link, vdl2: c.vdl2, reg: c.reg, flight: "", label: "",
+    dir: c.dir, desc: c.imi_desc, text: "", crc_ok: true, cpdlc: c, ac: c.ac, atn: true }, fresh);
 }
 
 /** Registrácia a let; z ADS-B (adsb.fi / adsb.lol) typ, poloha a odkaz na mapu v novom okne:
@@ -1304,7 +1378,7 @@ function renderAcarsAircraft(tr, ac) {
 
 function onAcarsInfo(d) {
   // the same aircraft data for the ACARS row and the CPDLC row of the message
-  for (const tb of ["acarsRows", "cpdlcRows"]) {
+  for (const tb of ["acarsRows"]) {
     const tr = $(tb).querySelector(`tr[data-id="${d.id}"]`);
     if (!tr) continue;
     tr._msg.ac = d.ac;
@@ -1314,109 +1388,54 @@ function onAcarsInfo(d) {
 
 function renderAcarsInfo(i) {
   if (!st) return;
-  $("acarsCard").hidden = !st.acars;
+  $("acarsCard").hidden = !(st.acars || st.vdl2);
   if (!i) return;
   $("acarsInfo").textContent = `${i.count} messages${i.crc_errors ? ` · ${i.crc_errors} CRC errors` : ""}`;
 }
 
 $("acarsOn").addEventListener("change", () => {
   st.acars = $("acarsOn").checked;
+  if (st.acars && st.vdl2) { st.vdl2 = false; $("vdl2On").checked = false; }   // one link at a time
   renderAcarsInfo();
+  renderLinkBands();
   send({ acars: st.acars });
 });
-$("acarsBands").addEventListener("click", async (e) => {
-  const b = e.target.closest("[data-f]");
-  if (!b || !st) return;
-  await ensureVfoFor(Number(b.dataset.f));   // VHF -> VFO bez konvertora
-  if (!st) return;
-  st.mode = "AM";
-  renderControls();
-  tune(Number(b.dataset.f));
-  const changes = { mode: "AM" };
-  if (!st.acars) { st.acars = true; $("acarsOn").checked = true; changes.acars = true; }
-  send(changes);
+
+// ---------- VDL2 (VDL Mode 2 through dumpvdl2; messages go to the ACARS card) ----------
+
+let vdl2Last = {};   // the status sends only on/off and the error; channels and counts come from vdl2state
+
+function renderVdl2Info(d) {
+  if (!d) return;
+  const i = (vdl2Last = { ...vdl2Last, ...d });
+  const el = $("vdl2Info");
+  el.hidden = !i.enabled;
+  el.classList.toggle("err", !!i.error);
+  if (i.error) { el.textContent = `VDL2: ${i.error}`; return; }
+  const ch = (i.channels || []).map((f) => fmtMHz(f, 3)).join(" ");
+  el.textContent = `VDL2${ch ? " " + ch : ""}${i.frames ? ` · ${i.frames} frames` : ""}`;
+}
+
+$("vdl2On").addEventListener("change", () => {
+  st.vdl2 = $("vdl2On").checked;
+  if (st.vdl2 && st.acars) { st.acars = false; $("acarsOn").checked = false; }
+  renderAcarsInfo();
+  renderLinkBands();
+  renderVdl2Info({ enabled: st.vdl2 });
+  send({ vdl2: st.vdl2 });
 });
+$("acarsBands").addEventListener("click", onLinkBand);
 $("acarsRows").addEventListener("click", (e) => {
   const td = e.target.closest("td.msg.long");
   if (td) td.classList.toggle("open");
 });
 $("acarsClear").addEventListener("click", () => {
-  fetch(vbase + "/api/acars", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"action":"clear"}' });
+  for (const api of ["/api/acars", "/api/cpdlc"]) {
+    fetch(vbase + api, { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"action":"clear"}' });
+  }
   $("acarsRows").innerHTML = "";
   $("acarsEmpty").hidden = false;
   $("acarsInfo").textContent = "";
-});
-
-// ---------- CPDLC (FANS-1/A inside ACARS) ----------
-
-function renderCpdlcBands(freqs) {
-  $("cpdlcBands").innerHTML = (freqs || []).map((f) =>
-    `<button data-f="${f}" title="${fmtMHz(f, 3)} MHz AM">${fmtMHz(f, 3)}</button>`).join("");
-}
-
-function addCpdlc(c, fresh) {
-  const tb = $("cpdlcRows");
-  $("cpdlcEmpty").hidden = true;
-  const esc = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
-  const tr = document.createElement("tr");
-  if (!c.crc_ok || c.error) tr.classList.add("bad");
-  if (fresh) tr.classList.add("new");
-  const up = c.dir === "up";
-  tr.dataset.id = c.id;
-  tr.title = `${c.imi_desc} · ACARS label ${c.label}${c.crc_ok ? "" : " · CRC error"}${c.error ? " · " + c.error : ""}`;
-  const num = [c.min != null ? `MIN ${c.min}` : "", c.mrn != null ? `MRN ${c.mrn}` : ""].filter(Boolean).join("<br>");
-  const lines = c.elements.length
-    ? c.elements.map((e) => `<div class="cp-el"><span class="cp-id">${esc(e.id)}</span>${esc(e.text)}</div>`).join("")
-    : `<div class="cp-el">${esc(c.text || c.imi_desc)}</div>`;
-  tr.innerHTML = `<td>${c.time}${c.ts ? `<div class="ac-sub none" title="Time stamp in the message">${esc(c.ts)}</div>` : ""}</td>` +
-    `<td class="num">${fmtMHz(c.freq_hz, 3)}</td><td class="reg"></td><td class="flt"></td>` +
-    `<td title="${up ? "From" : "To"} ground station ${esc(c.gs)}">${up ? "↑" : "↓"} ${esc(c.gs)}</td>` +
-    `<td class="num">${num}</td>` +
-    `<td class="msg ${up ? "cp-up" : "cp-down"}">${c.crc_ok ? "" : "✗ "}${c.imi !== "AT1" ? `<div class="muted">${esc(c.imi_desc)}</div>` : ""}` +
-    `${lines}${c.error ? `<div class="muted">${esc(c.error)}</div>` : ""}` +
-    `<div class="cp-raw" hidden>${esc(c.raw || "")}</div></td>`;
-  tr._msg = c;
-  renderAcarsAircraft(tr, c.ac);
-  tb.prepend(tr);
-  while (tb.rows.length > ACARS_MAX_ROWS) tb.lastChild.remove();
-}
-
-function renderCpdlcInfo(i) {
-  if (!st) return;
-  $("cpdlcCard").hidden = !st.cpdlc;
-  if (!i) return;
-  $("cpdlcInfo").textContent = i.count ? `${i.count} messages` : "";
-}
-
-$("cpdlcOn").addEventListener("change", () => {
-  st.cpdlc = $("cpdlcOn").checked;
-  renderCpdlcInfo();
-  send({ cpdlc: st.cpdlc });
-});
-$("cpdlcBands").addEventListener("click", async (e) => {
-  const b = e.target.closest("[data-f]");
-  if (!b || !st) return;
-  await ensureVfoFor(Number(b.dataset.f));
-  if (!st) return;
-  st.mode = "AM";
-  renderControls();
-  tune(Number(b.dataset.f));
-  const changes = { mode: "AM" };
-  if (!st.cpdlc) { st.cpdlc = true; $("cpdlcOn").checked = true; changes.cpdlc = true; }
-  send(changes);
-});
-// click on a message shows / hides the raw ARINC 622 text
-$("cpdlcRows").addEventListener("click", (e) => {
-  const td = e.target.closest("td.msg");
-  if (!td || e.target.closest("a")) return;
-  const raw = td.querySelector(".cp-raw");
-  raw.hidden = !raw.hidden;
-});
-$("cpdlcClear").addEventListener("click", () => {
-  fetch(vbase + "/api/cpdlc", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"action":"clear"}' });
-  $("cpdlcRows").innerHTML = "";
-  $("cpdlcEmpty").hidden = false;
-  $("cpdlcInfo").textContent = "";
 });
 
 // ---------- WEFAX ----------
@@ -1680,6 +1699,7 @@ $("cwTune").addEventListener("click", () => {
 for (const box of document.querySelectorAll("input[data-log]")) {
   box.addEventListener("change", () => {
     st.logs = { ...(st.logs || {}), [box.dataset.log]: box.checked };
+    if (box.dataset.logAlso) st.logs[box.dataset.logAlso] = box.checked;   // ACARS LOG = acars + cpdlc log
     send({ log: st.logs });   // celý stav, nech sa dve rýchle zmeny v jednom odoslaní neprepíšu
   });
 }
@@ -1918,9 +1938,10 @@ function onStatus(s) {
   $("sstvOn").checked = !!s.sstv;
   $("sstvCard").hidden = !s.sstv;
   $("acarsOn").checked = !!s.acars;
-  $("acarsCard").hidden = !s.acars;
-  $("cpdlcOn").checked = !!s.cpdlc;
-  $("cpdlcCard").hidden = !s.cpdlc;
+  $("vdl2On").checked = !!s.vdl2;
+  $("acarsCard").hidden = !(s.acars || s.vdl2);
+  renderVdl2Info({ enabled: s.vdl2, error: s.vdl2_error });
+  renderLinkBands();
   renderDecTab();
   guessBodyTab();
   markActiveMem();
@@ -1977,14 +1998,14 @@ function connectEvents(v) {
   on("rttytext", (d) => rttyOut.add(d.t));
   on("rttystate", renderRttyInfo);
   on("acars", (m) => { addAcars(m, true); decActivity(); });
-  on("cpdlc", (c) => { addCpdlc(c, true); decActivity(); });
-  on("cpdlcstate", renderCpdlcInfo);
+  on("cpdlc", (c) => { if (c.imi === "ATN") { addAtn(c, true); decActivity(); } });   // others come inside "acars"
   on("ft8", decActivity);
   on("cwtext", decActivity);
   on("rttytext", decActivity);
   on("wefaxnew", decActivity);
   on("sstvnew", decActivity);
   on("acarsstate", renderAcarsInfo);
+  on("vdl2state", renderVdl2Info);
   on("acarsinfo", onAcarsInfo);
   on("ft8cycle", (d) => renderFt8Info(`cycle ${d.time} · decoding…`));
   es.onerror = () => {
@@ -2187,7 +2208,6 @@ async function selectVfo(v) {
   $("ft8Rows").innerHTML = ""; $("ft8Empty").hidden = false; ft8Cycle = null; ft8Count = 0;
   cwOut.clear(); rttyOut.clear();
   $("acarsRows").innerHTML = ""; $("acarsEmpty").hidden = false;
-  $("cpdlcRows").innerHTML = ""; $("cpdlcEmpty").hidden = false; $("cpdlcInfo").textContent = "";
   $("convWarn").hidden = true;
   if (v.st) {
     onStatus(v.st);
@@ -2227,13 +2247,13 @@ async function loadDecoders() {
   if (v !== active) return;
   for (const d of decodes) addFt8(d, false);
   const ac = await fetch(vbase + "/api/acars").then((r) => r.json());
-  if (v !== active) return;
-  for (const m of ac.messages) addAcars(m, false);
-  renderAcarsInfo(ac);
   const cp = await fetch(vbase + "/api/cpdlc").then((r) => r.json());
   if (v !== active) return;
-  for (const c of cp.messages) addCpdlc(c, false);
-  renderCpdlcInfo(cp);
+  // ACARS messages and ATN messages (no ACARS around them) in the order they came
+  const rows = ac.messages.map((m) => [m.id, () => addAcars(m, false)])
+    .concat(cp.messages.filter((c) => c.imi === "ATN").map((c) => [c.id, () => addAtn(c, false)]));
+  rows.sort((a, b) => a[0] - b[0]).forEach(([, add]) => add());
+  renderAcarsInfo(ac);
 }
 
 // ---------- prepínač up-konvertora (VFO s konvertorom v režime Auto) ----------
@@ -2550,8 +2570,11 @@ async function init() {
   }
   sampleRates = info.sample_rates;
   renderFt8Bands(info.ft8_freqs);
-  renderAcarsBands(info.acars_freqs);
-  renderCpdlcBands(info.acars_freqs);
+  linkFreqs = { acars: info.acars_freqs || [], vdl2Center: info.vdl2_center || 136850000,
+    vdl2Rate: info.vdl2_rate || 2100000,
+    vdl2Freqs: info.vdl2_freqs || [] };
+  linkShown = null;
+  renderLinkBands();
   loadMems();
   for (const v of vfos) connectEvents(v);
   startAudio();

@@ -56,6 +56,18 @@ Change log
 ----------
 (also in CHANGELOG.md)
 
+Ver. 0.105
+- VDL2 decoder (VDL Mode 2, 136.725-136.975 MHz): digital data link with most airline
+  ACARS over Europe and the European ATN CPDLC. VDL2 key under DECODE: the VFO goes to
+  2.1 MS/s around 136.850 MHz, all five channels decoded at once. Uses dumpvdl2 2.7.0
+  (GPLv3, lib\vdl2\, see lib\vdl2\README.txt) as a separate program.
+- ACARS from VDL2 decoded like classic ACARS (CPDLC, ADS-C, ADS-B lookup, logs).
+  European ATN CPDLC in a compact form (e.g. "dM6 REQUEST FL360", "dM0 WILCO").
+- ADS-C decoder: position reports, track, speed, wind, temperature, predicted route,
+  projected intent, contract requests.
+- One card for all aircraft messages: ACARS and VDL2 keys open the same card, the CPDLC
+  key is gone. Coloured tags ACARS / CPDLC / ADS-C / ATN CPDLC. One LOG for both logs.
+
 Ver. 0.104
 - CPDLC decoder (FANS-1/A, ARINC 622): controller-pilot messages carried in ACARS
   (labels AA/BA/H1) decoded to the standard text, e.g. "CLIMB TO AND MAINTAIN FL350",

@@ -8,7 +8,7 @@ FL350", "WILCO"). FANS-1/A aircraft send them as ARINC 622 messages in ordinary 
      ground   IMI  aircraft  CPDLC message in hex ................ CRC
 
 IMI: AT1 = CPDLC message, CR1 / CC1 / DR1 = connect request / connect confirm / disconnect request,
-ADS / DIS = ADS-C (automatic position reports, recognised here but not decoded).
+ADS / DIS = ADS-C (automatic position reports, decoded by adsc.py).
 CRC: CRC-16 CCITT (start 0xFFFF) over IMI + aircraft + binary data incl. CRC, result 0x1D0F.
 The binary data is the ASN.1 message (RTCA DO-258) in unaligned PER: a header (message number,
 reference to the answered message, time stamp) and 1-5 message elements, e.g. uM20 [altitude].
@@ -20,6 +20,7 @@ import re
 import sys
 import time
 
+import adsc
 from cpdlc_schema import TEXTS, TYPES
 
 IMIS = {"AT1": "CPDLC message", "CR1": "CPDLC connect request", "CC1": "CPDLC connect confirm",
@@ -300,7 +301,7 @@ def _element(alt, t, v):
     return eid, "\n".join([text] + extra)
 
 
-def decode(label, text, up):
+def decode(label, text, up, now=None):
     """ACARS message text -> CPDLC dictionary, or None if it is not an ARINC 622 message."""
     a = split_arinc(label, text, up)
     if not a:
@@ -309,8 +310,11 @@ def decode(label, text, up):
     r = {"gs": gs, "imi": imi, "imi_desc": IMIS[imi], "air": air, "crc_ok": crc_ok,
          "dir": "up" if up else "down", "min": None, "mrn": None, "ts": "", "elements": [], "error": ""}
     if imi not in CPDLC_IMIS:
-        r["error"] = "ADS-C is not decoded"
-        r["text"] = IMIS[imi]
+        els, pos, err = adsc.decode(data, up, now, imi) if imi in ("ADS", "DIS") else ([], {}, "")
+        r["elements"] = [{"id": i, "text": t} for i, t in els]
+        r["pos"] = pos or None
+        r["error"] = err
+        r["text"] = "\n".join(f"{i}: {t}" for i, t in els) or IMIS[imi]
         return r
     if not data:
         r["text"] = IMIS[imi]
@@ -379,7 +383,8 @@ def main(argv):
         print("not an ARINC 622 message")
         return 1
     print(f"{r['imi_desc']}  ground {r['gs']}  aircraft {r['air']}  CRC {'OK' if r['crc_ok'] else 'ERROR'}")
-    print(f"MIN {r['min']}  MRN {r['mrn']}  {r['ts']}")
+    if r["min"] is not None or r["ts"]:
+        print(f"MIN {r['min']}  MRN {r['mrn']}  {r['ts']}")
     for e in r["elements"]:
         print(f"{e['id']}: " + e["text"].replace("\n", "\n      "))
     if r["error"]:

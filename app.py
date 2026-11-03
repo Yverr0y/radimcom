@@ -34,6 +34,7 @@ from daylog import DayLog, TextLog
 from wefax import WefaxDecoder
 from sstv import SstvDecoder
 from acars import ACARS_FREQS, AcarsDecoder
+from vdl2 import VDL2_CENTER, VDL2_FREQS, VDL2_RATE, Vdl2Decoder
 from sdr import MODES, SQUELCH_OFF, UPCONV_MAX_HZ, ZOOMS, Receiver, list_devices, lowpass
 
 
@@ -48,7 +49,7 @@ def vfo_from_args():
 
 VFO = vfo_from_args()
 CONFIG_PATH = data(VFO["config"] if VFO else "config.json")
-SAMPLE_RATES = (1024000, 1536000, 2048000, 2400000)
+SAMPLE_RATES = (1024000, 1536000, 2048000, 2100000, 2400000)   # 2.1 MS/s = VDL2 (105 kS/s × 20)
 UPCONV_MODES = ("auto", "on", "off")
 
 
@@ -181,6 +182,7 @@ sstv = SstvDecoder(on_event=decoder_event)
 acars = AcarsDecoder(on_event=hub.event, tag=_tag)
 acars.log_on = log_on("acars")
 acars.cpdlc_log_on = log_on("cpdlc")
+vdl2 = Vdl2Decoder(on_acars=acars.accept_vdl2, on_atn=acars.accept_atn, on_state=lambda i: hub.event("vdl2state", i))
 _saved_logged.update(wefax=getattr(wefax, "saved", None), sstv=getattr(sstv, "saved", None))
 
 
@@ -192,7 +194,7 @@ def tx_capable():
 def state():
     capable = tx_capable()
     return dict(receiver.state(), ft8=ft8.enabled, ft8_error=ft8.error, wefax=wefax.enabled, cw=cw.enabled, rtty=rtty.enabled,
-                sstv=sstv.enabled, acars=acars.enabled, cpdlc=acars.cpdlc_on, logs={k: log_on(k) for k in LOG_KEYS},
+                sstv=sstv.enabled, acars=acars.enabled, vdl2=vdl2.enabled, vdl2_error=vdl2.error, cpdlc=acars.cpdlc_on, logs={k: log_on(k) for k in LOG_KEYS},
                 tx_capable=capable, tx_enabled=bool(cfg.get("tx_enabled", False)),
                 can_tx=capable and bool(cfg.get("tx_enabled", False)) and hasattr(receiver.sdr, "tx_start"))
 
@@ -235,8 +237,18 @@ except (TypeError, ValueError):
     pass
 rtty.set_enabled(cfg.get("rtty", False))
 sstv.set_enabled(cfg.get("sstv", False))
-acars.set_enabled(cfg.get("acars", False))
-acars.set_cpdlc(cfg.get("cpdlc", False))
+acars.set_enabled(cfg.get("acars", False) and not cfg.get("vdl2", False))
+receiver.on_raw = vdl2.feed_raw
+vdl2.set_enabled(cfg.get("vdl2", False))
+acars.set_vdl2(vdl2.enabled)
+
+
+def sync_cpdlc():
+    """The CPDLC card has no button of its own: it runs with either link (ACARS or VDL2)."""
+    acars.set_cpdlc(acars.enabled or vdl2.enabled)
+
+
+sync_cpdlc()
 
 app = Flask(__name__, static_folder="static")
 
@@ -258,7 +270,8 @@ def index():
 
 @app.route("/api/state")
 def api_state():
-    return jsonify(dict(state(), sample_rates=SAMPLE_RATES, modes=MODES, ft8_freqs=FT8_FREQS, acars_freqs=ACARS_FREQS))
+    return jsonify(dict(state(), sample_rates=SAMPLE_RATES, modes=MODES, ft8_freqs=FT8_FREQS, acars_freqs=ACARS_FREQS,
+                        vdl2_freqs=VDL2_FREQS, vdl2_center=VDL2_CENTER, vdl2_rate=VDL2_RATE))
 
 
 # ---------- transmitting (PTT) ----------
@@ -460,6 +473,29 @@ def api_cpdlc_cmd():
     return jsonify(acars.cpdlc_info())
 
 
+@app.route("/api/vdl2", methods=["GET"])
+def api_vdl2():
+    return jsonify(vdl2.info())
+
+
+def set_vdl2(on, changes):
+    """VDL2 on: the VFO goes to 2.1 MS/s around 136.85 MHz (all European VDL2 channels), classic ACARS off.
+    VDL2 off: the previous sample rate comes back."""
+    if on == vdl2.enabled:
+        return
+    cfg["vdl2"] = on
+    if on:
+        cfg["vdl2_prev_rate"] = cfg["sample_rate"]
+        if cfg.get("acars"):
+            cfg["acars"] = False
+            acars.set_enabled(False)
+        changes.update(sample_rate=VDL2_RATE, center_hz=float(VDL2_CENTER), tune_hz=float(VDL2_CENTER), mode="AM")
+    elif cfg.get("vdl2_prev_rate") in SAMPLE_RATES and cfg["vdl2_prev_rate"] != VDL2_RATE:
+        changes["sample_rate"] = cfg.pop("vdl2_prev_rate")
+    vdl2.set_enabled(on)
+    acars.set_vdl2(on)
+
+
 @app.route("/api/devices")
 def api_devices():
     try:
@@ -614,12 +650,15 @@ def api_set():
         hub.event("status", state())
     if "acars" in body:
         cfg["acars"] = bool(body["acars"])
+        if cfg["acars"]:
+            set_vdl2(False, changes)          # one link at a time: the dongle is either at 131.x or 136.x
         acars.set_enabled(cfg["acars"])
+        sync_cpdlc()
         save_config_later()
         hub.event("status", state())
-    if "cpdlc" in body:
-        cfg["cpdlc"] = bool(body["cpdlc"])
-        acars.set_cpdlc(cfg["cpdlc"])
+    if "vdl2" in body:
+        set_vdl2(bool(body["vdl2"]), changes)
+        sync_cpdlc()
         save_config_later()
         hub.event("status", state())
     receiver.update(changes)

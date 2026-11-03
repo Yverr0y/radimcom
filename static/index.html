@@ -66,7 +66,7 @@
           </g>
           <circle class="r-logo-ring" cx="294" cy="-46" r="21" fill="none" stroke-width="11"/>
         </svg>
-        <span class="r-ver">Ver. 0.104</span>
+        <span class="r-ver">Ver. 0.105</span>
         </div>
         <!-- RDS: kompaktný rámik pod logom, široký ako hodiny -->
         <div class="rds off" id="rds">
@@ -123,8 +123,8 @@
       <label class="key toggle"><input id="cwOn" type="checkbox">CW</label>
       <label class="key toggle"><input id="rttyOn" type="checkbox">RTTY</label>
       <label class="key toggle"><input id="sstvOn" type="checkbox">SSTV</label>
-      <label class="key toggle"><input id="acarsOn" type="checkbox">ACARS</label>
-      <label class="key toggle" title="CPDLC: controller-pilot messages (FANS-1/A) inside ACARS"><input id="cpdlcOn" type="checkbox">CPDLC</label>
+      <label class="key toggle" title="ACARS (classic VHF link, AM 2400 bit/s) – 131.525–131.825 MHz"><input id="acarsOn" type="checkbox">ACARS</label>
+      <label class="key toggle" title="VDL Mode 2 (digital link, ACARS + CPDLC) – 136.725–136.975 MHz. Sets the VFO to 2.1 MS/s around 136.85 MHz; turns classic ACARS off."><input id="vdl2On" type="checkbox">VDL2</label>
     </div></div>
     <div class="kgroup"><span class="klabel">AUDIO</span><div class="keys">
       <button id="stereoKey" class="key" title="WFM stereo on/off (off = mono, less noise on weak stations)">STEREO</button>
@@ -219,14 +219,23 @@
 
     <section class="card ft8 acars" id="acarsCard" hidden>
       <div class="ft8-head">
-        <b>ACARS</b>
+        <b id="acarsTitle">ACARS</b>
         <div class="bands" id="acarsBands"></div>
+        <span id="vdl2Info" class="muted" hidden></span>
         <span id="acarsInfo" class="muted"></span>
-        <label class="wf-opt log-opt" title="Write to the daily log data\acars\acars_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="acars">LOG</label>
+        <label class="wf-opt log-opt" title="Write the daily logs data\acars\acars_YYYY-MM-DD.txt and cpdlc_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="acars" data-log-also="cpdlc">LOG</label>
         <button id="acarsClear" class="key small">CLR</button>
       </div>
-      <p class="note">Aircraft data link on the VHF airband (AM, 2400 bit/s). Works in any mode: the decoder demodulates AM itself.
-        The buttons tune the European ACARS channels; 131.725 MHz is the busiest. Messages with a CRC error are marked ✗.
+      <p class="note"><span data-link="acars">Classic ACARS on the VHF airband (AM, 2400 bit/s). Works in any mode: the decoder
+        demodulates AM itself. The buttons tune the European ACARS channels; 131.725 MHz is the busiest.</span>
+        <span data-link="vdl2" hidden>VDL Mode 2 (digital, 31.5 kbit/s): the VFO runs at 2.1 MS/s around 136.850 MHz and all
+        European VDL2 channels (136.725–136.975 MHz) are decoded at once; the button re-centres the VFO. Most airline ACARS
+        over Europe uses VDL2, and European ATN CPDLC exists only here.</span>
+        Tags: <span class="type-tag t-acars">ACARS</span> plain ACARS message,
+        <span class="type-tag t-cpdlc">CPDLC</span> controller–pilot messages (↑ from ATC, ↓ from the aircraft),
+        <span class="type-tag t-adsc">ADS-C</span> automatic position reports,
+        <span class="type-tag t-atn">ATN CPDLC</span> European CPDLC (VDL2 only).
+        MIN / MRN = message number / number of the message it answers. ✗ = CRC error.
         <span class="ext">Blue</span> = aircraft type and position looked up on ADS-B (adsb.fi / adsb.lol, needs internet);
         click the registration or flight to open the map.</p>
       <div class="ft8-table">
@@ -234,29 +243,9 @@
           <thead><tr><th>UTC</th><th>Frequency</th><th>Aircraft</th><th>Flight</th><th>Label</th><th title="Approximate meaning: many labels are defined by each airline">Description</th><th>Message</th></tr></thead>
           <tbody id="acarsRows"></tbody>
         </table>
-        <div id="acarsEmpty" class="ft8-empty">No messages yet. ACARS bursts are short and come every few seconds to minutes.</div>
-      </div>
-    </section>
-
-    <section class="card ft8 acars cpdlc" id="cpdlcCard" hidden>
-      <div class="ft8-head">
-        <b>CPDLC</b>
-        <div class="bands" id="cpdlcBands"></div>
-        <span id="cpdlcInfo" class="muted"></span>
-        <label class="wf-opt log-opt" title="Write to the daily log data\acars\cpdlc_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="cpdlc">LOG</label>
-        <button id="cpdlcClear" class="key small">CLR</button>
-      </div>
-      <p class="note">Controller-pilot data link (FANS-1/A, ARINC 622) carried in ACARS messages: clearances from air traffic
-        control (↑ uplink) and pilot requests and position reports (↓ downlink). Uses the ACARS demodulator, so it works
-        with the ACARS card off; the buttons tune the ACARS channels (AM). Messages are rare: FANS-1/A over ACARS is mostly
-        used by long-haul aircraft (e.g. with Maastricht MSTEC7X). European ATN CPDLC runs on VDL Mode 2 and is not decoded here.
-        MIN = message number, MRN = number of the message it answers. ✗ = CRC error.</p>
-      <div class="ft8-table">
-        <table>
-          <thead><tr><th>UTC</th><th>Frequency</th><th>Aircraft</th><th>Flight</th><th title="Ground station (ATC centre) address">Ground</th><th title="MIN / MRN: message number / answered message">Msg</th><th>CPDLC message</th></tr></thead>
-          <tbody id="cpdlcRows"></tbody>
-        </table>
-        <div id="cpdlcEmpty" class="ft8-empty">No CPDLC messages yet. Tune an ACARS channel (131.725 MHz is the busiest).</div>
+        <div id="acarsEmpty" class="ft8-empty"><span data-link="acars">No messages yet. ACARS bursts are short and come every few
+          seconds to minutes.</span><span data-link="vdl2" hidden>No messages yet. VDL2 traffic usually starts within a minute;
+          the frame count above grows with every decoded VDL2 frame.</span></div>
       </div>
     </section>
 
