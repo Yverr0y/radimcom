@@ -230,9 +230,6 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
     AFC and slant correction are automatic. Filter at least 2.7 kHz.
   - ACARS / VDL2 (one card): channel buttons (131.525 / 131.725 / 131.825 / 136.900 MHz) or the VDL2 centre
     button (136.850 MHz), CLR; click the registration or flight to open the ADS-B map.
-
-    ![DECODERS tab with the ACARS decoder: messages with aircraft type and position from ADS-B](docs/images/decoders.png)
-
     CPDLC, ADS-C and ATN CPDLC are shown in the same card with coloured tags, see
     [Aircraft data link](#aircraft-data-link-acars-vdl2-cpdlc-ads-c).
 
