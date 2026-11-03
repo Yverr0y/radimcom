@@ -1,6 +1,9 @@
 """Initial dongle setup: finds the connected RTL-SDRs and LimeSDRs, assigns them to VFO A, B, C…
 and writes vfos.json. Dongles are then opened by serial number, so the USB order does not matter.
 
+VFO chaining: one dongle can serve several VFOs (e.g. one dongle for VFO A–D, or two dongles with two VFOs
+each). A chained VFO gets "chain": "A" instead of a serial and tunes inside the band VFO A's dongle receives.
+
 RTL-SDR dongles often have the same serial number (e.g. 00000001); then they cannot be told apart and the wizard
 offers to write a unique number into the EEPROM (the EEPROM backup goes to eeprom_backup/).
 
@@ -23,6 +26,7 @@ from paths import BASE, DATA, data
 VFOS_PATH = data("vfos.json")
 FIRST_PORT = 8441
 NAMES = string.ascii_uppercase
+MAX_VFOS = 4          # VFO windows on the page
 
 
 def ask(prompt, default=""):
@@ -163,20 +167,39 @@ def find_unplugged(free, devs):
 
 def assign(devs):
     """Assigning devices to VFO A, B, C… A device is chosen by its number in the list or by the
-    user unplugging it for a moment (the serial number is not visible on the dongle, the connection is)."""
+    user unplugging it for a moment (the serial number is not visible on the dongle, the connection is).
+    Instead of a device, the letter of an earlier VFO chains this VFO to that VFO's dongle."""
     free = list(devs)
     out = []
     print("Assign the devices to VFOs. For each VFO either type the device number,")
     print("or UNPLUG the device you want for that VFO and press Enter (it is detected automatically).")
-    while free:
+    print("To let one dongle serve several VFOs, type the letter of the VFO that already has it (e.g. A).")
+    while len(out) < MAX_VFOS:
         name = NAMES[len(out)]
+        owners = [n for d, n in out if "chain" not in d]
+        if not free and not owners:
+            break
         print()
         for i, d in enumerate(free, 1):
             print(f"  {i}: {label(d)}")
-        txt = ask(f"VFO {name}: device number, Enter after unplugging, or 0 to finish", "")
+        for n in owners:
+            d = next(d for d, x in out if x == n)
+            print(f"  {n}: share the dongle of VFO {n} ({label(d)})")
+        share = f"letter {'/'.join(owners)} to share a dongle, " if owners else ""
+        if free:
+            txt = ask(f"VFO {name}: device number, Enter after unplugging, {share}or 0 to finish", "")
+        else:
+            txt = ask(f"VFO {name}: {share}or 0 to finish", "0")
         if txt == "0":
-            if yes(f"  {len(free)} device(s) will not be used. Finish the assignment?", False):
+            if not free or yes(f"  {len(free)} device(s) will not be used. Finish the assignment?", False):
                 break
+            continue
+        if txt.upper() in owners:
+            out.append(({"chain": txt.upper()}, name))
+            print(f"  VFO {name} -> chained to the dongle of VFO {txt.upper()}")
+            continue
+        if not free:
+            print("  invalid choice")
             continue
         if txt.isdigit() and 1 <= int(txt) <= len(free):
             d = free[int(txt) - 1]
@@ -200,6 +223,19 @@ def assign(devs):
         free.remove(d)
         out.append((d, name))
     return out
+
+
+def configure_chained(owner, name, port):
+    """VFO without its own dongle: it uses the dongle of VFO owner (entry already made by configure)."""
+    print(f"\nVFO {name}: chained to the dongle of VFO {owner['name']} ('{owner['serial']}')")
+    print(f"  It tunes inside the band VFO {owner['name']} receives (± half the sample rate around its centre);")
+    print(f"  gain, ppm and sample rate are shared with VFO {owner['name']}.")
+    o = owner["init"]
+    init = {k: o[k] for k in ("tune_hz", "mode", "center_hz") if k in o}
+    entry = {"name": name, "chain": owner["name"], "port": port, "config": f"config_{name}.json"}
+    entry["note"] = ask("  Description shown on the VFO button", f"chained to VFO {owner['name']}")
+    entry["init"] = init
+    return entry
 
 
 def configure(dev, name, port):
@@ -251,6 +287,10 @@ def main():
     while True:
         vfos = []
         for d, name in assign(devs):
+            if "chain" in d:
+                owner = next(v for v in vfos if v["name"] == d["chain"])
+                vfos.append(configure_chained(owner, name, FIRST_PORT + len(vfos)))
+                continue
             if d["driver"] == "rtl" and [x["serial"] for x in rtl].count(d["serial"]) > 1:
                 print("  warning: duplicate serial, this VFO may get the other dongle")
             vfos.append(configure(d, name, FIRST_PORT + len(vfos)))
@@ -259,12 +299,15 @@ def main():
             return
         print("\nSummary:")
         for v in vfos:
+            if v.get("chain"):
+                print(f"  VFO {v['name']}: chained to VFO {v['chain']} (same dongle)")
+                continue
             i = v["init"]
             mhz = f"{i['lo_offset_hz'] / 1e6:.6f}".rstrip("0").rstrip(".")
             lo = f"upconverter LO {mhz} MHz" if i["upconv"] != "off" else "direct"
             print(f"  VFO {v['name']}: {v.get('driver', 'rtl').upper()} '{v['serial']}', ppm {i['ppm']}, {lo}")
-        if len(vfos) < 4:
-            print(f"  (VFO {', '.join(NAMES[len(vfos):4])}: no SDR - shown greyed out)")
+        if len(vfos) < MAX_VFOS:
+            print(f"  (VFO {', '.join(NAMES[len(vfos):MAX_VFOS])}: no SDR - shown greyed out)")
         if yes("Save this configuration?"):
             break
         print("\nStarting the assignment again.")
@@ -279,7 +322,8 @@ def main():
         print(f"\nPrevious settings moved to {bdir}")
     with open(VFOS_PATH, "w", encoding="utf-8") as f:
         json.dump({"port": 8434, "vfos": vfos}, f, indent=2, ensure_ascii=False)
-    print(f"\nSaved {VFOS_PATH}: " + ", ".join(f"VFO {v['name']} = {v['serial']}" for v in vfos))
+    print(f"\nSaved {VFOS_PATH}: " + ", ".join(
+        f"VFO {v['name']} = " + (f"chained to VFO {v['chain']}" if v.get("chain") else v["serial"]) for v in vfos))
     # install.bat asks about starting by itself at the end (--no-start)
     if "--no-start" in sys.argv:
         return

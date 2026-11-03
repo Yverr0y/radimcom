@@ -2,6 +2,25 @@
 
 const $ = (id) => document.getElementById(id);
 
+// ---------- page scale (responsive layout) ----------
+// The page is drawn in a "virtual window" of at least STAGE_W × STAGE_H px and is scaled as a whole
+// to the browser window (CSS .stage). Browser zoom changes innerWidth/innerHeight, so it is
+// cancelled out: the content depends only on the window size. With a different aspect ratio the virtual
+// window gets longer (wider / taller) and the layout stretches.
+const STAGE_W = 1920, STAGE_H = 820;
+let uiScale = 1;
+function fitStage() {
+  const w = window.innerWidth, h = window.innerHeight;
+  uiScale = Math.min(w / STAGE_W, h / STAGE_H) || 1;
+  const root = document.documentElement, vw = w / uiScale;
+  root.style.setProperty("--k", uiScale);
+  root.style.setProperty("--vw", `${vw}px`);
+  root.style.setProperty("--vh", `${h / uiScale}px`);
+  root.classList.toggle("compact", vw <= 2100);
+}
+fitStage();
+window.addEventListener("resize", fitStage);   // before the other resize handlers (redraw)
+
 const BANDWIDTHS = {
   AM: [4000, 6000, 8000, 10000],
   FM: [500, 3000, 6000, 12000, 25000, 50000],
@@ -11,8 +30,9 @@ const BANDWIDTHS = {
   CW: [300, 500, 800, 1200],
 };
 const STEPS = [10, 100, 500, 1000, 5000, 9000, 10000];
-// Skupiny tlačidiel pásiem: [nadpis, [[popis, frekvencia Hz, mód], …]].
-// KV ide cez up-konvertor, VKV/UKV (nad 30 MHz) priamo do kľúčenky.
+let mems = [];   // memories (list in the panel and tags in the spectrum)
+// Band button groups: [title, [[label, frequency Hz, mode], …]].
+// HF goes through the upconverter, VHF/UHF (above 30 MHz) straight into the dongle.
 const BAND_GROUPS = [
   ["HF HAM", [
     ["160 m", 1840000, "LSB"], ["80 m", 3650000, "LSB"], ["60 m", 5357000, "USB"], ["40 m", 7100000, "LSB"],
@@ -30,21 +50,21 @@ const BAND_GROUPS = [
     ["FM BCAST", 0, "WFM"], ["CB ch19", 27185000, "FM"], ["Airband", 127500000, "AM"], ["Marine ch16", 156800000, "FM"], ["PMR446", 446006250, "FM"]]],
 ];
 
-let st = null; // posledný stav zo servera
-let view = null; // {c, span} práve zobrazeného výrezu vodopádu
+let st = null; // last state from the server
+let view = null; // {c, span} of the waterfall section shown right now
 let pendingSet = {};
 let setTimer = null;
 let localChangeAt = 0;
 let stepHz = 1000;
-let errorUntil = 0; // do kedy ukazovať chybu poslednej zmeny v stavovom poli
-let vbase = ""; // adresa prijímača aktívneho VFO ("" = server tejto stránky, režim bez VFO)
+let errorUntil = 0; // until when to show the error of the last change in the status field
+let vbase = ""; // receiver address of the active VFO ("" = server of this page, mode without VFOs)
 let vfos = []; // [{name, port, serial, note, base, st, rows, online}]
-let active = null; // aktívne VFO
+let active = null; // active VFO
 
-function store(key, value) { try { localStorage.setItem(key, value); } catch (e) { /* bez úložiska */ } }
+function store(key, value) { try { localStorage.setItem(key, value); } catch (e) { /* no storage */ } }
 function recall(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
 
-// ---------- pomocné ----------
+// ---------- helpers ----------
 
 const LOCALE = "en-US";
 
@@ -60,8 +80,8 @@ function fmtBw(hz) {
   return hz >= 1000 ? `${(hz / 1000).toLocaleString(LOCALE, { maximumFractionDigits: 1 })} kHz` : `${hz} Hz`;
 }
 
-/** "7100" -> kHz, "7.1" -> MHz (čísla pod 100 berieme ako MHz), "145.5" alebo "433.5" -> MHz
- *  (desatinné číslo do 2000), "7.1M", "7100k", "7100000Hz". */
+/** "7100" -> kHz, "7.1" -> MHz (numbers below 100 are taken as MHz), "145.5" or "433.5" -> MHz
+ *  (decimal number up to 2000), "7.1M", "7100k", "7100000Hz". */
 function parseFreq(text) {
   const t = text.trim().toLowerCase().replace(/\s/g, "").replace(",", ".");
   const m = t.match(/^([0-9]*\.?[0-9]+)(hz|khz|k|mhz|m)?$/);
@@ -78,7 +98,7 @@ function send(changes) {
   setTimer = setTimeout(flushSend, 40);
 }
 
-/** Odošle čakajúce zmeny prijímaču aktívneho VFO (adresa sa vezme hneď, pred prepnutím VFO). */
+/** Sends the pending changes to the receiver of the active VFO (the address is taken now, before a VFO switch). */
 async function flushSend() {
   clearTimeout(setTimer);
   setTimer = null;
@@ -90,14 +110,14 @@ async function flushSend() {
   err.hidden = res.ok;
   if (!res.ok) {
     err.textContent = (await res.json()).error || "Error";
-    // Zásuvka nastavení býva zatvorená: chybu ukážeme aj v stavovom poli.
+    // The settings drawer is usually closed: show the error in the status field too.
     errorUntil = Date.now() + 5000;
     renderStatusPill(err.textContent);
   }
 }
 
-/** Stavové pole pod hodinami: chyba poslednej zmeny (5 s). Pri VFO je stav prijímača v bloku nad
- *  displejom, takže pole je inak skryté; samostatný prijímač bez VFO tu ukazuje svoj stav. */
+/** Status field under the clock: error of the last change (5 s). With VFOs the receiver state is in the block above
+ *  the display, so the field is otherwise hidden; a standalone receiver without VFOs shows its state here. */
 function renderStatusPill(error) {
   const pill = $("status");
   if (error) pill._error = error;
@@ -123,7 +143,7 @@ function passband() {
 }
 
 function segButtons(el, items, active, label) {
-  // Prekresľujeme len pri zmene: výmena tlačidla pod myšou spôsobuje blikanie a stratené kliky.
+  // Redraw only on a change: replacing the button under the mouse causes flicker and lost clicks.
   const html = items.map((v) => `<button data-v="${v}" class="${String(v) === String(active) ? "active" : ""}">${label(v)}</button>`).join("");
   if (el._html === html) return;
   el._html = html;
@@ -145,7 +165,7 @@ function tune(hz, snap = false) {
 function renderControls() {
   if (!st) return;
   segButtons($("modes"), Object.keys(BANDWIDTHS), st.mode, (m) => m);
-  // Tlačidlá ostávajú pevné; šírka nastavená ťahaním okraja v spektre nemá tlačidlo (žiadne nesvieti).
+  // The buttons stay fixed; a width set by dragging the edge in the spectrum has no button (none is lit).
   const bw = st.bandwidth[st.mode];
   segButtons($("bandwidths"), BANDWIDTHS[st.mode], bw, fmtBw);
   segButtons($("steps"), STEPS, stepHz, fmtBw);
@@ -156,7 +176,7 @@ function renderControls() {
   renderRds();
 }
 
-// ---------- 7-segmentový displej ----------
+// ---------- 7-segment display ----------
 
 const SEG7 = (() => {
   const t = 9;
@@ -169,8 +189,8 @@ const SEG7 = (() => {
 })();
 const DIGIT_SEGS = ["abcdef", "bc", "abdeg", "abcdg", "bcfg", "acdfg", "acdefg", "abc", "abcdefg", "abcdfg"];
 
-/** Text typu " 7_066.29" -> SVG číslice; medzera = nesvietiaca číslica, bodka (desatinná) patrí
- *  k predošlej číslici, podčiarkovník = malá medzera medzi skupinami tisícov, dvojbodka pre hodiny. */
+/** Text like " 7_066.29" -> SVG digits; space = unlit digit, a (decimal) dot belongs
+ *  to the previous digit, underscore = small gap between thousands groups, colon for the clock. */
 function seg7(text) {
   let out = "";
   for (let i = 0; i < text.length; i++) {
@@ -187,14 +207,14 @@ function seg7(text) {
     let s = "";
     for (const k of "abcdefg") s += `<polygon points="${SEG7[k]}"${lit.includes(k) ? ' class="on"' : ""}/>`;
     s += `<circle cx="55" cy="92" r="6"${dp ? ' class="on"' : ""}/>`;
-    // xMidYMax: číslica sedí na spodku svojho boxu, aby menšie číslice (Hz) mali rovnaký spodok ako veľké
+    // xMidYMax: the digit sits at the bottom of its box, so the smaller digits (Hz) share the bottom of the big ones
     out += `<svg viewBox="-4 0 66 100" preserveAspectRatio="xMidYMax meet" aria-hidden="true"><g transform="skewX(-6) translate(8 0)">${s}</g></svg>`;
   }
   return out;
 }
 
-/** Ako na transceiveri, rozlíšenie 1 Hz, posledné tri číslice (Hz) menšie. KV v kHz (prvá bodka
- *  oddeľuje tisíce: „   7.016.500“ kHz), od 30 MHz v MHz (prvá bodka desatinná: „ 439.475.000“ MHz). */
+/** Like on a transceiver, 1 Hz resolution, the last three digits (Hz) smaller. HF in kHz (the first dot
+ *  separates thousands: "   7.016.500" kHz), from 30 MHz in MHz (the first dot is decimal: " 439.475.000" MHz). */
 function freqDigits(hz) {
   const n = Math.round(hz);
   const mhz = String(Math.floor(n / 1e6)).padStart(4, " ");
@@ -245,10 +265,10 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowRight") { tune(st.tune_hz + stepHz, true); e.preventDefault(); }
 });
 
-// Klik na displej aktívneho VFO otvorí zadávanie frekvencie, klik na neaktívne VFO (displej
-// alebo tlačidlo A/B/C) naň prepne.
-// Koliesko nad číslicou displeja ladí o jej rád (číslice MHz.kHz.Hz = 10^9 … 1 Hz), aj na neaktívnom
-// VFO – to sa preladí bez prepnutia.
+// A click on the display of the active VFO opens frequency entry, a click on an inactive VFO (display
+// or the A/B/C button) switches to it.
+// The wheel over a display digit tunes by its place value (digits MHz.kHz.Hz = 10^9 … 1 Hz), also on an inactive
+// VFO – that one is retuned without switching.
 $("vfoList").addEventListener("wheel", (e) => {
   const digit = e.target.closest(".freq svg");
   const row = e.target.closest(".vfo-row:not(.spare)");
@@ -260,7 +280,8 @@ $("vfoList").addEventListener("wheel", (e) => {
   const digits = [...digit.parentElement.querySelectorAll("svg")];
   const place = 10 ** (digits.length - 1 - digits.indexOf(digit));
   let hz = s.tune_hz + (e.deltaY < 0 ? place : -place);
-  const [lo, hi] = s.range || [0, Infinity];
+  // a chained VFO may leave the owner's band (it then shows OOR), so it is not clamped to it
+  const [lo, hi] = s.chain_owner ? [0, Infinity] : s.range || [0, Infinity];
   hz = Math.min(hi, Math.max(lo, hz));
   if (hz === s.tune_hz) return;
   if (v === active) { tune(hz); return; }
@@ -275,7 +296,7 @@ $("vfoList").addEventListener("wheel", (e) => {
   }, 60);
 }, { passive: false });
 
-// Posuvník RF GAIN pod displejom: nastaví zisk daného VFO bez prepnutia (to isté ako posuvník v SET).
+// RF GAIN slider under the display: sets the gain of that VFO without switching (same as the slider in SET).
 $("vfoList").addEventListener("input", (e) => {
   if (!e.target.matches(".vfo-row:not(.spare) .vfo-rf:not(.vfo-sq) input")) return;
   const v = vfos.find((x) => String(x.name) === e.target.closest(".vfo-row").dataset.vfo);
@@ -300,7 +321,7 @@ $("vfoList").addEventListener("input", (e) => {
   }, 60);
 });
 
-// Posuvník SQUELCH pod RF GAIN: úroveň squelchu pre aktuálny mód daného VFO (to isté ako posuvník v SET).
+// SQUELCH slider under RF GAIN: squelch level for the current mode of that VFO (same as the slider in SET).
 $("vfoList").addEventListener("input", (e) => {
   if (!e.target.matches(".vfo-row:not(.spare) .vfo-sq input")) return;
   const v = vfos.find((x) => String(x.name) === e.target.closest(".vfo-row").dataset.vfo);
@@ -326,11 +347,11 @@ $("vfoList").addEventListener("input", (e) => {
 });
 
 $("vfoList").addEventListener("click", (e) => {
-  const row = e.target.closest(".vfo-row:not(.spare)");   // voľné okno bez SDR nereaguje
+  const row = e.target.closest(".vfo-row:not(.spare)");   // a free window without an SDR does not react
   if (!row) return;
   const v = vfos.find((x) => String(x.name) === row.dataset.vfo);
-  if (e.target.closest(".vfo-cue")) { setCue(v, !v.cue); return; }   // CUE neprepína VFO
-  if (e.target.closest(".vfo-rf")) return;                             // RF GAIN tiež nie
+  if (e.target.closest(".vfo-cue")) { setCue(v, !v.cue); return; }   // CUE does not switch the VFO
+  if (e.target.closest(".vfo-rf")) return;                             // neither does RF GAIN
   if (v !== active) { selectVfo(v); return; }
   if (!st || !e.target.closest(".freq")) return;
   const fr = row.querySelector(".freq");
@@ -357,7 +378,7 @@ function closeFreqInput() {
   for (const f of $("vfoList").querySelectorAll(".freq")) f.hidden = false;
 }
 
-// FM BCAST (frekvencia 0 v BAND_GROUPS) naladí poslednú počúvanú FM stanicu.
+// FM BCAST (frequency 0 in BAND_GROUPS) tunes the last FM station listened to.
 const FM_BCAST = [87.5e6, 108e6];
 const fmLast = () => Number(recall("fmLast")) || 88e6;
 function rememberFm() {
@@ -374,7 +395,7 @@ $("bandGroups").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-f]");
   if (!b || !st) return;
   const f = Number(b.dataset.f) || fmLast();
-  await ensureVfoFor(f);   // napr. KV pásmo na VFO bez konvertora -> VFO A
+  await ensureVfoFor(f);   // e.g. an HF band on a VFO without upconverter -> VFO A
   if (!st) return;
   for (const x of $("bandGroups").querySelectorAll("button")) x.classList.toggle("active", x === b);
   st.mode = b.dataset.m;
@@ -383,15 +404,15 @@ $("bandGroups").addEventListener("click", async (e) => {
   send({ mode: b.dataset.m });
 });
 
-// ---------- ručičkový S-meter ----------
+// ---------- needle S-meter ----------
 
-// Plochý široký oblúk ako na displeji transceivera; os ručičky je pod spodným okrajom.
+// Flat wide arc like on a transceiver display; the needle pivot is below the bottom edge.
 const METER = { cx: 130, cy: 290, r: 252, a0: -25, a1: 25, s9pos: 0.6 };
 let s9Dbfs = -40;
 let meterTarget = -120;
 let meterNow = -120;
 
-/** dBFS -> poloha 0..1 na stupnici: S0..S9 po 6 dB, nad S9 do +60 dB. */
+/** dBFS -> position 0..1 on the scale: S0..S9 in 6 dB steps, above S9 up to +60 dB. */
 function meterPos(dbfs) {
   const over = dbfs - s9Dbfs;
   if (over <= 0) return Math.max(0, (over + 54) / 54) * METER.s9pos;
@@ -409,8 +430,8 @@ function buildMeter() {
     const [x0, y0] = meterPoint(p0, rr), [x1, y1] = meterPoint(p1, rr);
     return `M${x0.toFixed(1)},${y0.toFixed(1)} A${rr},${rr} 0 0 1 ${x1.toFixed(1)},${y1.toFixed(1)}`;
   };
-  // Vzhľad merača z displeja transceivera: čierny podklad, biele čísla a ryhy,
-  // zelený pás S1–S9, červený nad S9, tenká červená ručička.
+  // Meter look taken from a transceiver display: black background, white numbers and ticks,
+  // green band S1–S9, red above S9, thin red needle.
   const WHITE = "#e8edf2", GREEN = "#3cf07c", RED = "#ff3b30";
   const H = 100;
   let svg = `<defs>
@@ -424,7 +445,7 @@ function buildMeter() {
   <path d="${arc(0, METER.s9pos, r - 3)}" stroke="${GREEN}" stroke-width="4" fill="none"/>
   <path d="${arc(METER.s9pos, 1, r - 3)}" stroke="${RED}" stroke-width="4" fill="none"/>
   <path d="${arc(0, 1, r + 1)}" stroke="${WHITE}" stroke-width="1" fill="none" opacity=".75"/>`;
-  // ryhy každé S a každých 10 dB, čísla na nepárnych S a na +20/+40/+60
+  // ticks every S unit and every 10 dB, numbers on odd S units and on +20/+40/+60
   for (let s = 0; s <= 9; s++) {
     const p = (s / 9) * METER.s9pos;
     const major = s % 2 === 1;
@@ -459,7 +480,7 @@ function buildMeter() {
 }
 
 function animateMeter() {
-  // Balistika ako analógový merák: rýchly nábeh, pomalší návrat.
+  // Ballistics like an analogue meter: fast attack, slower return.
   const k = meterTarget > meterNow ? 0.35 : 0.07;
   meterNow += (meterTarget - meterNow) * k;
   const a = METER.a0 + meterPos(meterNow) * (METER.a1 - METER.a0);
@@ -482,9 +503,9 @@ renderS9();
 buildMeter();
 requestAnimationFrame(animateMeter);
 
-// ---------- spektrum a vodopád ----------
+// ---------- spectrum and waterfall ----------
 
-// Riadkov vodopádu = výška okna vodopádu v CSS pixeloch (pri zmene okna sa prepočíta).
+// Waterfall rows = height of the waterfall window in CSS pixels (recalculated when the window changes).
 let WF_ROWS = wfRowsWanted();
 function wfRowsWanted() {
   return Math.max(120, Math.min(1400, Math.round(document.querySelector(".waterfall-wrap").clientHeight || 320)));
@@ -494,12 +515,12 @@ const wfCtx = wfCanvas.getContext("2d");
 let wfRow = null;
 let floor = null;
 let spec = null;
-let imgC = 0; // stred, ktorému presne zodpovedá obraz vodopádu (posúva sa po celých bodoch)
-let viewLocalAt = 0; // kedy sme výrez naposledy posunuli ťahaním
+let imgC = 0; // centre that the waterfall image matches exactly (it moves by whole points)
+let viewLocalAt = 0; // when the section was last moved by dragging
 let drag = null;
 
 const LUT = (() => {
-  // Šum takmer čierny až tmavomodrý, signály prudko prechádzajú do žltej a červenej (vyšší kontrast).
+  // Noise almost black to dark blue, signals change sharply to yellow and red (higher contrast).
   const stops = [[0, 0, 0, 10], [0.16, 4, 14, 70], [0.32, 18, 60, 190], [0.46, 40, 175, 240],
     [0.6, 250, 235, 60], [0.78, 255, 100, 20], [1, 255, 255, 255]];
   const lut = new Uint8ClampedArray(256 * 3);
@@ -542,7 +563,7 @@ function onRow(center, span, b64, replay = false) {
     imgC = center;
     drawOverlays();
   } else if (center !== view.c && !drag && Date.now() - viewLocalAt > 1500) {
-    // Server posunul výrez (ladenie pri okraji, zmena pásma): obraz posunieme s ním.
+    // The server moved the section (tuning near the edge, band change): move the image with it.
     setView(center);
   }
 
@@ -550,7 +571,7 @@ function onRow(center, span, b64, replay = false) {
   const p20 = sorted[Math.floor(n * 0.2)];
   floor = floor === null ? p20 : floor * 0.95 + p20 * 0.05;
   const [lo, rng] = colorRange();
-  // Riadok kreslíme na miesto podľa zobrazeného výrezu; pri ťahaní môže server ešte meškať.
+  // Draw the row where it belongs in the shown section; while dragging the server may still lag behind.
   const off = Math.round(((center - imgC) / span) * n);
   const d = wfRow.data;
   for (let j = 0; j < n; j++) {
@@ -570,7 +591,7 @@ function onRow(center, span, b64, replay = false) {
   if (!replay) drawSpectrum();
 }
 
-/** Posunie zobrazený výrez na stred c: obraz vodopádu aj spektra sa posunú o celé body. */
+/** Moves the shown section to centre c: the waterfall and spectrum images move by whole points. */
 function setView(c) {
   const n = wfCanvas.width;
   const dx = Math.round(((c - imgC) / view.span) * n);
@@ -592,7 +613,7 @@ function setView(c) {
 }
 
 function fitCanvas(cv) {
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = (window.devicePixelRatio || 1) * uiScale;   // sharp also on an enlarged page
   const w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
   const ctx = cv.getContext("2d");
@@ -602,12 +623,12 @@ function fitCanvas(cv) {
 
 function drawSpectrum() {
   const [ctx, w, h] = fitCanvas($("spectrum"));
-  // Čierno-sivý panoramatický displej (hore sivá, dole čierna).
+  // Black-grey panorama display (grey at the top, black at the bottom).
   const g = ctx.createLinearGradient(0, 0, 0, h);
   g.addColorStop(0, "#3a3d42"); g.addColorStop(0.6, "#1a1c1f"); g.addColorStop(1, "#050506");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
-  // zvislá mriežka podľa osi frekvencie
+  // vertical grid following the frequency axis
   if (st) {
     const v = viewNow();
     const s = niceStep(v.span);
@@ -619,7 +640,7 @@ function drawSpectrum() {
   }
   if (!spec || !st) return;
   const stepDb = st.wf.db_step;
-  // Spektrum má vlastnú pevnú mierku (55 dB), rozsah farieb vodopádu ju nemení.
+  // The spectrum has its own fixed scale (55 dB), the waterfall colour range does not change it.
   const lo = colorRange()[0] - 3 / stepDb;
   const top = lo + 55 / stepDb;
   const y = (v) => h - ((v - lo) / (top - lo)) * h;
@@ -664,7 +685,7 @@ function drawOverlays() {
     ctx.clearRect(0, 0, w, h);
     let x0 = freqToX(a, w), x1 = freqToX(b, w);
     const xt = Math.round(freqToX(st.tune_hz, w)) + 0.5;
-    // Pásmo musí byť vidieť aj pri malom zoome: aspoň 6 px.
+    // The passband must be visible even at a small zoom: at least 6 px.
     if (x1 - x0 < 6) { const m = (x0 + x1) / 2; x0 = m - 3; x1 = m + 3; }
     const spectrum = id === "specOverlay";
     ctx.fillStyle = spectrum ? "rgba(255,181,71,.16)" : "rgba(255,181,71,.10)";
@@ -679,7 +700,7 @@ function drawOverlays() {
     ctx.strokeStyle = "#ff5d5d";
     ctx.beginPath(); ctx.moveTo(xt, 0); ctx.lineTo(xt, h); ctx.stroke();
     if (spectrum) {
-      // Popis šírky pásma nad pásmom.
+      // Bandwidth label above the passband.
       const txt = `${st.mode} · ${fmtBw(bw)}`;
       ctx.font = "600 11px system-ui, sans-serif";
       const tw = ctx.measureText(txt).width + 12;
@@ -690,9 +711,62 @@ function drawOverlays() {
       ctx.fillStyle = "#ffb547";
       ctx.textBaseline = "middle";
       ctx.fillText(txt, tx + 6, 15);
+      drawMemTags(ctx, w, [tx - 4, tx + tw + 4]);
     }
   }
   drawAxis();
+}
+
+// Memories in the spectrum: at the top edge (under the band name strip) a ▲ mark on the memory frequency
+// and a name tag under it. Tags are placed in rows so that they do not overlap (nor the bandwidth
+// label); what does not fit gets only the mark. memTagBoxes is used for click / tooltip.
+const MEM_TAG_ROWS = 3, MEM_TAG_H = 15, MEM_TAG_TOP = 7, MEM_TAG_GAP = 3, MEM_NAME_MAX = 22;
+const MEM_COLOR = "#7ee0a8";
+let memTagBoxes = [];
+function drawMemTags(ctx, w, modeLabel) {
+  memTagBoxes = [];
+  if (!mems.length) return;
+  const v = viewNow();
+  const f0 = v.c - v.span / 2, f1 = v.c + v.span / 2;
+  const list = mems.filter((m) => m.freq_hz >= f0 && m.freq_hz <= f1)
+    .sort((a, b) => (b.fav - a.fav) || a.freq_hz - b.freq_hz);   // favourites get a place first
+  if (!list.length) return;
+  ctx.font = "600 10px system-ui, sans-serif";
+  ctx.textBaseline = "middle";
+  const rowY = (r) => MEM_TAG_TOP + r * (MEM_TAG_H + MEM_TAG_GAP);
+  // occupied intervals in each row; the bandwidth label (y 6–24) reaches into the first two
+  const used = Array.from({ length: MEM_TAG_ROWS }, () => []);
+  for (let r = 0; r < MEM_TAG_ROWS; r++) if (rowY(r) < 25) used[r].push(modeLabel);
+  for (const m of list) {
+    const x = Math.round(freqToX(m.freq_hz, w)) + 0.5;
+    const name = m.name.length > MEM_NAME_MAX ? m.name.slice(0, MEM_NAME_MAX - 1) + "…" : m.name;
+    const tw = ctx.measureText(name).width + 10;
+    const bx = Math.min(Math.max(x - tw / 2, 2), w - tw - 2);
+    let row = -1;
+    for (let r = 0; r < MEM_TAG_ROWS && row < 0; r++) {
+      if (used[r].every(([a, b]) => bx + tw + 2 < a || bx - 2 > b)) row = r;
+    }
+    // the ▲ mark at the top edge points at the frequency
+    ctx.fillStyle = MEM_COLOR;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x - 4, 6); ctx.lineTo(x + 4, 6); ctx.closePath(); ctx.fill();
+    if (row < 0) { memTagBoxes.push({ m, x0: x - 5, x1: x + 5, y0: 0, y1: 7 }); continue; }
+    used[row].push([bx, bx + tw]);
+    const y0 = rowY(row);
+    ctx.strokeStyle = "rgba(126,224,168,.55)";
+    ctx.setLineDash([2, 2]);
+    ctx.beginPath(); ctx.moveTo(x, 6); ctx.lineTo(x, y0); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(8,20,14,.88)";
+    ctx.strokeStyle = MEM_COLOR;
+    ctx.beginPath(); ctx.roundRect(bx, y0, tw, MEM_TAG_H, 4); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = MEM_COLOR;
+    ctx.textAlign = "left";
+    ctx.fillText(name, bx + 5, y0 + MEM_TAG_H / 2 + 0.5);
+    memTagBoxes.push({ m, x0: bx, x1: bx + tw, y0: 0, y1: y0 + MEM_TAG_H });
+  }
+}
+function memTagAt(x, y) {
+  return memTagBoxes.find((b) => x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1)?.m || null;
 }
 
 function niceStep(span) {
@@ -702,34 +776,9 @@ function niceStep(span) {
   return 10 * p;
 }
 
-// Pásma na osi frekvencií (Hz): amatérske IARU Región 1 modrou, rozhlasové KV (ITU) oranžovou.
-const HAM_BANDS = [
-  [135700, 137800, "2200m"], [472000, 479000, "630m"], [1810000, 2000000, "160m"], [3500000, 3800000, "80m"],
-  [5351500, 5366500, "60m"], [7000000, 7200000, "40m"], [10100000, 10150000, "30m"], [14000000, 14350000, "20m"],
-  [18068000, 18168000, "17m"], [21000000, 21450000, "15m"], [24890000, 24990000, "12m"], [28000000, 29700000, "10m"],
-  [50000000, 52000000, "6m"], [70000000, 70500000, "4m"], [144000000, 146000000, "2m"],
-  [430000000, 440000000, "70cm"], [1240000000, 1300000000, "23cm"],
-];
-const BC_BANDS = [
-  [2300000, 2495000, "120m"], [3200000, 3400000, "90m"], [3900000, 4000000, "75m"], [4750000, 5060000, "60m"],
-  [5900000, 6200000, "49m"], [7200000, 7450000, "41m"], [9400000, 9900000, "31m"], [11600000, 12100000, "25m"],
-  [13570000, 13870000, "22m"], [15100000, 15800000, "19m"], [17480000, 17900000, "16m"],
-  [18900000, 19020000, "15m"], [21450000, 21850000, "13m"], [25670000, 26100000, "11m"],
-];
-// Ostatné služby (bez predpony v názve).
-const FM_BANDS = [[87500000, 108000000, "FM BCAST"]];
-const AIR_BANDS = [[118000000, 137000000, "AIRBAND"]];
-const PMR_BANDS = [[446000000, 446200000, "PMR446"]];
-const CB_BANDS = [[26965000, 27405000, "CB"]];
-const AXIS_STRIP = 13; // px, pásik s názvom pásma pri spodnom okraji osi
-const BAND_STYLES = [
-  [HAM_BANDS, "HAM", "rgba(40,120,255,.16)", "#2f7bff", "#fff"],
-  [BC_BANDS, "BC", "rgba(255,150,40,.16)", "#ff9a2e", "#1a1206"],
-  [FM_BANDS, "", "rgba(176,97,255,.16)", "#a95cff", "#fff"],
-  [AIR_BANDS, "", "rgba(34,199,199,.16)", "#1fbfbf", "#04201f"],
-  [PMR_BANDS, "", "rgba(60,200,100,.16)", "#33c060", "#05200d"],
-  [CB_BANDS, "", "rgba(255,216,74,.16)", "#f2cc3a", "#1f1a04"],
-];
+// Bands on the frequency axis: local table BANDPLAN / BANDPLAN_STYLES in static/bandplan.js
+// (sorted widest first, so narrower bands are drawn on top).
+const AXIS_STRIP = 13; // px, strip with the band name at the bottom edge of the axis
 
 function drawAxis() {
   const [ctx, w, h] = fitCanvas($("axis"));
@@ -739,20 +788,18 @@ function drawAxis() {
   ctx.font = "bold 10px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  for (const [bands, kind, bg, strip, ink] of BAND_STYLES) {
-    for (const [a, b, name] of bands) {
-      if (b < f0 || a > f1) continue;
-      const x0 = Math.max(0, freqToX(a, w)), x1 = Math.min(w, freqToX(b, w));
-      ctx.fillStyle = bg;
-      ctx.fillRect(x0, 0, x1 - x0, h - AXIS_STRIP);
-      ctx.fillStyle = strip;
-      ctx.fillRect(x0, h - AXIS_STRIP, x1 - x0, AXIS_STRIP);
-      // Názov do stredu viditeľnej časti pásma, ak sa tam zmestí.
-      const label = kind ? `${kind} ${name}` : name;
-      if (x1 - x0 > ctx.measureText(label).width + 8) {
-        ctx.fillStyle = ink;
-        ctx.fillText(label, (x0 + x1) / 2, h - AXIS_STRIP / 2 + 0.5);
-      }
+  for (const [a, b, label, kind] of BANDPLAN) {
+    if (b < f0 || a > f1) continue;
+    const [bg, strip, ink] = BANDPLAN_STYLES[kind];
+    const x0 = Math.max(0, freqToX(a, w)), x1 = Math.min(w, freqToX(b, w));
+    ctx.fillStyle = bg;
+    ctx.fillRect(x0, 0, x1 - x0, h - AXIS_STRIP);
+    ctx.fillStyle = strip;
+    ctx.fillRect(x0, h - AXIS_STRIP, x1 - x0, AXIS_STRIP);
+    // Name in the middle of the visible part of the band, if it fits there.
+    if (x1 - x0 > ctx.measureText(label).width + 8) {
+      ctx.fillStyle = ink;
+      ctx.fillText(label, (x0 + x1) / 2, h - AXIS_STRIP / 2 + 0.5);
     }
   }
   const s = niceStep(f1 - f0);
@@ -762,7 +809,7 @@ function drawAxis() {
   ctx.strokeStyle = "rgba(255,255,255,.4)";
   ctx.fillStyle = "#d6d8dc";
   const decimals = s >= 1e5 ? 1 : s >= 1e4 ? 2 : s >= 1e3 ? 3 : 4;
-  // Os je nad spektrom: značky smerujú dole k spektru.
+  // The axis is above the spectrum: the ticks point down to the spectrum.
   for (let f = Math.ceil(f0 / s) * s; f <= f1; f += s) {
     const x = Math.round(freqToX(f, w)) + 0.5;
     const top = h - AXIS_STRIP;
@@ -771,10 +818,19 @@ function drawAxis() {
   }
 }
 
-// Šírka filtra: v spektre sa dá chytiť okrajová čiara pásma a ťahať. Pri SSB len vonkajší okraj
-// (vnútorný je pevne 300 Hz od nosnej), pri ostatných módoch sa pásmo mení súmerne.
+// Tooltip above the axis: description of all bands under the cursor (narrowest first).
+$("axis").addEventListener("mousemove", (e) => {
+  const cv = $("axis");
+  const f = xToFreq(e.offsetX, cv.clientWidth);
+  const hits = BANDPLAN.filter(([a, b]) => f >= a && f <= b).reverse();
+  const tip = hits.map(([, , label, , desc]) => `${label}: ${desc}`).join("\n");
+  if (cv.title !== tip) cv.title = tip;
+});
+
+// Filter width: the passband edge line in the spectrum can be grabbed and dragged. In SSB only the outer edge
+// (the inner one is fixed 300 Hz from the carrier), in the other modes the passband changes symmetrically.
 const BW_GRAB_PX = 5;
-const BW_LIMITS = { WFM: [50000, 250000, 1000], FM: [500, 50000, 50], other: [100, 18000, 50] }; // min, max, zaokrúhlenie
+const BW_LIMITS = { WFM: [50000, 250000, 1000], FM: [500, 50000, 50], other: [100, 18000, 50] }; // min, max, rounding
 
 function bwEdgeAt(x, w) {
   const [a, b] = passband();
@@ -793,7 +849,7 @@ function bwFromX(x, w) {
   return Math.min(hi, Math.max(lo, Math.round(raw / q) * q));
 }
 
-// Frekvencia pod myšou: po 1 s nehybnosti (posun do 2 px sa neráta) sa ukáže na 5 s.
+// Frequency under the mouse: after 1 s without movement (moves up to 2 px do not count) it is shown for 5 s.
 const HOVER_DELAY_MS = 1000, HOVER_SHOW_MS = 5000;
 let hover = null;
 function hoverHide() {
@@ -810,9 +866,9 @@ function hoverMove(e, cv) {
     const f = xToFreq(hover.x - r.left, r.width);
     box.textContent = f >= 30e6 ? `${fmtMHz(f, 4)} MHz` : `${fmtKHz(f, 2)} kHz`;
     box.hidden = false;
-    // vedľa kurzora; pri pravom okraji naľavo od neho
-    const x = hover.x - scope.left, y = hover.y - scope.top;
-    box.style.left = `${x + 14 + box.offsetWidth > scope.width ? x - 14 - box.offsetWidth : x + 14}px`;
+    // next to the cursor; near the right edge to its left (window coordinates → layout px: / uiScale)
+    const x = (hover.x - scope.left) / uiScale, y = (hover.y - scope.top) / uiScale;
+    box.style.left = `${x + 14 + box.offsetWidth > scope.width / uiScale ? x - 14 - box.offsetWidth : x + 14}px`;
     box.style.top = `${Math.max(0, y - box.offsetHeight - 10)}px`;
     hover.timer = setTimeout(() => { box.hidden = true; }, HOVER_SHOW_MS);
   }, HOVER_DELAY_MS);
@@ -821,8 +877,8 @@ function hoverMove(e, cv) {
 for (const id of ["specOverlay", "wfOverlay"]) {
   const cv = $(id);
   const spectrum = id === "specOverlay";
-  // Klik bez pohybu naladí bod pod myšou. Ťahanie posúva celý vodopád: pásmo ostáva na mieste
-  // obrazovky a pod ním sa mení frekvencia.
+  // A click without movement tunes the point under the mouse. Dragging moves the whole waterfall: the passband stays in
+  // place on the screen and the frequency changes under it.
   cv.addEventListener("pointerdown", (e) => {
     if (!st || e.button !== 0) return;
     cv.setPointerCapture(e.pointerId);
@@ -836,7 +892,12 @@ for (const id of ["specOverlay", "wfOverlay"]) {
   });
   cv.addEventListener("pointermove", (e) => {
     const r = cv.getBoundingClientRect();
-    if (spectrum && !drag && st) cv.style.cursor = bwEdgeAt(e.clientX - r.left, r.width) ? "ew-resize" : "";
+    if (spectrum && !drag && st) {
+      const m = memTagAt((e.clientX - r.left) / uiScale, (e.clientY - r.top) / uiScale);
+      cv.style.cursor = bwEdgeAt(e.clientX - r.left, r.width) ? "ew-resize" : m ? "pointer" : "";
+      const tip = m ? `${m.name} · ${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} MHz` : `${fmtKHz(m.freq_hz, 2)} kHz`} · ${m.mode} · ${m.group}` : "";
+      if (cv.title !== tip) cv.title = tip;
+    }
     if (!drag || !cv.hasPointerCapture(e.pointerId)) return;
     if (drag.bw) {
       const bw = bwFromX(e.clientX - r.left, r.width);
@@ -863,7 +924,9 @@ for (const id of ["specOverlay", "wfOverlay"]) {
     if (!drag) return;
     if (!drag.moved && e.type === "pointerup") {
       const r = cv.getBoundingClientRect();
-      tune(xToFreq(e.clientX - r.left, r.width), true);
+      const m = spectrum ? memTagAt((e.clientX - r.left) / uiScale, (e.clientY - r.top) / uiScale) : null;
+      if (m) recallMem(m);   // a click on a memory tag recalls it (frequency, mode, width)
+      else tune(xToFreq(e.clientX - r.left, r.width), true);
     }
     if (drag.moved && !drag.bw) viewLocalAt = Date.now();
     drag = null;
@@ -875,7 +938,7 @@ for (const id of ["specOverlay", "wfOverlay"]) {
   cv.addEventListener("pointermove", (e) => hoverMove(e, cv));
   cv.addEventListener("pointerleave", hoverHide);
   cv.addEventListener("pointerdown", hoverHide);
-  // ladenie kolieskom: tooltip skryť a neukázať, kým sa myš znova nepohne
+  // wheel tuning: hide the tooltip and do not show it until the mouse moves again
   cv.addEventListener("wheel", (e) => { hoverHide(); hover = { x: e.clientX, y: e.clientY }; });
   cv.addEventListener("wheel", (e) => {
     e.preventDefault();
@@ -887,16 +950,16 @@ window.addEventListener("resize", () => {
   drawSpectrum();
   drawOverlays();
 });
-// Výška pevnej hornej časti (mení sa so šírkou okna a zalomením tlačidiel): spodná časť so spektrom
-// a vodopádom dostane zvyšok okna.
+// Height of the fixed top part (changes with the window width and wrapping of the buttons): the bottom part with
+// the spectrum and waterfall gets the rest of the window.
 new ResizeObserver(([e]) => {
-  const h = Math.round(e.target.getBoundingClientRect().height);
+  const h = e.target.offsetHeight;   // layout px (getBoundingClientRect would already be scaled)
   if (document.documentElement.style.getPropertyValue("--head-h") === `${h}px`) return;
   document.documentElement.style.setProperty("--head-h", `${h}px`);
   window.dispatchEvent(new Event("resize"));
 }).observe($("radioHead"));
 
-/** Zmena výšky okna: nový počet riadkov, doterajší obraz sa zachová (hore sú najnovšie riadky). */
+/** Window height change: new number of rows, the existing image is kept (newest rows at the top). */
 function resizeWaterfall() {
   const rows = wfRowsWanted();
   if (rows === WF_ROWS || !wfRow) { WF_ROWS = rows; return; }
@@ -935,17 +998,21 @@ function renderSettings() {
   $("ppm").value = st.ppm;
   $("lo").value = st.lo_offset_hz / 1e6;
   $("upconv").value = st.upconv;
-  // VFO má pevnú kľúčenku (podľa sériového čísla) aj zapojenie konvertora: výber kľúčenky sa skryje.
+  // The VFO has a fixed dongle (by serial number) and upconverter wiring: the dongle selection is hidden.
   $("deviceSetting").hidden = !!st.vfo;
   $("upconvSetting").hidden = !!st.vfo;
   $("vfoSetting").hidden = !st.vfo;
   if (st.vfo) {
-    $("vfoSettingText").textContent = `VFO ${st.vfo} · ${st.driver === "lime" ? "LimeSDR" : "dongle"} ${st.serial}` +
+    const dongle = `${st.driver === "lime" ? "LimeSDR" : "dongle"} ${st.serial}`;
+    $("vfoSettingText").textContent = (st.chain_owner
+      ? `VFO ${st.vfo} · chained to the ${dongle} of VFO ${st.chain_owner}: tunes inside its band; ` +
+        `gain, ppm and sample rate are shared with VFO ${st.chain_owner}`
+      : `VFO ${st.vfo} · ${dongle}` + (st.chained_vfos ? ` · also serves ${st.chained_vfos} chained VFO(s)` : "")) +
       (active && active.note ? ` · ${active.note}` : "");
   } else {
     loadDevices();
   }
-  // LimeSDR nemá bias-tee ani digitálne AGC RTL2832.
+  // LimeSDR has no bias-tee and no RTL2832 digital AGC.
   $("rtlAgcBox").hidden = st.has_rtl_agc === false;
   $("biasTeeSetting").hidden = st.has_bias_tee === false;
   $("biasTee").checked = st.bias_tee;
@@ -957,7 +1024,7 @@ function renderSettings() {
 
 const SQUELCH_OFF = -120;
 
-// Squelch má vlastnú úroveň pre AM, FM a WFM; posuvník v SET nastavuje tú pre aktuálny mód.
+// Squelch has its own level for AM, FM and WFM; the slider in SET sets the one for the current mode.
 function squelchLevel() {
   const v = st.squelch_levels ? st.squelch_levels[st.mode] : undefined;
   return v === undefined ? SQUELCH_OFF : v;
@@ -973,7 +1040,7 @@ function renderSquelch() {
   placeSqlMark();
 }
 
-/** Žltá značka úrovne squelchu na stupnici S-metra. */
+/** Yellow squelch level mark on the S-meter scale. */
 function placeSqlMark() {
   const mark = $("sqlMark");
   if (!mark || !st) return;
@@ -986,7 +1053,7 @@ function placeSqlMark() {
   mark.setAttribute("x2", x1); mark.setAttribute("y2", y1);
 }
 
-// WFM: príznaky ST (stereo pilot) a RDS (synchronizované bloky), pod frekvenciou PS a RadioText.
+// WFM: flags ST (stereo pilot) and RDS (synchronised blocks), PS and RadioText under the frequency.
 function renderRds() {
   const wfm = st.mode === "WFM";
   const r = wfm ? st.rds : null;
@@ -998,12 +1065,12 @@ function renderRds() {
   const alcMode = ["AM", "LSB", "USB", "CW"].includes(st.mode);
   $("alcKey").disabled = !alcMode;
   $("alcKey").classList.toggle("on", alcMode && st.audio_agc !== false);
-  // príznak ALC pri S-metri: zelený = zapnuté, sivý = vypnuté; vo FM/WFM (bez ALC) skrytý
+  // ALC flag at the S-meter: green = on, grey = off; hidden in FM/WFM (no ALC)
   $("alcBadge").hidden = !alcMode;
   $("alcBadge").classList.toggle("dim", st.audio_agc === false);
   $("stBadge").hidden = !wfm;
   $("stBadge").classList.toggle("dim", !st.stereo);
-  // Rámik RDS je vždy na mieste (vodopád sa neposúva); bez RDS je prázdny a zhasnutý.
+  // The RDS frame is always in place (the waterfall does not move); without RDS it is empty and dark.
   const has = !!r && (r.ps || r.rt || r.pi);
   $("rds").classList.toggle("off", !has);
   $("rdsPs").textContent = has ? r.ps || "········" : " ";
@@ -1012,7 +1079,7 @@ function renderRds() {
   $("rds").title = has ? [r.rt, r.ct && `Clock: ${r.ct}`].filter(Boolean).join("\n") : "RDS";
 }
 
-// Príznak SQL pri zapnutom squelchu (AM/FM/WFM): svieti, keď je squelch otvorený.
+// SQL flag with squelch on (AM/FM/WFM): lit while the squelch is open.
 function renderSqlBadge() {
   $("sqlBadge").hidden = squelchLevel() <= SQUELCH_OFF;
   $("sqlBadge").classList.toggle("dim", !st.squelch_open);
@@ -1083,7 +1150,7 @@ async function loadDevices() {
   const cur = st.device;
   const label = (d) => `#${d.index} · ${d.product || d.name || "RTL-SDR"}` +
     (d.serial ? ` · SN ${d.serial}` : "") + (d.index === cur ? " (active)" : "");
-  // Aktívna kľúčenka musí byť v zozname, aj keď ju zoznam nevrátil (napr. odpojená).
+  // The active dongle must be in the list even if the list did not return it (e.g. unplugged).
   if (!list.some((d) => d.index === cur)) list.push({ index: cur, name: "not found" });
   sel.innerHTML = list.map((d) => `<option value="${d.index}">${escHtml(label(d))}</option>`).join("");
   sel.value = String(cur);
@@ -1095,10 +1162,23 @@ $("device").addEventListener("change", () => {
 });
 $("devRefresh").addEventListener("click", loadDevices);
 $("biasTee").addEventListener("change", () => send({ bias_tee: $("biasTee").checked }));
+const TX_ACK_TEXT =
+  "IMPORTANT - TRANSMITTING DISCLAIMER\n\n" +
+  "By enabling TX you confirm that:\n" +
+  "- you hold a valid amateur radio licence (or another authorisation required in your country) and transmit only " +
+  "within its privileges and the regulations (ITU, CEPT, FCC or your national authority);\n" +
+  "- you use a suitable filter and antenna or a dummy load (the SDR is not a certified transmitter);\n" +
+  "- you are fully and solely responsible for every transmission and its consequences; " +
+  "the software is provided AS IS and the author accepts no liability.\n\n" +
+  "TX is limited to ham 160-10 m, 6 m, 4 m, 2 m, 70 cm, 23 cm, CB 27 MHz and PMR446.\n\nEnable TX?";
 $("txEnabled").addEventListener("change", () => {
+  if ($("txEnabled").checked && !confirm(TX_ACK_TEXT)) {
+    $("txEnabled").checked = false;
+    return;
+  }
   st.tx_enabled = $("txEnabled").checked;
   if (!st.tx_enabled) pttUp();
-  send({ tx_enabled: st.tx_enabled });
+  send(st.tx_enabled ? { tx_enabled: true, tx_ack: true } : { tx_enabled: false });
 });
 $("squelch").addEventListener("input", () => {
   const v = Number($("squelch").value);
@@ -1145,7 +1225,7 @@ function addFt8(d, fresh) {
   tr.innerHTML = `<td>${d.time}</td><td class="num">${d.snr > 0 ? "+" : ""}${d.snr}</td>` +
     `<td class="num">${d.dt.toFixed(1)}</td><td class="num">${d.df}</td>` +
     `<td class="num">${fmtKHz(d.freq_hz, 1)}</td><td class="msg">${esc(d.msg)}</td>`;
-  // Nové správy idú hore, hneď pod oddeľovač svojho cyklu.
+  // New messages go to the top, right under the separator of their cycle.
   tb.insertBefore(tr, tb.firstChild.nextSibling);
   while (tb.rows.length > FT8_MAX_ROWS) tb.lastChild.remove();
   ft8Count++;
@@ -1165,7 +1245,7 @@ $("ft8On").addEventListener("change", () => {
 $("ft8Bands").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-f]");
   if (!b || !st) return;
-  await ensureVfoFor(Number(b.dataset.f));   // KV pásmo -> VFO s konvertorom
+  await ensureVfoFor(Number(b.dataset.f));   // HF band -> VFO with upconverter
   if (!st) return;
   st.mode = "USB";
   renderControls();
@@ -1181,17 +1261,17 @@ $("ft8Clear").addEventListener("click", () => {
   ft8Count = 0;
 });
 
-// ---------- záložky SPECTRUM / DECODERS ----------
-// Dekodéry nie sú pod obrazovkou (zle sa k nim posúvalo), ale v záložke, ktorá prekryje spektrum a vodopád.
+// ---------- SPECTRUM / DECODERS tabs ----------
+// The decoders are not below the screen (scrolling to them was awkward) but in a tab that covers the spectrum and waterfall.
 
-// otvorená záložka sa pamätá pre každé VFO zvlášť (bodyTab_A, bodyTab_B…)
+// the open tab is remembered for each VFO separately (bodyTab_A, bodyTab_B…)
 const tabKey = () => (active ? `bodyTab_${active.name}` : "bodyTab");
 let bodyTab = recall(tabKey()) === "dec" ? "dec" : "scope";
 
-// VFO bez uloženej záložky: rozhodne prvý stav zo servera (beží dekodér → DECODERS)
+// VFO without a saved tab: the first state from the server decides (a decoder is running → DECODERS)
 let bodyTabGuess = false;
 
-/** Záložka uložená pre aktívne VFO, volá sa po prepnutí VFO. */
+/** Tab saved for the active VFO, called after a VFO switch. */
 function restoreBodyTab() {
   $("decNew").hidden = true;
   const saved = recall(tabKey());
@@ -1199,7 +1279,7 @@ function restoreBodyTab() {
   setBodyTab(saved === "dec" ? "dec" : "scope", !bodyTabGuess);
 }
 
-/** Prvý stav VFO bez uloženej záložky: ak na ňom beží dekodér, otvorí DECODERS. */
+/** First state of a VFO without a saved tab: if a decoder runs on it, opens DECODERS. */
 function guessBodyTab() {
   if (!bodyTabGuess) return;
   bodyTabGuess = false;
@@ -1216,15 +1296,15 @@ function setBodyTab(tab, save = true) {
   hoverHide();
 }
 
-/** Počet zapnutých dekodérov v záložke a text, keď nie je zapnutý žiadny. */
+/** Number of enabled decoders on the tab and a text when none is enabled. */
 function renderDecTab() {
-  // podľa zaškrtnutí – platí hneď po kliknutí, aj kým server nepotvrdí stav
+  // by the checkboxes – valid right after the click, even before the server confirms the state
   const n = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].filter((id) => $(id).checked).length;
   $("decCount").textContent = n ? `(${n})` : "";
   $("decEmpty").hidden = n > 0;
 }
 
-/** Nová správa dekodéra: zelená bodka na záložke, kým sa na ňu nepozrieš. */
+/** New decoder message: green dot on the tab until you look at it. */
 function decActivity() {
   if (bodyTab !== "dec") $("decNew").hidden = false;
 }
@@ -1233,7 +1313,7 @@ $("bodyTabs").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-tab]");
   if (b) setBodyTab(b.dataset.tab);
 });
-// zapnutie dekodéra (FT8, WEFAX, SSTV, ACARS) otvorí záložku DECODERS a vidno jeho kartu
+// enabling a decoder (FT8, WEFAX, SSTV, ACARS) opens the DECODERS tab so its card is visible
 for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"]) {
   $(id).addEventListener("change", () => {
     if ($(id).checked) setBodyTab("dec");
@@ -1278,7 +1358,7 @@ async function onLinkBand(e) {
     send({ sample_rate: f.vdl2Rate, center_hz: f.vdl2Center, tune_hz: f.vdl2Center, mode: "AM" });
     return;
   }
-  await ensureVfoFor(Number(b.dataset.f));   // VHF -> VFO bez konvertora
+  await ensureVfoFor(Number(b.dataset.f));   // VHF -> VFO without upconverter
   if (!st) return;
   st.mode = "AM";
   renderControls();
@@ -1294,10 +1374,12 @@ function freqTitle(m) {
   return v && v.sig_db != null ? ` title="signal ${v.sig_db.toFixed(1)} dBFS, noise ${v.noise_db.toFixed(1)} dBFS"` : "";
 }
 
-/** Decoded CPDLC / ADS-C / ATN message: [kind ("cpdlc" | "adsc" | "atn"), HTML block with a coloured tag]. */
+/** Decoded CPDLC / ADS-C / ATN message: [kind ("cpdlc" | "adsc" | "atn"), HTML block, coloured tag for the first column]. */
 function decodedBlock(c) {
-  const kind = c.imi === "ATN" ? "atn" : c.imi === "ADS" || c.imi === "DIS" ? "adsc" : "cpdlc";
-  const name = kind === "atn" ? (c.imi_desc || "ATN").replace("context management", "CM").toUpperCase()
+  const kind = c.imi === "ATN" ? (/ADS-C/.test(c.imi_desc || "") ? "adsc" : "atn")   // ATN ADS-C = ADS-C (purple)
+    : c.imi === "ADS" || c.imi === "DIS" ? "adsc" : "cpdlc";
+  // ATN: the tag without "ATN" (CPDLC, CM); the row tooltip and the Description column still say ATN
+  const name = kind === "atn" ? (c.imi_desc || "CPDLC").replace("context management", "CM").replace(/^ATN /, "").toUpperCase()
     : kind === "adsc" ? "ADS-C" : "CPDLC";
   const head = [c.gs ? `${c.dir === "up" ? "from" : "to"} ${escHtml(c.gs)}` : "",
     c.min != null ? `MIN ${c.min}` : "", c.mrn != null ? `MRN ${c.mrn}` : "", c.ts ? escHtml(c.ts) : "",
@@ -1305,9 +1387,11 @@ function decodedBlock(c) {
   const els = (c.elements || []).length
     ? c.elements.map((e) => `<div class="cp-el"><span class="cp-id">${escHtml(e.id)}</span>${escHtml(e.text)}</div>`).join("")
     : `<div class="cp-el">${escHtml(c.text || c.imi_desc || "")}</div>`;
+  const top = `${c.crc_ok ? "" : "✗ "}${head}`;
   return [kind, `<div class="dec d-${kind} ${c.dir === "up" ? "cp-up" : "cp-down"}">` +
-    `<div><span class="type-tag t-${kind}">${name}</span>${c.crc_ok ? "" : " ✗"} <span class="muted">${head}</span></div>` +
-    `${els}${c.error ? `<div class="muted">${escHtml(c.error)}</div>` : ""}</div>`];
+    `${top ? `<div class="muted">${top}</div>` : ""}` +
+    `${els}${c.error ? `<div class="muted">${escHtml(c.error)}</div>` : ""}</div>`,
+    `<span class="type-tag t-${kind}">${name}</span>`];
 }
 
 /** One row of the ACARS card: an ACARS message (with decoded CPDLC / ADS-C inside) or an ATN message. */
@@ -1317,32 +1401,69 @@ function addAcars(m, fresh) {
   const tr = document.createElement("tr");
   if (!m.crc_ok) tr.classList.add("bad");
   if (fresh) tr.classList.add("new");
-  const arrow = m.dir === "down" ? "↓" : "↑";   // ↓ z lietadla, ↑ zo zeme
+  const arrow = m.dir === "down" ? `<span class="arr-down">↓</span>` : `<span class="arr-up">↑</span>`;   // ↓ z lietadla, ↑ zo zeme
   tr.title = m.atn ? `${m.desc} · ICAO address ${m.reg}`
     : `mode ${m.mode} · block ${m.block}${m.msgno ? " · msg " + m.msgno : ""}${m.ack ? " · ack " + m.ack : ""}` +
       `${m.crc_ok ? "" : " · CRC error"}${m.more ? " · continues in the next block" : ""}`;
   tr.dataset.id = m.id;
-  let dec = "";
+  let dec = "", tag = `<span class="type-tag t-acars">ACARS</span>`;   // plain ACARS: nothing decoded inside
   if (m.cpdlc) {
-    const [kind, html] = decodedBlock(m.cpdlc);
+    const [kind, html, t] = decodedBlock(m.cpdlc);
     tr.classList.add(`r-${kind}`);
     dec = html;
+    tag = t;
   }
-  // plain ACARS (nothing decoded inside): ACARS tag at the start of the text
-  const tag = m.cpdlc ? "" : `<span class="type-tag t-acars">ACARS</span> `;
-  const text = m.text ? `<div class="msg-text${m.cpdlc ? " raw" : ""}">${tag}${m.crc_ok ? "" : "✗ "}${escHtml(m.text)}</div>`
-    : m.cpdlc ? "" : `<div class="msg-text">${tag}<span class='muted'>(no text)</span></div>`;
+  const text = m.text ? `<div class="msg-text${m.cpdlc ? " raw" : ""}">${m.crc_ok ? "" : "✗ "}${escHtml(m.text)}</div>`
+    : m.cpdlc ? "" : `<div class="msg-text"><span class='muted'>(no text)</span></div>`;
   if (!m.cpdlc) tr.classList.add("r-acars");
-  tr.innerHTML = `<td>${m.time}</td><td class="num"${freqTitle(m)}>${fmtMHz(m.freq_hz, 3)}</td>` +
-    `<td class="reg"></td><td class="flt"></td><td>${arrow} ${escHtml(m.label || "")}</td>` +
-    `<td class="desc">${escHtml(m.desc || "")}</td><td class="msg">${dec}${text}</td>`;
-  // dlhá správa (technické hlásenia s tabuľkami): skrátená na 3 riadky, klik ju rozbalí/zbalí
+  tr.innerHTML = `<td class="tag">${tag}</td><td>${m.time}</td><td class="num"${freqTitle(m)}>${fmtMHz(m.freq_hz, 3)}</td>` +
+    `<td class="cty"></td><td class="flt"></td><td class="reg"></td><td class="icao"></td><td class="act"></td><td class="model"></td>` +
+    `<td class="fl num"></td><td class="spd num"></td><td>${arrow} ${escHtml(m.label || "")}</td>` +
+    `<td class="desc">${escHtml(m.desc || "")}</td><td class="msg">${dec}${text}` +
+    `${m.atn && m.cpdlc.detail ? `<div class="atn-detail">${escHtml(m.cpdlc.detail)}</div>` : ""}</td>`;
+  // long message (technical reports with tables): shortened to 3 lines, a click expands/collapses it
   if (m.text && (m.text.split("\n").length > 3 || m.text.length > 240)) tr.querySelector("td.msg").classList.add("long");
+  // ATN: click shows the whole decoded frame (all fields) under the compact lines
+  if (m.atn && m.cpdlc.detail) tr.querySelector("td.msg").classList.add("long", "has-detail");
   tr._msg = m;
+  const kind = m.cpdlc ? decodedBlock(m.cpdlc)[0] : "acars";
+  tr.dataset.kind = kind === "atn" ? "cpdlc" : kind;    // filter: CPDLC = FANS and ATN CPDLC
+  tr.hidden = acarsFilter.size > 0 && !acarsFilter.has(tr.dataset.kind);
+  tr._lookupDone = !fresh;      // rows from the history: the lookup is long over, no waiting
   renderAcarsAircraft(tr, m.ac);
   tb.prepend(tr);
   while (tb.rows.length > ACARS_MAX_ROWS) tb.lastChild.remove();
+  renderAcarsFilter();
 }
+
+// ---------- message filter (tags at the top of the card) ----------
+
+const acarsFilter = new Set(JSON.parse(localStorage.getItem("acarsFilter") || "[]").map((k) => (k === "atn" ? "cpdlc" : k)));
+
+/** Show only rows of the selected kinds; the header says the filter is on and how many rows are shown. */
+function renderAcarsFilter() {
+  const rows = $("acarsRows").rows;
+  let shown = 0;
+  for (const tr of rows) {
+    tr.hidden = acarsFilter.size > 0 && !acarsFilter.has(tr.dataset.kind);
+    if (!tr.hidden) shown++;
+  }
+  const on = acarsFilter.size > 0;
+  $("acarsFilter").classList.toggle("on", on);
+  for (const t of $("acarsFilter").querySelectorAll("[data-kind]")) t.classList.toggle("sel", acarsFilter.has(t.dataset.kind));
+  const s = $("acarsFilterState");
+  s.hidden = !on;
+  s.innerHTML = on ? `FILTER ON · ${shown} of ${rows.length} shown <span class="tf-clear" title="Show all messages">✕</span>` : "";
+}
+
+$("acarsFilter").addEventListener("click", (e) => {
+  const t = e.target.closest("[data-kind]");
+  if (t) acarsFilter.has(t.dataset.kind) ? acarsFilter.delete(t.dataset.kind) : acarsFilter.add(t.dataset.kind);
+  else if (e.target.closest(".tf-clear")) acarsFilter.clear();
+  else return;
+  localStorage.setItem("acarsFilter", JSON.stringify([...acarsFilter]));
+  renderAcarsFilter();
+});
 
 /** ATN message (European CPDLC over VDL2, no ACARS around it) as a row of the ACARS card. */
 function addAtn(c, fresh) {
@@ -1350,8 +1471,8 @@ function addAtn(c, fresh) {
     dir: c.dir, desc: c.imi_desc, text: "", crc_ok: true, cpdlc: c, ac: c.ac, atn: true }, fresh);
 }
 
-/** Registrácia a let; z ADS-B (adsb.fi / adsb.lol) typ, poloha a odkaz na mapu v novom okne:
- *  registrácia -> globe.adsb.fi, let -> adsb.lol. */
+/** Registration and flight; from ADS-B (adsb.fi / adsb.lol) type, position and a map link in a new window:
+ *  registration -> globe.adsb.fi, flight -> adsb.lol. */
 function renderAcarsAircraft(tr, ac) {
   const m = tr._msg;
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -1359,24 +1480,44 @@ function renderAcarsAircraft(tr, ac) {
   // ATN messages (VDL2) carry only the 24-bit ICAO address: the registration comes from ADS-B
   const regText = m.atn && ac && ac.found && ac.reg ? ac.reg : m.reg;
   let reg = m.atn ? `<span title="24-bit ICAO address (ATN message)">${esc(m.reg)}</span>` : esc(m.reg), flt = esc(m.flight);
+  let actH = "", modelH = "", flH = "", spdH = "";
+  // ATN: wait for the ADS-B lookup instead of showing the ICAO address and then rewriting it;
+  // without an answer in 15 s the ICAO address is shown after all
+  if (m.atn && !ac && !tr._lookupDone) {
+    if (!tr._lookupTimer) tr._lookupTimer = setTimeout(() => { tr._lookupDone = true; if (!tr._msg.ac) renderAcarsAircraft(tr, null); }, 15000);
+    reg = `<span class="ac-sub none" title="ICAO ${esc(m.reg)}: looking up on ADS-B">…</span>`;
+  }
   if (ac && ac.found && ac.hex) {
     reg = link(`https://globe.adsb.fi/?icao=${encodeURIComponent(ac.hex)}`, regText, "Show on the map (adsb.fi)");
-    if (m.atn && regText !== m.reg) reg += `<div class="ac-sub none" title="24-bit ICAO address in the ATN message">ICAO ${esc(m.reg)}</div>`;
     if (m.flight || ac.callsign)
       flt = link(`https://adsb.lol/?icao=${encodeURIComponent(ac.hex)}`, m.flight || ac.callsign, "Show on the map (adsb.lol)");
-    const type = [ac.type, ac.desc].filter(Boolean).join(" · ");
-    const pos = ac.lat != null ? `${Math.abs(ac.lat).toFixed(2)}${ac.lat >= 0 ? "N" : "S"} ${Math.abs(ac.lon).toFixed(2)}${ac.lon >= 0 ? "E" : "W"}` : "";
-    const alt = ac.ground ? "on ground" : ac.alt_ft != null ? `FL${String(Math.round(ac.alt_ft / 100)).padStart(3, "0")}` : "";
-    const gs = ac.gs_kt != null && !ac.ground ? `${Math.round(ac.gs_kt)} kt` : "";
-    const src = `title="from ADS-B (${esc(ac.src || "adsb.fi")}) at the time of the message"`;
-    reg += type ? `<div class="ac-sub" ${src}>${esc(type)}</div>` : "";
-    reg += pos || alt ? `<div class="ac-sub" ${src}>${[pos, alt, gs].filter(Boolean).join(" · ")}</div>` : "";
+    // aircraft type, flight level and ground speed from ADS-B in their own columns (blue = from ADS-B)
+    const src = `from ADS-B (${ac.src || "adsb.fi"}) at the time of the message`;
+    const cell = (text, title) => (text ? `<span class="ext" title="${esc(title)}">${esc(text)}</span>` : "");
+    actH = cell(ac.type, src);
+    modelH = cell(ac.desc, src);
+    flH = cell(ac.ground ? "GND" : ac.alt_ft != null ? `FL${String(Math.round(ac.alt_ft / 100)).padStart(3, "0")}` : "",
+      `${ac.ground ? "on ground" : ac.alt_ft != null ? ac.alt_ft + " ft" : ""} · ${src}`);
+    spdH = cell(ac.gs_kt != null && !ac.ground ? `${Math.round(ac.gs_kt)} kt` : "", `ground speed · ${src}`);
     if (ac.callsign && m.flight && ac.callsign !== m.flight) flt += `<div class="ac-sub" ${src}>${esc(ac.callsign)}</div>`;
   } else if (ac && !ac.found) {
     reg += `<div class="ac-sub none">not seen on ADS-B now</div>`;
   }
   tr.querySelector("td.reg").innerHTML = reg;
   tr.querySelector("td.flt").innerHTML = flt;
+  tr.querySelector("td.act").innerHTML = actH;
+  tr.querySelector("td.model").innerHTML = modelH;
+  tr.querySelector("td.fl").innerHTML = flH;
+  tr.querySelector("td.spd").innerHTML = spdH;
+  // country of registration from the 24-bit ICAO address (ATN: in the message; ACARS: from the ADS-B lookup),
+  // the same way the adsb.fi map shows it
+  const hex = m.atn ? m.reg : ac && ac.found ? ac.hex : "";
+  tr.querySelector("td.icao").textContent = (hex || "").toUpperCase();
+  const cty = hex && !(m.atn && !ac && !tr._lookupDone) ? icaoCountry(hex) : null;   // ATN: together with the lookup
+  tr.querySelector("td.cty").innerHTML = !cty ? ""
+    : cty.cc ? `<span class="cflag" title="${esc(cty.name)}"><img src="https://flagcdn.com/w40/${cty.cc}.png" alt="${cty.cc.toUpperCase()}"` +
+      ` onerror="this.replaceWith(this.alt)"><span>${cty.cc.toUpperCase()}</span></span>`
+    : `<span class="muted" title="${esc(cty.name)}">—</span>`;
 }
 
 function onAcarsInfo(d) {
@@ -1406,6 +1547,7 @@ $("acarsOn").addEventListener("change", () => {
 
 // ---------- VDL2 (VDL Mode 2 through dumpvdl2; messages go to the ACARS card) ----------
 
+const VDL2_TITLE = $("vdl2On").parentElement.title;   // tooltip from index.html (replaced on LimeSDR)
 let vdl2Last = {};   // the status sends only on/off and the error; channels and counts come from vdl2state
 
 function renderVdl2Info(d) {
@@ -1430,7 +1572,8 @@ $("vdl2On").addEventListener("change", () => {
 $("acarsBands").addEventListener("click", onLinkBand);
 $("acarsRows").addEventListener("click", (e) => {
   const td = e.target.closest("td.msg.long");
-  if (td) td.classList.toggle("open");
+  if (!td || e.target.closest(".atn-detail") || String(getSelection())) return;   // selecting text in the detail
+  td.classList.toggle("open");
 });
 $("acarsClear").addEventListener("click", () => {
   for (const api of ["/api/acars", "/api/cpdlc"]) {
@@ -1439,11 +1582,12 @@ $("acarsClear").addEventListener("click", () => {
   $("acarsRows").innerHTML = "";
   $("acarsEmpty").hidden = false;
   $("acarsInfo").textContent = "";
+  renderAcarsFilter();
 });
 
 // ---------- WEFAX ----------
 
-const WFX_BLOCK = 32; // riadkov na jeden canvas; obrázok rastie po blokoch bez kopírovania
+const WFX_BLOCK = 32; // rows per canvas; the image grows in blocks without copying
 const WFX_STATES = { idle: "waiting for signal", free: "receiving (no start)", phasing: "phasing", rx: "receiving" };
 let wfx = { id: null, width: 1810, rows: 0, blocks: [] };
 
@@ -1496,7 +1640,7 @@ async function wefaxLoad() {
   wefaxReset(info.image_id, info.width);
   if (info.rows) {
     const img = new Image();
-    img.crossOrigin = "anonymous";   // obrázok z portu VFO; bez toho by sa plátno nedalo uložiť
+    img.crossOrigin = "anonymous";   // image from the VFO port; without this the canvas could not be saved
     img.src = `${vbase}/api/wefax/image.png?t=${Date.now()}`;
     await img.decode();
     wfx.width = img.width;
@@ -1532,7 +1676,7 @@ $("wefaxBands").addEventListener("click", async (e) => {
   if (!b || !st) return;
   await ensureVfoFor(Number(b.dataset.f) - 1900);
   if (!st) return;
-  // Štandard: USB ladenie o 1,9 kHz pod priradenú frekvenciu (AFC aj tak nájde presný stred).
+  // Standard: USB tuning 1.9 kHz below the assigned frequency (AFC finds the exact centre anyway).
   st.mode = "USB";
   renderControls();
   tune(Number(b.dataset.f) - 1900);
@@ -1577,7 +1721,7 @@ function sstvAddRow(y, b64) {
   $("sstvEmpty").hidden = true;
 }
 
-// Celý obrázok zo servera (pri prepnutí VFO a po dokončení, keď je prekreslený s korekciou náklonu).
+// Whole image from the server (on a VFO switch and when finished, redrawn with slant correction).
 async function sstvReload() {
   const id = sstvImg.id;
   const r = await fetch(`${vbase}/api/sstv/image.png?t=${Date.now()}`);
@@ -1651,7 +1795,7 @@ $("sstvSave").addEventListener("click", () => {
 });
 // ---------- CW ----------
 
-/** Textový výstup dekodéra (CW, RTTY): pridá text, drží posun na konci, ak tam používateľ bol. */
+/** Text output of a decoder (CW, RTTY): appends text, keeps scrolled to the end if the user was there. */
 function textOut(boxId, emptyId, max) {
   const box = $(boxId), empty = $(emptyId), node = document.createTextNode("");
   box.append(node);
@@ -1659,7 +1803,7 @@ function textOut(boxId, emptyId, max) {
     add(t) {
       empty.hidden = true;
       const stick = box.scrollTop + box.clientHeight >= box.scrollHeight - 4;
-      // Starý text zahodíme, nech sa stránka pri dlhom počúvaní nespomalí.
+      // Drop old text so the page does not slow down during long listening.
       node.data = (node.data + t).slice(-max);
       if (stick) box.scrollTop = box.scrollHeight;
     },
@@ -1673,7 +1817,7 @@ const cwAppend = (t) => cwOut.add(t);
 
 function renderCwInfo(i) {
   cwInfo = i;
-  // Krátko ako na stanici „WPM:25“; podrobnosti v bubline.
+  // Short like on a station "WPM:25"; details in the tooltip.
   $("cwInfo").textContent = i.tone_hz == null ? "WPM:--" : `${i.present ? "●" : "○"} WPM:${i.wpm}  ${Math.round(i.snr_db)} dB`;
   $("cwInfo").title = i.tone_hz == null ? "searching for tone…"
     : `tone ${fmtKHz(i.freq_hz, 2)} kHz (${i.tone_hz > 0 ? "+" : ""}${i.tone_hz} Hz) · SNR ${i.snr_db} dB`;
@@ -1697,13 +1841,13 @@ $("cwTune").addEventListener("click", () => {
   if (changes.mode) send(changes);
 });
 
-// ---------- denné logy: zaškrtávadlo LOG v každej karte dekodéra ----------
+// ---------- daily logs: LOG checkbox in each decoder card ----------
 
 for (const box of document.querySelectorAll("input[data-log]")) {
   box.addEventListener("change", () => {
     st.logs = { ...(st.logs || {}), [box.dataset.log]: box.checked };
     if (box.dataset.logAlso) st.logs[box.dataset.logAlso] = box.checked;   // ACARS LOG = acars + cpdlc log
-    send({ log: st.logs });   // celý stav, nech sa dve rýchle zmeny v jednom odoslaní neprepíšu
+    send({ log: st.logs });   // the whole state, so two quick changes in one send do not overwrite each other
   });
 }
 
@@ -1730,7 +1874,7 @@ function renderRttyInfo(i) {
     $("rttyInfo").title = "looking for two FSK tones in the passband";
     return;
   }
-  // Krátko „● 45.45 Bd 170 Hz N 12 dB“, tóny v bubline.
+  // Short "● 45.45 Bd 170 Hz N 12 dB", tones in the tooltip.
   const pol = i.polarity === "reverse" ? "R" : "N";
   $("rttyInfo").textContent = `${i.present ? "●" : "○"} ${i.baud} Bd  ${i.shift_hz} Hz  ${pol}  ${Math.round(i.snr_db)} dB`;
   $("rttyInfo").title = `mark ${fmtKHz(i.mark_hz, 2)} kHz · space ${fmtKHz(i.space_hz, 2)} kHz · ${i.polarity}`
@@ -1763,7 +1907,7 @@ $("wefaxSave").addEventListener("click", () => {
   });
 });
 
-// ---------- zásuvky SET a MEM, hodiny, CW riadok ----------
+// ---------- SET and MEM drawers, clock, CW row ----------
 
 const DRAWERS = { setKey: "settingsCard", memKey: "memCard" };
 
@@ -1782,7 +1926,7 @@ $("scrim").addEventListener("click", () => openDrawer(null));
 for (const b of document.querySelectorAll("[data-close]")) b.addEventListener("click", () => openDrawer(null));
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("scrim").hidden) openDrawer(null); });
 
-// Klik na hodiny prepína UTC / miestny čas (LOC); voľba sa pamätá.
+// A click on the clock switches UTC / local time (LOC); the choice is remembered.
 let clockLocal = recall("clockLocal") === "1";
 
 function tickClock() {
@@ -1806,9 +1950,8 @@ tickClock();
 setInterval(tickClock, 1000);
 
 
-// ---------- pamäte ----------
+// ---------- memories ----------
 
-let mems = [];
 const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 async function loadMems() {
@@ -1824,9 +1967,11 @@ function renderMemGroups() {
   sel.innerHTML = `<option value="">All</option>` + groups.map((g) => `<option>${escHtml(g)}</option>`).join("");
   sel.value = groups.includes(cur) ? cur : "";
   $("memGroups").innerHTML = groups.map((g) => `<option value="${escHtml(g)}">`).join("");
+  updateExportLabel();
 }
 
 function renderMems() {
+  drawOverlays();   // memory tags in the spectrum
   const q = $("memSearch").value.trim().toLowerCase();
   const group = $("memGroup").value;
   const favOnly = $("memFav").checked;
@@ -1838,7 +1983,7 @@ function renderMems() {
     $("memList").innerHTML = `<div class="mem-empty">${mems.length ? "Nothing matches the filter." : "No memories yet."}</div>`;
     return;
   }
-  // Pri zobrazení všetkých skupín zoskupujeme podľa pásma (MHz), inak je zoznam len zoradený.
+  // When all groups are shown, group by band (MHz), otherwise the list is just sorted.
   let html = "";
   let lastMhz = null;
   for (const m of list) {
@@ -1879,7 +2024,11 @@ $("memList").addEventListener("click", async (e) => {
     fetch(`${vbase}/api/memories/${m.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fav: m.fav }) });
     return;
   }
-  // Vyvolanie pamäte: frekvencia, mód a šírka pásma (na VFO, ktoré frekvenciu vie prijať).
+  recallMem(m);
+});
+
+/** Recall a memory: frequency, mode and bandwidth (on a VFO that can receive the frequency). */
+async function recallMem(m) {
   await ensureVfoFor(m.freq_hz);
   if (!st) return;
   st.mode = m.mode;
@@ -1888,7 +2037,7 @@ $("memList").addEventListener("click", async (e) => {
   tune(m.freq_hz);
   send({ mode: m.mode, bandwidth: m.bw });
   markActiveMem();
-});
+}
 
 $("memSave").addEventListener("click", async () => {
   if (!st) return;
@@ -1909,6 +2058,67 @@ $("memSearch").addEventListener("input", renderMems);
 $("memGroup").addEventListener("change", () => { store("memGroup", $("memGroup").value); renderMems(); });
 $("memFav").addEventListener("change", renderMems);
 
+// Import from SDR# (frequencies.xml in its installation folder) and export of memories to a JSON file.
+function memIoNote(text, error) {
+  const el = $("memIoNote");
+  el.textContent = text;
+  el.classList.toggle("error", !!error);
+  el.hidden = !text;
+}
+
+function updateExportLabel() {
+  const g = $("memGroup").value;
+  $("memExportGroup").textContent = g ? `⇩ EXPORT ${g}` : "⇩ EXPORT ALL";
+  $("memExportGroup").title = g ? `Downloads the group "${g}" as a JSON file` : "Downloads every memory as a JSON file";
+}
+
+function exportMems(list, label) {
+  if (!list.length) { memIoNote(`Nothing to export (${label}).`, true); return; }
+  const out = [...list].sort((a, b) => a.freq_hz - b.freq_hz);
+  const blob = new Blob([JSON.stringify(out, null, 1)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `radimcom-memories-${label.replace(/[^\w.-]+/g, "_")}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  memIoNote(`Exported ${out.length} memories (${label}).`);
+}
+
+$("memSdrPath").value = recall("memSdrPath") || "C:\\sdrsharp";
+$("memSdrPath").addEventListener("change", () => store("memSdrPath", $("memSdrPath").value.trim()));
+$("memSdrPath").addEventListener("keydown", (e) => { if (e.key === "Enter") $("memImport").click(); });
+$("memImport").addEventListener("click", async () => {
+  const path = $("memSdrPath").value.trim();
+  if (!path) { memIoNote("Enter the SDR# installation folder.", true); return; }
+  store("memSdrPath", path);
+  $("memImport").disabled = true;
+  try {
+    const res = await fetch(vbase + "/api/memories/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      memIoNote(data.error || `Import failed (HTTP ${res.status}${res.status === 405 || res.status === 404 ? " – restart RADIMCOM to load the new version" : ""})`, true);
+      return;
+    }
+    const n = data.files.length;
+    memIoNote(`Imported ${data.added}, skipped ${data.skipped} (duplicates / unsupported) from ${n} file${n === 1 ? "" : "s"}` +
+      (n > 1 ? ` (${data.files.map((f) => f.split(/[\\/]/).slice(-2, -1)[0]).join(", ")})` : "") +
+      (data.errors.length ? `. Failed: ${data.errors.join("; ")}` : "."), data.errors.length > 0);
+    await loadMems();
+  } catch (e) {
+    memIoNote("Import failed: " + e.message, true);
+  } finally {
+    $("memImport").disabled = false;
+  }
+});
+$("memExportFav").addEventListener("click", () => exportMems(mems.filter((m) => m.fav), "starred"));
+$("memExportGroup").addEventListener("click", () => {
+  const g = $("memGroup").value;
+  exportMems(g ? mems.filter((m) => m.group === g) : mems, g || "all");
+});
+$("memGroup").addEventListener("change", updateExportLabel);
+
 // ---------- stav zo servera ----------
 
 let sampleRates = [];
@@ -1916,7 +2126,7 @@ let sampleRates = [];
 function onStatus(s) {
   const first = !st;
   const rateChanged = st && st.audio_rate !== s.audio_rate;
-  // Krátko po lokálnej zmene nenecháme starší stav zo servera prepísať ladenie a výber.
+  // Shortly after a local change, do not let an older state from the server overwrite tuning and selection.
   if (st && Date.now() - localChangeAt < 700) {
     for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "stereo_on", "notch", "ft8", "wefax", "cw", "rtty", "sstv", "acars", "cpdlc", "logs", "upconv", "device", "squelch_levels"]) s[k] = st[k];
   }
@@ -1942,6 +2152,13 @@ function onStatus(s) {
   $("sstvCard").hidden = !s.sstv;
   $("acarsOn").checked = !!s.acars;
   $("vdl2On").checked = !!s.vdl2;
+  // VDL2 runs on RTL-SDR only: greyed out on a LimeSDR VFO
+  const lime = s.driver === "lime";
+  const noVdl2 = lime || !!s.chain_owner;   // a chained VFO cannot set its own centre and sample rate
+  $("vdl2On").disabled = noVdl2;
+  $("vdl2On").parentElement.classList.toggle("disabled", noVdl2);
+  $("vdl2On").parentElement.title = s.chain_owner ? `VDL2 needs its own dongle (this VFO shares the dongle of VFO ${s.chain_owner})`
+    : lime ? "VDL2 is not supported on LimeSDR (RTL-SDR only)" : VDL2_TITLE;
   $("acarsCard").hidden = !(s.acars || s.vdl2);
   renderVdl2Info({ enabled: s.vdl2, error: s.vdl2_error });
   renderLinkBands();
@@ -1959,8 +2176,8 @@ function onStatus(s) {
 }
 
 // ---------- VFO A/B/C ----------
-// Každé VFO je samostatný prijímač (vlastná kľúčenka a port). Udalosti počúvame zo všetkých:
-// neaktívnym si pamätáme stav (lišta VFO) a riadky vodopádu, aby po prepnutí bola vidieť história.
+// Each VFO is a separate receiver (own dongle and port). Events are received from all of them:
+// for the inactive ones the state (VFO bar) and waterfall rows are kept, so the history is visible after a switch.
 
 const VFO_ROWS_MAX = 1400;
 
@@ -1969,7 +2186,7 @@ function connectEvents(v) {
   const on = (kind, fn) => es.addEventListener(kind, (e) => { if (v === active) fn(JSON.parse(e.data)); });
   es.addEventListener("status", (e) => {
     const s = JSON.parse(e.data);
-    // Neaktívne VFO preladené kolieskom: starší stav zo servera nesmie vrátiť displej späť.
+    // Inactive VFO retuned by the wheel: an older state from the server must not turn the display back.
     if (v.localTune && Date.now() - v.localAt < 700) s.tune_hz = v.localTune;
     if (v.localGain != null && Date.now() - v.localGainAt < 700) s.gain = v.localGain;
     if (v.localSql && Date.now() - v.localSqlAt < 700) s.squelch_levels = v.localSql;
@@ -2018,14 +2235,14 @@ function connectEvents(v) {
   };
 }
 
-// Symbol USB (trojzubec): kruh, šípka, horná vetva s krúžkom, dolná so štvorčekom.
+// USB symbol (trident): circle, arrow, upper branch with a ring, lower one with a square.
 const USB_ICON = `<svg class="usb-icon" viewBox="0 0 690 440" aria-label="running"><g fill="currentColor">` +
   `<circle cx="78" cy="222" r="76"/><path d="M560 146 L690 222 L560 298 Z"/><circle cx="414" cy="56" r="52"/>` +
   `<rect x="430" y="322" width="118" height="118" rx="10"/></g><g fill="none" stroke="currentColor" stroke-width="38">` +
   `<path d="M140 222 H580"/><path d="M200 222 C250 160 250 56 370 56"/><path d="M290 222 C340 280 330 381 440 381"/></g></svg>`;
 
-// Pri menej ako 4 SDR ostanú zvyšné okná VFO na mieste, ale bez funkcie (sivé, „NO SDR“),
-// aby rozloženie obrazovky bolo vždy rovnaké. Pribudne SDR -> spustiť setup.bat.
+// With fewer than 4 SDRs the remaining VFO windows stay in place but without function (grey, "NO SDR"),
+// so the screen layout is always the same. SDR added -> run setup.bat.
 const VFO_SLOTS = 4;
 function renderSpareVfos() {
   const used = new Set(vfos.map((v) => v.name));
@@ -2048,8 +2265,8 @@ function renderSpareVfos() {
   }
 }
 
-/** Displeje frekvencie všetkých VFO vedľa seba (pevné poradie A, B, C) s tlačidlom na prepnutie.
- *  Samostatný prijímač bez VFO má jediný displej bez tlačidla. */
+/** Frequency displays of all VFOs side by side (fixed order A, B, C) with a button to switch.
+ *  A standalone receiver without VFOs has a single display without the button. */
 function renderVfoDisplays() {
   const list = $("vfoList");
   for (const v of vfos) {
@@ -2058,7 +2275,7 @@ function renderVfoDisplays() {
       row = v.row = document.createElement("div");
       row.className = "vfo-row";
       row.dataset.vfo = String(v.name);
-      // nad displejom stav prijímača, tlačidlo VFO, mód a CUE; pod displejom posuvník RF GAIN a hodnota zisku
+      // above the display the receiver state, VFO button, mode and CUE; under the display the RF GAIN slider and the gain value
       row.innerHTML = (v.name ? `<div class="vfo-head"><span class="flag vfo-stat"></span>` +
         `<button class="key vfo-key">VFO-${v.name}</button><span class="flag vfo-mode"></span>` +
         `<span class="flag vfo-cue" role="button">CUE</span></div>` : "") +
@@ -2069,10 +2286,11 @@ function renderVfoDisplays() {
         `<div class="vfo-foot vfo-sqrow"><label class="vfo-rf vfo-sq"><span>SQUELCH</span>` +
         `<input type="range" min="${SQUELCH_OFF}" max="-20" step="1" value="${SQUELCH_OFF}"></label>` +
         `<span class="flag vfo-sql"></span></div>` : "");
-      if (v.name) row.querySelector(".vfo-key").title = `VFO ${v.name} · ${v.serial || ""}${v.note ? " · " + v.note : ""}`;
+      if (v.name) row.querySelector(".vfo-key").title = `VFO ${v.name} · ` +
+        (v.chain ? `dongle of VFO ${v.chain}` : v.serial || "") + (v.note ? " · " + v.note : "");
       list.append(row);
     }
-    // Aktívne VFO ukazuje aj lokálne zmeny ešte pred odpoveďou prijímača.
+    // The active VFO shows local changes even before the receiver answers.
     const s = v === active ? st || v.st : v.st;
     const isActive = v === active;
     row.classList.toggle("active", isActive);
@@ -2088,28 +2306,30 @@ function renderVfoDisplays() {
       }
     }
     if (!v.name) continue;
-    // Stav prijímača VFO: RUNNING = kľúčenka otvorená a dodáva vzorky.
+    // VFO receiver state: RUNNING = dongle open and delivering samples.
     const stat = row.querySelector(".vfo-stat");
-    // Odpojená kľúčenka, chyba alebo nedostupný server VFO: sivé OFFLINE, podrobnosť v popise.
+    // Unplugged dongle, error or unreachable VFO server: grey OFFLINE, detail in the tooltip.
     const [stTxt, stCls, stTitle] = !v.online ? (v.st ? ["OFFLINE", "off", "connection to the VFO server lost"] : ["WAIT", "wait", "waiting for receiver"])
       : !s ? ["WAIT", "wait", "waiting for receiver"]
       : s.error ? ["OFFLINE", "off", s.error]
+      : s.status === "running" && s.out_of_band ? ["OOR", "wait", `out of range VFO-${s.chain_owner}`]
+      : s.status === "running" && s.chain_owner ? ["CHAIN", "chain", `chained to the dongle of VFO ${s.chain_owner}`]
       : s.status === "running" ? ["RUNNING", "", "receiver running"]
       : s.status === "opening dongle" ? ["OPENING", "wait", "opening dongle"]
       : s.status === "calibrating" ? ["CAL", "wait", "LimeSDR calibration"]
       : ["OFFLINE", "off", `receiver ${s.status}`];
-    // RUNNING sa zobrazí ako ikona USB (kľúčenka pripojená a dodáva dáta), ostatné stavy textom.
+    // RUNNING is shown as a USB icon (dongle connected and delivering data), other states as text.
     const stHtml = stTxt === "RUNNING" ? USB_ICON : stTxt;
     if (stat.dataset.html !== stHtml) { stat.innerHTML = stHtml; stat.dataset.html = stHtml; }
     stat.className = `flag vfo-stat ${stCls}${stTxt === "RUNNING" ? " usb" : ""}`;
     stat.title = stTitle;
     const mode = row.querySelector(".vfo-mode"), gain = row.querySelector(".vfo-gain"), sql = row.querySelector(".vfo-sql");
-    // bez stavu len zneviditeľniť, aby sa rozloženie neposúvalo
+    // without a state only make it invisible, so the layout does not shift
     mode.style.visibility = gain.style.visibility = sql.style.visibility = s ? "" : "hidden";
     if (s) {
       mode.textContent = s.mode;
       gain.textContent = s.gain === "auto" ? "AGC" : `${Number(s.gain).toFixed(1)} dB`;
-      // posuvník: pri AGC zablokovaný (ako v SET); počas ťahania ho stav zo servera neprepisuje
+      // slider: disabled with AGC (as in SET); while dragging, the state from the server does not overwrite it
       const rf = row.querySelector(".vfo-rf input");
       const gains = s.gains || [];
       rf.disabled = s.gain === "auto" || !gains.length;
@@ -2119,7 +2339,7 @@ function renderVfoDisplays() {
         gains.forEach((g, i) => { if (Math.abs(g - s.gain) < Math.abs(gains[best] - s.gain)) best = i; });
         rf.value = best;
       }
-      // squelch len v AM/FM/WFM; v ostatných módoch ostane na mieste, ale stlmený a nefunkčný
+      // squelch only in AM/FM/WFM; in other modes it stays in place but dimmed and inactive
       const levels = s.squelch_levels || {};
       const sqOk = s.mode in levels, lvl = sqOk ? levels[s.mode] : SQUELCH_OFF;
       const sq = row.querySelector(".vfo-sq input");
@@ -2134,16 +2354,16 @@ function renderVfoDisplays() {
     cue.title = v.cue ? `CUE on: VFO ${v.name} stays audible at CUE level (click to turn off)`
       : `CUE off (click to keep hearing VFO ${v.name} when another VFO is selected)`;
     row.classList.toggle("tx", !!(s && s.tx));
-    // Squelch otvorený na neaktívnom VFO: tlačidlo zasvieti, aby bolo vidno aktivitu.
+    // Squelch open on an inactive VFO: the button lights up to show activity.
     row.classList.toggle("busy", !!(s && !isActive && s.squelch > SQUELCH_OFF && s.squelch_open));
   }
   renderTx();
 }
 
 // ---------- vysielanie (PTT) ----------
-// PTT = držaný medzerník. Funguje len vtedy, keď je zvolené VFO, ktoré vie vysielať (LimeSDR);
-// pri inom zvolenom VFO medzerník nerobí nič. Prepnutie VFO počas PTT vysielanie ukončí.
-// Kým je PTT držané, každých 300 ms ide {"ptt": true}; server bez neho vysielanie sám vypne.
+// PTT = space bar held. Works only when the selected VFO can transmit (LimeSDR);
+// with another VFO selected the space bar does nothing. Switching the VFO during PTT ends the transmission.
+// While PTT is held, {"ptt": true} is sent every 300 ms; without it the server turns transmitting off itself.
 let ptt = null;
 
 function txVfo() { return active && active.online && active.st && active.st.can_tx ? active : null; }
@@ -2187,7 +2407,7 @@ function renderTx() {
 const isSpace = (e) => e.code === "Space" && !e.target.closest("input, select, textarea");
 document.addEventListener("keydown", (e) => {
   if (!isSpace(e)) return;
-  e.preventDefault();               // medzerník nesmie stlačiť tlačidlo s fokusom ani posúvať stránku
+  e.preventDefault();               // the space bar must not press the focused button or scroll the page
   if (!e.repeat) pttDown();
 });
 document.addEventListener("keyup", (e) => { if (isSpace(e)) { e.preventDefault(); pttUp(); } });
@@ -2203,7 +2423,7 @@ async function selectVfo(v) {
   vbase = v.base;
   store("vfo", v.name);
   restoreBodyTab();
-  // Všetko zobrazené patrí predošlému VFO: stav, vodopád, dekodéry.
+  // Everything shown belongs to the previous VFO: state, waterfall, decoders.
   closeFreqInput();
   st = null; view = null; wfRow = null; spec = null; floor = null;
   errorUntil = 0; convPrev = null;
@@ -2226,7 +2446,7 @@ async function selectVfo(v) {
   await loadDecoders();
 }
 
-/** Frekvencia mimo rozsahu aktívneho VFO: prepne na VFO, ktoré ju vie prijať. */
+/** Frequency outside the range of the active VFO: switches to a VFO that can receive it. */
 async function ensureVfoFor(hz) {
   const fits = (v) => v.st && v.st.range && hz >= v.st.range[0] && hz <= v.st.range[1];
   if (!active || !active.st || fits(active)) return;
@@ -2259,8 +2479,8 @@ async function loadDecoders() {
   renderAcarsInfo(ac);
 }
 
-// ---------- prepínač up-konvertora (VFO s konvertorom v režime Auto) ----------
-// Konvertor má len ručný prepínač: pri prechode cez 30 MHz treba výrazne upozorniť.
+// ---------- upconverter switch (VFO with upconverter in Auto mode) ----------
+// The upconverter has only a manual switch: crossing 30 MHz needs a clear warning.
 
 let convPrev = null;
 
@@ -2283,9 +2503,9 @@ $("convWarnOk").addEventListener("click", () => { $("convWarn").hidden = true; }
 
 // ---------- audio ----------
 
-// Audio hrá stále (aktívne VFO); ticho je len MUTE. Jeden AudioContext na celú stránku:
-// prehliadač ho bez kliknutia používateľa nechá pozastavený, preto sa spustí pri prvom kliknutí či klávese.
-// Ostatné VFO so zapnutým CUE hrajú popri ňom cez vlastný zosilňovač (CUE level).
+// Audio plays all the time (active VFO); silence is only MUTE. One AudioContext for the whole page:
+// the browser keeps it suspended until the user clicks, so it is started on the first click or key press.
+// Other VFOs with CUE on play alongside through their own gain node (CUE level).
 let audio = null;
 let actx = null;
 let masterGain = null;
@@ -2300,7 +2520,7 @@ function audioContext() {
     cueGain = actx.createGain();
     cueGain.gain.value = cueVolumeNow();
     cueGain.connect(actx.destination);
-    // merač výstupnej úrovne: MAIN + CUE (to, čo ide do reproduktora) rozdelené na L a R
+    // output level meter: MAIN + CUE (what goes to the speaker) split into L and R
     const split = actx.createChannelSplitter(2);
     masterGain.connect(split);
     cueGain.connect(split);
@@ -2322,11 +2542,11 @@ function renderAudioHint() {
   $("audioHint").hidden = !actx || actx.state !== "suspended";
 }
 
-/** Prehráva prúd /api/audio prijímača `base` do MAIN (isMain) alebo CUE. Keď prúd skončí sám
- *  (reštart prijímača, výpadok spojenia), po chvíli ho zastaví a zavolá onEnd, ktorý sa pripojí znova. */
+/** Plays the /api/audio stream of receiver `base` into MAIN (isMain) or CUE. When the stream ends by itself
+ *  (receiver restart, connection loss), it stops it after a while and calls onEnd, which reconnects. */
 function playStream(base, isMain, onEnd) {
   const ctx = audioContext();
-  // Vlastný zosilňovač pre tento prúd: pri zastavení ho odpojíme a naplánované zvyšky stíchnu hneď.
+  // Own gain node for this stream: on stop it is disconnected and the scheduled remainder goes silent at once.
   const gain = ctx.createGain();
   gain.connect(isMain ? masterGain : cueGain);
   const me = { gain, ctrl: new AbortController(), playTime: 0, live: true };
@@ -2348,7 +2568,7 @@ function startAudio() {
   syncCue();
 }
 
-/** Spustí alebo zastaví prúdy CUE: hrá každé VFO so zapnutým CUE okrem aktívneho (to ide cez MAIN). */
+/** Starts or stops the CUE streams: every VFO with CUE on plays except the active one (that goes through MAIN). */
 function syncCue() {
   for (const v of vfos) {
     const want = !!(v.name && v.cue && v !== active);
@@ -2377,14 +2597,14 @@ function renderCueKey() {
 
 $("cueKey").addEventListener("click", () => { if (active && active.name) setCue(active, !active.cue); });
 
-/** Číta prúd a plánuje prehrávanie; vráti true, ak bol prúd zastavený zámerne. */
+/** Reads the stream and schedules playback; returns true if the stream was stopped on purpose. */
 async function pumpStream(ctx, base, me, isMain) {
   const { gain, ctrl } = me;
   try {
     const res = await fetch(base + "/api/audio", { signal: ctrl.signal });
     const rate = Number(res.headers.get("X-Sample-Rate")) || st.audio_rate;
     const chans = Number(res.headers.get("X-Channels")) || 1;
-    const frame = 2 * chans; // bajtov na jednu vzorku všetkých kanálov
+    const frame = 2 * chans; // bytes per sample of all channels
     const reader = res.body.getReader();
     let carry = null;
     for (;;) {
@@ -2408,7 +2628,7 @@ async function pumpStream(ctx, base, me, isMain) {
         for (let i = 0; i < n; i++) ch[i] = dv.getInt16(i * frame + c * 2, true) / 32768;
       }
       const now = ctx.currentTime;
-      // Malý zásobník proti výpadkom; ak sa nahromadí oneskorenie, kúsok zahodíme.
+      // Small buffer against dropouts; if latency builds up, a bit is dropped.
       if (me.playTime < now + 0.03) me.playTime = now + 0.15;
       if (me.playTime > now + 0.8) continue;
       const src = ctx.createBufferSource();
@@ -2429,15 +2649,15 @@ function stopAudio() {
   audio = null;
 }
 
-// ---------- nahrávanie (WAV) ----------
-// Ukladá surové PCM z prúdu aktívneho VFO (pred hlasitosťou a MUTE); pri prepnutí VFO pokračuje
-// s novým prúdom. Po zastavení sa súbor stiahne cez prehliadač.
+// ---------- recording (WAV) ----------
+// Stores raw PCM from the stream of the active VFO (before volume and MUTE); on a VFO switch it continues
+// with the new stream. After stopping, the file is downloaded through the browser.
 let rec = null;
 
 function recordChunk(bytes, rate, chans) {
   if (!rec) return;
   if (!rec.rate) { rec.rate = rate; rec.chans = chans; }
-  if (rate !== rec.rate || chans !== rec.chans) return; // iný formát by WAV pokazil
+  if (rate !== rec.rate || chans !== rec.chans) return; // a different format would corrupt the WAV
   rec.chunks.push(bytes);
   rec.bytes += bytes.length;
 }
@@ -2493,9 +2713,9 @@ $("recBtn").addEventListener("click", () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 10000);
 });
 
-// ---------- stereo merač úrovne vedľa posuvníkov ----------
-// LED zdola nahor: 10 zelených do 0 dB, potom žltá (+3 dB) a červená (+6 dB = 0 dBFS, orezanie).
-// 0 dB merača = −6 dBFS, aby žltá a červená varovali pred orezaním.
+// ---------- stereo level meter next to the sliders ----------
+// LEDs from the bottom up: 10 green up to 0 dB, then yellow (+3 dB) and red (+6 dB = 0 dBFS, clipping).
+// 0 dB of the meter = −6 dBFS, so yellow and red warn before clipping.
 const VU_STEPS = [-40, -30, -25, -20, -15, -12, -9, -6, -3, 0, 3, 6];
 const VU_REF_DBFS = -6;
 let vuAnalysers = null;
@@ -2511,7 +2731,7 @@ function animateVu() {
     let peak = 0;
     for (const x of vuBuf) peak = Math.max(peak, Math.abs(x));
     const db = 20 * Math.log10(peak + 1e-9) - VU_REF_DBFS;
-    vuLevel[ch] = Math.max(db, vuLevel[ch] - 0.8);   // rýchly nábeh, pomalý pokles (~48 dB/s)
+    vuLevel[ch] = Math.max(db, vuLevel[ch] - 0.8);   // fast attack, slow decay (~48 dB/s)
     vuLeds[ch].forEach((led, i) => led.classList.toggle("on", vuLevel[ch] >= VU_STEPS[i]));
   });
   requestAnimationFrame(animateVu);
@@ -2519,10 +2739,10 @@ function animateVu() {
 requestAnimationFrame(animateVu);
 
 let muted = false;
-// MUTE stlmí MAIN aj CUE.
+// MUTE silences both MAIN and CUE.
 function volumeNow() { return muted ? 0 : Number($("volume").value); }
 function cueVolumeNow() { return muted ? 0 : Number($("cueVolume").value); }
-// vyfarbenie osi posuvníkov podľa úrovne (CSS --p = výška výplne, --vc = farba bežca)
+// colouring of the slider track by level (CSS --p = fill height, --vc = thumb colour)
 function renderVolume() {
   for (const [id, name] of [["volume", "MAIN"], ["cueVolume", "CUE"]]) {
     const el = $(id);
@@ -2548,12 +2768,12 @@ $("muteBtn").addEventListener("click", () => {
 renderVolume();
 
 async function init() {
-  // So spúšťačom VFO stránka dostane zoznam VFO; samostatný prijímač zoznam nemá (jedno VFO bez lišty).
+  // With the VFO launcher the page gets the VFO list; a standalone receiver has no list (one VFO without the bar).
   let list = null;
   try {
     const r = await fetch("/api/vfos");
     if (r.ok) list = await r.json();
-  } catch (e) { /* bez VFO */ }
+  } catch (e) { /* no VFOs */ }
   vfos = list && list.length
     ? list.map((x) => ({ ...x, base: `${location.protocol}//${location.hostname}:${x.port}`, st: null, rows: [], online: false,
         cue: recall("cue_" + x.name) === "1", cueAudio: null }))
@@ -2563,7 +2783,7 @@ async function init() {
   renderVfoDisplays();
   if (list && list.length) renderSpareVfos();
   renderCueKey();
-  // Prijímače VFO sa po spustení otvárajú postupne: skúšame, kým aktívny neodpovie.
+  // The VFO receivers open one after another after start: keep trying until the active one answers.
   let info = null;
   while (!info) {
     try { info = await fetch(vbase + "/api/state").then((r) => r.json()); } catch (e) {

@@ -1,6 +1,6 @@
 @echo off
-rem Instalacia prijimaca RADIMCOM na novom PC:
-rem Python balicky do .venv, ovladace (Zadig, FTDI D3XX), konfiguracia kluceniek a zastupca na ploche.
+rem Installation of the RADIMCOM receiver on a new PC:
+rem Python packages into .venv, drivers (Zadig, FTDI D3XX), dongle configuration and a desktop shortcut.
 setlocal
 cd /d "%~dp0"
 title RADIMCOM - installation
@@ -23,20 +23,20 @@ if not defined PY (
 )
 for /f "delims=" %%v in ('%PY% --version') do echo [1/5] %%v found
 
-rem ---- 2. virtualne prostredie a balicky ----
+rem ---- 2. virtual environment and packages ----
 echo [2/5] Installing Python packages (needs internet, about 60 MB - may take a few minutes)...
 if not exist ".venv\Scripts\python.exe" %PY% -m venv .venv
 if errorlevel 1 (echo Could not create .venv & pause & exit /b 1)
-rem bez -q: pri pomalom internete je vidiet priebeh stahovania
+rem no -q: on a slow internet connection the download progress is visible
 ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check --only-binary=numpy,scipy -r requirements.txt
 if errorlevel 1 (echo Package installation failed - check the internet connection. & pause & exit /b 1)
-rem PyFT8 je len pre FT8 dekoder; ak zlyha, prijimac funguje aj bez neho.
-rem --no-deps: PyAudio (zvukova karta) nepotrebujeme a pre nove verzie Pythonu nema hotovy balik
+rem PyFT8 is only for the FT8 decoder; if it fails, the receiver works without it.
+rem --no-deps: PyAudio (sound card) is not needed and has no ready package for new Python versions
 ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check --no-deps PyFT8
 if errorlevel 1 echo    (PyFT8 not installed - the FT8 decoder will not be available)
 echo    OK
 
-rem ---- 3. ovladace ----
+rem ---- 3. drivers ----
 echo.
 echo [3/5] USB drivers
 echo    RTL-SDR dongles need the WinUSB driver (installed with Zadig).
@@ -49,13 +49,13 @@ echo    LimeSDR Mini needs the FTDI D3XX driver.
 choice /c YN /m "   Install the FTDI D3XX driver now (LimeSDR)"
 if not errorlevel 2 start "" /wait "drivers\FTD3XXDriver_WHQLCertified_v1.3.0.4_Installer.exe"
 
-rem ---- 4. konfiguracia kluceniek ----
+rem ---- 4. dongle configuration ----
 echo.
 echo [4/5] SDR setup: connect all dongles (and the LimeSDR) now.
 choice /c YN /m "   Run the SDR setup now"
 if not errorlevel 2 ".venv\Scripts\python.exe" setup_sdr.py --no-start
 
-rem ---- 5. zastupca na ploche ----
+rem ---- 5. desktop shortcut ----
 echo.
 echo [5/5] Creating desktop shortcuts...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^

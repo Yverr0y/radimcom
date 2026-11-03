@@ -1,5 +1,5 @@
 @echo off
-rem Spustenie prijimaca; po chvili otvori stranku v prehliadaci.
+rem Starts the receiver; after a moment it opens the page in the browser.
 cd /d "%~dp0"
 set "PY=python"
 if exist ".venv\Scripts\python.exe" set "PY=.venv\Scripts\python.exe"

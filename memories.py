@@ -1,7 +1,8 @@
 """Frequency memories (memories.json) and import from SDR# (frequencies.xml).
 
 Import usage:  python memories.py C:\\sdrsharpSW\\frequencies.xml
-Only entries shifted by -LO of the upconverter are imported (HF via upconverter); duplicates are skipped.
+From the command line only entries shifted by -LO of the upconverter are imported (HF via upconverter);
+the MEM drawer (Import SDR#) imports entries with any shift. Duplicates are skipped either way.
 """
 import json
 import os
@@ -83,8 +84,33 @@ def delete(mid):
         return True
 
 
+def sdrsharp_files(path, max_depth=3):
+    r"""SDR# installation folder (or one frequencies.xml) -> list of frequencies.xml paths.
+
+    Newer SDR# versions keep memories per profile (e.g. C:\SDRSharp\Instances\Profile1\frequencies.xml),
+    so subfolders are searched too, up to max_depth levels below the given folder.
+    """
+    path = os.path.expandvars(os.path.expanduser(str(path).strip().strip('"')))
+    if not os.path.exists(path):
+        raise ValueError(f"not found: {path}")
+    if os.path.isfile(path):
+        if not path.lower().endswith(".xml"):
+            raise ValueError("expected the SDR# folder or its frequencies.xml")
+        return [path]
+    found = []
+    for folder, dirs, files in os.walk(path):
+        rel = os.path.relpath(folder, path)
+        if (0 if rel == "." else rel.count(os.sep) + 1) >= max_depth:
+            dirs[:] = []
+        dirs.sort()
+        found += [os.path.join(folder, f) for f in files if f.lower() == "frequencies.xml"]
+    if not found:
+        raise ValueError(f"no frequencies.xml in {path} or its profile subfolders")
+    return found
+
+
 def import_sdrsharp(path, lo_offset_hz=100_000_000):
-    """Returns (added, skipped)."""
+    """Returns (added, skipped). lo_offset_hz=None imports entries with any Shift."""
     root = ET.parse(path).getroot()
     with _lock:
         items = load()
@@ -94,11 +120,15 @@ def import_sdrsharp(path, lo_offset_hz=100_000_000):
             text = lambda tag: (e.findtext(tag) or "").strip()
             shift = int(text("Shift") or 0)
             mode = DETECTORS.get(text("DetectorType").upper())
-            if shift != -lo_offset_hz or not mode:
+            if (lo_offset_hz is not None and shift != -lo_offset_hz) or not mode:
                 skipped += 1
                 continue
-            m = make(" ".join(text("Name").split()), text("GroupName"), text("Frequency"), mode,
-                     text("FilterBandwidth") or 3000, text("IsFavourite").lower() == "true")
+            try:
+                m = make(" ".join(text("Name").split()) or text("Frequency"), text("GroupName"), text("Frequency"),
+                         mode, text("FilterBandwidth") or 3000, text("IsFavourite").lower() == "true")
+            except ValueError:   # out of range, bad number
+                skipped += 1
+                continue
             if (m["freq_hz"], m["name"]) in seen:
                 skipped += 1
                 continue

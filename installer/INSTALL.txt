@@ -5,6 +5,8 @@ Features
 --------
 - Up to 4 VFOs (A-D) side by side, each with its own SDR: RTL-SDR dongles and LimeSDR Mini.
   Fewer SDRs: the remaining VFO windows stay in place, greyed out ("NO SDR").
+- VFO chaining: one dongle can serve several VFOs (e.g. one dongle for VFO A-D, or two
+  dongles with two VFOs each); a chained VFO listens inside the band of its dongle.
 - Transceiver-style screen: S-meter, 7-segment frequency displays, spectrum and waterfall
   (zoom 1x-32x), frequency shown on mouse hover, tuning by click, drag and mouse wheel.
 - Modes AM, FM, WFM, LSB, USB, CW with adjustable filter width (drag the filter edge).
@@ -21,7 +23,8 @@ Features
 - Band buttons (HF/VHF/UHF ham, broadcast, airband, marine, PMR446, CB) and frequency
   memories with groups and favourites (import from SDR#).
 - Frequency correction (ppm), bias-tee, sample rate, waterfall colours, S-meter calibration.
-- TX with LimeSDR (optional, off by default): PTT = hold SPACE, FM test message or carrier.
+- TX with LimeSDR (optional, off by default, licence required): PTT = hold SPACE, FM test
+  message or carrier; only in ham bands, CB 27 MHz and PMR446.
 - Clock (local / UTC), all settings remembered per VFO.
 
 Installation on a new PC
@@ -38,6 +41,8 @@ Installation on a new PC
      Tip: to pick the right dongle for a VFO, simply UNPLUG it when asked and press Enter -
      the setup detects which one it was (then plug it back in). The USB order says nothing
      about which dongle is connected to which antenna or upconverter.
+     To let one dongle serve several VFOs, type the letter of the VFO that already has it
+     (e.g. A) instead of a device number.
    - create desktop shortcuts "RADIMCOM" and "RADIMCOM SDR setup".
 4. Start the receiver with the RADIMCOM shortcut. The page opens at http://localhost:8434
    (the first start of a LimeSDR takes ~10 s because of calibration).
@@ -48,13 +53,75 @@ Old settings are moved to data\config_backup\.
 All settings, memories, logs and saved images of this PC are kept in the data\ folder.
 
 Transmitting (LimeSDR only): SET -> "Enable TX" (off by default). PTT = hold SPACE.
-Only with a suitable antenna or dummy load and on frequencies you are licensed for.
+TX works only in ham 160-10 m, 6 m, 4 m, 2 m, 70 cm, 23 cm, CB 27 MHz and PMR446.
+
+!!! IMPORTANT - TRANSMITTING DISCLAIMER !!!
+Transmitting is legal ONLY with a valid amateur radio licence (or another authorisation required
+in your country), within its privileges and the regulations (ITU, CEPT, FCC or your national
+authority). PMR446 and CB may require type-approved equipment. The SDR is not a certified
+transmitter: use a suitable filter and antenna or a dummy load. YOU, THE OPERATOR, ARE FULLY AND
+SOLELY RESPONSIBLE FOR EVERY TRANSMISSION. The software is provided "AS IS", without any
+warranty; the author accepts no liability.
 
 More details: README.md.
 
 Change log
 ----------
 (also in CHANGELOG.md)
+
+Ver. 0.106
+- VFO chaining: one dongle can serve several VFOs (e.g. one dongle for VFO A-D, or two
+  dongles with two VFOs each). In the SDR setup type the letter of an earlier VFO (e.g. A)
+  to share its dongle. The chained VFO has its own frequency, mode, decoders and audio,
+  and receives inside the band of the owner VFO (centre +- half the sample rate):
+  green CHAIN flag instead of the USB icon; outside the band it is silent with an orange
+  OOR flag ("out of range VFO-A"). Gain, ppm, bias-tee and sample rate are shared with the
+  owner VFO. VDL2 and TX only on the owner VFO.
+- ATN CPDLC (VDL2): click a message to see all decoded fields (CPDLC message first, then
+  the VDL2 frame: addresses, X.25, CLNP, COTP). Click again to collapse.
+- Direction arrows coloured: down (from the aircraft) green, up (from the ground) orange.
+- VDL2 key greyed out on a LimeSDR VFO (VDL2 runs on RTL-SDR only).
+- Message filter: click the ACARS / CPDLC / ADS-C tags at the top of the card
+  to show only those messages; "FILTER ON" shows it is active, x shows all again.
+- ACARS / VDL2 card: only the message list scrolls, the header and filters stay in place.
+- ATN CPDLC: the Aircraft column waits for the ADS-B lookup instead of rewriting the ICAO address.
+- ATN ADS-C (over VDL2) decoded like FANS ADS-C: position, altitude, track, speed, wind,
+  temperature, next waypoints, planned trajectory. Purple ADS-C tag.
+- Tags unified: ATN CPDLC messages have the green CPDLC tag (Description says ATN CPDLC).
+- The tag has its own first column "Type" in the message table; fixed column widths
+  (the layout does not jump when a filter is switched).
+- New Country column: flag of the country of registration from the aircraft's ICAO address.
+- Aircraft column renamed Callsign; new columns ICAO, ACFT type, Model, FL, Speed;
+  Flight moved next to Country (position no longer shown).
+- Memory names on the spectrum: a green marker at the top points to each memory's frequency,
+  with a name tag under it (hover = full name, frequency, mode; click = recall the memory).
+- All decoder cards (FT8, ACARS / VDL2, CW, RTTY, WEFAX, SSTV) have one design: the card fills
+  the DECODERS tab, header and settings stay in place, only the content box scrolls.
+- The page scales with the browser window (and ignores browser zoom): everything keeps its
+  layout and just gets bigger or smaller.
+- CW decoder more reliable with weak signals, fading (QSB) and static crashes (QRN):
+  automatic minimum threshold from the measured noise floor (no random characters from
+  noise), mark level that follows fading, noise blanker for static crashes, starts on
+  weaker signals, speed estimate no longer locks onto noise. Simulated tests: error rate
+  on average 40 % -> 15 %. ALC does not affect the CW decoder (it has its own level control).
+- Band plan on the spectrum axis extended (local table static\bandplan.js, Europe / ITU
+  Region 1): military airband, VOR/ILS, DME, ADS-B 1090, SSR 1030, TETRA, VHF low/military,
+  DAB, DVB-T/T2, LTE 700/800, GSM-900/1800, UMTS 2100, LPD433, SRD 868 / LoRaWAN, Wi-Fi 2.4,
+  weather satellites, radiosondes (400.15-406 MHz, L-band), COSPAS-SARSAT 406, GNSS, Inmarsat,
+  Iridium, marine VHF, AIS, NAVTEX, 2182 kHz, paging 169, DCF77, NDB, LW / MW broadcast,
+  13 cm ham. Narrow bands drawn over wide ones; hover the axis for the band description.
+- Memory import / export (MEM -> Import / export): IMPORT SDR# reads frequencies.xml from the
+  SDR# installation folder and its profile subfolders (e.g. Instances\Profile1); duplicates are
+  skipped. EXPORT downloads the starred memories or the selected group (All = every memory)
+  as a JSON file with one click.
+- HTTP API description (control the receivers from scripts): API\API.md.
+- LimeSDR TX only in allowed bands (checked by the receiver): ham 160-10 m, 6 m, 4 m, 2 m,
+  70 cm, 23 cm, CB 27 MHz, PMR446; the whole signal (+-5 kHz) must be inside the band.
+  Retuning during TX ends the transmission.
+- Red TX disclaimer in SET; Enable TX asks to accept it (licence required, operator fully
+  responsible). TX enabled by an older version stays off until it is accepted.
+- MIT licence (LICENSE file) with a radio transmission notice.
+- Remaining Slovak comments in the code translated to English.
 
 Ver. 0.105
 - VDL2 decoder (VDL Mode 2, 136.725-136.975 MHz): digital data link with most airline

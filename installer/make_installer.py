@@ -1,7 +1,10 @@
-"""Builds the installer package for another PC: RADIMCOM_install_v<version>.zip in the dist folder.
+"""Builds the installer package for another PC: RADIMCOM_install_v<version>.zip in the dist folder,
+plus RADIMCOM_upgrade_v<version>.zip for an existing installation (program only: no config.json, install.bat or drivers,
+so data/ and the configuration stay untouched).
 The version is taken from the logo in static/index.html (<span class="r-ver">Ver. 0.1xx</span>); the folder in the zip stays RADIMCOM.
 
   python installer/make_installer.py
+  python installer/make_installer.py --upgrade-from dist/RADIMCOM_install_v0.103.zip   (upgrade zip from an older full zip)
 
 Only the program, web interface, libraries and drivers go into the package. Not the settings of this PC
 (vfos.json, config_X.json, memories, EEPROM backups, recordings); the new PC creates those during installation.
@@ -29,9 +32,54 @@ def read_version():
 VERSION = read_version()
 DIST = os.path.join(ROOT, "dist")
 OUT = os.path.join(DIST, f"RADIMCOM_install_v{VERSION}.zip")
+# left out of the upgrade zip: the configuration template, the installer and the drivers
+UPGRADE_SKIP_FILES = ("config.json", "install.bat")
+UPGRADE_SKIP_DIRS = ("data/", "drivers/")
+UPGRADE_TXT = r"""RADIMCOM - upgrade
+==================
+This zip updates an existing RADIMCOM installation. It contains only the program;
+your settings, memories, logs and recordings (data\ folder) and the configuration are not touched.
+
+1. Close the receiver.
+2. Unzip into the folder that CONTAINS your RADIMCOM folder (e.g. C:\ for C:\RADIMCOM)
+   and allow overwriting files.
+3. Run upgrade.bat in the RADIMCOM folder (updates the Python packages if needed).
+4. Start the receiver as usual.
+
+What is new: see INSTALL.txt or CHANGELOG.md.
+"""
+UPGRADE_BAT = r"""@echo off
+rem RADIMCOM upgrade: updates the Python packages in .venv; data\ and the configuration stay untouched.
+cd /d "%~dp0"
+if not exist ".venv\Scripts\python.exe" (echo .venv not found - for a new installation use the install zip and install.bat & pause & exit /b 1)
+".venv\Scripts\python.exe" -m pip install --disable-pip-version-check --only-binary=numpy,scipy -r requirements.txt
+if errorlevel 1 (echo Package installation failed - check the internet connection. & pause & exit /b 1)
+echo Upgrade done. Start the receiver with the RADIMCOM shortcut (or start.bat).
+pause
+"""
+
+
+def make_upgrade(full_zip):
+    """Upgrade zip from a full install zip: the same files without the configuration, installer and drivers."""
+    out = os.path.join(os.path.dirname(full_zip), os.path.basename(full_zip).replace("_install_", "_upgrade_"))
+    if out == full_zip:
+        sys.exit("not an install zip: " + full_zip)
+    n = 0
+    with zipfile.ZipFile(full_zip) as src, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as dst:
+        for info in src.infolist():
+            rel = info.filename.split("/", 1)[1] if "/" in info.filename else info.filename
+            if rel in UPGRADE_SKIP_FILES or rel.startswith(UPGRADE_SKIP_DIRS) or info.is_dir():
+                continue
+            dst.writestr(info, src.read(info))
+            n += 1
+        dst.writestr(f"{TOP}/UPGRADE.txt", UPGRADE_TXT.replace("\n", "\r\n"))
+        dst.writestr(f"{TOP}/upgrade.bat", UPGRADE_BAT.replace("\n", "\r\n"))
+    print(f"{out}: {n + 2} files, {os.path.getsize(out) / 1e6:.1f} MB")
+
 
 CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "lime.py", "rds.py", "cw.py", "rtty.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py", "cpdlc.py", "cpdlc_schema.py", "adsc.py", "vdl2.py",
-        "memories.py", "eeprom_tool.py", "setup_sdr.py", "start.bat", "setup.bat", "README.md", "CHANGELOG.md"]
+        "memories.py", "iqshare.py", "eeprom_tool.py", "setup_sdr.py", "start.bat", "setup.bat", "README.md", "CHANGELOG.md",
+        "LICENSE", "API/API.md"]
 LIBS = ["lib/librtlsdr.dll", "lib/libusb-1.0.dll"]
 # VDL2: dumpvdl2 built with MSYS2 (see installer/VDL2.txt), with its MSYS2 runtime DLLs
 LIBS += ["lib/vdl2/" + f for f in ("dumpvdl2.exe", "msys-2.0.dll", "msys-acars-2-2.dll", "msys-gcc_s-seh-1.dll",
@@ -47,7 +95,8 @@ D3XX_ZIP = os.path.expanduser(r"~\Downloads\FTD3XXDriver_WHQLCertified_v1.3.0.4_
 D3XX_EXE = "FTD3XXDriver_WHQLCertified_v1.3.0.4_Installer.exe"
 # no station marks may remain in the package (serial numbers, recordings…) except the author's signature on the page
 FORBIDDEN = [b"OM2AMR", b"om2amr", "OM2AMR".encode("utf-16-le")]
-ALLOWED = [b"By Radim Mutina OM2AMR", b"github.com/om2amr/RADIMCOM"]   # signature, public repository link
+# signature, public repository link, copyright line in LICENSE (wanted by the author)
+ALLOWED = [b"By Radim Mutina OM2AMR", b"github.com/om2amr/RADIMCOM", b"Copyright (c) 2026 Radim Mutina (OM2AMR)"]
 
 
 def copy(src, dst_rel, build):
@@ -94,7 +143,11 @@ def main():
                     z.write(p, os.path.relpath(p, tmp))
         n = sum(len(fs) for _, _, fs in os.walk(build))
     print(f"{OUT}: {n} files, {os.path.getsize(OUT) / 1e6:.1f} MB")
+    make_upgrade(OUT)
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) == 3 and sys.argv[1] == "--upgrade-from":
+        make_upgrade(os.path.abspath(sys.argv[2]))
+    else:
+        main()

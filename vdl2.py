@@ -355,6 +355,183 @@ def _session(avlc, app):
     return "; ".join(parts)
 
 
+def _tree(v, out, ind=0, key="", skip=None):
+    """Whole decoded frame as an indented "key: value" tree (the detail shown when an ATN row is clicked)."""
+    pad = "  " * ind
+    if skip is not None and v is skip:
+        out.append(f"{pad}{key}: (above)")
+        return
+    clean = lambda x: "".join(ch for ch in str(x) if ch >= " ").strip()     # NUL padding in free text
+    if isinstance(v, dict):
+        scal = all(not isinstance(x, (dict, list)) for x in v.values())
+        if key and scal and len(v) <= 5:          # small leaf object on one line
+            out.append(f"{pad}{key}: " + ", ".join(f"{k}={clean(x)}" for k, x in v.items()))
+            return
+        if key:
+            out.append(f"{pad}{key}")
+            ind += 1
+        for k, x in v.items():
+            _tree(x, out, ind, k, skip)
+    elif isinstance(v, list):
+        if all(not isinstance(x, (dict, list)) for x in v):
+            out.append(f"{pad}{key}: " + ", ".join(clean(x) for x in v))
+            return
+        for i, x in enumerate(v):
+            _tree(x, out, ind, f"{key}[{i}]" if len(v) > 1 else key, skip)
+    else:
+        out.append(f"{pad}{key}: {clean(v)}")
+
+
+def _detail(avlc, kind, app):
+    """Application message first (CPDLC / CM / ADS-C), then the link and transport layers of the frame."""
+    out = []
+    _tree({kind: app}, out)
+    out.append("── VDL2 frame (AVLC / X.25 / CLNP / COTP) ──")
+    _tree(avlc, out, skip=app)
+    out = [x for x in out if x.strip() != "err: False"]
+    if len(out) > 400:
+        out = out[:400] + ["…"]
+    return "\n".join(out)
+
+
+# ---------- ATN ADS-C (ADS-C v2 over VDL2): reports in the same style as FANS ADS-C (adsc.py) ----------
+
+def _v(x):
+    """{"val": 31990.0, "unit": "ft"} -> 31990.0 (or None)."""
+    return x.get("val") if isinstance(x, dict) else x
+
+
+def _coord(c, pos, neg):
+    if not isinstance(c, dict) or "deg" not in c:
+        return ""
+    d = c["deg"] + c.get("min", 0) / 60 + c.get("sec", 0) / 3600
+    return f"{d:.4f}{neg if str(c.get('dir', '')).startswith(('s', 'w')) else pos}"
+
+
+def _hms(t, z=True):
+    if not isinstance(t, dict) or "hour" not in t:
+        return ""
+    s = t.get("sec", 0)
+    return f"{t['hour']:02d}:{t.get('min', 0):02d}:{s:04.1f}".replace(".0", "") + ("Z" if z else "")
+
+
+def _dur(t):
+    """{"hour": 0, "min": 22, "sec": 18} -> "22:18" (minutes:seconds, hours folded into the minutes)."""
+    if not isinstance(t, dict):
+        return ""
+    return f"{t.get('hour', 0) * 60 + t.get('min', 0)}:{int(t.get('sec', 0)):02d}"
+
+
+def _alt(a):
+    a = _v(a)
+    return f"{a:.0f} FT" if isinstance(a, (int, float)) else ""
+
+
+def _where(p):
+    """position {lat, lon, alt} -> "47.3265N 18.4679E 31990 FT"."""
+    if not isinstance(p, dict):
+        return ""
+    return " ".join(x for x in (_coord(p.get("lat"), "N", "S"), _coord(p.get("lon"), "E", "W"), _alt(p.get("alt"))) if x)
+
+
+def _deg(x):
+    x = _v(x)
+    return f"{x:.1f}°" if isinstance(x, (int, float)) else ""
+
+
+def _num(x, unit, fmt="{:.0f}"):
+    x = _v(x)
+    return f"{fmt.format(x)} {unit}" if isinstance(x, (int, float)) else ""
+
+
+def _vrate(x):
+    x = _v(x)
+    return f"vertical rate {x:+.0f} FT/MIN" if isinstance(x, (int, float)) else ""
+
+
+def _speed(sp):
+    """airspeed / speed_ias_mach (ASN.1 choice) -> "M0.77 · IAS 279 KT"."""
+    mach, ias = _find_key(sp, "mach"), _find_key(sp, "ias")
+    return " · ".join(x for x in ((f"M{_v(mach):.2f}" if _v(mach) is not None else ""),
+                                  f"IAS {_num(ias, 'KT')}" if _v(ias) is not None else "") if x)
+
+
+def _adsc_v2(app):
+    """ATN ADS-C report -> [(id, text)] like the FANS ADS-C lines; [] when it is not a report."""
+    rd = _find_key(app, "report_data")
+    if not isinstance(rd, dict):
+        return []
+    kind = _words(_find_key(app, "choice") or "report")
+    out = []
+    pos = rd.get("position")
+    fom = rd.get("figure_of_merit") or {}
+    acc = _num(fom.get("estimated_position_uncertainty"), "NM", "{:g}")
+    t = _find_key(rd.get("timestamp"), "time")
+    out.append(("REPORT", " · ".join(x for x in (
+        kind[:1].upper() + kind[1:] + ":", _where(pos), _hms(t), f"accuracy {acc}" if acc else "",
+        f"contract {rd['contract_number']}" if "contract_number" in rd else "") if x).replace(": · ", ": ")))
+    gv = rd.get("ground_vector")
+    if isinstance(gv, dict):
+        out.append(("EARTH", " · ".join(x for x in (
+            f"track {_deg(gv.get('ground_track'))}" if _deg(gv.get("ground_track")) else "",
+            f"GS {_num(gv.get('ground_speed'), 'KT', '{:.1f}')}" if _v(gv.get("ground_speed")) is not None else "",
+            _vrate(gv.get("vertical_rate"))) if x)))
+    av = rd.get("air_vector")
+    if isinstance(av, dict):
+        out.append(("AIR", " · ".join(x for x in (
+            f"heading {_deg(av.get('heading'))}" if _deg(av.get("heading")) else "",
+            _speed(av.get("airspeed")), _vrate(av.get("vertical_rate"))) if x)))
+    met = rd.get("meteo_data")
+    if isinstance(met, dict):
+        ws, wd, tmp = _v(_find_key(met.get("wind_speed"), "wind_speed")), _v(met.get("wind_direction")), _v(met.get("temperature"))
+        out.append(("METEO", " · ".join(x for x in (
+            f"wind {wd:.0f}°/{ws:.0f} KT" if ws is not None and wd is not None else "",
+            f"temperature {tmp:.1f} °C" if tmp is not None else "") if x)))
+    pp = rd.get("projected_profile")
+    if isinstance(pp, dict):           # next waypoints; ETA = time to the first one, then from waypoint to waypoint
+        lines = []
+        for n, w in enumerate(_find_all(pp, "waypoint_sequence_element")):
+            eta = _dur(w.get("eta"))
+            lines.append(" ".join(x for x in (w.get("waypoint_name", ""), _where(w.get("position")),
+                                               (f"in {eta} min" if n == 0 else f"+{eta} min") if eta else "") if x))
+        if lines:
+            out.append(("ROUTE", "next " + "\nthen ".join(lines)))
+    ep = rd.get("extended_projected_profile")
+    if isinstance(ep, dict):           # planned trajectory: fixes, level, ETA, speed, climb/descent points
+        lines = []
+        for w in _find_all(ep, "waypoint_data"):
+            lvl = _find_key(w.get("epp_level"), "alt_qne")
+            lines.append(" ".join(x for x in (
+                w.get("waypoint_name", "") or "·", _coord(w.get("lat"), "N", "S"), _coord(w.get("lon"), "E", "W"),
+                _alt(lvl) if lvl is not None else "", _hms(w.get("eta")), _speed(w.get("speed_ias_mach")),
+                f"({w['vertical_type']})" if w.get("vertical_type") else "") if x))
+        if lines:
+            out.append(("PLAN", "\n".join(lines)))
+    known = {"position", "figure_of_merit", "timestamp", "contract_number", "ground_vector", "air_vector",
+             "meteo_data", "projected_profile", "extended_projected_profile"}
+    for k, x in rd.items():            # anything else (e.g. intent, flight ID): generic values
+        if k not in known:
+            vals = [t for _, t in _leaves(x)]
+            if vals:
+                out.append((k.upper()[:8], f"{_words(k)}: " + ", ".join(vals)))
+    return [(i, t) for i, t in out if t]
+
+
+def _find_all(v, key):
+    """All values of a key anywhere in a JSON subtree, in order."""
+    out = []
+    if isinstance(v, dict):
+        for k, x in v.items():
+            if k == key:
+                out.append(x)
+            else:
+                out += _find_all(x, key)
+    elif isinstance(v, list):
+        for x in v:
+            out += _find_all(x, key)
+    return out
+
+
 def _atn_record(kind, app, meta, avlc):
     """ATN application message (CPDLC, CM = context management, ADS-C v2) -> compact CPDLC card record:
     header (MIN / MRN / time / logical ack) and message elements with their values filled in."""
@@ -366,8 +543,9 @@ def _atn_record(kind, app, meta, avlc):
         ts = f"{t['hour']:02d}:{t.get('min', 0):02d}:{t.get('sec', 0):02d}Z"
     if isinstance(hdr, dict) and hdr.get("logical_ack") == "required":
         ts = (ts + " · " if ts else "") + "ack required"
-    els = []
-    _elements(app, els)
+    els = _adsc_v2(app) if kind.startswith("adsc") else []
+    if not els:
+        _elements(app, els)
     if not els:
         txt = _session(avlc, app)
         els = [("", txt or names[kind].lower())]
@@ -378,4 +556,4 @@ def _atn_record(kind, app, meta, avlc):
             "mrn": hdr.get("msg_ref") if isinstance(hdr, dict) else None, "ts": ts,
             "elements": [{"id": i, "text": t} for i, t in els], "error": "",
             "text": "\n".join((f"{i}: " if i else "") + t for i, t in els), "pos": None, "link": "VDL2",
-            "vdl2": meta, "raw": json.dumps(avlc, ensure_ascii=False)[:4000]}
+            "vdl2": meta, "raw": json.dumps(avlc, ensure_ascii=False)[:4000], "detail": _detail(avlc, kind, app)}

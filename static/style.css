@@ -1,4 +1,4 @@
-/* KV prijímač v2 – vzhľad čelného panelu transceivera */
+/* HF receiver v2 – look of a transceiver front panel */
 :root {
   --bg: #07090c;
   --bezel: #1b1f25;
@@ -21,43 +21,56 @@
   --blue: #2f7dff;
   --ok: #3ddc84;
   --accent: #ffd84a;
+  /* Page scale: app.js (fitStage) sets them by the window size; --vw/--vh is the size of the
+     "virtual window" in layout px, --k is the scale to the real window. */
+  --k: 1;
+  --vw: 100vw;
+  --vh: 100vh;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
-html, body { background: var(--bg); }
+html, body { background: var(--bg); height: 100%; overflow: hidden; }
 body {
   margin: 0; color: var(--text);
   font: 14px/1.4 "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: radial-gradient(1200px 600px at 50% -20%, #161b22, var(--bg) 70%);
-  min-height: 100vh;
 }
+/* Responsive page: everything is drawn in a fixed "virtual window" (--vw × --vh) and the whole of it is
+   scaled to the browser window. Browser zoom changes innerWidth, so it cancels out –
+   the content size depends only on the window size. .scroller scrolls (not the document), so that the
+   sticky panel works; fixed elements (drawers) are outside it and stay in place. */
+.stage {
+  position: fixed; top: 0; left: 0; width: var(--vw); height: var(--vh);
+  transform: scale(var(--k)); transform-origin: 0 0;
+  background: radial-gradient(1200px 600px at 50% -20%, #161b22, var(--bg) 70%);
+}
+.scroller { position: absolute; inset: 0; overflow-x: hidden; overflow-y: auto; }
 .muted { color: var(--muted); }
 [hidden] { display: none !important; }
 
 .rig { padding: 6px; display: flex; flex-direction: column; gap: 10px; }
 
-/* ---------- rám a obrazovka ---------- */
-/* Prijímač vyplní celé okno; spektrum a vodopád zaberú zvyšok výšky pod tlačidlami. */
+/* ---------- frame and screen ---------- */
+/* The receiver fills the whole window; spectrum and waterfall take the rest of the height under the buttons. */
 .radio {
-  display: flex; flex-direction: column; height: calc(100vh - 12px); min-height: 600px;
+  display: flex; flex-direction: column; height: calc(var(--vh) - 12px); min-height: 600px;
   background: var(--screen);
   border: 10px solid var(--bezel); border-radius: 18px;
   box-shadow: 0 0 0 1px #2b313a, inset 0 0 0 1px #000, 0 20px 50px rgba(0, 0, 0, .6);
   overflow: hidden;
 }
-/* Obrazovka je rozdelená na dve časti s jedným rámom: horná je „sticky“ (pri posune k dekodérom
- * ostáva hore), spodná so spektrom a vodopádom má zvyšok výšky okna (--head-h meria app.js). */
+/* The screen is split into two parts with one frame: the top one is "sticky" (stays at the top when scrolling
+ * to the decoders), the bottom one with spectrum and waterfall gets the rest of the window height (--head-h measured by app.js). */
 .radio-head {
   position: sticky; top: 0; z-index: 5; height: auto; min-height: 0;
-  border-bottom: 0; border-radius: 18px 18px 0 0; margin-bottom: -10px;   /* zruší medzeru .rig */
+  border-bottom: 0; border-radius: 18px 18px 0 0; margin-bottom: -10px;   /* removes the .rig gap */
   box-shadow: 0 0 0 1px #2b313a, inset 0 0 0 1px #000, 0 8px 16px rgba(0, 0, 0, .55);
 }
 .radio-body {
-  height: calc(100vh - 12px - var(--head-h, 330px)); min-height: 280px;
+  height: calc(var(--vh) - 12px - var(--head-h, 330px)); min-height: 280px;
   border-top: 0; border-radius: 0 0 18px 18px;
 }
 
-/* ---------- horný pás: S-meter, príznaky, frekvencia, info ---------- */
+/* ---------- top strip: S-meter, flags, frequency, info ---------- */
 .r-top {
   display: grid; grid-template-columns: 240px auto minmax(0, 1fr) auto; align-items: center; gap: 14px;
   padding: 10px 14px; background: linear-gradient(180deg, #0c1016, #06080b);
@@ -71,37 +84,37 @@ body {
 .meter-val { font: 11px ui-monospace, Consolas, monospace; color: var(--muted); }
 .meter-val b { color: var(--amber); font-weight: 600; }
 
-/* príznaky po troch v stĺpci; SQL, ST a RDS pribudnú do druhého stĺpca */
-/* pevná šírka stĺpcov: zmena textu (2.7 kHz -> 3 kHz) nesmie posúvať zvyšok panelu */
-/* jeden stĺpec (šetrí šírku): RX, mód, šírka pásma, pod ňou ST (WFM) alebo ALC (AM/SSB/CW), CONV;
- * SQL pri zapnutom squelchu pribudne do druhého stĺpca */
+/* flags in columns of three; SQL, ST and RDS go to the second column */
+/* fixed column width: a text change (2.7 kHz -> 3 kHz) must not shift the rest of the panel */
+/* one column (saves width): RX, mode, bandwidth, under it ST (WFM) or ALC (AM/SSB/CW), CONV;
+ * SQL with squelch on goes to the second column */
 .r-flags { display: grid; grid-template-rows: repeat(5, auto); grid-auto-flow: column; grid-auto-columns: 76px; gap: 4px 6px; }
-/* nižšie a s menším písmom než ostatné príznaky; šírka stĺpca ostáva pevná */
+/* lower and with a smaller font than the other flags; the column width stays fixed */
 .r-flags .flag { white-space: nowrap; padding: 2px 4px; font-size: 11px; }
 .flag {
   min-width: 58px; text-align: center; padding: 3px 8px; border-radius: 4px;
   font: 700 13px/1.2 system-ui, sans-serif; letter-spacing: .04em;
   color: #0b1a0f; background: var(--green); box-shadow: 0 0 10px rgba(60, 240, 124, .35);
 }
-/* symbol sterea (dva prekrývajúce sa krúžky) pred ST */
+/* stereo symbol (two overlapping rings) before ST */
 .st-icon { width: 1.5em; height: 1em; margin-right: .3em; vertical-align: -.15em; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .flag.dim { background: #1a2029; color: #b8c2cf; border: 1px solid var(--line2); box-shadow: none; font-size: 12px; }
-/* vypnutý príznak pri S-metri rovnako veľký ako zapnutý: rámik namiesto vnútorného okraja, rovnaké písmo */
+/* a flag that is off at the S-meter is as big as one that is on: border instead of padding, same font */
 .r-flags .flag.dim { padding: 1px 3px; font-size: 11px; }
 
 .freq-center { display: flex; flex-direction: column; align-items: center; min-width: 0; }
 .r-brand { font: 600 11px system-ui, sans-serif; letter-spacing: .18em; color: var(--dim); margin-bottom: 4px; }
 .r-brand small { color: var(--yellow); letter-spacing: 0; }
 .logo { color: var(--green); }
-/* logo RADIMCOM pod hodinami (široké ako hodiny): svetlé písmená, krúžok nad I v zelenej prijímača */
+/* RADIMCOM logo under the clock (as wide as the clock): light letters, the ring above I in receiver green */
 .r-logo { display: block; height: 36px; width: auto; max-width: 100%; color: #e8edf2; margin: 4px 0 2px;
   align-self: center; overflow: visible; }
 .r-logo-ring { stroke: var(--green); }
-/* pravý stĺpec: logo hore, hodiny v strede, RDS dole */
+/* right column: logo at the top, clock in the middle, RDS at the bottom */
 .r-info-text .r-brandline { order: -1; align-self: center; display: flex; align-items: flex-end; gap: 6px; }
 .r-info-text .r-logo { margin: 2px 0 0; }
 .r-ver { font: 600 10px system-ui, sans-serif; color: var(--muted); white-space: nowrap; margin-bottom: 1px; }
-/* autor pod rámikom RDS */
+/* author under the RDS frame */
 .r-credit { align-self: center; margin-top: -2px; font: 10px system-ui, sans-serif; letter-spacing: .03em;
   color: var(--dim); white-space: nowrap; }
 .freq {
@@ -111,7 +124,7 @@ body {
 .freq svg { height: 1em; width: .62em; display: block; overflow: visible; }
 .freq polygon, .freq circle { fill: rgba(255, 255, 255, .035); }
 .freq .on { fill: var(--lcd); filter: drop-shadow(0 0 4px rgba(200, 255, 210, .55)); }
-/* posledné tri číslice (Hz) menšie a zelené ako na stanici */
+/* last three digits (Hz) smaller and green like on a station */
 .freq svg:nth-last-of-type(-n+3) { height: .62em; width: .4em; }
 .freq svg:nth-last-of-type(-n+3) .on { fill: var(--green); filter: drop-shadow(0 0 4px rgba(60, 240, 124, .6)); }
 .freq .gap { width: .16em; }
@@ -119,42 +132,42 @@ body {
 .freq-input { font: 600 34px ui-monospace, Consolas, monospace; width: 320px; text-align: center; }
 .sub { font: 11px ui-monospace, Consolas, monospace; color: var(--muted); padding: 0 6px; }
 
-/* ---------- displeje VFO A/B/C vedľa seba: aktívne svieti, neaktívne je sivé ---------- */
+/* ---------- VFO A/B/C displays side by side: the active one is lit, inactive ones are grey ---------- */
 .vfo-list { width: 100%; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px;
   container-type: inline-size; }
 .vfo-row { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
 .vfo-head { display: flex; align-items: center; gap: 8px; }
 .vfo-key { padding: 3px 12px; font: 700 13px system-ui, sans-serif; letter-spacing: .05em; color: var(--muted); }
 .vfo-row.active .vfo-key { color: var(--yellow); border-color: var(--yellow); box-shadow: 0 0 0 1px var(--yellow) inset; }
-/* squelch otvorený na neaktívnom VFO: tlačidlo zasvieti nazeleno */
+/* squelch open on an inactive VFO: the button lights up green */
 .vfo-row.busy .vfo-key { color: var(--green); border-color: var(--green); box-shadow: 0 0 10px rgba(60, 240, 124, .55); }
-/* mód a RF gain / AGC nad displejom ako príznaky pri S-metri; na neaktívnom VFO zhasnuté */
-/* hlavička sa zmenšuje so šírkou, aby sa tri VFO zmestili vedľa seba */
+/* mode and RF gain / AGC above the display like the flags at the S-meter; dark on an inactive VFO */
+/* the header shrinks with the width so that three VFOs fit side by side */
 .vfo-head { gap: .4em .5em; font-size: clamp(9px, 1.3cqw, 12px); white-space: nowrap;
-  flex-wrap: wrap; justify-content: center; }   /* v úzkom okne sa hlavička zalomí do dvoch riadkov */
+  flex-wrap: wrap; justify-content: center; }   /* in a narrow window the header wraps into two rows */
 .vfo-head .flag { min-width: 0; padding: .2em .6em; font-size: 1em; }
 .vfo-head .vfo-key { padding: .25em .8em; font-size: 1.08em; }
-/* pevné šírky: zmena obsahu (USB ikona / OFFLINE, LSB / WFM, RF 9.0 / 28.0 dB) neposúva hlavičku ani pätu */
+/* fixed widths: a content change (USB icon / OFFLINE, LSB / WFM, RF 9.0 / 28.0 dB) does not shift the header or footer */
 .vfo-head, .vfo-foot { flex-wrap: nowrap; }
 .vfo-head .flag.vfo-stat { display: inline-flex; justify-content: center; align-items: center; width: 5.6em;
   padding-left: 0; padding-right: 0; }
 .vfo-head .vfo-key { width: 6em; padding-left: 0; padding-right: 0; }
 .vfo-head .vfo-mode { width: 3.9em; padding-left: 0; padding-right: 0; }
 .vfo-head .flag.vfo-cue { width: 3.6em; padding-left: 0; padding-right: 0; }
-/* displej frekvencie v rámiku ako hodiny */
+/* frequency display in a frame like the clock */
 .vfo-disp { display: flex; justify-content: center; max-width: 100%; padding: 3px 8px; border: 1px solid var(--line);
   border-radius: 6px; background: #080c10; }
 .vfo-row.active .vfo-disp { border-color: #2c3642; }
-/* hlavička, displej a päta sú rovnako široké (podľa rámika frekvencie) a zarovnané na jeho okraje */
+/* header, display and footer are equally wide (by the frequency frame) and aligned to its edges */
 .vfo-list .vfo-row { display: grid; grid-template-columns: minmax(0, max-content); justify-content: center; }
 .vfo-row .vfo-head { justify-content: space-between; }
 .vfo-foot { display: flex; align-items: stretch; gap: .5em; white-space: nowrap; font-size: clamp(9px, 1.3cqw, 12px); }
 .vfo-foot .flag { min-width: 0; padding: .15em .6em; font-size: 1em; }
 .vfo-foot .vfo-gain, .vfo-foot .vfo-sql { width: 5.6em; flex: none; padding-left: 0; padding-right: 0; }
-/* squelch v móde bez squelchu (SSB, CW): ostáva na mieste, len výrazne stlmený */
+/* squelch in a mode without squelch (SSB, CW): stays in place, only strongly dimmed */
 .vfo-foot.na { opacity: .3; }
 .vfo-foot.na .vfo-rf { cursor: default; }
-/* rámik s posuvníkom RF GAIN, rovnako vysoký ako hodnota zisku */
+/* frame with the RF GAIN slider, as tall as the gain value */
 .vfo-rf { flex: 1; min-width: 0; display: flex; align-items: center; gap: .5em; padding: 0 .5em; cursor: pointer;
   border: 1px solid var(--line); border-radius: 4px; background: #080c10; }
 .vfo-rf span { font: 700 .85em system-ui, sans-serif; letter-spacing: .08em; color: var(--muted); width: 5.4em; flex: none; }
@@ -164,39 +177,42 @@ body {
 .vfo-rf input[type=range]::-moz-range-thumb { width: 8px; height: 12px; }
 .vfo-row:not(.active) .vfo-rf input[type=range]::-webkit-slider-thumb { background: #7d8794; }
 .vfo-row:not(.active) .vfo-rf input[type=range]::-moz-range-thumb { background: #7d8794; }
-/* stav prijímača VFO: RUNNING zelený, WAIT/OPENING oranžový, OFFLINE (odpojená kľúčenka, chyba) sivý */
+/* VFO receiver state: RUNNING green, WAIT/OPENING orange, OFFLINE (unplugged dongle, error) grey */
 .flag.vfo-stat.usb { display: inline-flex; align-items: center; padding: .15em .7em; }
 .usb-icon { display: block; height: 1.15em; width: auto; }
+/* chained VFO (shares the dongle of another VFO): green CHAIN instead of the USB icon */
+.flag.vfo-stat.chain, .vfo-row:not(.active) .flag.vfo-stat.chain { background: var(--green); color: #0b1a0f;
+  font-weight: 800; letter-spacing: .06em; box-shadow: 0 0 10px rgba(60, 240, 124, .35); }
 .flag.wait { background: var(--amber); color: #2a1a04; box-shadow: none; }
 .flag.off { background: #1a2029; color: #7d8794; border: 1px solid var(--line2); box-shadow: none; }
-/* neaktívne VFO: mód a zisk zhasnuté; stav prijímača svieti stále (RUNNING zelený, ak kľúčenka dáva dáta) */
+/* inactive VFO: mode and gain dark; the receiver state is always lit (RUNNING green if the dongle delivers data) */
 .vfo-row:not(.active) .vfo-foot .flag, .vfo-row:not(.active) .vfo-head .vfo-mode { background: #1a2029; color: #7d8794; box-shadow: none; }
-/* tri displeje sa musia zmestiť vedľa seba: veľkosť číslic podľa šírky */
+/* three displays must fit side by side: digit size by width */
 .vfo-list:has(.vfo-key) .freq { font-size: clamp(20px, calc(4.9cqw - 6px), 56px); }
-/* štyri VFO (A–C kľúčenky + D LimeSDR): menšie číslice */
+/* four VFOs (A–C dongles + D LimeSDR): smaller digits */
 .vfo-list:has(.vfo-row:nth-child(4)) .freq { font-size: clamp(16px, calc(3.6cqw - 5px), 44px); }
 .vfo-list:has(.vfo-key) .freq .unit { font-size: 12px; }
 .vfo-row .freq-input { width: 100%; max-width: 320px; font-size: 24px; }
 .vfo-row:not(.active) .freq { cursor: pointer; }
-/* číslica pod myšou (koliesko ladí o jej rád) */
+/* digit under the mouse (the wheel tunes by its place value) */
 .vfo-row .freq svg:hover polygon:not(.on) { fill: rgba(255, 255, 255, .1); }
 .vfo-row:not(.active) .freq .on,
 .vfo-row:not(.active) .freq svg:nth-last-of-type(-n+3) .on { fill: #5f6874; filter: none; }
 .vfo-row:not(.active) .freq .unit { color: #5f6874; }
 .vfo-row.offline { opacity: .45; }
-/* voľné okno VFO bez priradeného SDR: na mieste, ale zhasnuté a bez funkcie */
+/* free VFO window without an assigned SDR: in place, but dark and without function */
 .vfo-row.spare { opacity: .35; cursor: default; }
 .vfo-row.spare * { cursor: default !important; }
 .vfo-row.spare .key:disabled { opacity: 1; }
 .vfo-row.spare .vfo-mode, .vfo-row.spare .vfo-gain, .vfo-row.spare .vfo-sql { background: #1a2029; color: #7d8794; box-shadow: none; }
-/* CUE: audio VFO hrá aj vtedy, keď je zvolené iné VFO; oranžové = zapnuté, sivé = vypnuté (aj na neaktívnom VFO) */
+/* CUE: the VFO audio plays even when another VFO is selected; orange = on, grey = off (also on an inactive VFO) */
 .vfo-head .flag.vfo-cue { cursor: pointer; background: #1a2029; color: #7d8794; border: 1px solid var(--line2); box-shadow: none; }
 .vfo-head .flag.vfo-cue.on { background: var(--orange); color: #2a1404; border-color: var(--orange);
   box-shadow: 0 0 10px rgba(255, 140, 26, .45); }
-/* vysielanie: príznak RX sa zmení na červené TX, VFO, ktoré vysiela, má červené tlačidlo */
+/* transmitting: the RX flag turns into a red TX, the transmitting VFO has a red button */
 .flag.tx { background: var(--red); color: #fff; box-shadow: 0 0 14px rgba(255, 75, 62, .7); }
 .vfo-row.tx .vfo-key { color: #fff; background: var(--red); border-color: var(--red); box-shadow: 0 0 12px rgba(255, 75, 62, .7); }
-/* poloha ručného prepínača up-konvertora a výrazné upozornenie pri zmene */
+/* position of the manual upconverter switch and a clear warning on a change */
 .flag.conv.warn { background: var(--amber); color: #2a1a04; box-shadow: 0 0 10px rgba(255, 181, 71, .35); }
 .conv-warn {
   display: flex; align-items: center; gap: 12px; margin-top: 6px; padding: 6px 12px; border-radius: 6px;
@@ -205,16 +221,16 @@ body {
 }
 @keyframes conv-blink { from { box-shadow: 0 0 0 rgba(255, 181, 71, 0); } to { box-shadow: 0 0 16px rgba(255, 181, 71, .6); } }
 
-/* RDS: kompaktný rámik pod logom; názov stanice (PS) ako na LCD, pod ním RadioText.
- * width 0 + min-width 100 %: rámik je presne taký široký ako hodiny a dlhý RadioText ho nerozťahuje */
+/* RDS: compact frame under the logo; station name (PS) like on an LCD, RadioText under it.
+ * width 0 + min-width 100 %: the frame is exactly as wide as the clock and a long RadioText does not stretch it */
 .rds { position: relative; align-self: stretch; width: 0; min-width: 100%; padding: 2px 6px 2px 34px; text-align: left;
   border: 1px solid var(--line); border-radius: 6px; background: #080c10; }
 .rds.off { border-color: #1a2029; background: #06090c; }
-/* logo RDS vľavo v rámiku; miesto ostáva aj bez RDS, aby sa text neposúval */
+/* RDS logo on the left in the frame; the space stays even without RDS so that the text does not shift */
 .rds-logo { position: absolute; left: 5px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px;
   color: var(--amber); filter: drop-shadow(0 0 3px rgba(255, 181, 71, .45)); }
 .rds-logo text { fill: currentColor; font: italic 900 25px system-ui, sans-serif; }
-/* bez RDS (aj v iných módoch ako WFM) logo ostáva sivé, aby bolo jasné, na čo rámik slúži */
+/* without RDS (also in modes other than WFM) the logo stays grey, so it is clear what the frame is for */
 .rds.off .rds-logo { color: #5c6775; filter: none; }
 .rds-top { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; height: 17px; overflow: hidden; }
 .rds-ps { font: 700 14px/1.2 ui-monospace, Consolas, monospace; color: var(--amber); white-space: pre;
@@ -226,16 +242,16 @@ body {
 
 .r-info { display: flex; align-items: flex-start; justify-content: flex-end; gap: 12px; align-self: start; }
 .r-info-text { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; text-align: right; }
-/* hodiny: 7-segmentové číslice v rámiku, tlmenejšie ako frekvencia */
+/* clock: 7-segment digits in a frame, dimmer than the frequency */
 .r-clock { display: flex; align-items: flex-end; gap: 8px; padding: 8px 12px 6px; white-space: nowrap;
   border: 1px solid var(--line); border-radius: 6px; background: #080c10; }
-#clock { display: flex; align-items: flex-end; gap: .04em; font-size: clamp(28px, 2.8vw, 46px); line-height: 1; }
+#clock { display: flex; align-items: flex-end; gap: .04em; font-size: 46px; line-height: 1; }
 #clock svg { height: 1em; width: .62em; display: block; overflow: visible; }
 #clock svg.colon { width: .3em; }
 #clock polygon, #clock circle { fill: rgba(255, 255, 255, .03); }
 #clock .on { fill: rgba(190, 225, 200, .55); }
 .r-clock { cursor: pointer; user-select: none; }
-/* LOC (oranžové) nad UTC (zelené); svieti to, ktoré hodiny práve ukazujú */
+/* LOC (orange) above UTC (green); the one the clock is showing is lit */
 .clock-zone { display: flex; flex-direction: column; gap: 2px; }
 .clock-zone small { font: 700 11px/1 system-ui, sans-serif; letter-spacing: .04em; color: #39414c; }
 #zoneLoc.on { color: var(--amber); }
@@ -250,7 +266,7 @@ body {
 .dot.bad { background: var(--red); box-shadow: 0 0 8px var(--red); }
 .vol { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--muted); }
 
-/* ---------- tlačidlá ---------- */
+/* ---------- buttons ---------- */
 button, select, input[type=number], input[type=search], input:not([type]), .freq-input {
   font: inherit; color: var(--text); background: #0d1116;
   border: 1px solid var(--line2); border-radius: 5px; padding: 6px 10px;
@@ -278,12 +294,13 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid rgba(255, 2
 .key.wide { width: 100%; }
 .key.accent { color: #1a1400; background: linear-gradient(180deg, #ffe27a, #e8b928); border-color: #f3cf55; }
 .key:disabled { opacity: .4; cursor: default; }
+label.key.disabled { opacity: .4; cursor: default; }
 .audio-hint { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center;
   background: rgba(0,0,0,.55); cursor: pointer; }
 .audio-hint[hidden] { display: none; }
 .audio-hint-box { display: flex; flex-direction: column; align-items: center; gap: 14px;
   padding: 28px 44px; border: 2px solid var(--amber); border-radius: 18px; background: rgba(20,24,30,.92);
-  color: var(--amber); font: 700 clamp(20px, 3vw, 34px) system-ui, sans-serif; letter-spacing: .04em;
+  color: var(--amber); font: 700 34px system-ui, sans-serif; letter-spacing: .04em;
   text-align: center; box-shadow: 0 0 40px rgba(255,180,60,.25);
   animation: conv-blink 1s ease-in-out infinite alternate; }
 .spk { background: none; border: 0; padding: 0; cursor: pointer; color: var(--green); line-height: 0; }
@@ -307,7 +324,7 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid rgba(255, 2
 .kgroup { display: flex; flex-direction: column; gap: 3px; }
 .klabel { font: 700 9px system-ui, sans-serif; letter-spacing: .14em; color: var(--dim); }
 .keys { display: flex; gap: 4px; flex-wrap: wrap; }
-/* tlačidlá každej skupiny v rámiku */
+/* the buttons of each group in a frame */
 .keys, .r-bands .bands { padding: 3px; border: 1px solid var(--line2); border-radius: 5px; background: rgba(0, 0, 0, .25); }
 
 .r-bands {
@@ -328,14 +345,14 @@ input[type=range]::-webkit-slider-thumb {
 input[type=range]::-moz-range-track { height: 4px; border-radius: 4px; background: var(--line2); }
 input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border: none; border-radius: 2px; background: var(--yellow); }
 input[type=range]:disabled { opacity: .35; }
-/* zvislý posuvník hlasitosti (hore = nahlas) */
-/* os sa vyfarbí odspodu po bežec: zelená → žltá (100 %) → červená (zosilnenie nad 100 %) */
+/* vertical volume slider (up = loud) */
+/* the track is coloured from the bottom up to the thumb: green → yellow (100 %) → red (gain above 100 %) */
 .vol { --p: 53%; }
 .vol-sliders { display: flex; gap: 6px; }
 .vol-ch { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer;
   font: 700 9px system-ui, sans-serif; letter-spacing: .06em; color: var(--muted); }
 .vol-ch.cue span { color: var(--orange); }
-/* stereo merač: dva stĺpce LED vysoké ako posuvníky; zhasnuté LED tmavé v odtieni svojej farby */
+/* stereo meter: two LED columns as tall as the sliders; unlit LEDs dark in the shade of their colour */
 .vu { display: flex; flex-direction: column; align-items: center; gap: 3px;
   font: 700 9px system-ui, sans-serif; letter-spacing: .06em; color: var(--muted); }
 .vu-cols { display: flex; gap: 2px; height: 96px; }
@@ -351,7 +368,7 @@ input[type=range]:disabled { opacity: .35; }
   --track: linear-gradient(to top, transparent var(--p), #1a2028 var(--p)),
            linear-gradient(to top, #1fae55 0%, #3cf07c 55%, #ffd84a 72%, #ff8a3e 86%, #ff4b3e 100%);
 }
-/* -webkit- a -moz- pravidlá musia byť zvlášť, inak prehliadač zahodí celé pravidlo */
+/* -webkit- and -moz- rules must be separate, otherwise the browser drops the whole rule */
 .vol input[type=range]::-webkit-slider-runnable-track {
   width: 8px; height: 100%; border-radius: 8px; border: 1px solid rgba(255,255,255,.08);
   background: var(--track); box-shadow: inset 0 1px 3px rgba(0,0,0,.6);
@@ -360,7 +377,7 @@ input[type=range]:disabled { opacity: .35; }
   width: 8px; height: 100%; border-radius: 8px; border: 1px solid rgba(255,255,255,.08);
   background: var(--track); box-shadow: inset 0 1px 3px rgba(0,0,0,.6);
 }
-/* bežec ako hmatník ťahového potenciometra: tmavý obdĺžnik s ryskou v strede, bez žiary */
+/* thumb like a fader knob: dark rectangle with a line in the middle, no glow */
 .vol input[type=range]::-webkit-slider-thumb {
   width: 22px; height: 12px; margin: 0 0 0 -8px; border-radius: 2px;
   background: linear-gradient(180deg, transparent 5px, #e8edf2 5px, #e8edf2 7px, transparent 7px),
@@ -385,7 +402,7 @@ input[type=range]:disabled { opacity: .35; }
 .switch input:checked + span { background: #b8901a; }
 .switch input:checked + span::after { transform: translateX(14px); background: var(--yellow); }
 
-/* ---------- spektrum a vodopád ---------- */
+/* ---------- spectrum and waterfall ---------- */
 .scope { position: relative; background: #050506; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .radio > :not(.scope) { flex: none; }
 .spectrum-wrap, .waterfall-wrap { position: relative; cursor: crosshair; touch-action: none; }
@@ -400,7 +417,7 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
   font: 700 13px ui-monospace, Consolas, monospace; color: var(--yellow); white-space: nowrap;
   background: rgba(8, 12, 16, .9); border: 1px solid var(--yellow); box-shadow: 0 2px 8px rgba(0, 0, 0, .6); }
 
-/* ---------- záložky spodnej časti: SPECTRUM / DECODERS ---------- */
+/* ---------- tabs of the bottom part: SPECTRUM / DECODERS ---------- */
 .body-tabs { display: flex; gap: 2px; padding: 3px 8px 0; background: #0b0e12; border-bottom: 1px solid #44474d; }
 .body-tabs button {
   padding: 3px 14px; border: 1px solid var(--line); border-bottom: 0; border-radius: 6px 6px 0 0;
@@ -408,17 +425,26 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 }
 .body-tabs button.on { background: #050506; color: var(--yellow); border-color: #44474d; }
 .dec-count { color: var(--muted); font-weight: 600; }
-.dec-new { color: var(--green); margin-left: 4px; }   /* nová správa dekodéra, kým je otvorená záložka SPECTRUM */
-/* dekodéry prekryjú spektrum a vodopád; tie pod nimi bežia ďalej (plátna si nechajú rozmery) */
+.dec-new { color: var(--green); margin-left: 4px; }   /* new decoder message while the SPECTRUM tab is open */
+/* the decoders cover the spectrum and waterfall; those keep running underneath (canvases keep their size) */
 .dec-pane {
   position: absolute; inset: 0; z-index: 4; overflow: auto; padding: 10px;
   display: flex; flex-direction: column; gap: 10px; background: #07090c;
 }
-.dec-pane .ft8-table { max-height: none; }
-.dec-pane .card:only-of-type .ft8-table { max-height: none; }
+/* All decoder cards (FT8, ACARS / VDL2, CW, RTTY, WEFAX, SSTV) share one design: the card fills the tab
+   height, the header, settings and notes stay in place, and only the black content box (table, text,
+   image) scrolls with its own scrollbar. Several cards on at once share the height. */
+.dec-pane .card { flex: 1 1 0; min-height: 360px; }
+.dec-pane .ft8-table, .dec-pane .txt-out, .dec-pane .wefax-wrap, .dec-pane .sstv-main {
+  flex: 1 1 0; min-height: 150px; max-height: none; overflow: auto;
+}
+/* SSTV: the live image stays in view, the gallery of saved images scrolls next to it */
+.dec-pane .sstv-main { flex-wrap: nowrap; align-items: stretch; }
+.dec-pane .sstv-wrap { align-self: flex-start; }
+.dec-pane .sstv-gallery { overflow: auto; align-content: start; padding: 8px;
+  border: 1px solid var(--line); border-radius: 6px; background: #000; }
 
-/* ---------- textové dekodéry (CW, RTTY): text vyplní zvyšok výšky záložky ---------- */
-.txtdec { flex: 1 1 0; min-height: 200px; }
+/* ---------- text decoders (CW, RTTY): the text fills the rest of the tab height ---------- */
 .txt-info { color: var(--yellow); font: 600 13px ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: nowrap; }
 .txt-out {
   flex: 1 1 auto; min-height: 80px; overflow: auto; padding: 8px 10px;
@@ -427,7 +453,7 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
   white-space: pre-wrap; word-break: break-all;
 }
 .cw-empty { color: var(--dim); font: 12px system-ui, sans-serif; }
-/* RTTY ako na starom terminále: zelený fosfor so žiarou a jemnými riadkami obrazovky */
+/* RTTY like on an old terminal: green phosphor with glow and fine screen lines */
 #rttyText {
   background: repeating-linear-gradient(180deg, rgba(0, 0, 0, 0) 0 2px, rgba(0, 0, 0, .35) 2px 3px),
               radial-gradient(ellipse at center, #06200f 0%, #020a05 75%, #010402 100%);
@@ -440,7 +466,7 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 #rttyText .cw-empty { color: #1f8a3c; text-transform: none; letter-spacing: 0; text-shadow: none; }
 .hint { padding: 5px 12px; font-size: 11px; color: var(--dim); background: #06080b; border-top: 1px solid var(--line); }
 
-/* ---------- karty dekodérov ---------- */
+/* ---------- decoder cards ---------- */
 .card {
   background: linear-gradient(180deg, #11151b, #0b0e12);
   border: 1px solid var(--line); border-radius: 12px; padding: 14px;
@@ -459,42 +485,81 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 }
 .ft8 td { padding: 3px 10px; border-top: 1px solid rgba(255, 255, 255, .04); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .ft8 td.num { text-align: right; color: var(--muted); }
+.acars td.act { text-align: left; }
 .ft8 tr.cq td.msg { color: var(--green); }
-/* ACARS: text správy môže mať viac riadkov; chybný CRC stlmený */
+/* ACARS: the message text can have several lines; bad CRC dimmed */
 .acars td.msg { white-space: pre-wrap; word-break: break-word; min-width: 24em; }
 .acars td.reg, .acars td.reg a { color: var(--amber); }
 .acars td.flt a { color: var(--text); }
 .acars td a { text-decoration: underline dotted; }
-/* typ a poloha lietadla z ADS-B pod registráciou */
-.acars .ac-sub { font-size: 10px; color: #6cb8ff; white-space: nowrap; }   /* modré = z ADS-B, nie z ACARS */
+/* aircraft type and position from ADS-B under the registration */
+.acars .ac-sub { font-size: 10px; color: #6cb8ff; white-space: nowrap; }   /* blue = from ADS-B, not from ACARS */
 .acars .ac-sub.none { color: var(--dim); }
 #vdl2Info.err { color: #ff7b6b; }
 .acars .ext { color: #6cb8ff; }
 .acars td.desc { white-space: normal; min-width: 12em; max-width: 18em; color: var(--text); }
 .acars tr.bad td { color: var(--dim); }
-/* dlhá správa: 3 riadky a značka ▾, klik rozbalí celú (▴ zbalí) */
+/* long message: 3 lines and a ▾ mark, a click expands it fully (▴ collapses) */
 .acars td.msg.long { cursor: pointer; }
 .acars td.msg.long:not(.open) .msg-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .acars td.msg.long::after { content: "▾ more"; display: block; font-size: 10px; color: var(--muted); }
 .acars td.msg.long.open::after { content: "▴ less"; }
 .acars td { vertical-align: top; }
+.acars td.tag { padding-right: 4px; }
+/* fixed column widths: the table looks the same whichever rows the filter shows */
+.acars table.acars-table { table-layout: fixed; min-width: 1400px; }
+.acars-table col.c-type { width: 76px; }
+.acars-table col.c-utc { width: 78px; }
+.acars-table col.c-freq { width: 76px; }
+.acars-table col.c-cty { width: 84px; }
+.acars-table col.c-flt { width: 88px; }
+.acars-table col.c-ac { width: 96px; }
+.acars-table col.c-icao { width: 72px; }
+.acars-table col.c-act { width: 92px; }
+.acars-table col.c-model { width: 170px; }
+.acars-table col.c-fl { width: 60px; }
+.acars-table col.c-spd { width: 64px; }
+.acars-table col.c-lbl { width: 60px; }
+.acars-table col.c-desc { width: 200px; }
+.acars-table td { overflow: hidden; text-overflow: ellipsis; }
+.acars-table td.reg, .acars-table td.flt, .acars-table td.model { white-space: normal; overflow-wrap: anywhere; }
+.acars td.icao { color: var(--muted); }
+.acars-table td.reg .ac-sub { white-space: normal; }
+.acars-table td.desc, .acars-table td.msg { min-width: 0; max-width: none; }
+.acars .cflag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
+.acars .cflag img { width: 20px; height: 15px; object-fit: cover; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .15); }
+.acars td.tag .type-tag { font-size: 10px; line-height: 16px; padding: 0 6px; }   /* same size as the filter tags */
 /* decoded CPDLC / ADS-C / ATN in the row: coloured tag + stripe on the left; uplinks (ATC) amber, downlinks green */
 .type-tag { display: inline-block; font-size: 9px; line-height: 13px; padding: 0 4px; border-radius: 3px;
   font-weight: 700; letter-spacing: .3px; color: #0b1410; vertical-align: 1px; }
 .type-tag.t-acars { background: #8fa8c4; }
 .type-tag.t-cpdlc { background: #6cff9c; }
 .type-tag.t-adsc { background: #c79bff; }
-.type-tag.t-atn { background: #4fd8d0; }
+.type-tag.t-atn { background: #6cff9c; }   /* ATN CPDLC: same colour as CPDLC (one filter tag for both) */
+/* message filter in the card header: click a tag = only those messages */
+.tag-filter { display: inline-flex; align-items: center; gap: 4px; }
+.tag-filter .type-tag { cursor: pointer; font-size: 10px; line-height: 16px; padding: 0 6px; outline: 2px solid transparent; outline-offset: 1px; }
+.tag-filter.on .type-tag:not(.sel) { opacity: .3; }
+.tag-filter .type-tag.sel { outline-color: var(--amber); }
+#acarsFilterState { margin-left: 4px; font-size: 11px; font-weight: 700; color: var(--amber); }
+#acarsFilterState .tf-clear { cursor: pointer; padding: 0 4px; border: 1px solid var(--amber); border-radius: 3px; margin-left: 2px; }
 .acars tr.r-acars td:first-child { box-shadow: inset 3px 0 #8fa8c4; }
 .acars tr.r-cpdlc td:first-child { box-shadow: inset 3px 0 #6cff9c; }
 .acars tr.r-adsc td:first-child { box-shadow: inset 3px 0 #c79bff; }
-.acars tr.r-atn td:first-child { box-shadow: inset 3px 0 #4fd8d0; }
+.acars tr.r-atn td:first-child { box-shadow: inset 3px 0 #6cff9c; }
 .acars .dec { margin-bottom: 3px; white-space: pre-wrap; }
 .acars .dec.cp-up .cp-el { color: var(--amber); }
 .acars .dec.cp-down .cp-el { color: #6cff9c; }
 .acars .dec.d-adsc .cp-el { color: #d9c2ff; }
 .acars .cp-id { display: inline-block; min-width: 4.2em; font-size: 10px; color: var(--muted); }
 .acars tr.bad .dec .cp-el { color: var(--dim); }
+.acars .arr-down { color: #6cff9c; }     /* downlink (from the aircraft) */
+.acars .arr-up { color: var(--amber); }   /* uplink (from the ground) */
+.acars .atn-detail { display: none; margin-top: 3px; padding: 3px 6px; border-left: 2px solid #6cff9c;
+  font-size: 10px; color: var(--dim); white-space: pre; overflow-x: auto; max-height: 360px; overflow-y: auto; }
+.acars td.msg.has-detail.open .atn-detail { display: block; }
+.acars td.msg.has-detail::after { content: "▾ details"; }
+.acars td.msg.has-detail.open::after { content: "▴ less"; }
 .acars .msg-text.raw { font-size: 10px; color: var(--dim); word-break: break-all; }   /* the ARINC 622 hex under the decode */
 .ft8 tr.new { animation: ft8new 1.5s ease-out; }
 .ft8 tr.cycle td { padding: 2px 10px; font-size: 10px; color: var(--dim); background: rgba(255, 255, 255, .02); }
@@ -504,7 +569,7 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .wf-opt select { padding: 4px 8px; font-size: 12px; }
 .log-opt { cursor: pointer; user-select: none; }
 .log-opt input { margin: 0; accent-color: var(--yellow); }
-.wefax-wrap { max-height: 70vh; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; }
+.wefax-wrap { max-height: calc(var(--vh) * .7); overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; }
 .wefax-block { display: block; width: 100%; height: auto; cursor: crosshair; }
 .wefax .note code, .sstv .note code { color: var(--text); }
 .sstv-main { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
@@ -519,13 +584,19 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .sstv-gallery span { display: block; padding: 2px 4px; font-size: 10px; color: var(--muted); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
 .note { margin: 0; font-size: 11px; color: var(--muted); }
+/* TX disclaimer in SET: strongly red */
+.tx-disclaimer { margin: 0 0 8px; padding: 8px 10px; border: 2px solid var(--red); border-radius: 6px;
+  background: rgba(255, 75, 62, .14); color: #ffd9d6; font-size: 11px; line-height: 1.4; }
+.tx-disclaimer strong { display: block; color: var(--red); font-size: 13px; margin-bottom: 4px; }
+.tx-disclaimer p { margin: 4px 0 0; }
+.tx-disclaimer b { color: #fff; }
 .note.warn { color: var(--amber); }
 .note.error { color: var(--red); font-size: 12px; }
 
-/* ---------- zásuvky (SET, MEM) ---------- */
+/* ---------- drawers (SET, MEM) ---------- */
 .scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, .45); }
 .drawer {
-  position: fixed; z-index: 21; top: 0; right: 0; bottom: 0; width: min(360px, 100vw);
+  position: fixed; z-index: 21; top: 0; right: 0; bottom: 0; width: 360px;
   display: flex; flex-direction: column; background: linear-gradient(180deg, #12161c, #0a0d11);
   border-left: 1px solid var(--line2); box-shadow: -20px 0 50px rgba(0, 0, 0, .6);
 }
@@ -570,33 +641,23 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .mem .del:hover { color: var(--red); }
 @media (hover: none) { .mem .del { visibility: visible; } }
 .mem-empty { padding: 12px; color: var(--dim); font-size: 12px; text-align: center; }
+.mem-io { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.mem-io[open] { gap: 6px; }
+.mem-io summary { cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.mem-io > * + * { margin-top: 6px; }
+.mem-io-label { display: block; font-size: 12px; color: var(--muted); }
+.mem-io-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+.mem-io-row.two { grid-template-columns: 1fr 1fr; }
+.mem-io-row input { width: 100%; min-width: 0; padding: 6px 9px; font-size: 13px; }
+.mem-io-row button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ---------- menšie obrazovky ---------- */
-/* Full HD pri zoome 100 % (~1900 px): užšie tlačidlá a medzery, aby sa riadok tlačidiel aj riadok
-   pásiem zmestil do jedného riadku a nezaberal výšku vodopádu. Písmo ostáva rovnaké. */
-@media (max-width: 2100px) {
-  .r-keys { column-gap: 8px; padding-left: 8px; padding-right: 8px; }
-  .r-bands { column-gap: 10px; }
-  .r-keys .keys button, .r-keys .key { min-width: 32px; padding-left: 4px; padding-right: 4px; }
-  .r-keys .keys, .r-bands .bands { gap: 3px; }
-  .r-bands .bands button { min-width: 36px; padding-left: 5px; padding-right: 5px; }
-}
-@media (max-width: 1200px) {
-  .r-top { grid-template-columns: 200px auto minmax(0, 1fr); }
-  #smeter { width: 200px; }
-  .r-info { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px 16px; }
-  .r-lines { flex-direction: row; gap: 12px; }
-}
-@media (max-width: 800px) {
-  .rig { padding: 6px; }
-  .radio, .radio-body { border-width: 5px; height: auto; }
-  .radio-head { position: static; margin-bottom: -5px; border-bottom: 0; }   /* na mobile by zabrala celú obrazovku */
-  .radio-body { border-top: 0; }
-  .r-top { grid-template-columns: 1fr; justify-items: center; }
-  .r-flags { grid-template-rows: none; grid-auto-flow: column; grid-auto-columns: auto; order: -1; }
-  .meter-box { order: 2; }
-  .freq { font-size: 40px; }
-  .spectrum-wrap { flex: none; height: 130px; }
-  .waterfall-wrap { flex: none; height: 240px; }
-  .vol input[type=range] { height: 70px; }
-}
+/* ---------- narrower virtual window ---------- */
+/* Virtual window up to 2100 px wide (e.g. Full HD, or a window taller than 16:9): narrower buttons
+   and gaps, so that the button row and the band row each fit on one line and do not take the waterfall's
+   height. The font stays the same. The .compact class is set by app.js (fitStage) – @media would measure
+   the real window, not the virtual one. Smaller windows are not rearranged any more, the whole page is just scaled down. */
+html.compact .r-keys { column-gap: 8px; padding-left: 8px; padding-right: 8px; }
+html.compact .r-bands { column-gap: 10px; }
+html.compact .r-keys .keys button, html.compact .r-keys .key { min-width: 32px; padding-left: 4px; padding-right: 4px; }
+html.compact .r-keys .keys, html.compact .r-bands .bands { gap: 3px; }
+html.compact .r-bands .bands button { min-width: 36px; padding-left: 5px; padding-right: 5px; }

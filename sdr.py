@@ -37,6 +37,7 @@ SQUELCH_OFF = -120.0  # dBFS, squelch at this level and below is off
 SQUELCH_HANG_S = 0.2  # s, how long the squelch stays open after the signal drops
 FM_NARROW_MAX = 18000.0   # FM up to this width in the narrow channel (input / DECIM), wider via WideFm (up to 50 kHz)
 SQUELCH_SUB = 8      # the squelch decides 8× per block (~8 ms) so it does not cut off the start of a transmission
+BAND_EDGE = 0.95      # chained VFO: usable part of the shared band (the edges are cut by the dongle filter)
 SQUELCH_MODES = ("AM", "FM", "WFM")   # each mode has its own level (airband AM differs from broadcast)
 NOTCH_MODES = ("AM", "LSB", "USB")    # automatic notch (in CW it would cut out the signal itself)
 AGC_MODES = ("AM", "LSB", "USB", "CW")  # audio AGC (ALC); FM and WFM have a constant level from the demodulator
@@ -101,6 +102,10 @@ def index_by_serial(serial):
 def open_device(cfg):
     """Opens the device by cfg["driver"] (rtl / lime); both classes have the same interface."""
     serial = cfg.get("serial")
+    if cfg.get("chain"):
+        # chained VFO: the samples come from the VFO that owns the dongle (iqshare.py)
+        from iqshare import ChainedSdr
+        return ChainedSdr(cfg["chain"]["port"], cfg["chain"]["owner"])
     if cfg.get("driver", "rtl") == "lime":
         from lime import LimeSdr
         return LimeSdr(READ_SAMPLES, serial=serial, index=int(cfg["device"]))
@@ -542,6 +547,15 @@ class Receiver:
         self.sdr = None
         self.thread = None
         self._stop = threading.Event()
+        # VFO chaining (iqshare.py): the owner of the dongle sends its blocks to iq_server (set by app.py);
+        # a chained VFO (cfg["chain"]) follows the owner's centre, LO and sample rate.
+        self.iq_server = None
+        self.shared_lo = None
+        self.out_of_band = False
+
+    @property
+    def chained(self):
+        return bool(self.cfg.get("chain"))
 
     # --- control from the web page (applied in the receiver thread between reads) ---
 
@@ -569,6 +583,8 @@ class Receiver:
 
     @property
     def lo(self):
+        if self.chained and self.shared_lo is not None:
+            return self.shared_lo                   # the owner VFO decides the upconverter LO
         return self.lo_for(self.cfg["tune_hz"])
 
     @property
@@ -682,6 +698,10 @@ class Receiver:
         if not changes:
             return
         c = self.cfg
+        if self.chained:
+            # the dongle belongs to the owner VFO: centre, sample rate and device are not ours to change
+            for k in ("center_hz", "sample_rate", "device"):
+                changes.pop(k, None)
         if "sample_rate" in changes and changes["sample_rate"] != c["sample_rate"]:
             c["sample_rate"] = changes["sample_rate"]
             self._recenter(c["tune_hz"])
@@ -741,6 +761,8 @@ class Receiver:
     def _recenter(self, tune, only_if_outside=False):
         """Tuned frequency outside the displayed band -> move the centre (away from the DC spike)."""
         c = self.cfg
+        if self.chained:
+            return                                  # the centre follows the owner VFO
         half = self.fs / 2 * 0.9
         if only_if_outside and abs(tune - c["center_hz"]) < half:
             return
@@ -752,6 +774,8 @@ class Receiver:
         c = self.cfg
         span = self.fs / int(c.get("zoom", 1))
         self.view_req = view_hz
+        if self.chained:
+            return                                  # dragging stays inside the band of the shared dongle
         if abs(view_hz - c["center_hz"]) + span / 2 > self.fs / 2 * 0.98:
             c["center_hz"] = max(view_hz, self.fs / 2)
 
@@ -801,6 +825,11 @@ class Receiver:
                 raw = blocks.get(timeout=2)
             except queue.Empty:
                 raise RuntimeError("dongle is not sending data" if reader.is_alive() else "dongle reading stopped")
+            if isinstance(raw, tuple):              # chained VFO: (owner's metadata, samples)
+                meta, raw = raw
+                self._follow(meta, sdr)
+            elif self.iq_server:
+                self.iq_server.publish(raw, self._share_meta())
             if self.on_raw and (raw.dtype == np.complex64 or len(raw) == READ_SAMPLES * 2):
                 self.on_raw(raw, self.fs, self.cfg["center_hz"])   # VDL2: raw samples to dumpvdl2
             if raw.dtype == np.complex64:
@@ -818,6 +847,16 @@ class Receiver:
             c = self.cfg
             offset = c["tune_hz"] - c["center_hz"]
             n = len(iq)
+            self.out_of_band = self.chained and abs(offset) > self.fs / 2 * BAND_EDGE
+            if self.out_of_band:
+                # the owner VFO moved the dongle away: this VFO is silent until it is tuned into the band again
+                self.smeter = -150.0
+                self.on_audio(bytes(n // DECIM * 4))
+                now = time.time()
+                if now - last_status > 0.2:
+                    last_status = now
+                    self.on_status()
+                continue
             step = -2 * np.pi * offset / self.fs
             mixer = np.exp(1j * (self.phase + step * np.arange(n, dtype=np.float64))).astype(np.complex64)
             self.phase = (self.phase + step * n) % (2 * np.pi)
@@ -857,6 +896,28 @@ class Receiver:
                 last_status = now
                 self.on_status()
 
+    def _share_meta(self):
+        """Dongle state sent with every block to the chained VFOs."""
+        c = self.cfg
+        return {"center_hz": c["center_hz"], "lo": self.lo, "fs": c["sample_rate"], "gain": c.get("gain", "auto"),
+                "gains": self.gains, "rtl_agc": bool(c.get("rtl_agc", False)), "bias_tee": bool(c.get("bias_tee", False)),
+                "ppm": c.get("ppm", 0), "has_bias_tee": self.has_bias_tee, "has_rtl_agc": self.has_rtl_agc,
+                "smeter_offset": getattr(self.sdr, "smeter_offset", 0.0)}
+
+    def _follow(self, meta, sdr):
+        """Chained VFO: takes over the dongle state of the owner VFO."""
+        c = self.cfg
+        self.shared_lo = float(meta["lo"])
+        self.gains = meta.get("gains", self.gains)
+        self.has_bias_tee, self.has_rtl_agc = meta.get("has_bias_tee", True), meta.get("has_rtl_agc", True)
+        for k in ("gain", "rtl_agc", "bias_tee", "ppm"):
+            if k in meta:
+                c[k] = meta[k]
+        c["center_hz"] = float(meta["center_hz"])
+        if int(meta["fs"]) != int(c["sample_rate"]):
+            c["sample_rate"] = int(meta["fs"])
+            self._configure(sdr)                    # new decimator and FFT window for the new rate
+
     def _squelch(self, audio, mode, sub_db):
         """Squelch for AM/FM/WFM: mutes the sound while the channel power is below the mode's level.
         It decides per part of a block (sub_db, ~8 ms), with 2 dB hysteresis and SQUELCH_HANG_S hold.
@@ -889,6 +950,10 @@ class Receiver:
     def tune_range(self):
         """(from, to) Hz that can be tuned: by the converter and the optional limit max_hz (HF VFO)."""
         c = self.cfg
+        if self.chained:
+            # only the band the shared dongle receives right now
+            half = self.fs / 2 * BAND_EDGE
+            return c["center_hz"] - half, c["center_hz"] + half
         mode, lo = c.get("upconv", "auto"), float(c.get("lo_offset_hz", 0))
         tmin, tmax = self.tuner_min, self.tuner_max
         if mode == "off" or (mode == "on" and lo == 0):
@@ -923,6 +988,9 @@ class Receiver:
             "device": c["device"],
             "vfo": c.get("vfo"),
             "serial": c.get("serial"),
+            "chain_owner": (c.get("chain") or {}).get("owner"),   # chained VFO: name of the VFO with the dongle
+            "out_of_band": self.out_of_band,
+            "chained_vfos": self.iq_server.count if self.iq_server else 0,
             "driver": c.get("driver", "rtl"),
             "has_bias_tee": self.has_bias_tee,
             "has_rtl_agc": self.has_rtl_agc,

@@ -3,7 +3,11 @@
 Method: decimation to 8 kHz -> AFC finds the strongest tone in the receiver passband (Welch spectrum
 of the last 6 s) -> mixing the tone to 0 Hz and a filter (moving average) with a width set by the speed
 -> envelope every 2 ms -> adaptive threshold with hysteresis -> mark and space lengths -> dot/dash
--> characters from the Morse table. Once a second the speed is estimated from the last 15 s of the envelope
+-> characters from the Morse table.
+Reliability: a noise blanker removes short static crashes before the filters; the noise floor is measured
+from the AFC spectrum (median over the band) and gives a minimum threshold, so noise alone does not decode; the mark
+level is taken from the decoded marks themselves and after a pause it falls back quickly, so fading (QSB)
+does not leave the threshold too high. Once a second the speed is estimated from the last 15 s of the envelope
 (smoothing with the best mark/noise separation, splitting marks into short and long).
 """
 import collections
@@ -20,7 +24,16 @@ BOX = 64               # shortest moving average (8 ms ≈ 125 Hz filter width) 
 MAX_BOX = 800          # longest (100 ms ≈ 10 Hz) for very slow CW
 NFFT = 4096            # AFC resolution ≈ 2 Hz
 AFC_SEC = 6            # AFC window; even for slow CW it must contain several marks
-MIN_SNR = 6.0          # tone-to-noise power ratio in the spectrum (≈ 8 dB), below it the decoder stays silent
+MIN_SNR = 4.0          # tone-to-noise power ratio in the spectrum (≈ 6 dB), below it the decoder stays silent
+FLOOR_ON = 2.6         # minimum threshold: noise Rayleigh sigma × this (noise exceeds it ≈ 3 % of the time)
+FLOOR_OFF = 2.1        # ... and for the end of a mark (hysteresis)
+TH_ON = 0.35           # threshold between the noise and the mark level for the start of a mark
+TH_OFF = 0.22          # ... and for its end
+HI_NEW = 0.7           # weight of the last mark in the mark level (higher = follows fast fading sooner)
+NB_SIGMA = 4.5         # noise blanker: sample amplitude × noise RMS
+NB_MARK = 3.0          # ... and × the mark level (whichever is higher)
+FIT_MIN = 0.8          # speed estimate is used only if this share of marks fits dot or dash (noise fits ~0.6–0.8)
+NB_MAX_MS = 20         # longer bursts are a signal, not a crash, and are kept
 
 MORSE = {
     ".-": "A", "-...": "B", "-.-.": "C", "-..": "D", ".": "E", "..-.": "F", "--.": "G",
@@ -142,6 +155,9 @@ class CwDecoder:
         self.snr = 0.0
         self.present = False
         self.lo = self.hi = None
+        self.sig_r = None         # noise Rayleigh sigma of the envelope × sqrt(filter width)
+        self.sqn = 1.0
+        self.mark_e = []
         self.key = False
         self.cand_n = 0
         self.run = 0              # number of steps in the current key state
@@ -163,6 +179,7 @@ class CwDecoder:
             self.hist = buf[-(len(self.h) - 1):]
             y = np.convolve(buf, self.h, mode="valid")[self.dec_off::self.D]
             self.dec_off = (self.dec_off - len(base)) % self.D
+            y = self._blank(y)
             self.buf = np.concatenate((self.buf, y))[-int(AFC_SEC * self.r):]
             self.since_afc += len(y)
             if self.since_afc >= self.r / 2:
@@ -173,6 +190,27 @@ class CwDecoder:
         if self.since_state >= self.r:
             self.since_state = 0
             self._emit_state()
+
+    def _blank(self, y):
+        """Noise blanker: short bursts far above the noise and the mark level (static crashes) are set to zero.
+        Bursts longer than NB_MAX_MS are kept: that is a strong station, not a crash."""
+        if len(y) < 32:
+            return y
+        a = np.abs(y)
+        rms = np.sqrt(np.median(a * a) / np.log(2))       # complex noise: median |y|² = P·ln 2
+        lim = max(NB_SIGMA * rms, NB_MARK * (self.hi or 0.0))
+        over = a > lim
+        if not over.any():
+            return y
+        # Each burst is widened by the decimation filter length (the filter smears the impulse).
+        pad = len(self.h) // self.D + 1
+        over = np.convolve(over, np.ones(2 * pad + 1), mode="same") > 0
+        edges = np.flatnonzero(np.diff(np.concatenate(([0], over.astype(np.int8), [0]))))
+        y = y.copy()
+        for s0, s1 in zip(edges[::2], edges[1::2]):
+            if (s1 - s0) * 1000 / self.r <= NB_MAX_MS:
+                y[s0:s1] = 0
+        return y
 
     def _afc(self, band):
         """The strongest tone in the band; jumps to another only if it is clearly stronger than the current one."""
@@ -187,6 +225,12 @@ class CwDecoder:
             return
         ps = np.convolve(p, np.ones(5) / 5, mode="same")   # ±5 Hz, the tone is not exactly in one bin
         noise = float(np.median(p[sel])) + 1e-20
+        # Noise floor for the keying threshold. A bin of the Hann-windowed FFT has E|X|² = N·r·Σw² (N = noise density),
+        # a moving average of n samples has variance N·r/n, the Rayleigh sigma of its magnitude is sqrt(variance / 2).
+        # The median of a mean of K exponential values is ≈ (1 - 2/9K)³ of its mean.
+        k = len(segs)
+        mean = noise / (1 - 2 / (9 * k)) ** 3
+        self.sig_r = float(np.sqrt(mean / np.sum(np.hanning(NFFT) ** 2) / 2))
         i = int(np.argmax(np.where(sel, ps, 0)))
         best, fbest = float(ps[i]), float(f[i])
         if self.tone is not None and lo <= self.tone <= hi:
@@ -210,7 +254,8 @@ class CwDecoder:
             self.present = False
 
     def _reset_keying(self):
-        self.lo = self.hi = None
+        self.hi = None
+        self.mark_e = []
         self.key = False
         self.run = 0
         self.symbol = ""
@@ -231,6 +276,7 @@ class CwDecoder:
         end = end[idx]
         # Filter width by speed: window ≈ a third of a dot (slow CW = narrow filter, better SNR).
         n = int(np.clip(self.dot_ms / 3 * self.r / 1000, BOX, MAX_BOX))
+        self.sqn = np.sqrt(n)
         self.fine.extend(np.abs(c[end] - c[end - BOX]) / BOX)
         for e in np.abs(c[end] - c[end - n]) / n:
             self._tick(float(e))
@@ -262,7 +308,7 @@ class CwDecoder:
             return
         runs = np.diff(edges) * 2.0
         res = dot_from_marks(runs[on[edges[:-1] + 1]])
-        if res is None or res[1] < 0.7:
+        if res is None or res[1] < FIT_MIN:
             return
         found = res[0]
         if abs(np.log(found / self.dot_ms)) > np.log(1.5):
@@ -280,22 +326,23 @@ class CwDecoder:
         self.dot_ms = float(np.clip(self.dot_ms, 20, 400))
 
     def _tick(self, e):
-        # Tracking of the mark level (hi) and noise (lo); time constants ≈ 20 dots.
-        if self.lo is None:
-            self.lo = self.hi = e
-        slow = 2 / (20 * self.dot_ms)
-        if e > self.hi:
-            self.hi += (e - self.hi) * 0.2
-        else:
-            self.hi += (e - self.hi) * slow
-        if e < self.lo:
-            self.lo += (e - self.lo) * 0.05
-        else:
-            self.lo += (e - self.lo) * slow
-        span = self.hi - self.lo
-        on = e > self.lo + (0.4 if self.key else 0.6) * span
-        if not self.present or self.hi < 1.8 * self.lo:
+        # Noise floor from the AFC (Rayleigh sigma, mean = 1.253 sigma), scaled to the current filter width.
+        if self.sig_r is None:
+            return
+        sig = self.sig_r / self.sqn
+        self.lo = 1.253 * sig
+        # Mark level (hi): from the decoded marks (see _edge); it rises at once with a stronger signal; after a pause
+        # longer than a word space it falls back to the noise within a few dots (after a fade the threshold is not too high).
+        if self.key and self.hi is not None and e > self.hi:
+            self.hi += (e - self.hi) * 0.1
+        elif not self.key and self.hi is not None and self.run * 2 > 7 * self.dot_ms:
+            self.hi = self.lo + (self.hi - self.lo) * (1 - 2 / (6 * self.dot_ms))
+        rel = self.lo + (TH_OFF if self.key else TH_ON) * ((self.hi or 0.0) - self.lo)
+        on = e > max(rel, (FLOOR_OFF if self.key else FLOOR_ON) * sig)
+        if not self.present:
             on = False
+        if self.key:
+            self.mark_e.append(e)
         # Suppressing glitches and short fades: a change must last at least a third of a dot.
         deb = max(2, int(self.dot_ms / 2 * 0.35))
         if on != self.key:
@@ -315,6 +362,12 @@ class CwDecoder:
         """End of a key state that lasted dur_ms."""
         if self.key:   # a mark ends
             self._mark(dur_ms)
+            m = self.mark_e
+            # Only real elements: noise blips just above the floor would pull the mark level down.
+            if 0.6 * self.dot_ms <= dur_ms <= 10 * self.dot_ms and len(m) >= 3:
+                lvl = float(np.median(m[len(m) // 4: len(m) - len(m) // 4 or None]))
+                self.hi = lvl if self.hi is None else (1 - HI_NEW) * self.hi + HI_NEW * lvl
+            self.mark_e = []
         else:
             self.space_done = 0
 

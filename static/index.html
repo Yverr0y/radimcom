@@ -8,16 +8,20 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<!-- prehliadač nepustí zvuk bez interakcie: kliknutie kamkoľvek ho spustí -->
+<!-- the whole page is a "virtual window" (min. 1920×820 px) that app.js scales down/up to the size of the
+     browser window; fixed elements (drawers, the sound prompt) are outside the scrolling part -->
+<div class="stage" id="stage">
+<!-- the browser does not play sound without interaction: a click anywhere starts it -->
 <div id="audioHint" class="audio-hint" hidden>
   <div class="audio-hint-box">
     <svg viewBox="0 0 24 24" width="56" height="56" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>
     <div>Click anywhere to start audio</div>
   </div>
 </div>
+<div class="scroller" id="scroller">
 <main class="rig">
 
-<!-- ===== obrazovka transceivera: horná časť (displeje, klávesy, pásma) ostáva pri posune stránky pevná ===== -->
+<!-- ===== transceiver screen: the top part (displays, keys, bands) stays fixed when the page scrolls ===== -->
 <section class="radio radio-head" id="radioHead">
   <div class="r-top">
     <div class="meter-box">
@@ -50,7 +54,7 @@
           <span id="clock">--:--:--</span>
           <span class="clock-zone"><small id="zoneLoc">LOC</small><small id="zoneUtc">UTC</small></span>
         </div>
-        <!-- logo RADIMCOM: geometrické písmená z ťahov (výška 100, ťah 18), nad I zelený krúžok -->
+        <!-- RADIMCOM logo: geometric letters made of strokes (height 100, stroke 18), green ring above the I -->
         <div class="r-brandline">
         <svg class="r-logo" viewBox="-4 -80 752 184" role="img" aria-label="RADIMCOM">
           <defs><clipPath id="logoClip"><rect x="-10" y="0" width="780" height="100"/></clipPath></defs>
@@ -66,11 +70,11 @@
           </g>
           <circle class="r-logo-ring" cx="294" cy="-46" r="21" fill="none" stroke-width="11"/>
         </svg>
-        <span class="r-ver">Ver. 0.105</span>
+        <span class="r-ver">Ver. 0.106</span>
         </div>
-        <!-- RDS: kompaktný rámik pod logom, široký ako hodiny -->
+        <!-- RDS: compact frame under the logo, as wide as the clock -->
         <div class="rds off" id="rds">
-        <!-- zjednodušené logo RDS (dva prepletené krúžky a R·D·S); svieti, keď stanica vysiela RDS -->
+        <!-- simplified RDS logo (two interlaced rings and R·D·S); lit when the station sends RDS -->
         <svg class="rds-logo" viewBox="0 0 100 100" aria-hidden="true">
           <g fill="none" stroke="currentColor">
             <circle cx="31" cy="31" r="28" stroke-width="3"/>
@@ -90,25 +94,25 @@
         <div class="r-credit">By Radim Mutina OM2AMR</div>
         <span id="status" class="pill" hidden><span class="dot"></span><span id="statusText"></span></span>
       </div>
-      <!-- hlasitosť: zvislé posuvníky na pravom okraji (CUE = ostatné VFO so zapnutým CUE, MAIN = aktívne VFO),
-           reproduktor pod nimi -->
+      <!-- volume: vertical sliders at the right edge (CUE = other VFOs with CUE on, MAIN = active VFO),
+           speaker under them -->
       <div class="vol">
         <div class="vol-sliders">
           <label class="vol-ch cue"><input id="cueVolume" type="range" min="0" max="1.5" step="0.01" value="0.5" title="CUE level"><span>CUE</span></label>
           <label class="vol-ch"><input id="volume" type="range" min="0" max="1.5" step="0.01" value="0.8" title="MAIN level"><span>MAIN</span></label>
-          <!-- stereo merač výstupnej úrovne (LED naplní app.js) -->
+          <!-- stereo output level meter (LEDs filled by app.js) -->
           <div class="vu" title="Output level L / R (0 dB = −6 dBFS, red = clipping)">
             <div class="vu-cols"><div class="vu-ch"></div><div class="vu-ch"></div></div><span>L R</span>
           </div>
         </div>
         <button id="muteBtn" class="spk" title="Mute / unmute"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/><line class="spk-x" x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
-        <!-- nahrávanie audia aktívneho VFO do WAV: jedno tlačidlo štart/stop -->
+        <!-- audio recording of the active VFO to WAV: one start/stop button -->
         <button id="recBtn" class="rec" title="Record audio (WAV)"><span class="rec-dot"></span><span id="recTime">REC</span></button>
       </div>
     </div>
   </div>
 
-  <!-- funkčné klávesy -->
+  <!-- function keys -->
   <div class="r-keys">
     <div class="kgroup"><span class="klabel">MODE</span><div class="keys" id="modes"></div></div>
     <div class="kgroup"><span class="klabel">FILTER</span><div class="keys" id="bandwidths"></div></div>
@@ -138,13 +142,13 @@
     </div></div>
   </div>
 
-  <!-- pásma -->
+  <!-- bands -->
   <div class="r-bands" id="bandGroups"></div>
 </section>
 
-<!-- spektrum a vodopád (záložka SPECTRUM) a dekodéry (záložka DECODERS) -->
+<!-- spectrum and waterfall (SPECTRUM tab) and decoders (DECODERS tab) -->
 <section class="radio radio-body">
-  <!-- záložky spodnej časti: spektrum s vodopádom alebo dekodéry -->
+  <!-- tabs of the bottom part: spectrum with waterfall, or decoders -->
   <div class="body-tabs" id="bodyTabs">
     <button data-tab="scope" class="on">SPECTRUM</button>
     <button data-tab="dec">DECODERS <span id="decCount" class="dec-count"></span><span id="decNew" class="dec-new" hidden>●</span></button>
@@ -159,13 +163,13 @@
       <canvas id="waterfall"></canvas>
       <canvas id="wfOverlay" class="overlay"></canvas>
     </div>
-    <!-- frekvencia pod myšou: ukáže sa po 1 s nehybnosti nad spektrom/vodopádom -->
+    <!-- frequency under the mouse: shown after 1 s without movement over the spectrum/waterfall -->
     <div class="hover-freq" id="hoverFreq" hidden></div>
-    <!-- záložka DECODERS: karty dekodérov prekryjú spektrum a vodopád (tie bežia ďalej) -->
+    <!-- DECODERS tab: the decoder cards cover the spectrum and waterfall (those keep running) -->
     <div class="dec-pane" id="decPane" hidden>
       <div id="decEmpty" class="ft8-empty">No decoder is on. Turn one on under DECODE (FT8, WEFAX, CW, RTTY, SSTV, ACARS, CPDLC).</div>
-    <!-- ===== dekodéry ===== -->
-    <!-- textové dekodéry (CW, RTTY): text vyplní zvyšok záložky -->
+    <!-- ===== decoders ===== -->
+    <!-- text decoders (CW, RTTY): the text fills the rest of the tab -->
     <section class="card ft8 txtdec" id="cwCard" hidden>
       <div class="ft8-head">
         <b>CW</b>
@@ -223,6 +227,8 @@
         <div class="bands" id="acarsBands"></div>
         <span id="vdl2Info" class="muted" hidden></span>
         <span id="acarsInfo" class="muted"></span>
+        <span id="acarsFilter" class="tag-filter" title="Click a tag to show only those messages (more tags can be combined); click again to remove it">
+          <span class="type-tag t-acars" data-kind="acars">ACARS</span><span class="type-tag t-cpdlc" data-kind="cpdlc" title="FANS CPDLC (in ACARS) and ATN CPDLC (VDL2)">CPDLC</span><span class="type-tag t-adsc" data-kind="adsc" title="FANS ADS-C (in ACARS) and ATN ADS-C (VDL2)">ADS-C</span><span id="acarsFilterState" hidden></span></span>
         <label class="wf-opt log-opt" title="Write the daily logs data\acars\acars_YYYY-MM-DD.txt and cpdlc_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="acars" data-log-also="cpdlc">LOG</label>
         <button id="acarsClear" class="key small">CLR</button>
       </div>
@@ -232,15 +238,17 @@
         European VDL2 channels (136.725–136.975 MHz) are decoded at once; the button re-centres the VFO. Most airline ACARS
         over Europe uses VDL2, and European ATN CPDLC exists only here.</span>
         Tags: <span class="type-tag t-acars">ACARS</span> plain ACARS message,
-        <span class="type-tag t-cpdlc">CPDLC</span> controller–pilot messages (↑ from ATC, ↓ from the aircraft),
-        <span class="type-tag t-adsc">ADS-C</span> automatic position reports,
-        <span class="type-tag t-atn">ATN CPDLC</span> European CPDLC (VDL2 only).
+        <span class="type-tag t-cpdlc">CPDLC</span> controller–pilot messages (↑ from ATC, ↓ from the aircraft;
+        FANS in ACARS, or the European ATN CPDLC on VDL2),
+        <span class="type-tag t-adsc">ADS-C</span> automatic position reports (FANS in ACARS, or ATN on VDL2).
+        Click a tag at the top of the card to show only those messages (CPDLC = FANS and ATN CPDLC).
         MIN / MRN = message number / number of the message it answers. ✗ = CRC error.
-        <span class="ext">Blue</span> = aircraft type and position looked up on ADS-B (adsb.fi / adsb.lol, needs internet);
-        click the registration or flight to open the map.</p>
+        <span class="ext">Blue</span> = aircraft type, flight level and speed looked up on ADS-B (adsb.fi / adsb.lol, needs internet);
+        click the callsign or flight to open the map. Country = from the aircraft's ICAO address.</p>
       <div class="ft8-table">
-        <table>
-          <thead><tr><th>UTC</th><th>Frequency</th><th>Aircraft</th><th>Flight</th><th>Label</th><th title="Approximate meaning: many labels are defined by each airline">Description</th><th>Message</th></tr></thead>
+        <table class="acars-table">
+          <colgroup><col class="c-type"><col class="c-utc"><col class="c-freq"><col class="c-cty"><col class="c-flt"><col class="c-ac"><col class="c-icao"><col class="c-act"><col class="c-model"><col class="c-fl"><col class="c-spd"><col class="c-lbl"><col class="c-desc"><col class="c-msg"></colgroup>
+          <thead><tr><th>Type</th><th>UTC</th><th title="Frequency in MHz">Freq</th><th title="Country of registration, from the 24-bit ICAO address">Country</th><th>Flight</th><th title="Registration (ATN: from ADS-B by the ICAO address); click for the map">Callsign</th><th title="24-bit ICAO aircraft address (hex)">ICAO</th><th title="Aircraft type code from ADS-B">ACFT type</th><th title="Aircraft model from ADS-B">Model</th><th title="Flight level from ADS-B">FL</th><th title="Ground speed from ADS-B">Speed</th><th>Label</th><th title="Approximate meaning: many labels are defined by each airline">Description</th><th>Message</th></tr></thead>
           <tbody id="acarsRows"></tbody>
         </table>
         <div id="acarsEmpty" class="ft8-empty"><span data-link="acars">No messages yet. ACARS bursts are short and come every few
@@ -300,8 +308,9 @@
 </section>
 
 </main>
+</div>
 
-<!-- ===== zásuvky: nastavenia a pamäte ===== -->
+<!-- ===== drawers: settings and memories ===== -->
 <div class="scrim" id="scrim" hidden></div>
 
 <aside class="drawer" id="settingsCard" hidden aria-label="Settings">
@@ -356,11 +365,24 @@
       <label class="switch"><input id="biasTee" type="checkbox"><span></span> Bias-tee 4.5 V</label>
       <p class="note warn">Only if the upconverter or LNA is powered by the dongle through the antenna connector.</p>
     </div>
-    <!-- vysielanie: len pri LimeSDR, predvolene vypnuté -->
+    <!-- transmitting: LimeSDR only, off by default -->
     <div class="setting" id="txSetting" hidden>
+      <div class="tx-disclaimer" id="txDisclaimer">
+        <strong>⚠ IMPORTANT – TRANSMITTING DISCLAIMER</strong>
+        <p>Transmitting is legal <b>only</b> for a holder of a valid amateur radio licence (or another authorisation
+          required in your country), within the privileges of that licence and the national regulations based on the
+          ITU Radio Regulations, CEPT (T/R 61-01, T/R 61-02, ERC/REC 70-03), FCC Part 97 or your national authority.
+          PMR446 and CB may require type-approved equipment – an SDR transmitter may not be allowed there at all.</p>
+        <p>The SDR is not a certified transmitter: it can emit harmonics and spurious signals outside the band.
+          Use a suitable band-pass/low-pass filter and antenna, or a dummy load.</p>
+        <p><b>You, the operator, are fully and solely responsible for every transmission and its consequences</b>
+          (interference, fines, damage to equipment). The software is provided "AS IS", without any warranty;
+          the author accepts no liability.</p>
+        <p>TX is limited to: ham 160–10 m, 6 m, 4 m, 2 m, 70 cm, 23 cm, CB 27 MHz and PMR446.</p>
+      </div>
       <label class="switch"><input id="txEnabled" type="checkbox"><span></span> Enable TX (PTT = hold SPACE)</label>
       <p class="note warn">The LimeSDR transmits on the tuned frequency while SPACE is held (FM test message or carrier,
-        upconverter must be off). Use only with a suitable antenna or dummy load, on frequencies you are licensed for.</p>
+        upconverter must be off). Retuning ends the transmission.</p>
     </div>
     <div class="setting">
       <div class="row"><span>S-meter: S9 =</span><span id="s9Text" class="value"></span></div>
@@ -396,9 +418,27 @@
       <label class="switch small"><input id="memFav" type="checkbox"><span></span> ★</label>
     </div>
     <div class="mem-list" id="memList"></div>
+    <details class="mem-io" id="memIo">
+      <summary>Import / export</summary>
+      <label class="mem-io-label" for="memSdrPath">SDR# installation folder</label>
+      <div class="mem-io-row">
+        <input id="memSdrPath" placeholder="C:\sdrsharp" autocomplete="off" spellcheck="false"
+          title="SDR# folder: frequencies.xml is read from it and from profile subfolders (e.g. Instances\Profile1). Or a single profile folder / frequencies.xml">
+        <button id="memImport" class="key" title="Imports the memories from frequencies.xml; duplicates are skipped">⇧ IMPORT SDR#</button>
+      </div>
+      <div class="mem-io-row two">
+        <button id="memExportFav" class="key" title="Downloads the starred memories as a JSON file">⇩ EXPORT ★</button>
+        <button id="memExportGroup" class="key" title="Downloads the group selected above (All = every memory)">⇩ EXPORT ALL</button>
+      </div>
+      <p id="memIoNote" class="note" hidden></p>
+    </details>
   </div>
 </aside>
 
+</div>
+
+<script src="/static/icao_countries.js"></script>
+<script src="/static/bandplan.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

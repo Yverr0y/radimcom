@@ -1,6 +1,7 @@
 """VFO A–D launcher: for every VFO in vfos.json it starts a separate receiver process (app.py --vfo X)
 with its own dongle (by serial number), port and settings, and itself serves the page and the VFO list
 on the main port. The page then talks to the receivers directly through their ports.
+A chained VFO ("chain": "A") has no dongle of its own: it gets the samples of VFO A (iqshare.py).
 
 VFO settings (config_X.json) are created at the first start from config.json and the "init" entry in vfos.json.
 """
@@ -42,11 +43,12 @@ def main():
     ensure_configs(vfos)
 
     procs = []
-    for v in vfos:
-        # Dongles are opened one after another; opening them at the same time through libusb is unreliable.
+    # VFOs with their own dongle first, chained VFOs (sharing a dongle, "chain": "A") after them.
+    for v in sorted(vfos, key=lambda v: bool(v.get("chain"))):
         procs.append(subprocess.Popen([sys.executable, os.path.join(BASE, "app.py"), "--vfo", v["name"]],
                                       stdin=subprocess.PIPE, cwd=BASE))
-        time.sleep(1.5)
+        # Dongles are opened one after another; opening them at the same time through libusb is unreliable.
+        time.sleep(0.5 if v.get("chain") else 1.5)
 
     app = Flask(__name__, static_folder="static")
 
@@ -56,7 +58,7 @@ def main():
 
     @app.route("/api/vfos")
     def api_vfos():
-        return jsonify([{k: v.get(k) for k in ("name", "port", "serial", "note")} for v in vfos])
+        return jsonify([{k: v.get(k) for k in ("name", "port", "serial", "note", "chain")} for v in vfos])
 
     port = int(setup.get("port", 8434))
     print(f"RADIMCOM (VFO {', '.join(v['name'] for v in vfos)}): http://localhost:{port}")

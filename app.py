@@ -44,10 +44,16 @@ def vfo_from_args():
         return None
     name = sys.argv[sys.argv.index("--vfo") + 1]
     with open(VFOS_PATH, encoding="utf-8") as f:
-        return next(v for v in json.load(f)["vfos"] if v["name"] == name)
+        vfos = json.load(f)["vfos"]
+    return next(v for v in vfos if v["name"] == name), vfos
 
 
-VFO = vfo_from_args()
+VFO, ALL_VFOS = vfo_from_args() or (None, [])
+# VFO chaining (iqshare.py): "chain": "A" in vfos.json = this VFO uses the dongle of VFO A.
+OWNER = next((v for v in ALL_VFOS if VFO and v["name"] == VFO.get("chain")), None)
+CHAINED = [v["name"] for v in ALL_VFOS if VFO and v.get("chain") == VFO["name"]]   # VFOs fed by this one
+# dongle settings: on a chained VFO they are sent to the owner VFO, which applies them to the dongle
+DONGLE_KEYS = ("gain", "rtl_agc", "bias_tee", "ppm", "sample_rate")
 CONFIG_PATH = data(VFO["config"] if VFO else "config.json")
 SAMPLE_RATES = (1024000, 1536000, 2048000, 2100000, 2400000)   # 2.1 MS/s = VDL2 (105 kS/s × 20)
 UPCONV_MODES = ("auto", "on", "off")
@@ -102,9 +108,18 @@ class Hub:
 
 
 cfg = load_config()
+if cfg.get("tx_enabled") and not cfg.get("tx_ack_at"):
+    cfg["tx_enabled"] = False      # enabled before the disclaimer existed: it has to be accepted first
 if VFO:
-    cfg["vfo"], cfg["serial"], cfg["port"] = VFO["name"], VFO["serial"], VFO["port"]
-    cfg["driver"] = VFO.get("driver", "rtl")
+    dongle = OWNER or VFO
+    cfg["vfo"], cfg["serial"], cfg["port"] = VFO["name"], dongle.get("serial", ""), VFO["port"]
+    cfg["driver"] = dongle.get("driver", "rtl")
+    if OWNER:
+        import iqshare
+        cfg["chain"] = {"owner": OWNER["name"], "port": iqshare.iq_port(OWNER)}
+        cfg["vdl2"] = False          # VDL2 needs its own centre and sample rate
+    else:
+        cfg.pop("chain", None)
 hub = Hub()
 save_lock = threading.Lock()
 save_timer = None
@@ -188,6 +203,8 @@ _saved_logged.update(wefax=getattr(wefax, "saved", None), sstv=getattr(sstv, "sa
 
 def tx_capable():
     """The VFO can transmit (LimeSDR); transmitting must still be enabled in SET (tx_enabled)."""
+    if OWNER:
+        return False                 # chained VFO: the owner VFO has the transmitter
     return cfg.get("driver") == "lime" or hasattr(receiver.sdr, "tx_start")
 
 
@@ -271,7 +288,7 @@ def index():
 @app.route("/api/state")
 def api_state():
     return jsonify(dict(state(), sample_rates=SAMPLE_RATES, modes=MODES, ft8_freqs=FT8_FREQS, acars_freqs=ACARS_FREQS,
-                        vdl2_freqs=VDL2_FREQS, vdl2_center=VDL2_CENTER, vdl2_rate=VDL2_RATE))
+                        vdl2_freqs=VDL2_FREQS, vdl2_center=VDL2_CENTER, vdl2_rate=VDL2_RATE, tx_bands=TX_BANDS))
 
 
 # ---------- transmitting (PTT) ----------
@@ -286,6 +303,41 @@ TX_MAX_S = 120
 TX_AUDIO = data("tx_audio", "test_message.wav")
 TX_FM_DEV = 2500.0     # deviation for a 12.5 kHz channel
 TX_GAP_S = 0.7         # silence between repetitions of the message
+# !!! DO NOT EXTEND THESE LIMITS. Anyone who modifies or removes them is solely responsible for any
+# !!! transmission outside the bands they are licensed for (see LICENSE, "Radio transmission notice").
+# TX is allowed only inside these bands (IARU Region 1 / CEPT). The whole emission must fit in:
+# the tuned frequency ± TX_EDGE_HZ (FM ±2.5 kHz deviation + 3 kHz audio). Checked here on the server,
+# so no client can transmit outside them. National rules may be narrower - the operator is responsible.
+TX_BANDS = [
+    (1_810_000, 2_000_000, "160 m"),
+    (3_500_000, 3_800_000, "80 m"),
+    (5_351_500, 5_366_500, "60 m"),
+    (7_000_000, 7_200_000, "40 m"),
+    (10_100_000, 10_150_000, "30 m"),
+    (14_000_000, 14_350_000, "20 m"),
+    (18_068_000, 18_168_000, "17 m"),
+    (21_000_000, 21_450_000, "15 m"),
+    (24_890_000, 24_990_000, "12 m"),
+    (26_960_000, 27_410_000, "CB 27 MHz"),
+    (28_000_000, 29_700_000, "10 m"),
+    (50_000_000, 52_000_000, "6 m"),
+    (70_000_000, 70_500_000, "4 m"),
+    (144_000_000, 146_000_000, "2 m"),
+    (430_000_000, 440_000_000, "70 cm"),
+    (446_000_000, 446_200_000, "PMR446"),
+    (1_240_000_000, 1_300_000_000, "23 cm"),
+]
+TX_EDGE_HZ = 5000
+
+
+def tx_band(hz):
+    """Name of the TX band that holds the whole emission at hz, otherwise None."""
+    for lo, hi, name in TX_BANDS:
+        if lo + TX_EDGE_HZ <= hz <= hi - TX_EDGE_HZ:
+            return name
+    return None
+
+
 tx_lock = threading.Lock()
 tx_seen = 0.0
 tx_since = 0.0
@@ -344,6 +396,10 @@ def api_tx():
             return jsonify(state())
         if receiver.lo:
             return jsonify(error="TX only without the upconverter (set upconverter OFF)"), 400
+        tune = float(cfg["tune_hz"])
+        if not tx_band(tune):
+            tx_off("out of TX bands")
+            return jsonify(error=f"{tune / 1e6:.4f} MHz is outside the allowed TX bands (ham, CB, PMR446)"), 400
         tx_seen = time.time()
         if not sdr.tx_on:
             try:
@@ -351,7 +407,7 @@ def api_tx():
                 if cfg["mode"] == "FM" and os.path.exists(TX_AUDIO):
                     audio, rate = load_tx_audio()
                     fm = (audio, rate, TX_FM_DEV)
-                info = sdr.tx_start(float(cfg["tune_hz"]), fm=fm)
+                info = sdr.tx_start(tune, fm=fm)
             except Exception as e:
                 return jsonify(error=str(e)), 500
             tx_since = tx_seen
@@ -480,7 +536,9 @@ def api_vdl2():
 
 def set_vdl2(on, changes):
     """VDL2 on: the VFO goes to 2.1 MS/s around 136.85 MHz (all European VDL2 channels), classic ACARS off.
-    VDL2 off: the previous sample rate comes back."""
+    VDL2 off: the previous sample rate comes back. Not on LimeSDR (RTL-SDR only)."""
+    if on and (cfg.get("driver") == "lime" or OWNER):
+        on = False
     if on == vdl2.enabled:
         return
     cfg["vdl2"] = on
@@ -519,6 +577,28 @@ def api_memory_add():
     return jsonify(memories.add(m))
 
 
+@app.route("/api/memories/import", methods=["POST"])
+def api_memory_import():
+    """Imports SDR# memories: {"path": SDR# folder (profile subfolders included) or one frequencies.xml}."""
+    try:
+        files = memories.sdrsharp_files(request.get_json(force=True).get("path", ""))
+    except (ValueError, OSError) as e:
+        return jsonify({"error": str(e)}), 400
+    added = skipped = 0
+    done, errors = [], []
+    for path in files:
+        try:
+            a, s = memories.import_sdrsharp(path, lo_offset_hz=None)
+        except (ValueError, OSError, memories.ET.ParseError) as e:
+            errors.append(f"{path}: {e}")
+            continue
+        added, skipped = added + a, skipped + s
+        done.append(path)
+    if not done:
+        return jsonify({"error": "; ".join(errors)}), 400
+    return jsonify({"added": added, "skipped": skipped, "files": done, "errors": errors})
+
+
 @app.route("/api/memories/<mid>", methods=["PATCH"])
 def api_memory_update(mid):
     m = memories.update(mid, request.get_json(force=True))
@@ -528,6 +608,24 @@ def api_memory_update(mid):
 @app.route("/api/memories/<mid>", methods=["DELETE"])
 def api_memory_delete(mid):
     return (jsonify({"ok": True}), 200) if memories.delete(mid) else (jsonify({"error": "not found"}), 404)
+
+
+def forward_to_owner(changes):
+    """Chained VFO: a dongle setting (gain, ppm, sample rate…) goes to the owner VFO; None = OK, else the error."""
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(f"http://127.0.0.1:{OWNER['port']}/api/set", data=json.dumps(changes).encode(),
+                                 headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=3):
+            return None
+    except urllib.error.HTTPError as e:
+        try:
+            return json.loads(e.read()).get("error") or str(e)
+        except ValueError:
+            return str(e)
+    except OSError:
+        return f"VFO {OWNER['name']} (owner of the shared dongle) is not reachable"
 
 
 @app.route("/api/set", methods=["POST"])
@@ -544,7 +642,11 @@ def api_set():
             if body["upconv"] not in UPCONV_MODES:
                 raise ValueError("unknown upconverter mode")
             changes["upconv"] = body["upconv"]
-        if "tune_hz" in changes or "upconv" in changes:
+        if OWNER and "tune_hz" in changes:
+            # chained VFO: any frequency is accepted; outside the owner's band it is silent and shows OOR
+            if changes["tune_hz"] < 0:
+                raise ValueError("frequency out of range")
+        elif "tune_hz" in changes or "upconv" in changes:
             # HF below the tuner's lower limit (R820T 24 MHz, LimeSDR Mini 10 MHz) can only be received through
             # an upconverter; upper limit R820T 1766 MHz, LimeSDR Mini 3500 MHz.
             tune = changes.get("tune_hz", cfg["tune_hz"])
@@ -637,7 +739,11 @@ def api_set():
     if "tx_enabled" in body:
         if not tx_capable():
             return jsonify({"error": "this VFO cannot transmit"}), 400
+        if body["tx_enabled"] and not body.get("tx_ack"):
+            return jsonify({"error": "TX can be enabled only after accepting the TX disclaimer"}), 400
         cfg["tx_enabled"] = bool(body["tx_enabled"])
+        if cfg["tx_enabled"]:
+            cfg["tx_ack_at"] = time.strftime("%Y-%m-%d %H:%M:%S")   # when the operator accepted the disclaimer
         if not cfg["tx_enabled"]:
             with tx_lock:
                 tx_off("TX disabled")
@@ -661,6 +767,17 @@ def api_set():
         sync_cpdlc()
         save_config_later()
         hub.event("status", state())
+    if "tune_hz" in changes and changes["tune_hz"] != cfg.get("tune_hz"):
+        with tx_lock:
+            tx_off("retuned")      # TX stays on the frequency it started on; retuning ends it (new PTT = band check again)
+    if OWNER:
+        forward = {k: changes.pop(k) for k in DONGLE_KEYS if k in changes}
+        for k in ("center_hz", "lo_offset_hz", "upconv", "device"):
+            changes.pop(k, None)     # the owner VFO decides where the dongle is
+        if forward:
+            err = forward_to_owner(forward)
+            if err:
+                return jsonify({"error": err}), 502
     receiver.update(changes)
     if set(changes) - {"reset"}:
         save_config_later()
@@ -717,6 +834,10 @@ def exit_with_parent():
 if __name__ == "__main__":
     if VFO:
         threading.Thread(target=exit_with_parent, daemon=True).start()
+    if CHAINED:
+        import iqshare
+        receiver.iq_server = iqshare.IqServer(iqshare.iq_port(VFO))
+        print(f"VFO {VFO['name']}: shares its dongle with VFO {', '.join(CHAINED)} (port {iqshare.iq_port(VFO)})")
     receiver.start()
     try:
         port = int(cfg.get("port", 8434))

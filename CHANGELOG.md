@@ -1,5 +1,101 @@
 # Changelog
 
+## Ver. 0.106
+
+- **VFO chaining: one dongle for several VFOs.** A VFO can use the dongle of another VFO, e.g. one dongle for
+  VFO A–D, or two dongles with two VFOs each (`"chain": "A"` in `vfos.json` instead of a serial number).
+  - The owner VFO opens the dongle and sends its samples to the chained VFOs over a local socket
+    (`127.0.0.1`, VFO port + 100; new module `iqshare.py`). Each chained VFO has its own frequency, mode, filter,
+    squelch, decoders, waterfall and audio.
+  - The owner's tuning sets the band the dongle receives (centre ± 95 % of half the sample rate). A chained VFO can be
+    tuned anywhere: inside the band it shows a green **CHAIN** flag instead of the USB icon; outside (also when the
+    owner moves away) it is silent and shows an orange **OOR** flag ("out of range VFO-A" on hover).
+  - Gain, RTL AGC, bias-tee, ppm and sample rate belong to the dongle: changed on a chained VFO, they are applied
+    on the owner VFO and so to every VFO on that dongle. VDL2 and TX are not available on a chained VFO.
+  - SDR setup (`setup.bat`): for each VFO type a device number, unplug a device, or type the letter of an earlier
+    VFO (e.g. `A`) to share its dongle; the wizard now offers all four VFOs even with fewer dongles.
+  - The launcher starts the VFOs with their own dongle first, then the chained ones.
+- ATN CPDLC (VDL2): click a message to see all decoded fields under the compact lines: the CPDLC / CM / ADS-C
+  message first (header with date and time, ASN.1 element names and values), then the VDL2 frame
+  (AVLC addresses, X.25, CLNP, COTP, session / association). Click again to collapse.
+- Direction arrows in the ACARS / VDL2 card coloured: ↓ downlink (from the aircraft) green, ↑ uplink (from the
+  ground) orange.
+- VDL2 key greyed out on a LimeSDR VFO (VDL2 runs on RTL-SDR only).
+- Message filter in the ACARS / VDL2 card: click the ACARS / CPDLC / ADS-C tags at the top of the card
+  to show only those messages (tags can be combined; CPDLC and ADS-C include the ATN versions). "FILTER ON · N of M shown" with ✕ to show all again;
+  the filter is remembered.
+- ACARS / VDL2 card fills the DECODERS tab and only the message list scrolls; the header with the keys,
+  filters and notes stays in place.
+- ATN CPDLC rows: the Aircraft column waits for the ADS-B lookup ("…") and then shows the registration, instead of
+  showing the ICAO address first and rewriting it.
+- ATN ADS-C (ADS-C reports over VDL2) decoded like FANS ADS-C: report type, position, altitude, time, accuracy,
+  contract; track, ground speed, vertical rate; heading, Mach, IAS; wind and temperature; next waypoints with times;
+  planned trajectory (fixes, levels, ETA, Mach, start of climb / descent). Shown with the purple ADS-C tag.
+- Tags unified: ATN CPDLC messages have the same green CPDLC tag as FANS CPDLC (the Description column still says
+  "ATN CPDLC"); rows, filter and description use the same colours.
+- The tag (ACARS / CPDLC / ADS-C) has its own first column "Type" in the message table. Fixed column widths:
+  the table keeps its layout when a filter is switched on or off.
+- New **Country** column (between Frequency and Aircraft): flag and code of the country of registration, worked out
+  from the aircraft's 24-bit ICAO address (ICAO Annex 10 address blocks, `static/icao_countries.js`), like the adsb.fi
+  map does. ATN messages: from the address in the message; ACARS: from the ADS-B lookup. Flag images from flagcdn.com.
+- Aircraft column renamed **Callsign** (registration only, linked to the map). Column order: Type, UTC, Freq, Country,
+  Flight, Callsign, **ICAO** (24-bit address), and from ADS-B **ACFT type**, **Model**, **FL**, **Speed**; then Label,
+  Description, Message. The position is no longer shown. "Frequency" shortened to "Freq".
+- **Memory names on the spectrum**: memories in the visible part of the spectrum get a green ▲ marker at the top edge
+  (under the band-name strip) pointing at their frequency, with a name tag below it. Tags are placed in up to three rows
+  so they do not overlap each other or the mode / bandwidth label; favourites get a place first, a memory that does not
+  fit shows only its marker. Hover a tag for the full name, frequency, mode and group; click it to recall the memory
+  (frequency, mode, bandwidth).
+- **One design for all decoder cards** (FT8, ACARS / VDL2, CW, RTTY, WEFAX, SSTV): the card fills the height of the
+  DECODERS tab, the header, settings and notes stay in place and only the black content box (table, text, image)
+  scrolls with its own scrollbar. Several cards on at once share the height. SSTV: the live image stays in view and
+  the gallery of saved images scrolls next to it.
+- **Page scales with the window**: the whole page is laid out in a "virtual window" of at least 1920 × 820 px and
+  scaled to the browser window, so the layout no longer reflows on small windows and browser zoom has no effect.
+  Spectrum and waterfall stay sharp at any scale.
+- **CW decoder more reliable** with weak signals, fading (QSB) and static crashes (QRN):
+  - automatic minimum threshold from the noise floor measured in the receiver passband, so noise alone does not
+    produce characters (no more random E / T / I after the station stops);
+  - the mark level is taken from the decoded marks and falls back quickly after a pause, so a fade no longer leaves the
+    threshold too high; lower on/off thresholds let faded marks through;
+  - noise blanker: short static crashes are removed before the filters (long bursts are kept, a strong station is
+    never blanked);
+  - the decoder starts on weaker signals (tone SNR from 6 dB instead of 8 dB);
+  - the speed estimate no longer locks onto noise (it is used only when at least 80 % of the marks fit dots and dashes).
+  On simulated signals the character error rate fell on average from 40 % to 15 % (e.g. 20 WPM at 0 dB / 500 Hz:
+  46 % → 15 %, fading 10 dB at 25 WPM: 21 % → 2 %, static crashes with fading: 24 % → 2 %). The ALC setting does
+  not affect the decoder: it works on the receiver signal before the audio and has its own level tracking.
+- **Band plan on the spectrum axis** extended and moved to a local table `static/bandplan.js` (Europe / ITU Region 1;
+  sources: ITU RR Art. 5, CEPT ERC Report 25 / ECA, ERC/REC 70-03, IARU Region 1 band plan, 3GPP / ETSI, ICAO Annex 10,
+  WMO). New bands: UHF military airband (225–400 MHz), VOR/ILS, DME/TACAN, SSR 1030, ADS-B 1090, TETRA, VHF low /
+  military (30–87.5 MHz), DAB (Band III), DVB-T/T2 (470–694 MHz), LTE 700 / 800, GSM-900 / 1800, UMTS 2100 (UL / DL),
+  LPD433, SRD 868 / LoRaWAN, ISM 2.4 GHz / Wi-Fi, weather satellites (137 MHz, HRPT 1.7 GHz), radiosondes
+  (400.15–406 MHz and L-band), COSPAS-SARSAT 406, GNSS L1 / L2 / L5, Inmarsat, Iridium, marine VHF, AIS, NAVTEX,
+  2182 kHz, paging 169 MHz, DCF77, NDB, LW / MW broadcast, 13 cm ham. Narrow bands are drawn over wide ones
+  (e.g. ADS-B inside DME); hover the axis for a tooltip with the descriptions of all bands at that frequency.
+- **Memory import / export** (MEM drawer → Import / export):
+  - **⇧ IMPORT SDR#**: enter the SDR# installation folder (remembered by the browser) and import its memories. Reads
+    `frequencies.xml` in the folder and in profile subfolders of newer SDR# versions (e.g. `Instances\Profile1`); a single
+    profile folder or `frequencies.xml` can be given too. Entries with any frequency shift are imported; duplicates
+    (same frequency and name), out-of-range frequencies and unsupported modes are skipped; a broken file does not stop
+    the others. The note shows how many were imported / skipped and from which profiles. The command-line import
+    (`python memories.py …`) still takes only HF upconverter entries.
+  - **⇩ EXPORT ★** downloads the starred memories, **⇩ EXPORT <group>** the group selected in the filter (All = every
+    memory), with one click, as a JSON file in the `memories.json` format.
+- **HTTP API description** in `API/API.md` (ports, state, settings, events, audio, decoders, memories, examples);
+  linked from the README and included in the install / upgrade zips.
+- **LimeSDR TX limited to allowed bands**: the receiver (server side, not only the page) allows PTT only when the
+  whole emission (tuned frequency ±5 kHz) is inside ham 160 m – 10 m, 6 m, 4 m, 2 m, 70 cm, 23 cm (IARU Region 1),
+  CB 26.960–27.410 MHz or PMR446 446.0–446.2 MHz. Retuning during TX ends the transmission.
+- **TX disclaimer**: red "IMPORTANT – transmitting disclaimer" in SET (licence required under ITU / CEPT / FCC /
+  national rules, operator fully responsible, software provided AS IS). Enable TX asks to accept it, the server
+  refuses TX without it and remembers when it was accepted; TX enabled by an older version is switched off until
+  the disclaimer is accepted.
+- **MIT licence** (`LICENSE`, also in the install / upgrade zips) with a radio transmission notice: anyone who
+  modifies or removes the TX limits is solely responsible.
+- All remaining Slovak comments in the code (`static\app.js`, `style.css`, `index.html`, `bandplan.js`, batch files)
+  translated to English.
+
 ## Ver. 0.105
 
 - **VDL2 decoder** (VDL Mode 2, 136.725–136.975 MHz): the digital data link that carries most airline ACARS over

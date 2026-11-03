@@ -12,13 +12,16 @@ Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
   and its own settings. All frequencies are shown side by side: the active VFO is lit, inactive ones are grey
   but show the actual tuned frequency. The waterfall of every VFO keeps running, so its history is visible
   right after switching. With fewer than four SDRs the remaining VFO windows stay in place, greyed out ("NO SDR").
+- **VFO chaining:** one dongle can serve several VFOs, e.g. one dongle for VFO A–D, or two dongles with two VFOs
+  each. A chained VFO listens anywhere inside the band its dongle receives and shows a green CHAIN flag
+  (see [VFO chaining](#vfo-chaining-one-dongle-for-several-vfos)).
 - **RF GAIN and SQUELCH sliders** under each VFO display.
 - **Modes:** AM, FM, WFM, LSB, USB and CW with selectable filter width.
 - **WFM stereo** (19 kHz pilot, **ST** flag) and **RDS**: station name (PS), RadioText, PI, PTY, TP/TA and clock (CT).
 - **Squelch** for AM, FM and WFM, each mode with its own level. It decides every ~8 ms, so it does not cut off
   the start of a transmission (airband). The level is marked on the S-meter with a yellow tick.
 - **Spectrum and waterfall** with 1×–32× zoom.
-- **Decoders:** FT8, WEFAX (radio fax with automatic format detection), CW (Morse with AFC and speed estimation), RTTY (Baudot, automatic shift 90–1000 Hz, speed 45.45/50/75/100 Bd and polarity), SSTV (colour images, 14 modes, VIS) and aircraft data link: ACARS (131.725 MHz and others, AM, MSK 2400 bit/s) and VDL2 (VDL Mode 2, 136.725–136.975 MHz, all channels at once, via dumpvdl2), with CPDLC (FANS-1/A and European ATN) and ADS-C position reports decoded to plain text; aircraft type and position from adsb.fi / adsb.lol. See [Aircraft data link](#aircraft-data-link-acars-vdl2-cpdlc-ads-c).
+- **Decoders:** FT8, WEFAX (radio fax with automatic format detection), CW (Morse with AFC and speed estimation), RTTY (Baudot, automatic shift 90–1000 Hz, speed 45.45/50/75/100 Bd and polarity), SSTV (colour images, 14 modes, VIS) and aircraft data link: ACARS (131.725 MHz and others, AM, MSK 2400 bit/s) and VDL2 (VDL Mode 2, 136.725–136.975 MHz, all channels at once, via dumpvdl2), with CPDLC (FANS-1/A and European ATN) and ADS-C position reports decoded to plain text; aircraft type, flight level and speed from adsb.fi / adsb.lol, country flag from the ICAO address. See [Aircraft data link](#aircraft-data-link-acars-vdl2-cpdlc-ads-c).
 - **Daily logs:** the LOG checkbox in each decoder card writes to `data\logs\<decoder>_YYYY-MM-DD.txt` (UTC, one line per message; WEFAX/SSTV log the names of saved images), ACARS / VDL2 to `data\acars\acars_YYYY-MM-DD.txt` and (CPDLC, ADS-C) `data\acars\cpdlc_YYYY-MM-DD.txt`.
 - **Frequency memories** (MEM) with favourites and import from SDR# (`frequencies.xml`).
 - **Upconverter:** HF is tuned via the LO (e.g. 100 MHz), see [Shortwave (HF) reception](#shortwave-hf-reception-with-an-upconverter). For a VFO with a manual converter switch, crossing
@@ -108,15 +111,15 @@ Airliners exchange data with the ground over two VHF links, and RADIMCOM receive
   [dumpvdl2](https://github.com/szpajder/dumpvdl2) (`lib\vdl2\dumpvdl2.exe`), which runs as a separate program;
   `vdl2.py` feeds it the raw samples and reads the decoded messages. Turning VDL2 off restores the sample rate.
   VDL2 works with RTL-SDR dongles only; it is not supported on LimeSDR.
-- Every message shows time, frequency, aircraft and flight (with type and position from ADS-B, in blue; click
-  the registration or flight for the live map), label, description and text. A **tag** says what it is:
+- Every message shows its type tag, time, frequency, country flag (from the aircraft's ICAO address), flight, callsign
+  (registration; click for the live map), ICAO address, aircraft type, model, flight level and ground speed (from ADS-B,
+  in blue), label, description and text. The **tag** in the first column says what it is (click a tag at the top to filter):
 
   | Tag | Meaning |
   |---|---|
   | **ACARS** (slate) | plain ACARS message (airline, maintenance, weather…) |
-  | **CPDLC** (green) | FANS-1/A controller-pilot message: ↑ from ATC (amber text), ↓ from the aircraft (green) |
-  | **ADS-C** (violet) | automatic position report to air traffic control |
-  | **ATN CPDLC** (teal) | European CPDLC over VDL2 |
+  | **CPDLC** (green) | controller-pilot message: ↑ from ATC (amber text), ↓ from the aircraft (green); FANS-1/A in ACARS, or the European ATN CPDLC over VDL2 (Description column says "ATN CPDLC") |
+  | **ADS-C** (violet) | automatic position report to air traffic control (FANS in ACARS, or ATN ADS-C over VDL2) |
 
   ![VDL2 card: all five channels decoded at once; European ATN CPDLC (WILCO, LOGICAL ACKNOWLEDGEMENT with MIN/MRN) between plain ACARS messages with aircraft type and position from ADS-B](docs/images/decoders_vdl2.png)
 
@@ -223,7 +226,9 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
 
   - WEFAX: stations (DWD Pinneberg 3855/7880/13882.5 kHz, Northwood GYA 2618.5/4610/8040/11086.5 kHz), LPM/IOC (Auto or fixed),
     NEW and PNG; a click in the image sets that spot as the left edge. Finished images are saved to `data\wefax\`.
-  - CW: TUNE switches to CW and tunes to the detected tone, CLR clears the text.
+  - CW: TUNE switches to CW and tunes to the detected tone, CLR clears the text. The decoder sets its own
+    threshold from the measured noise floor and the level of the received marks (follows fading, a noise blanker
+    removes static crashes), so it does not depend on the ALC or the volume.
   - RTTY: SHIFT, BAUD and POLARITY (Auto or fixed), CLR.
 
     ![RTTY decoder receiving the DWD weather broadcast: 50 Bd, 445 Hz shift and reverse polarity detected automatically](docs/images/decoders_rtty.png)
@@ -262,6 +267,11 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
   - Without `vfos.json` (single receiver) also the dongle selection and the upconverter mode (auto / on / off).
 - **MENU → MEM**: frequency memories with groups, search and favourites. ＋ SAVE CURRENT stores the frequency,
   mode and width under a name and group; ★ marks a favourite.
+  Memories in the visible part of the spectrum show their name on a green tag at the top of the spectrum;
+  click a tag to recall the memory.
+  **Import / export** (at the bottom of the drawer): ⇧ IMPORT SDR# imports memories from the SDR# installation folder
+  (`frequencies.xml` there and in profile subfolders such as `Instances\Profile1`; duplicates are skipped).
+  ⇩ EXPORT ★ downloads the starred memories, ⇩ EXPORT &lt;group&gt; the selected group (All = every memory), as JSON.
 
 The clock (top right) switches between local time and UTC with a click.
 
@@ -302,6 +312,28 @@ When squelch is on for an inactive VFO and it opens, that VFO's button lights up
 - `config` is the VFO settings file. On first start it is created from `config.json` plus the values from `init`.
   After that each VFO remembers its own tuning, mode, filters, squelch, gain and ppm.
 
+### VFO chaining: one dongle for several VFOs
+
+A VFO with `"chain": "A"` instead of `serial` has no dongle of its own: it uses the samples of VFO A's dongle.
+Any combination works, e.g. one dongle for VFO A–D, or two dongles with two VFOs each:
+
+```json
+{ "name": "A", "serial": "SDR00001", "port": 8441, "config": "config_A.json" },
+{ "name": "B", "chain": "A", "port": 8442, "config": "config_B.json", "note": "chained to VFO A" },
+{ "name": "C", "serial": "SDR00002", "port": 8443, "config": "config_C.json" },
+{ "name": "D", "chain": "C", "port": 8444, "config": "config_D.json", "note": "chained to VFO C" }
+```
+
+- The owner VFO (A) controls the dongle: its tuning sets the centre of the received band. A chained VFO
+  receives only inside that band (centre ± 95 % of half the sample rate, e.g. ±0.97 MHz at 2.048 MS/s). It can be
+  tuned anywhere, but outside the band (or when VFO A moves away) it is silent and shows an orange **OOR** flag
+  ("out of range VFO-A" on hover) until the frequency is inside the band again.
+- Gain, RTL AGC, bias-tee, ppm and the sample rate belong to the dongle: changed on a chained VFO, they are sent to
+  the owner VFO and apply to all VFOs on that dongle.
+- A chained VFO shows a green **CHAIN** flag instead of the USB icon. VDL2 and TX are not available on it.
+- The owner sends the samples to its chained VFOs over a local socket (`127.0.0.1`, VFO port + 100, e.g. 8541;
+  `"iq_port"` in the owner's entry changes it).
+
 ### Initial setup: `setup_sdr.py`
 
 ```bash
@@ -310,7 +342,8 @@ python setup_sdr.py
 
 The wizard (`setup.bat` on Windows) finds the connected RTL-SDRs and LimeSDRs and assigns them to VFO A, B, C, D:
 the device for a VFO is chosen by number or by unplugging it for a moment (the wizard detects which one is
-missing). Then it asks about the upconverter and ppm and writes `vfos.json`. If the dongles share the same serial
+missing). Typing the letter of an earlier VFO (e.g. `A`) chains the new VFO to that VFO's dongle, so one dongle
+can serve several VFOs. Then it asks about the upconverter and ppm and writes `vfos.json`. If the dongles share the same serial
 number (commonly `00000001`), it offers to write a unique number to the EEPROM. Old `vfos.json` and `config_X.json`
 are moved to `data\config_backup\`. The receiver must be stopped during setup.
 
@@ -318,9 +351,25 @@ ppm correction can also be set later in the SET menu of each VFO.
 
 ### Transmitting (LimeSDR)
 
-For a VFO with a LimeSDR, SET has an **Enable TX** switch (off by default). When enabled, PTT is
-holding the space bar: in FM a test message from `data\tx_audio\test_message.wav` is sent (if it exists), otherwise a carrier.
-Transmitting works only without the upconverter.
+> [!CAUTION]
+> **IMPORTANT – transmitting disclaimer.** Transmitting is legal only for a holder of a valid amateur radio
+> licence (or another authorisation required in your country), within the privileges of that licence and the
+> regulations based on the ITU Radio Regulations, CEPT (T/R 61-01, T/R 61-02, ERC/REC 70-03), FCC Part 97 or your
+> national authority. PMR446 and CB may require type-approved equipment, so an SDR transmitter may not be allowed
+> there at all. An SDR is not a certified transmitter and can emit harmonics and spurious signals, so use a
+> suitable filter and antenna or a dummy load. **You, the operator, are fully and solely responsible for every
+> transmission and its consequences.** The software is provided "AS IS", without any warranty, and the author
+> accepts no liability (see [LICENSE](LICENSE)). Anyone who modifies or removes the TX band limits is solely
+> responsible for any transmission outside the bands they are licensed for.
+
+For a VFO with a LimeSDR, SET has an **Enable TX** switch (off by default). You can turn it on only after
+you accept the disclaimer above. When enabled, PTT is holding the space bar: in FM a test message from
+`data\tx_audio\test_message.wav` is sent (if it exists), otherwise a carrier.
+Transmitting works only without the upconverter. Retuning ends the transmission.
+
+The receiver allows TX only when the whole emission (tuned frequency ±5 kHz) is inside one of these bands:
+ham 160 m, 80 m, 60 m, 40 m, 30 m, 20 m, 17 m, 15 m, 12 m, 10 m, 6 m, 4 m, 2 m, 70 cm, 23 cm (IARU Region 1),
+CB 26.960–27.410 MHz and PMR446 446.0–446.2 MHz. Your national band plan may be narrower.
 
 ### Dongle serial numbers: `eeprom_tool.py`
 
@@ -344,9 +393,17 @@ Restores the EEPROM from a backup.
 
 ### Importing memories from SDR#
 
+Easiest from the web page: MEM → Import / export → ⇧ IMPORT SDR#. From the command line (HF upconverter entries only):
+
 ```bash
 python memories.py C:\sdrsharpSW\frequencies.xml
 ```
+
+### HTTP API
+
+Everything the web page does goes through an HTTP API on each VFO's port (tuning, mode, decoders, events,
+audio, memories), so the receivers can be controlled from scripts or other programs too. Description and examples:
+[API/API.md](API/API.md).
 
 ## Files
 
@@ -360,10 +417,12 @@ python memories.py C:\sdrsharpSW\frequencies.xml
 | `vdl2.py` | VDL2: runs `lib\vdl2\dumpvdl2.exe`, feeds it the raw samples, turns its messages into ACARS / CPDLC records |
 | `cpdlc_schema.py` | CPDLC message set (generated data) |
 | `CHANGELOG.md` | version history |
+| `API/API.md` | HTTP API description (control the receivers from scripts) |
 | `daylog.py` | daily decoder logs |
 | `memories.py` | memories and import from SDR# |
 | `eeprom_tool.py` | reading, backing up and writing dongle EEPROM |
 | `setup_sdr.py` | initial dongle setup wizard (`vfos.json`) |
+| `iqshare.py` | VFO chaining: the owner VFO shares its dongle samples with chained VFOs |
 | `lime.py` | LimeSDR via LimeSuite.dll (receive and transmit) |
 | `static/` | web interface (`index.html`, `style.css`, `app.js`) |
 | `paths.py` | data paths (`data\`), migration of data from older versions |
@@ -406,3 +465,9 @@ folder somewhere outside the RADIMCOM folder.
 - In `install.bat`, answer **N** to "Run the SDR setup now" to keep the existing VFO assignment; with Y a new
   assignment is created and the old one is moved to `data\config_backup\`.
 - Do not run two RADIMCOM folders at the same time: they share the dongles and port 8434.
+
+## License
+
+RADIMCOM is released under the [MIT License](LICENSE): provided "AS IS", without any warranty, and the author
+accepts no liability. The LICENSE file also has a radio transmission notice. Third-party components (dumpvdl2,
+libacars, LimeSuite, MSYS2 libraries) keep their own licences, listed in `installer\VDL2.txt`.
