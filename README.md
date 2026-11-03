@@ -107,6 +107,7 @@ Airliners exchange data with the ground over two VHF links, and RADIMCOM receive
   136.850 button re-centres it). Spectrum, waterfall and audio keep working. Decoding is done by
   [dumpvdl2](https://github.com/szpajder/dumpvdl2) (`lib\vdl2\dumpvdl2.exe`), which runs as a separate program;
   `vdl2.py` feeds it the raw samples and reads the decoded messages. Turning VDL2 off restores the sample rate.
+  VDL2 works with RTL-SDR dongles only; it is not supported on LimeSDR.
 - Every message shows time, frequency, aircraft and flight (with type and position from ADS-B, in blue; click
   the registration or flight for the live map), label, description and text. A **tag** says what it is:
 
@@ -239,6 +240,7 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
   - VDL2 (VDL Mode 2, digital): one centre button 136.850 MHz (re-centres the VFO at 2.1 MS/s; all five channels
     136.725–136.975 MHz are decoded at once), the active channels and frame count, CLR. Plain ACARS, CPDLC, ADS-C
     and European ATN CPDLC in one table, see [Aircraft data link](#aircraft-data-link-acars-vdl2-cpdlc-ads-c).
+    RTL-SDR only, not supported on LimeSDR.
 
 - **AUDIO**:
   - STEREO: WFM stereo on/off (mono = less noise on weak stations).
