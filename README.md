@@ -228,10 +228,15 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
   - SSTV: frequencies (80m–10m, ISS FM), mode selection (Auto by VIS), STOP, PNG and a gallery of recent
     images (saved to `data\sstv\`). Modes Martin M1/M2, Scottie S1/S2/DX, Robot 36/72, PD 50–290;
     AFC and slant correction are automatic. Filter at least 2.7 kHz.
-  - ACARS / VDL2 (one card): channel buttons (131.525 / 131.725 / 131.825 / 136.900 MHz) or the VDL2 centre
-    button (136.850 MHz), CLR; click the registration or flight to open the ADS-B map.
-    CPDLC, ADS-C and ATN CPDLC are shown in the same card with coloured tags, see
-    [Aircraft data link](#aircraft-data-link-acars-vdl2-cpdlc-ads-c).
+  - ACARS (classic link, AM 2400 bit/s): channel buttons 131.525 / 131.725 / 131.825 / 136.900 MHz, CLR;
+    click the registration or flight to open the ADS-B map. Plain ACARS, FANS-1/A CPDLC and ADS-C are shown
+    with coloured tags.
+
+    ![ACARS card on 131.725 MHz: ADS-C position reports with route, track and speed, and plain ACARS messages, aircraft type and position from ADS-B](docs/images/decoders_acars_legacy.png)
+
+  - VDL2 (VDL Mode 2, digital): one centre button 136.850 MHz (re-centres the VFO at 2.1 MS/s; all five channels
+    136.725–136.975 MHz are decoded at once), the active channels and frame count, CLR. Plain ACARS, CPDLC, ADS-C
+    and European ATN CPDLC in one table, see [Aircraft data link](#aircraft-data-link-acars-vdl2-cpdlc-ads-c).
 
 - **AUDIO**:
   - STEREO: WFM stereo on/off (mono = less noise on weak stations).
