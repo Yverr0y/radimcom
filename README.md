@@ -117,6 +117,8 @@ Airliners exchange data with the ground over two VHF links, and RADIMCOM receive
   | **ADS-C** (violet) | automatic position report to air traffic control |
   | **ATN CPDLC** (teal) | European CPDLC over VDL2 |
 
+  ![VDL2 card: all five channels decoded at once; European ATN CPDLC (WILCO, LOGICAL ACKNOWLEDGEMENT with MIN/MRN) between plain ACARS messages with aircraft type and position from ADS-B](docs/images/decoders_vdl2.png)
+
 - **CPDLC** (FANS-1/A, ARINC 622): the standard wording with the values filled in ("CLIMB TO AND MAINTAIN FL350",
   "AT VANDA CONTACT CHRISTCHURCH CONTROL 128.100 MHz"), the ground station (e.g. `MSTEC7X` = Maastricht UAC),
   **MIN** (message number) and **MRN** (number of the message it answers, so a clearance pairs with its WILCO).
