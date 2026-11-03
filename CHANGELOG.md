@@ -18,6 +18,9 @@
   card; the CPDLC key and card are gone. Coloured tags: ACARS (plain message), CPDLC, ADS-C, ATN CPDLC.
   The card title and buttons follow the link: ACARS channel buttons, or one 136.850 button for VDL2.
   One LOG writes both `acars_` and `cpdlc_` daily logs.
+- ATN CPDLC messages carry only the aircraft's 24-bit ICAO address: registration, type, position and callsign
+  are now looked up on ADS-B by that address (adsb.fi / adsb.lol), shown in the Aircraft and Flight columns and
+  written to the CPDLC log.
 - 2.1 MS/s added to the sample rates (needed by VDL2).
 
 ## Ver. 0.104

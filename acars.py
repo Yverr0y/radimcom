@@ -17,6 +17,7 @@ import json
 import math
 import os
 import queue
+import re
 import threading
 import time
 import urllib.parse
@@ -37,6 +38,8 @@ ACARS_FREQS = (131525000, 131725000, 131825000, 136900000)
 
 # Aircraft type and position by registration from public ADS-B networks (adsb.fi also has the type description).
 LOOKUP_URLS = ("https://opendata.adsb.fi/api/v2/registration/{}", "https://api.adsb.lol/v2/reg/{}")
+# ATN messages (VDL2) carry only the 24-bit ICAO address of the aircraft, no registration
+LOOKUP_HEX_URLS = ("https://opendata.adsb.fi/api/v2/hex/{}", "https://api.adsb.lol/v2/hex/{}")
 LOOKUP_CACHE_S = 60          # the position changes: the same registration again after a minute at the earliest
 LOOKUP_GAP_S = 1.1           # adsb.fi allows 1 request per second
 LOG_DIR = data("acars")   # daily log acars_YYYY-MM-DD.txt (UTC)
@@ -370,13 +373,20 @@ class AcarsDecoder:
         with self.lock:
             r.update(id=self._next_id, time=time.strftime("%H:%M:%S", time.gmtime(now)),
                      date=time.strftime("%Y-%m-%d", time.gmtime(now)), freq_hz=r["vdl2"]["freq_hz"],
-                     reg=r["air"], flight="", label="", ac=None)
+                     reg=r["air"], flight="", label="", ac=None, atn=True)
             self._next_id += 1
             self.cpdlc_count += 1
             self.cpdlc_msgs.append(r)
         self.on_event("cpdlc", r)
         self._emit_cpdlc_state()
-        self._log_cpdlc({"id": r["id"], "ac": None})
+        # registration, type and position by the ICAO address; the log line waits for them
+        if re.fullmatch(r"[0-9A-Fa-f]{6}", r["air"] or ""):
+            try:
+                self._lookups.put_nowait(r)
+                return
+            except queue.Full:
+                pass
+        self._log_cpdlc(r)
 
     def _accept(self, m, now):
         """Common path of a received ACARS message (both links): CPDLC, card, ADS-B lookup, log."""
@@ -470,7 +480,8 @@ class AcarsDecoder:
         line = " ".join(h for h in head if h)
         ac = m.get("ac")
         if ac and ac.get("found"):
-            ext = ", ".join(str(x) for x in (ac.get("type"), ac.get("callsign"), ac.get("hex")) if x)
+            reg = ac.get("reg") if c.get("atn") else ""          # ATN: the head has only the ICAO address
+            ext = ", ".join(str(x) for x in (reg, ac.get("type"), ac.get("callsign"), ac.get("hex")) if x)
             line += f" | [ADS-B {ac.get('src', '')}: {ext}]"
         line += "\n    " + (c["text"] or c["error"]).replace("\n", "\n    ")
         try:
@@ -490,15 +501,16 @@ class AcarsDecoder:
         last = 0.0
         while True:
             m = self._lookups.get()
-            reg = m["reg"]
-            hit = self._cache.get(reg)
+            atn = bool(m.get("atn"))                 # ATN record: look up by ICAO address
+            key = ("hex:" if atn else "") + m["reg"]
+            hit = self._cache.get(key)
             if hit and time.time() - hit[0] < LOOKUP_CACHE_S:
                 info = hit[1]
             else:
                 time.sleep(max(0.0, last + LOOKUP_GAP_S - time.time()))
                 last = time.time()
-                info = self._fetch(reg)
-                self._cache[reg] = (time.time(), info)
+                info = self._fetch(m["reg"].lower() if atn else m["reg"], LOOKUP_HEX_URLS if atn else LOOKUP_URLS)
+                self._cache[key] = (time.time(), info)
                 if len(self._cache) > 500:
                     self._cache.clear()
             m["ac"] = info or {"found": False}
@@ -506,14 +518,17 @@ class AcarsDecoder:
                 if c["id"] == m["id"]:
                     c["ac"] = m["ac"]
             self.on_event("acarsinfo", {"id": m["id"], "ac": m["ac"]})
-            self._log(m)
+            if atn:
+                self._log_cpdlc(m)
+            else:
+                self._log(m)
 
     @staticmethod
-    def _fetch(reg):
+    def _fetch(key, urls=LOOKUP_URLS):
         """Returns data about the aircraft currently seen by the ADS-B network, or None."""
-        for url in LOOKUP_URLS:
+        for url in urls:
             try:
-                req = urllib.request.Request(url.format(urllib.parse.quote(reg)), headers={"User-Agent": "RADIMCOM"})
+                req = urllib.request.Request(url.format(urllib.parse.quote(key)), headers={"User-Agent": "RADIMCOM"})
                 with urllib.request.urlopen(req, timeout=6) as r:
                     ac = json.load(r).get("ac") or []
             except Exception:
@@ -523,7 +538,7 @@ class AcarsDecoder:
             a = ac[0]
             alt = a.get("alt_baro")
             return {
-                "found": True, "hex": a.get("hex", ""), "type": a.get("t", ""), "desc": a.get("desc", ""),
+                "found": True, "hex": a.get("hex", ""), "reg": a.get("r", ""), "type": a.get("t", ""), "desc": a.get("desc", ""),
                 "callsign": (a.get("flight") or "").strip(), "lat": a.get("lat"), "lon": a.get("lon"),
                 "alt_ft": alt if isinstance(alt, (int, float)) else None, "ground": alt == "ground",
                 "gs_kt": a.get("gs"), "src": "adsb.fi" if "adsb.fi" in url else "adsb.lol",

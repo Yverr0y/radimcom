@@ -1356,9 +1356,12 @@ function renderAcarsAircraft(tr, ac) {
   const m = tr._msg;
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const link = (url, text, title) => `<a href="${url}" target="_blank" rel="noopener" title="${esc(title)}">${esc(text)}</a>`;
-  let reg = esc(m.reg), flt = esc(m.flight);
+  // ATN messages (VDL2) carry only the 24-bit ICAO address: the registration comes from ADS-B
+  const regText = m.atn && ac && ac.found && ac.reg ? ac.reg : m.reg;
+  let reg = m.atn ? `<span title="24-bit ICAO address (ATN message)">${esc(m.reg)}</span>` : esc(m.reg), flt = esc(m.flight);
   if (ac && ac.found && ac.hex) {
-    reg = link(`https://globe.adsb.fi/?icao=${encodeURIComponent(ac.hex)}`, m.reg, "Show on the map (adsb.fi)");
+    reg = link(`https://globe.adsb.fi/?icao=${encodeURIComponent(ac.hex)}`, regText, "Show on the map (adsb.fi)");
+    if (m.atn && regText !== m.reg) reg += `<div class="ac-sub none" title="24-bit ICAO address in the ATN message">ICAO ${esc(m.reg)}</div>`;
     if (m.flight || ac.callsign)
       flt = link(`https://adsb.lol/?icao=${encodeURIComponent(ac.hex)}`, m.flight || ac.callsign, "Show on the map (adsb.lol)");
     const type = [ac.type, ac.desc].filter(Boolean).join(" · ");
@@ -1368,7 +1371,7 @@ function renderAcarsAircraft(tr, ac) {
     const src = `title="from ADS-B (${esc(ac.src || "adsb.fi")}) at the time of the message"`;
     reg += type ? `<div class="ac-sub" ${src}>${esc(type)}</div>` : "";
     reg += pos || alt ? `<div class="ac-sub" ${src}>${[pos, alt, gs].filter(Boolean).join(" · ")}</div>` : "";
-    if (ac.callsign && ac.callsign !== m.flight) flt += `<div class="ac-sub" ${src}>${esc(ac.callsign)}</div>`;
+    if (ac.callsign && m.flight && ac.callsign !== m.flight) flt += `<div class="ac-sub" ${src}>${esc(ac.callsign)}</div>`;
   } else if (ac && !ac.found) {
     reg += `<div class="ac-sub none">not seen on ADS-B now</div>`;
   }

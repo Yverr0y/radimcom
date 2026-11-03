@@ -129,6 +129,8 @@ Airliners exchange data with the ground over two VHF links, and RADIMCOM receive
   requests (interval, events) and the aircraft's ACK / NACK.
 - **ATN CPDLC** in a compact form: header (MIN, MRN, time, "ack required") and one line per message element,
   e.g. `dM6 REQUEST FL360`, `dM106 PREFERRED LEVEL FL350`, `dM0 WILCO`, plus connect / abort / release.
+  ATN messages identify the aircraft only by its 24-bit ICAO address; the registration, type, position and
+  callsign are looked up on ADS-B by that address (the address stays under the registration).
 - **LOG** writes `data\acars\acars_YYYY-MM-DD.txt` and (CPDLC, ADS-C, ATN) `data\acars\cpdlc_YYYY-MM-DD.txt`,
   UTC; messages from VDL2 are tagged `VDL2`.
 

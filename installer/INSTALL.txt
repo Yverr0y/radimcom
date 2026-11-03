@@ -67,6 +67,8 @@ Ver. 0.105
   projected intent, contract requests.
 - One card for all aircraft messages: ACARS and VDL2 keys open the same card, the CPDLC
   key is gone. Coloured tags ACARS / CPDLC / ADS-C / ATN CPDLC. One LOG for both logs.
+- ATN CPDLC: registration, type, position and callsign looked up on ADS-B by the
+  aircraft's ICAO address (the only aircraft identifier in ATN messages).
 
 Ver. 0.104
 - CPDLC decoder (FANS-1/A, ARINC 622): controller-pilot messages carried in ACARS
