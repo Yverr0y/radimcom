@@ -89,6 +89,7 @@ Ver. 0.107
 - WEFAX slant correction: SLANT field (ppm, -3000 to 3000) and ALIGN key in the WEFAX card (click two
   points on a line that should be vertical). Corrects the sample clock error of the VFO's SDR, also
   straightens the image received so far, kept after a restart. HTTP API: slant_ppm in /api/wefax.
+- Passband label in the spectrum has two rows: tuned frequency, then demodulation and bandwidth.
 
 Ver. 0.106
 - VFO chaining: one dongle can serve several VFOs (e.g. one dongle for VFO A-D, or two

@@ -25,6 +25,7 @@
 - **WEFAX slant correction**: new **SLANT** field (ppm, -3000 to 3000) and **ALIGN** key in the WEFAX card: click two points on a
   line that should be vertical and the correction is computed. It compensates the sample clock error of the VFO's SDR, also
   straightens the image received so far and is kept after a restart. HTTP API: `slant_ppm` in `/api/wefax`, event `wefaxreload`.
+- Passband label in the spectrum has two rows: tuned frequency, then demodulation and bandwidth (`LSB · 3 kHz`).
 
 ## Ver. 0.106
 

@@ -704,17 +704,20 @@ function drawOverlays() {
     ctx.strokeStyle = "#ff5d5d";
     ctx.beginPath(); ctx.moveTo(xt, 0); ctx.lineTo(xt, h); ctx.stroke();
     if (spectrum) {
-      // Bandwidth label above the passband.
-      const txt = `${st.mode} · ${fmtBw(bw)}`;
+      // Label above the passband: tuned frequency, then demodulator and bandwidth.
+      const { txt: fTxt, unit } = freqDigits(st.tune_hz);
+      const lines = [`${fTxt.trim()} ${unit}`, `${st.mode} · ${fmtBw(bw)}`];
       ctx.font = "600 11px system-ui, sans-serif";
-      const tw = ctx.measureText(txt).width + 12;
+      const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 12;
       const tx = Math.min(Math.max((x0 + x1) / 2 - tw / 2, 4), w - tw - 4);
       ctx.fillStyle = "rgba(10,13,18,.85)";
       ctx.strokeStyle = "rgba(255,181,71,.7)";
-      ctx.beginPath(); ctx.roundRect(tx, 6, tw, 18, 5); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.roundRect(tx, 6, tw, 32, 5); ctx.fill(); ctx.stroke();
       ctx.fillStyle = "#ffb547";
       ctx.textBaseline = "middle";
-      ctx.fillText(txt, tx + 6, 15);
+      ctx.textAlign = "center";
+      lines.forEach((l, i) => ctx.fillText(l, tx + tw / 2, 15 + i * 14));
+      ctx.textAlign = "left";
       drawMemTags(ctx, w, [tx - 4, tx + tw + 4]);
     }
   }
@@ -738,9 +741,9 @@ function drawMemTags(ctx, w, modeLabel) {
   ctx.font = "600 10px system-ui, sans-serif";
   ctx.textBaseline = "middle";
   const rowY = (r) => MEM_TAG_TOP + r * (MEM_TAG_H + MEM_TAG_GAP);
-  // occupied intervals in each row; the bandwidth label (y 6–24) reaches into the first two
+  // occupied intervals in each row; the bandwidth label (y 6–38) reaches into the first two
   const used = Array.from({ length: MEM_TAG_ROWS }, () => []);
-  for (let r = 0; r < MEM_TAG_ROWS; r++) if (rowY(r) < 25) used[r].push(modeLabel);
+  for (let r = 0; r < MEM_TAG_ROWS; r++) if (rowY(r) < 39) used[r].push(modeLabel);
   for (const m of list) {
     const x = Math.round(freqToX(m.freq_hz, w)) + 0.5;
     const name = m.name.length > MEM_NAME_MAX ? m.name.slice(0, MEM_NAME_MAX - 1) + "…" : m.name;

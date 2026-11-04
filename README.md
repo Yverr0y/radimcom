@@ -219,6 +219,7 @@ On Windows just double-click `start.bat`. Then open **http://localhost:8434** in
 | Band | buttons in the groups HF HAM, HF BROADCAST, VHF / UHF HAM, OTHER (FM BCAST tunes the last FM station listened to, DAB turns on DAB radio) |
 
 Hovering over the spectrum or waterfall shows the frequency under the mouse.
+The label above the passband shows the tuned frequency, and under it the demodulation and bandwidth.
 
 If a band or memory is outside the range of the active VFO, the receiver switches by itself to a VFO that can
 receive it (e.g. an HF band to the VFO with the converter).
