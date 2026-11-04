@@ -26,6 +26,9 @@
   line that should be vertical and the correction is computed. It compensates the sample clock error of the VFO's SDR, also
   straightens the image received so far and is kept after a restart. HTTP API: `slant_ppm` in `/api/wefax`, event `wefaxreload`.
 - Passband label in the spectrum has two rows: tuned frequency, then demodulation and bandwidth (`LSB · 3 kHz`).
+- **Audio spectrum bubble**: hover over the passband label to see the audio spectrum of the active VFO, up to the end of
+  the passband. It is taken before the volume and MUTE. In WFM it shows the demodulated MPX signal to 20 kHz, with the
+  19 kHz pilot (the audio itself ends at 15 kHz). HTTP API: new `GET /api/mpx`.
 
 ## Ver. 0.106
 

@@ -220,6 +220,8 @@ On Windows just double-click `start.bat`. Then open **http://localhost:8434** in
 
 Hovering over the spectrum or waterfall shows the frequency under the mouse.
 The label above the passband shows the tuned frequency, and under it the demodulation and bandwidth.
+Hovering over that label opens a small audio spectrum of the active VFO, up to the end of the passband (it does not depend on
+the volume or MUTE). In WFM it shows the demodulated MPX signal up to 20 kHz instead, with the 19 kHz stereo pilot.
 
 If a band or memory is outside the range of the active VFO, the receiver switches by itself to a VFO that can
 receive it (e.g. an HF band to the VFO with the converter).

@@ -166,6 +166,8 @@
     </div>
     <!-- frequency under the mouse: shown after 1 s without movement over the spectrum/waterfall -->
     <div class="hover-freq" id="hoverFreq" hidden></div>
+    <!-- audio spectrum: shown while the mouse is over the passband label -->
+    <div class="audio-bubble" id="audioBubble" hidden><canvas id="audioBubbleCanvas"></canvas></div>
     <!-- DECODERS tab: the decoder cards cover the spectrum and waterfall (those keep running) -->
     <div class="dec-pane" id="decPane" hidden>
       <div id="decEmpty" class="ft8-empty">No decoder is on. Turn one on under DECODE (FT8, WEFAX, CW, RTTY, SSTV, ACARS, CPDLC), or DAB under OTHER.</div>

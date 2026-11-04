@@ -416,6 +416,8 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .hover-freq { position: absolute; z-index: 3; pointer-events: none; padding: 3px 8px; border-radius: 4px;
   font: 700 13px ui-monospace, Consolas, monospace; color: var(--yellow); white-space: nowrap;
   background: rgba(8, 12, 16, .9); border: 1px solid var(--yellow); box-shadow: 0 2px 8px rgba(0, 0, 0, .6); }
+.audio-bubble { position: absolute; z-index: 3; pointer-events: none; width: 200px; height: 96px; padding: 4px; box-sizing: border-box;
+  border-radius: 6px; background: rgba(8, 12, 16, .92); border: 1px solid rgba(255, 181, 71, .7); box-shadow: 0 2px 8px rgba(0, 0, 0, .6); }
 
 /* ---------- tabs of the bottom part: SPECTRUM / DECODERS ---------- */
 .body-tabs { display: flex; gap: 2px; padding: 3px 8px 0; background: #0b0e12; border-bottom: 1px solid #44474d; }

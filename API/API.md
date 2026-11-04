@@ -43,6 +43,7 @@ Memories (`data\memories.json`) are shared by all VFOs, so `/api/memories` gives
 | GET | `/api/devices` | connected SDR devices |
 | GET | `/api/events` | live event stream (Server-Sent Events) |
 | GET | `/api/audio` | endless audio stream (raw PCM) |
+| GET | `/api/mpx` | WFM: spectrum of the demodulated MPX signal, 0–20 kHz |
 | POST | `/api/tx` | transmitter PTT (LimeSDR only) |
 
 ### GET /api/state
@@ -127,6 +128,11 @@ A comment line `: ping` is sent every 15 s when nothing else happens.
 
 Endless stream of 16-bit signed little-endian stereo PCM (L, R interleaved). Headers `X-Sample-Rate` and
 `X-Channels` give the format.
+
+### GET /api/mpx
+
+`{"hz_per_bin": 62.5, "db": [...]}`: spectrum of the demodulated MPX signal from 0 to 20 kHz, taken before the 19 kHz pilot
+is removed. 0 dB is a sine at 75 kHz deviation. Outside WFM, `db` is empty and `hz_per_bin` is 0.
 
 ### POST /api/tx
 

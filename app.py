@@ -880,6 +880,13 @@ def api_set():
     return jsonify({"ok": True})
 
 
+@app.route("/api/mpx")
+def api_mpx():
+    """WFM: spectrum of the demodulated MPX signal (0-20 kHz, with the 19 kHz pilot); empty in other modes."""
+    r = receiver.mpx_spectrum()
+    return jsonify({"hz_per_bin": r[0], "db": r[1]} if r else {"hz_per_bin": 0, "db": []})
+
+
 @app.route("/api/events")
 def api_events():
     q = hub._add(hub.events, 60)

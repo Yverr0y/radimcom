@@ -232,6 +232,7 @@ class Wfm:
     DEEMPHASIS = 50e-6   # Europe (USA 75 µs)
     PILOT = 19e3
     PILOT_REF = 19.6e3   # neither pilot nor audio here: noise estimate for comparison with the pilot
+    MPX_FFT = 4096       # MPX spectrum for the page (~62 Hz per bin at 256 kHz)
 
     def __init__(self, fs, bw):
         from scipy.signal import lfilter
@@ -255,6 +256,20 @@ class Wfm:
         self.allow_stereo = True                 # False = forced mono (STEREO button off)
         self.st_count = 0
         self.rds = RdsDecoder(self.r1)
+        self.mpx_tail = None                     # last MPX block, before the pilot is subtracted
+
+    def mpx_spectrum(self, top_hz=20000.0):
+        """Spectrum of the last MPX block from 0 to top_hz: (Hz per bin, dB list; 0 dB = sine at 75 kHz deviation).
+        Computed only on request, so it costs nothing while nobody is looking."""
+        x = self.mpx_tail
+        if x is None:
+            return None
+        x = x[-self.MPX_FFT:]
+        win = np.hanning(len(x))
+        mag = 2 * np.abs(np.fft.rfft(x * win)) / win.sum()
+        hz = self.r1 / len(x)
+        db = 20 * np.log10(mag[:int(top_hz / hz) + 2] + 1e-12)
+        return hz, [round(float(v), 1) for v in db]
 
     def process(self, iq):
         """iq: input shifted so that the tuned frequency is at 0 Hz.
@@ -267,6 +282,7 @@ class Wfm:
         self.prev = z[-1]
         mpx = (np.angle(z * np.conj(prev)) * (self.r1 / (2 * np.pi * self.DEVIATION))).astype(np.float32)
         n = len(mpx)
+        self.mpx_tail = mpx
         self.rds.process(mpx)
 
         # Pilot: q = (A/2)·e^{jφ} for the pilot A·cos(ω·n + φ) in the middle of the block.
@@ -1011,6 +1027,11 @@ class Receiver:
         if mode not in SQUELCH_MODES:
             return SQUELCH_OFF
         return float(self.cfg["squelch"].get(mode, SQUELCH_OFF))
+
+    def mpx_spectrum(self):
+        """MPX spectrum of the WFM demodulator, or None when not receiving WFM."""
+        wfm = getattr(self, "wfm", None) if self.cfg["mode"] == "WFM" else None
+        return wfm.mpx_spectrum() if isinstance(wfm, Wfm) else None
 
     def state(self):
         c = self.cfg

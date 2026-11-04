@@ -676,6 +676,7 @@ function drawSpectrum() {
   ctx.shadowBlur = 0;
 }
 
+let passLabelBox = null;   // passband label in the spectrum (layout px); hover opens the audio spectrum
 function viewNow() { return view || { c: st.center_hz, span: st.sample_rate }; }
 function freqToX(f, w) { const v = viewNow(); return ((f - v.c) / v.span + 0.5) * w; }
 function xToFreq(x, w) { const v = viewNow(); return v.c + (x / w - 0.5) * v.span; }
@@ -718,6 +719,7 @@ function drawOverlays() {
       ctx.textAlign = "center";
       lines.forEach((l, i) => ctx.fillText(l, tx + tw / 2, 15 + i * 14));
       ctx.textAlign = "left";
+      passLabelBox = { x0: tx, x1: tx + tw, y0: 6, y1: 38 };
       drawMemTags(ctx, w, [tx - 4, tx + tw + 4]);
     }
   }
@@ -864,7 +866,7 @@ function hoverHide() {
   $("hoverFreq").hidden = true;
 }
 function hoverMove(e, cv) {
-  if (drag || !st) { hoverHide(); return; }
+  if (drag || !st || audioBubblePos) { hoverHide(); return; }
   if (hover && Math.abs(e.clientX - hover.x) <= 2 && Math.abs(e.clientY - hover.y) <= 2) return;
   hoverHide();
   hover = { x: e.clientX, y: e.clientY };
@@ -879,6 +881,115 @@ function hoverMove(e, cv) {
     box.style.top = `${Math.max(0, y - box.offsetHeight - 10)}px`;
     hover.timer = setTimeout(() => { box.hidden = true; }, HOVER_SHOW_MS);
   }, HOVER_DELAY_MS);
+}
+
+// Audio spectrum bubble: open while the mouse is over the passband label. It shows the audio of the active VFO
+// before the volume and MUTE, from 0 Hz to the top of the audio band of the current mode. WFM audio ends at 15 kHz
+// without the pilot, so WFM shows the MPX signal from the demodulator instead (to 20 kHz, with the 19 kHz pilot).
+const AB_DB_MIN = -100, AB_DB_MAX = -10, AB_AXIS_H = 14, CW_PITCH_HZ = 700;   // CW_PITCH in sdr.py
+let audioBubblePos = null, audioBubbleRaf = 0, audioBubbleBuf = null;
+let mpxSpec = null, mpxBusy = false, mpxAt = 0, mpxFailed = false;   // last MPX spectrum from /api/mpx (smoothed)
+const bubbleIsMpx = () => st.mode === "WFM" && !st.dab;
+function pollMpx() {
+  if (mpxBusy || Date.now() - mpxAt < 100) return;
+  mpxBusy = true;
+  mpxAt = Date.now();
+  fetch(`${vbase}/api/mpx`).then((r) => {
+    if (!r.ok) throw new Error(r.status);
+    return r.json();
+  }).then((d) => {
+    mpxFailed = false;
+    if (!d.db.length) { mpxSpec = null; return; }
+    const old = mpxSpec && mpxSpec.db.length === d.db.length ? mpxSpec.db : d.db;
+    mpxSpec = { binHz: d.hz_per_bin, db: Float32Array.from(d.db, (v, i) => 0.6 * old[i] + 0.4 * v) };
+  }).catch(() => { mpxFailed = true; mpxSpec = null; }).finally(() => { mpxBusy = false; });
+}
+function inPassLabel(p) {
+  const b = passLabelBox;
+  return !!b && p.x >= b.x0 && p.x <= b.x1 && p.y >= b.y0 && p.y <= b.y1;
+}
+function audioBubbleHide() {
+  audioBubblePos = null;
+  mpxSpec = null;
+  cancelAnimationFrame(audioBubbleRaf);
+  $("audioBubble").hidden = true;
+}
+function audioBubbleMove(e, cv) {
+  const r = cv.getBoundingClientRect();
+  const p = { x: (e.clientX - r.left) / uiScale, y: (e.clientY - r.top) / uiScale };
+  if (drag || !st || !inPassLabel(p)) { audioBubbleHide(); return; }
+  const opening = !audioBubblePos;
+  audioBubblePos = p;
+  if (opening) { $("audioBubble").hidden = false; audioBubbleRaf = requestAnimationFrame(drawAudioBubble); }
+}
+function audioBubbleTop() {
+  if (bubbleIsMpx()) return 20000;
+  const nyq = actx ? actx.sampleRate / 2 : 24000;
+  if (st.dab) return Math.min(16000, nyq);
+  const bw = st.bandwidth[st.mode] || 3000;
+  const top = st.mode === "CW" ? CW_PITCH_HZ + bw / 2 : bw;
+  return Math.min(top, (st.audio_rate || 48000) / 2, nyq);
+}
+function drawAudioBubble() {
+  if (!audioBubblePos) return;
+  // the label can move away from under a still mouse (wheel tuning) or the decoders can cover it
+  if (drag || !inPassLabel(audioBubblePos) || !$("decPane").hidden) { audioBubbleHide(); return; }
+  const box = $("audioBubble"), wrap = $("specOverlay").parentElement, lb = passLabelBox;
+  const sw = box.parentElement.clientWidth, bw = box.offsetWidth;
+  box.style.left = `${Math.max(2, Math.min((lb.x0 + lb.x1) / 2 - bw / 2, sw - bw - 2))}px`;
+  box.style.top = `${wrap.offsetTop + lb.y1 + 4}px`;
+
+  const [ctx, w, h] = fitCanvas($("audioBubbleCanvas"));
+  const ph = h - AB_AXIS_H, top = audioBubbleTop();
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = "rgba(255,255,255,.12)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let i = 1; i < 4; i++) { const x = Math.round(w * i / 4) + 0.5; ctx.moveTo(x, 0); ctx.lineTo(x, ph); }
+  ctx.stroke();
+  ctx.font = "600 10px system-ui, sans-serif";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#ffb547";
+  const labels = [["left", 1, "0"], ["center", w / 2, fmtBw(Math.round(top / 2))], ["right", w - 1, fmtBw(Math.round(top))]];
+  for (const [align, x, txt] of labels) { ctx.textAlign = align; ctx.fillText(txt, x, ph + AB_AXIS_H / 2); }
+
+  // the curve data: MPX from the server, or the audio from the analyser
+  let buf = null, binHz = 0;
+  if (bubbleIsMpx()) {
+    pollMpx();
+    if (mpxSpec) ({ db: buf, binHz } = mpxSpec);
+  } else if (audioAnalyser && actx.state === "running") {
+    const bins = audioAnalyser.frequencyBinCount;
+    if (!audioBubbleBuf || audioBubbleBuf.length !== bins) audioBubbleBuf = new Float32Array(bins);
+    buf = audioBubbleBuf;
+    binHz = actx.sampleRate / audioAnalyser.fftSize;
+    audioAnalyser.getFloatFrequencyData(buf);
+  }
+  const note = bubbleIsMpx() ? (mpxFailed ? "no MPX data from the server" : "") : buf ? "" : "click to start audio";
+  if (note) {
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#8b95a3";
+    ctx.fillText(note, w / 2, ph / 2);
+  } else if (buf) {
+    const n = buf.length, step = top / w / binHz;
+    ctx.beginPath();
+    ctx.moveTo(0, ph);
+    for (let x = 0; x < w; x++) {
+      const fb = x * step, i0 = Math.min(Math.floor(fb), n - 1);
+      let v;
+      if (step <= 1) v = buf[i0] + (buf[Math.min(i0 + 1, n - 1)] - buf[i0]) * (fb - i0);   // fewer bins than pixels
+      else { v = -Infinity; for (let i = i0; i < fb + step && i < n; i++) v = Math.max(v, buf[i]); }
+      const k = Number.isFinite(v) ? Math.min(1, Math.max(0, (v - AB_DB_MIN) / (AB_DB_MAX - AB_DB_MIN))) : 0;
+      ctx.lineTo(x, ph * (1 - k));
+    }
+    ctx.lineTo(w, ph);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(255,181,71,.3)";
+    ctx.fill();
+    ctx.strokeStyle = "#ffb547";
+    ctx.stroke();
+  }
+  audioBubbleRaf = requestAnimationFrame(drawAudioBubble);
 }
 
 for (const id of ["specOverlay", "wfOverlay"]) {
@@ -942,6 +1053,11 @@ for (const id of ["specOverlay", "wfOverlay"]) {
   };
   cv.addEventListener("pointerup", end);
   cv.addEventListener("pointercancel", end);
+  if (spectrum) {
+    cv.addEventListener("pointermove", (e) => audioBubbleMove(e, cv));
+    cv.addEventListener("pointerleave", audioBubbleHide);
+    cv.addEventListener("pointerdown", audioBubbleHide);
+  }
   cv.addEventListener("pointermove", (e) => hoverMove(e, cv));
   cv.addEventListener("pointerleave", hoverHide);
   cv.addEventListener("pointerdown", hoverHide);
@@ -1709,7 +1825,7 @@ function dabPlay(sid) {
   if (!dabEl) {
     dabEl = new Audio();
     dabEl.crossOrigin = "anonymous";      // the receiver of the VFO is on another port (CORS * on the server)
-    ctx.createMediaElementSource(dabEl).connect(masterGain);
+    ctx.createMediaElementSource(dabEl).connect(audioTap);
   }
   dabEl.src = `${vbase}/api/dab/audio/${sid}`;
   dabEl.play().catch(() => {});
@@ -2732,6 +2848,7 @@ let audio = null;
 let actx = null;
 let masterGain = null;
 let cueGain = null;
+let audioTap = null, audioAnalyser = null;   // audio of the active VFO before the volume, for the audio spectrum bubble
 
 function audioContext() {
   if (!actx) {
@@ -2739,6 +2856,12 @@ function audioContext() {
     masterGain = actx.createGain();
     masterGain.gain.value = volumeNow();
     masterGain.connect(actx.destination);
+    audioTap = actx.createGain();
+    audioTap.connect(masterGain);
+    audioAnalyser = actx.createAnalyser();
+    audioAnalyser.fftSize = 2048;
+    audioAnalyser.smoothingTimeConstant = 0.6;
+    audioTap.connect(audioAnalyser);
     cueGain = actx.createGain();
     cueGain.gain.value = cueVolumeNow();
     cueGain.connect(actx.destination);
@@ -2770,7 +2893,7 @@ function playStream(base, isMain, onEnd) {
   const ctx = audioContext();
   // Own gain node for this stream: on stop it is disconnected and the scheduled remainder goes silent at once.
   const gain = ctx.createGain();
-  gain.connect(isMain ? masterGain : cueGain);
+  gain.connect(isMain ? audioTap : cueGain);
   const me = { gain, ctrl: new AbortController(), playTime: 0, live: true };
   pumpStream(ctx, base, me, isMain).then((aborted) => {
     if (!aborted) setTimeout(() => { if (me.live) { stopStream(me); onEnd(); } }, 1500);
