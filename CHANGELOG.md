@@ -1,5 +1,31 @@
 # Changelog
 
+## Ver. 0.107
+
+- **AFI – audio frequency inversion** (voice inversion scrambler / descrambler): new **AFI** key in the AUDIO group.
+  The demodulated audio is mirrored around the inversion frequency F (f → 2·F − f, band 0 … 2·F): low-pass,
+  mix with a 2·F carrier, low-pass again (new `FreqInverter` in `sdr.py`). Inversion is its own inverse, so the same
+  setting scrambles and descrambles. All modes except WFM; on/off and frequency remembered per VFO.
+  Applied before the squelch, so REC and the decoders get the descrambled audio.
+- SET: **AFI – inversion frequency (Hz)**, 500–4000 Hz, default 1750 Hz (band up to 3500 Hz).
+- HTTP API: `afi` (true / false) and `afi_hz` in `/api/set` and `/api/state`.
+- **DAB / DAB+ digital radio**: new **DAB** button in the OTHER band group. The VFO goes to 2.048 MS/s on the
+  centre of a Band III channel (5A–13F, default 12C) and a **DAB+** card opens on the DECODERS tab: channel select,
+  ensemble name, SNR, station list (DAB / DAB+, bitrate); click a station to play it, with its DLS text
+  ("now playing") and slideshow picture. Audio plays through MAIN volume (REC does not record DAB).
+  - Decoding by **welle-cli** 2.7 (welle.io, GPLv2+) in `lib\dab\`, built with MSYS2 UCRT64
+    (`installer\build_dab.sh`, sources and licences in `installer\DAB.txt`, `lib\dab\README.txt` in the package).
+  - The dongle stays in RADIMCOM: new module `dab.py` runs a local rtl_tcp server (127.0.0.1, free port) that
+    welle-cli connects to; its tuning requests retune the VFO, the gain stays the VFO's. Services, DLS, slides
+    and the MP3 stream come from welle-cli's web server and are passed on by RADIMCOM.
+  - DAB turns ACARS and VDL2 off; the DAB button again (toggle), another band button or OFF in the card turns DAB off and restores the
+    previous sample rate. RTL-SDR only (not on LimeSDR or a chained VFO).
+- HTTP API: `dab`, `dab_channel` in `/api/set` and `/api/state` (+ `dab_error`, `dab_channels`), new
+  `GET /api/dab`, `/api/dab/audio/<sid>` (MP3), `/api/dab/slide/<sid>`, event `dabstate`.
+- **WEFAX slant correction**: new **SLANT** field (ppm, -3000 to 3000) and **ALIGN** key in the WEFAX card: click two points on a
+  line that should be vertical and the correction is computed. It compensates the sample clock error of the VFO's SDR, also
+  straightens the image received so far and is kept after a restart. HTTP API: `slant_ppm` in `/api/wefax`, event `wefaxreload`.
+
 ## Ver. 0.106
 
 - **VFO chaining: one dongle for several VFOs.** A VFO can use the dongle of another VFO, e.g. one dongle for

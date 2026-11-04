@@ -567,10 +567,13 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .ft8-empty { padding: 14px; color: var(--dim); font-size: 12px; text-align: center; }
 .wf-opt { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
 .wf-opt select { padding: 4px 8px; font-size: 12px; }
+.wf-opt input[type=number] { width: 72px; padding: 4px 6px; font-size: 12px; }
+.wefax-wrap.aligning .wefax-block { cursor: cell; }
 .log-opt { cursor: pointer; user-select: none; }
 .log-opt input { margin: 0; accent-color: var(--yellow); }
 .wefax-wrap { max-height: calc(var(--vh) * .7); overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; }
-.wefax-block { display: block; width: 100%; height: auto; cursor: crosshair; }
+/* .wefax-wrap prefix: must beat ".scope canvas { height: 100% }" (the decoder pane sits inside .scope) */
+.wefax-wrap .wefax-block { display: block; width: 100%; height: auto; cursor: crosshair; }
 .wefax .note code, .sstv .note code { color: var(--text); }
 .sstv-main { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
 .sstv-wrap { position: relative; flex: 0 1 640px; min-width: 260px; border: 1px solid var(--line); border-radius: 6px;
@@ -583,6 +586,26 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .sstv-gallery img { display: block; width: 100%; height: auto; }
 .sstv-gallery span { display: block; padding: 2px 4px; font-size: 10px; color: var(--muted); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
+/* DAB: list of stations on the left, the playing station (DLS text, slideshow) on the right */
+.dab-ens { font: 600 13px system-ui, sans-serif; color: var(--text); }
+#dabInfo { font-size: 12px; font-variant-numeric: tabular-nums; }
+#dabInfo.err { color: #ff7b6b; }
+.dab-main { display: flex; gap: 12px; align-items: stretch; flex-wrap: wrap; min-height: 0; flex: 1 1 auto; }
+.dab-list { flex: 0 1 300px; min-width: 220px; max-height: 420px; overflow: auto; border: 1px solid var(--line);
+  border-radius: 6px; background: #000; }
+.dab-list button { display: flex; width: 100%; gap: 8px; align-items: baseline; padding: 5px 10px; border: 0;
+  border-top: 1px solid rgba(255, 255, 255, .04); background: none; color: var(--text); font: 13px system-ui, sans-serif;
+  text-align: left; cursor: pointer; }
+.dab-list button:hover { background: #151a21; }
+.dab-list button.on { background: #2a2410; color: var(--yellow); }
+.dab-list button:disabled { color: var(--dim); cursor: default; }
+.dab-list button small { margin-left: auto; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.dab-now { flex: 1 1 320px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.dab-title { font: 700 18px system-ui, sans-serif; color: var(--yellow); }
+.dab-meta { font-size: 11px; font-variant-numeric: tabular-nums; }
+.dab-dls { min-height: 2.6em; font-size: 14px; color: var(--text); word-break: break-word; }
+.dab-slide img { display: block; max-width: 100%; width: 320px; height: auto; border: 1px solid var(--line);
+  border-radius: 4px; background: #000; }
 .note { margin: 0; font-size: 11px; color: var(--muted); }
 /* TX disclaimer in SET: strongly red */
 .tx-disclaimer { margin: 0 0 8px; padding: 8px 10px; border: 2px solid var(--red); border-radius: 6px;

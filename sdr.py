@@ -403,6 +403,42 @@ class AutoNotch:
         return allout[:len(x)]
 
 
+AFI_DEFAULT_HZ = 1750.0  # Hz, mirror point of the audio frequency inversion (f -> 2*AFI - f)
+AFI_MIN_HZ, AFI_MAX_HZ = 500.0, 4000.0
+
+
+class FreqInverter:
+    """Audio frequency inversion (voice inversion scrambler / descrambler).
+    The audio band 0 .. 2·F is mirrored around F: low-pass at 2·F, multiply by a 2·F carrier, low-pass again
+    (removes the upper image). The operation is its own inverse, so the same block scrambles and descrambles."""
+
+    def __init__(self):
+        self.key = None
+        self.phase = 0.0
+
+    def _setup(self, fs, hz):
+        self.key = (fs, hz)
+        self.carrier = min(2 * hz, 0.45 * fs)        # the carrier must stay below Nyquist
+        taps = 255
+        self.h = lowpass(self.carrier * 0.97, fs, taps).astype(np.float32)
+        self.hist1 = np.zeros(taps - 1, np.float32)
+        self.hist2 = np.zeros(taps - 1, np.float32)
+        self.phase = 0.0
+
+    def process(self, x, fs, hz):
+        if self.key != (fs, hz):
+            self._setup(fs, hz)
+        buf = np.concatenate((self.hist1, x))
+        self.hist1 = buf[-len(self.hist1):]
+        y = np.convolve(buf, self.h, mode="valid")
+        step = 2 * np.pi * self.carrier / fs
+        y = y * (2 * np.cos(self.phase + step * np.arange(len(y))))
+        self.phase = (self.phase + step * len(y)) % (2 * np.pi)
+        buf = np.concatenate((self.hist2, y.astype(np.float32)))
+        self.hist2 = buf[-len(self.hist2):]
+        return np.clip(np.convolve(buf, self.h, mode="valid"), -1, 1).astype(np.float32)
+
+
 class Channel:
     """Channel filter, demodulation and AGC at rate fs (= input / DECIM)."""
 
@@ -684,6 +720,7 @@ class Receiver:
         # ±10 kHz, so that the 18 kHz filter (AM/FM) also passes; less at a low sample rate (alias).
         self.dec = Decimator(self.fs, cutoff=min(10000.0, self.fs / DECIM / 3))
         self.chan = Channel(self.fs / DECIM)
+        self.afi = FreqInverter()
         self.wfm, self.wfm_key = None, None
         self.phase = 0.0
         self.win = np.hanning(WF_FFT).astype(np.float32)
@@ -734,6 +771,10 @@ class Receiver:
             c["notch"] = changes["notch"]
         if "audio_agc" in changes:
             c["audio_agc"] = changes["audio_agc"]
+        if "afi" in changes:
+            c["afi"] = changes["afi"]
+        if "afi_hz" in changes:
+            c["afi_hz"] = changes["afi_hz"]
         if "rtl_agc" in changes:
             c["rtl_agc"] = changes["rtl_agc"]
             sdr.set_rtl_agc(c["rtl_agc"])
@@ -884,6 +925,8 @@ class Receiver:
             if cal:
                 self.smeter += cal
                 sub_db = sub_db + cal
+            if c.get("afi") and mode != "WFM" and audio.ndim == 1:   # AFI: voice inversion (de)scrambler
+                audio = self.afi.process(audio, self.fs / DECIM, float(c.get("afi_hz", AFI_DEFAULT_HZ)))
             if self.on_demod:                       # demodulated audio before the squelch (SSTV)
                 self.on_demod(audio if audio.ndim == 1 else audio.mean(axis=1), self.fs / DECIM)
             audio = self._squelch(audio, mode, sub_db)
@@ -977,6 +1020,8 @@ class Receiver:
             "stereo_on": bool(c.get("stereo_on", True)),
             "notch": bool(c.get("notch", False)),
             "audio_agc": bool(c.get("audio_agc", True)),
+            "afi": bool(c.get("afi", False)),
+            "afi_hz": float(c.get("afi_hz", AFI_DEFAULT_HZ)),
             "notch_active": bool(getattr(getattr(self, "chan", None), "notch", None)
                                  and self.chan.notch.notched and c["mode"] in NOTCH_MODES),
             "rds": wfm.rds.info() if wfm else None,

@@ -47,7 +47,8 @@ const BAND_GROUPS = [
     ["2 m RPT", 145600000, "FM"], ["APRS", 144800000, "FM"], ["70 cm SSB", 432200000, "USB"], ["70 cm FM", 433500000, "FM"],
     ["70 cm RPT", 439000000, "FM"], ["23 cm", 1296200000, "USB"]]],
   ["OTHER", [
-    ["FM BCAST", 0, "WFM"], ["CB ch19", 27185000, "FM"], ["Airband", 127500000, "AM"], ["Marine ch16", 156800000, "FM"], ["PMR446", 446006250, "FM"]]],
+    ["FM BCAST", 0, "WFM"], ["CB ch19", 27185000, "FM"], ["Airband", 127500000, "AM"], ["Marine ch16", 156800000, "FM"], ["PMR446", 446006250, "FM"],
+    ["DAB", "dab", "DAB+"]]],
 ];
 
 let st = null; // last state from the server
@@ -389,11 +390,14 @@ function rememberFm() {
 const fmtBand = (f) => (f >= 30e6 ? `${fmtMHz(f, 4)} MHz` : `${fmtKHz(f, 0)} kHz`);
 $("bandGroups").innerHTML = BAND_GROUPS.map(([title, list]) =>
   `<div class="bgroup"><span class="klabel">${title}</span><div class="bands">` +
-  list.map((b) => `<button data-f="${b[1]}" data-m="${b[2]}" title="${b[1] ? fmtBand(b[1]) : "last FM station"} · ${b[2]}">${b[0]}</button>`).join("") +
+  list.map((b) => `<button data-f="${b[1]}" data-m="${b[2]}" title="${b[1] === "dab" ? "DAB / DAB+ digital radio, Band III 174–240 MHz (welle-cli, RTL-SDR only)"
+    : (b[1] ? fmtBand(b[1]) : "last FM station") + " · " + b[2]}">${b[0]}</button>`).join("") +
   `</div></div>`).join("");
 $("bandGroups").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-f]");
   if (!b || !st) return;
+  if (b.dataset.f === "dab") { if (st.dab) dabOff(); else dabOn(); return; }   // DAB button toggles
+  if (st.dab) { st.dab = false; send({ dab: false }); }   // another band: DAB off (previous sample rate back)
   const f = Number(b.dataset.f) || fmLast();
   await ensureVfoFor(f);   // e.g. an HF band on a VFO without upconverter -> VFO A
   if (!st) return;
@@ -1065,6 +1069,11 @@ function renderRds() {
   const alcMode = ["AM", "LSB", "USB", "CW"].includes(st.mode);
   $("alcKey").disabled = !alcMode;
   $("alcKey").classList.toggle("on", alcMode && st.audio_agc !== false);
+  const afiMode = st.mode !== "WFM";
+  $("afiKey").disabled = !afiMode;
+  $("afiKey").classList.toggle("on", afiMode && !!st.afi);
+  $("afiKey").title = `AFI: audio frequency inversion around ${st.afi_hz ?? 1750} Hz – voice inversion scrambler / descrambler (all modes except WFM); frequency in SET`;
+  if (st.afi_hz != null && document.activeElement !== $("afiHz")) $("afiHz").value = st.afi_hz;
   // ALC flag at the S-meter: green = on, grey = off; hidden in FM/WFM (no ALC)
   $("alcBadge").hidden = !alcMode;
   $("alcBadge").classList.toggle("dim", st.audio_agc === false);
@@ -1116,6 +1125,20 @@ $("alcKey").addEventListener("click", () => {
   st.audio_agc = st.audio_agc === false;
   renderRds();
   send({ audio_agc: st.audio_agc });
+});
+$("afiKey").addEventListener("click", () => {
+  if (!st) return;
+  st.afi = !st.afi;
+  renderRds();
+  send({ afi: st.afi });
+});
+$("afiHz").addEventListener("change", () => {
+  const v = Math.round(Number($("afiHz").value));
+  if (!Number.isFinite(v)) return;
+  const hz = Math.max(500, Math.min(4000, v));
+  $("afiHz").value = hz;
+  if (st) st.afi_hz = hz;
+  send({ afi_hz: hz });
 });
 $("rtlAgc").addEventListener("change", () => {
   st.rtl_agc = $("rtlAgc").checked;
@@ -1283,7 +1306,7 @@ function restoreBodyTab() {
 function guessBodyTab() {
   if (!bodyTabGuess) return;
   bodyTabGuess = false;
-  const any = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].some((id) => $(id).checked);
+  const any = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].some((id) => $(id).checked) || !!(st && st.dab);
   setBodyTab(any ? "dec" : "scope");
 }
 
@@ -1299,7 +1322,7 @@ function setBodyTab(tab, save = true) {
 /** Number of enabled decoders on the tab and a text when none is enabled. */
 function renderDecTab() {
   // by the checkboxes – valid right after the click, even before the server confirms the state
-  const n = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].filter((id) => $(id).checked).length;
+  const n = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].filter((id) => $(id).checked).length + (st && st.dab ? 1 : 0);
   $("decCount").textContent = n ? `(${n})` : "";
   $("decEmpty").hidden = n > 0;
 }
@@ -1569,6 +1592,152 @@ $("vdl2On").addEventListener("change", () => {
   renderVdl2Info({ enabled: st.vdl2 });
   send({ vdl2: st.vdl2 });
 });
+// ---------- DAB / DAB+ (welle-cli; the VFO feeds it through rtl_tcp, audio is its MP3 stream) ----------
+
+let dabSid = null;      // station playing (service ID, hex)
+let dabTimer = null;    // polling of /api/dab while the card is shown
+let dabMotTime = 0;     // slide time of the playing station (a new one -> reload the picture)
+let dabEl = null;       // <audio> playing the MP3 stream, routed into MAIN (masterGain)
+let dabLastInfo = {};
+
+const dabEsc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+/** DAB button in OTHER: DAB on (the server tunes the VFO to the saved channel at 2.048 MS/s). */
+function dabOn() {
+  if (st.driver === "lime" || st.chain_owner) {
+    errorUntil = Date.now() + 5000;
+    renderStatusPill(st.chain_owner ? `DAB needs its own dongle (this VFO shares the dongle of VFO ${st.chain_owner})`
+      : "DAB is not supported on LimeSDR (RTL-SDR only)");
+    return;
+  }
+  if (!st.dab) {
+    st.dab = true;
+    if (st.acars || st.vdl2) { st.acars = st.vdl2 = false; $("acarsOn").checked = $("vdl2On").checked = false; }
+    send({ dab: true });
+  }
+  renderDab(st);
+  setBodyTab("dec");
+  renderDecTab();
+}
+
+function renderDab(s) {
+  const on = !!s.dab;
+  $("dabCard").hidden = !on;
+  const b = $("bandGroups").querySelector('[data-f="dab"]');
+  if (b) b.classList.toggle("active", on);
+  if (on && s.dab_channel && $("dabChannel").value !== s.dab_channel) $("dabChannel").value = s.dab_channel;
+  renderDabInfo({ enabled: on, error: s.dab_error });
+  if (on && !dabTimer) { pollDab(); dabTimer = setInterval(pollDab, 1000); }
+  if (!on && dabTimer) stopDab();
+}
+
+function renderDabInfo(d) {
+  const i = (dabLastInfo = { ...dabLastInfo, ...d });
+  const el = $("dabInfo");
+  el.classList.toggle("err", !!i.error);
+  if (i.error) { el.textContent = i.error; return; }
+  const parts = [];
+  if (i.freq_hz) parts.push(`${fmtMHz(i.freq_hz, 3)} MHz`);
+  if (i.snr != null) parts.push(`SNR ${Number(i.snr).toFixed(1)} dB`);
+  if (i.enabled && i.connected === false) parts.push("starting welle-cli…");
+  else if (i.enabled && i.on_channel === false) parts.push("tuning…");
+  if (i.utc) parts.push(`${i.utc} UTC`);
+  el.textContent = parts.join(" · ");
+}
+
+/** Stops polling and audio (DAB off, or another VFO selected). */
+function stopDab() {
+  clearInterval(dabTimer);
+  dabTimer = null;
+  dabPlay(null);
+  dabLastInfo = {};
+  $("dabServices")._key = null;
+  $("dabServices").innerHTML = `<div class="ft8-empty">Searching the ensemble…</div>`;
+  $("dabEnsemble").textContent = "";
+  $("dabNowLabel").textContent = "–";
+  $("dabNowMeta").textContent = "";
+  $("dabDls").textContent = "";
+}
+
+async function pollDab() {
+  const base = vbase;
+  let m;
+  try {
+    m = await (await fetch(base + "/api/dab")).json();
+  } catch (e) { return; }
+  if (base !== vbase || !st || !st.dab) return;
+  renderDabInfo(m);
+  $("dabEnsemble").textContent = m.ensemble || "";
+  const list = $("dabServices");
+  const key = m.services.map((x) => x.sid + x.label + x.audio).join("|") + "#" + !!m.ensemble;
+  if (list._key !== key) {
+    list._key = key;
+    list.innerHTML = m.services.length
+      ? m.services.map((x) => `<button data-sid="${x.sid}" ${x.audio ? "" : "disabled"} title="${dabEsc(x.pty || "")} · SID ${x.sid}">` +
+        `<span>${dabEsc(x.label || x.sid)}</span><small>${x.type || ""}${x.bitrate ? " " + x.bitrate + "k" : ""}</small></button>`).join("")
+      : `<div class="ft8-empty">${m.ensemble ? "No stations yet…" : "Searching the ensemble… (no DAB signal on this channel?)"}</div>`;
+  }
+  for (const b of list.querySelectorAll("button")) b.classList.toggle("on", b.dataset.sid === dabSid);
+  const cur = m.services.find((x) => x.sid === dabSid);
+  if (!cur) return;
+  $("dabNowLabel").textContent = cur.label || cur.sid;
+  const e = cur.errors || {};
+  const errs = (e.frameerrors || 0) + (e.rserrors || 0) + (e.aacerrors || 0);
+  $("dabNowMeta").textContent = [cur.pty, cur.type, cur.bitrate && `${cur.bitrate} kbit/s`, cur.mode,
+    cur.samplerate && `${cur.samplerate / 1000} kHz`, errs && `errors: frame ${e.frameerrors} · RS ${e.rserrors} · AAC ${e.aacerrors}`]
+    .filter(Boolean).join(" · ");
+  $("dabDls").textContent = cur.dls || "";
+  if (cur.mot_time && cur.mot_time !== dabMotTime) {
+    dabMotTime = cur.mot_time;
+    $("dabSlide").src = `${base}/api/dab/slide/${cur.sid}?t=${cur.mot_time}`;
+  }
+}
+
+/** Plays station sid (null = stop). The MP3 stream goes through MAIN volume like the normal audio. */
+function dabPlay(sid) {
+  dabSid = sid;
+  dabMotTime = 0;
+  $("dabSlide").hidden = true;
+  $("dabSlide").removeAttribute("src");
+  if (dabEl) { dabEl.pause(); dabEl.removeAttribute("src"); dabEl.load(); }
+  for (const b of $("dabServices").querySelectorAll("button")) b.classList.toggle("on", b.dataset.sid === sid);
+  if (!sid) return;
+  const ctx = audioContext();
+  if (!dabEl) {
+    dabEl = new Audio();
+    dabEl.crossOrigin = "anonymous";      // the receiver of the VFO is on another port (CORS * on the server)
+    ctx.createMediaElementSource(dabEl).connect(masterGain);
+  }
+  dabEl.src = `${vbase}/api/dab/audio/${sid}`;
+  dabEl.play().catch(() => {});
+  ctx.resume();
+  const b = $("dabServices").querySelector(`[data-sid="${sid}"] span`);
+  $("dabNowLabel").textContent = b ? b.textContent : sid;
+  $("dabNowMeta").textContent = "buffering…";
+  $("dabDls").textContent = "";
+}
+
+$("dabSlide").addEventListener("load", () => { $("dabSlide").hidden = false; });
+$("dabSlide").addEventListener("error", () => { $("dabSlide").hidden = true; });
+$("dabServices").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-sid]");
+  if (b && !b.disabled) dabPlay(b.dataset.sid === dabSid ? null : b.dataset.sid);
+});
+$("dabChannel").addEventListener("change", () => {
+  dabPlay(null);
+  $("dabServices")._key = null;
+  st.dab_channel = $("dabChannel").value;
+  send({ dab_channel: st.dab_channel });
+});
+/** DAB off (DAB button again, or OFF in the card): the previous sample rate comes back. */
+function dabOff() {
+  st.dab = false;
+  send({ dab: false });
+  renderDab(st);
+  renderDecTab();
+}
+$("dabOff").addEventListener("click", dabOff);
+
 $("acarsBands").addEventListener("click", onLinkBand);
 $("acarsRows").addEventListener("click", (e) => {
   const td = e.target.closest("td.msg.long");
@@ -1590,6 +1759,8 @@ $("acarsClear").addEventListener("click", () => {
 const WFX_BLOCK = 32; // rows per canvas; the image grows in blocks without copying
 const WFX_STATES = { idle: "waiting for signal", free: "receiving (no start)", phasing: "phasing", rx: "receiving" };
 let wfx = { id: null, width: 1810, rows: 0, blocks: [] };
+let wfxSlant = 0;        // ppm, from the server
+let wfxAlign = null;     // ALIGN: null = off, [] = waiting for the 1st point, [p] = for the 2nd
 
 function wefaxReset(id, width) {
   for (const cv of $("wefaxWrap").querySelectorAll("canvas")) cv.remove();
@@ -1638,19 +1809,26 @@ async function wefaxLoad() {
   $("wefaxBands").innerHTML = info.freqs.map(([f, label]) =>
     `<button data-f="${f}" title="${fmtKHz(f, 1)} kHz (USB ${fmtKHz(f - 1900, 1)})">${label}</button>`).join("");
   wefaxReset(info.image_id, info.width);
-  if (info.rows) {
-    const img = new Image();
-    img.crossOrigin = "anonymous";   // image from the VFO port; without this the canvas could not be saved
-    img.src = `${vbase}/api/wefax/image.png?t=${Date.now()}`;
-    await img.decode();
-    wfx.width = img.width;
-    for (let b = 0; b * WFX_BLOCK < img.height; b++) {
-      wefaxBlock(b).drawImage(img, 0, b * WFX_BLOCK, img.width, WFX_BLOCK, 0, 0, img.width, WFX_BLOCK);
-    }
-    wfx.rows = img.height;
-    $("wefaxEmpty").hidden = true;
-  }
+  if (info.rows) await wefaxLoadImage();
   renderWefaxInfo(info);
+}
+
+/** Draws the whole current image from the server (after a VFO switch, or after the slant correction). */
+async function wefaxLoadImage() {
+  const id = wfx.id;
+  const img = new Image();
+  img.crossOrigin = "anonymous";   // image from the VFO port; without this the canvas could not be saved
+  img.src = `${vbase}/api/wefax/image.png?t=${Date.now()}`;
+  try { await img.decode(); } catch { return; }   // no image (yet)
+  if (wfx.id !== id) return;                       // a new image started meanwhile
+  wfx.width = img.width;
+  for (let b = 0; b * WFX_BLOCK < img.height; b++) {
+    const ctx = wefaxBlock(b);
+    ctx.clearRect(0, 0, img.width, WFX_BLOCK);
+    ctx.drawImage(img, 0, b * WFX_BLOCK, img.width, WFX_BLOCK, 0, 0, img.width, WFX_BLOCK);
+  }
+  wfx.rows = img.height;
+  $("wefaxEmpty").hidden = true;
 }
 
 function renderWefaxInfo(i) {
@@ -1659,6 +1837,17 @@ function renderWefaxInfo(i) {
     (i.rows ? ` · ${i.rows} lines` : "") + (i.saved ? ` · saved ${i.saved}` : "");
   if (document.activeElement !== $("wefaxLpm")) $("wefaxLpm").value = i.lpm_mode;
   if (document.activeElement !== $("wefaxIoc")) $("wefaxIoc").value = i.ioc_mode;
+  if (i.slant_ppm != null) {
+    wfxSlant = i.slant_ppm;
+    if (document.activeElement !== $("wefaxSlant")) $("wefaxSlant").value = i.slant_ppm;
+  }
+}
+
+function wefaxAlignMode(on) {
+  wfxAlign = on ? [] : null;
+  $("wefaxAlign").classList.toggle("on", on);
+  $("wefaxAlign").textContent = on ? "ALIGN 1/2" : "ALIGN";
+  $("wefaxWrap").classList.toggle("aligning", on);
 }
 
 function wefaxCmd(body) {
@@ -1685,10 +1874,36 @@ $("wefaxBands").addEventListener("click", async (e) => {
 $("wefaxLpm").addEventListener("change", () => wefaxCmd({ lpm_mode: $("wefaxLpm").value }));
 $("wefaxIoc").addEventListener("change", () => wefaxCmd({ ioc_mode: $("wefaxIoc").value }));
 $("wefaxNew").addEventListener("click", () => wefaxCmd({ action: "new" }));
+$("wefaxSlant").addEventListener("change", () => {
+  const v = Number($("wefaxSlant").value);
+  if (Number.isFinite(v)) wefaxCmd({ slant_ppm: v });
+});
+$("wefaxAlign").addEventListener("click", () => wefaxAlignMode(wfxAlign === null));
 $("wefaxWrap").addEventListener("click", (e) => {
   const cv = e.target.closest("canvas");
   if (!cv) return;
   const r = cv.getBoundingClientRect();
+  if (wfxAlign !== null) {
+    // point in image pixels: x across the line, y = line number
+    const blk = [...$("wefaxWrap").querySelectorAll("canvas")].indexOf(cv);
+    const p = { x: (e.clientX - r.left) / r.width * wfx.width, y: blk * WFX_BLOCK + (e.clientY - r.top) / r.height * WFX_BLOCK };
+    if (!wfxAlign.length) {
+      wfxAlign.push(p);
+      $("wefaxAlign").textContent = "ALIGN 2/2";
+      return;
+    }
+    const a = wfxAlign[0];
+    wefaxAlignMode(false);
+    const dy = p.y - a.y;
+    if (Math.abs(dy) < 8) return;          // too close: the drift could not be measured
+    // A line leaning to the right going down = our line is too short -> the correction grows.
+    let dx = p.x - a.x;
+    if (dx > wfx.width / 2) dx -= wfx.width;
+    if (dx < -wfx.width / 2) dx += wfx.width;
+    const ppm = Math.round((wfxSlant + dx / dy / wfx.width * 1e6) * 10) / 10;
+    wefaxCmd({ slant_ppm: Math.max(-3000, Math.min(3000, ppm)) });
+    return;
+  }
   wefaxCmd({ action: "phase", x: (e.clientX - r.left) / r.width });
 });
 
@@ -2128,7 +2343,7 @@ function onStatus(s) {
   const rateChanged = st && st.audio_rate !== s.audio_rate;
   // Shortly after a local change, do not let an older state from the server overwrite tuning and selection.
   if (st && Date.now() - localChangeAt < 700) {
-    for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "stereo_on", "notch", "ft8", "wefax", "cw", "rtty", "sstv", "acars", "cpdlc", "logs", "upconv", "device", "squelch_levels"]) s[k] = st[k];
+    for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "stereo_on", "notch", "ft8", "wefax", "cw", "rtty", "sstv", "acars", "cpdlc", "dab", "logs", "upconv", "device", "squelch_levels"]) s[k] = st[k];
   }
   s.sample_rates = sampleRates;
   st = s;
@@ -2161,6 +2376,7 @@ function onStatus(s) {
     : lime ? "VDL2 is not supported on LimeSDR (RTL-SDR only)" : VDL2_TITLE;
   $("acarsCard").hidden = !(s.acars || s.vdl2);
   renderVdl2Info({ enabled: s.vdl2, error: s.vdl2_error });
+  renderDab(s);
   renderLinkBands();
   renderDecTab();
   guessBodyTab();
@@ -2208,6 +2424,7 @@ function connectEvents(v) {
   on("wefaxnew", (d) => wefaxReset(d.id, d.width));
   on("wefaxrow", (d) => { if (d.id === wfx.id) wefaxAddRow(d.row); });
   on("wefaxtrim", (d) => { if (d.id === wfx.id) wefaxTrim(d.rows); });
+  on("wefaxreload", (d) => { if (d.id === wfx.id) wefaxLoadImage(); });
   on("wefaxstate", renderWefaxInfo);
   on("sstvnew", (d) => sstvReset(d.id, d.width, d.height));
   on("sstvrow", (d) => { if (d.id === sstvImg.id) sstvAddRow(d.y, d.row); });
@@ -2226,6 +2443,7 @@ function connectEvents(v) {
   on("sstvnew", decActivity);
   on("acarsstate", renderAcarsInfo);
   on("vdl2state", renderVdl2Info);
+  on("dabstate", (d) => { if (st) renderDabInfo(d); });
   on("acarsinfo", onAcarsInfo);
   on("ft8cycle", (d) => renderFt8Info(`cycle ${d.time} · decoding…`));
   es.onerror = () => {
@@ -2419,6 +2637,7 @@ async function selectVfo(v) {
   pttUp();
   flushSend();
   stopAudio();
+  stopDab();
   active = v;
   vbase = v.base;
   store("vfo", v.name);
@@ -2793,6 +3012,7 @@ async function init() {
   }
   sampleRates = info.sample_rates;
   renderFt8Bands(info.ft8_freqs);
+  $("dabChannel").innerHTML = (info.dab_channels || []).map(([n, f]) => `<option value="${n}">${n} · ${fmtMHz(f, 3)}</option>`).join("");
   linkFreqs = { acars: info.acars_freqs || [], vdl2Center: info.vdl2_center || 136850000,
     vdl2Rate: info.vdl2_rate || 2100000,
     vdl2Freqs: info.vdl2_freqs || [] };

@@ -70,7 +70,7 @@
           </g>
           <circle class="r-logo-ring" cx="294" cy="-46" r="21" fill="none" stroke-width="11"/>
         </svg>
-        <span class="r-ver">Ver. 0.106</span>
+        <span class="r-ver">Ver. 0.107</span>
         </div>
         <!-- RDS: compact frame under the logo, as wide as the clock -->
         <div class="rds off" id="rds">
@@ -134,6 +134,7 @@
       <button id="stereoKey" class="key" title="WFM stereo on/off (off = mono, less noise on weak stations)">STEREO</button>
       <button id="notchKey" class="key" title="Automatic notch: removes steady tones (whistles, carriers) in AM/LSB/USB">NOTCH</button>
       <button id="alcKey" class="key" title="Audio ALC (automatic audio level) in AM/LSB/USB/CW; off = fixed gain, set the level with MAIN">ALC</button>
+      <button id="afiKey" class="key" title="AFI: audio frequency inversion – voice inversion scrambler / descrambler (all modes except WFM); the inversion frequency is set in SET">AFI</button>
       <button id="cueKey" class="key" title="CUE: keep hearing this VFO (at CUE level) when another VFO is selected">CUE</button>
     </div></div>
     <div class="kgroup"><span class="klabel">MENU</span><div class="keys">
@@ -167,7 +168,7 @@
     <div class="hover-freq" id="hoverFreq" hidden></div>
     <!-- DECODERS tab: the decoder cards cover the spectrum and waterfall (those keep running) -->
     <div class="dec-pane" id="decPane" hidden>
-      <div id="decEmpty" class="ft8-empty">No decoder is on. Turn one on under DECODE (FT8, WEFAX, CW, RTTY, SSTV, ACARS, CPDLC).</div>
+      <div id="decEmpty" class="ft8-empty">No decoder is on. Turn one on under DECODE (FT8, WEFAX, CW, RTTY, SSTV, ACARS, CPDLC), or DAB under OTHER.</div>
     <!-- ===== decoders ===== -->
     <!-- text decoders (CW, RTTY): the text fills the rest of the tab -->
     <section class="card ft8 txtdec" id="cwCard" hidden>
@@ -270,14 +271,42 @@
         <label class="wf-opt">IOC
           <select id="wefaxIoc"><option value="auto">Auto</option><option>576</option><option>288</option></select>
         </label>
+        <label class="wf-opt" title="Slant correction: sample clock error of this VFO's SDR in ppm (kept after a restart). The image received so far is straightened too.">SLANT
+          <input id="wefaxSlant" type="number" step="1" min="-3000" max="3000" value="0">ppm
+        </label>
+        <button id="wefaxAlign" class="key small" title="Straighten the image: then click two points on a line that should be vertical (the image edge, a meridian…)">ALIGN</button>
         <label class="wf-opt log-opt" title="Write to the daily log data\logs\wefax_YYYY-MM-DD.txt (names of saved images) (UTC, shared by all VFOs)"><input type="checkbox" data-log="wefax">LOG</label>
         <button id="wefaxNew" class="key small">NEW</button>
         <button id="wefaxSave" class="key small">PNG</button>
       </div>
       <p class="note">Format (IOC from the start tone, LPM, line start from phasing) and fine tuning (AFC ±3 kHz) are detected automatically.
-        Finished images are saved to the <code>data\wefax</code> folder. Click in the image = that spot becomes the left edge.</p>
+        Finished images are saved to the <code>data\wefax</code> folder. Click in the image = that spot becomes the left edge.
+        Slanted image: ALIGN, then click two points on a line that should be vertical.</p>
       <div class="wefax-wrap" id="wefaxWrap">
         <div id="wefaxEmpty" class="ft8-empty">Waiting for a signal… Tune a WEFAX station (e.g. DWD), the image starts by itself.</div>
+      </div>
+    </section>
+
+    <section class="card ft8 dab" id="dabCard" hidden>
+      <div class="ft8-head">
+        <b>DAB+</b>
+        <label class="wf-opt" title="Band III ensemble (multiplex)">CHANNEL <select id="dabChannel"></select></label>
+        <span id="dabEnsemble" class="dab-ens"></span>
+        <span id="dabInfo" class="muted"></span>
+        <button id="dabOff" class="key small" title="Turn DAB off (the previous sample rate comes back)">OFF</button>
+      </div>
+      <p class="note">DAB / DAB+ digital radio in Band III (174–240 MHz), decoded by welle-cli (welle.io). The VFO runs at
+        2.048 MS/s on the centre of the chosen channel; pick a station below. Audio comes through MAIN volume
+        (WAV recording does not include DAB). RTL-SDR only. Channels of your region: e.g. Slovakia / Czechia 12C, 12D, 7D,
+        Austria 5C, 5D, 8B, 11C.</p>
+      <div class="dab-main">
+        <div class="dab-list" id="dabServices"><div id="dabEmpty" class="ft8-empty">Searching the ensemble…</div></div>
+        <div class="dab-now">
+          <div class="dab-title" id="dabNowLabel">–</div>
+          <div class="dab-meta muted" id="dabNowMeta"></div>
+          <div class="dab-dls" id="dabDls"></div>
+          <div class="dab-slide"><img id="dabSlide" alt="" hidden></div>
+        </div>
       </div>
     </section>
 
@@ -342,6 +371,12 @@
       <p class="note">AM, FM and WFM each keep their own level; the slider sets the one for the current mode.
         Audio is muted while the signal is below the level (yellow mark on the S-meter). Far left = off.
         AM (airband): the carrier opens the squelch, so set it just above the noise level.</p>
+    </div>
+    <div class="setting">
+      <div class="row"><span>AFI – inversion frequency (Hz)</span></div>
+      <input id="afiHz" type="number" step="1" min="500" max="4000" value="1750">
+      <p class="note">Audio frequency inversion (AFI key): the audio spectrum is mirrored around this frequency
+        (f → 2·F − f, band 0 … 2·F). The same setting scrambles and descrambles. Default 1750 Hz (band up to 3500 Hz). 500–4000 Hz.</p>
     </div>
     <div class="setting">
       <div class="row"><span>Tuner gain</span><span id="gainText" class="value"></span></div>

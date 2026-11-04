@@ -35,7 +35,8 @@ from wefax import WefaxDecoder
 from sstv import SstvDecoder
 from acars import ACARS_FREQS, AcarsDecoder
 from vdl2 import VDL2_CENTER, VDL2_FREQS, VDL2_RATE, Vdl2Decoder
-from sdr import MODES, SQUELCH_OFF, UPCONV_MAX_HZ, ZOOMS, Receiver, list_devices, lowpass
+from dab import CHANNEL_HZ, DAB_CHANNELS, DAB_DEFAULT, DAB_RATE, DabDecoder
+from sdr import AFI_MAX_HZ, AFI_MIN_HZ, MODES, SQUELCH_OFF, UPCONV_MAX_HZ, ZOOMS, Receiver, list_devices, lowpass
 
 
 def vfo_from_args():
@@ -118,6 +119,7 @@ if VFO:
         import iqshare
         cfg["chain"] = {"owner": OWNER["name"], "port": iqshare.iq_port(OWNER)}
         cfg["vdl2"] = False          # VDL2 needs its own centre and sample rate
+        cfg["dab"] = False           # DAB too
     else:
         cfg.pop("chain", None)
 hub = Hub()
@@ -198,6 +200,17 @@ acars = AcarsDecoder(on_event=hub.event, tag=_tag)
 acars.log_on = log_on("acars")
 acars.cpdlc_log_on = log_on("cpdlc")
 vdl2 = Vdl2Decoder(on_acars=acars.accept_vdl2, on_atn=acars.accept_atn, on_state=lambda i: hub.event("vdl2state", i))
+
+
+def dab_tune(hz):
+    """welle-cli asks for a DAB ensemble: the VFO goes there at 2.048 MS/s (called from the rtl_tcp thread)."""
+    if cfg.get("tune_hz") != hz or cfg.get("sample_rate") != DAB_RATE:
+        receiver.update({"sample_rate": DAB_RATE, "center_hz": float(hz), "tune_hz": float(hz)})
+    cfg["dab_channel"] = dab.channel
+    save_config_later()
+
+
+dab = DabDecoder(on_tune=dab_tune, on_state=lambda i: hub.event("dabstate", i))
 _saved_logged.update(wefax=getattr(wefax, "saved", None), sstv=getattr(sstv, "saved", None))
 
 
@@ -211,7 +224,8 @@ def tx_capable():
 def state():
     capable = tx_capable()
     return dict(receiver.state(), ft8=ft8.enabled, ft8_error=ft8.error, wefax=wefax.enabled, cw=cw.enabled, rtty=rtty.enabled,
-                sstv=sstv.enabled, acars=acars.enabled, vdl2=vdl2.enabled, vdl2_error=vdl2.error, cpdlc=acars.cpdlc_on, logs={k: log_on(k) for k in LOG_KEYS},
+                sstv=sstv.enabled, acars=acars.enabled, vdl2=vdl2.enabled, vdl2_error=vdl2.error, cpdlc=acars.cpdlc_on,
+                dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, logs={k: log_on(k) for k in LOG_KEYS},
                 tx_capable=capable, tx_enabled=bool(cfg.get("tx_enabled", False)),
                 can_tx=capable and bool(cfg.get("tx_enabled", False)) and hasattr(receiver.sdr, "tx_start"))
 
@@ -240,12 +254,13 @@ def on_baseband(base, fs, dial_hz):
 receiver = Receiver(
     cfg,
     on_row=lambda row, center, span: hub.event("wf", {"c": center, "span": span, "row": base64.b64encode(row).decode()}),
-    on_audio=hub.audio_chunk,
+    on_audio=lambda pcm: None if dab.enabled else hub.audio_chunk(pcm),   # DAB: the audio is welle-cli's MP3
     on_status=lambda: hub.event("status", state()),
     on_baseband=on_baseband,
     on_demod=sstv.feed,
 )
 ft8.set_enabled(cfg.get("ft8", False))
+wefax.slant_ppm = float(cfg.get("wefax_slant_ppm", 0.0))
 wefax.set_enabled(cfg.get("wefax", False))
 cw.set_enabled(cfg.get("cw", False))
 try:
@@ -255,9 +270,18 @@ except (TypeError, ValueError):
 rtty.set_enabled(cfg.get("rtty", False))
 sstv.set_enabled(cfg.get("sstv", False))
 acars.set_enabled(cfg.get("acars", False) and not cfg.get("vdl2", False))
-receiver.on_raw = vdl2.feed_raw
+
+
+def on_raw(raw, fs, center_hz):
+    vdl2.feed_raw(raw, fs, center_hz)
+    dab.feed_raw(raw, fs, center_hz, receiver.lo)
+
+
+receiver.on_raw = on_raw
 vdl2.set_enabled(cfg.get("vdl2", False))
 acars.set_vdl2(vdl2.enabled)
+if cfg.get("dab") and cfg.get("driver") != "lime" and not OWNER:
+    dab.set_enabled(True, cfg.get("dab_channel", DAB_DEFAULT))
 
 
 def sync_cpdlc():
@@ -288,7 +312,8 @@ def index():
 @app.route("/api/state")
 def api_state():
     return jsonify(dict(state(), sample_rates=SAMPLE_RATES, modes=MODES, ft8_freqs=FT8_FREQS, acars_freqs=ACARS_FREQS,
-                        vdl2_freqs=VDL2_FREQS, vdl2_center=VDL2_CENTER, vdl2_rate=VDL2_RATE, tx_bands=TX_BANDS))
+                        vdl2_freqs=VDL2_FREQS, vdl2_center=VDL2_CENTER, vdl2_rate=VDL2_RATE, tx_bands=TX_BANDS,
+                        dab_channels=DAB_CHANNELS))
 
 
 # ---------- transmitting (PTT) ----------
@@ -431,10 +456,14 @@ def api_wefax():
 
 @app.route("/api/wefax", methods=["POST"])
 def api_wefax_cmd():
+    body = request.get_json(force=True)
     try:
-        wefax.command(request.get_json(force=True))
+        wefax.command(body)
     except (TypeError, ValueError) as e:
         return jsonify({"error": str(e)}), 400
+    if "slant_ppm" in body:
+        cfg["wefax_slant_ppm"] = wefax.slant_ppm     # clock error of this VFO's SDR: kept across restarts
+        save_config_later()
     return jsonify(wefax.info())
 
 
@@ -552,6 +581,55 @@ def set_vdl2(on, changes):
         changes["sample_rate"] = cfg.pop("vdl2_prev_rate")
     vdl2.set_enabled(on)
     acars.set_vdl2(on)
+
+
+def set_dab(on, changes, channel=None):
+    """DAB on: welle-cli starts and the VFO goes to the ensemble at 2.048 MS/s (ACARS and VDL2 off).
+    DAB off: the previous sample rate comes back. RTL-SDR only, not on a chained VFO."""
+    if on and (cfg.get("driver") == "lime" or OWNER):
+        on = False
+    if on == dab.enabled:
+        if on and channel and channel != dab.channel:
+            dab.set_channel(channel)
+        return
+    cfg["dab"] = on
+    if on:
+        if cfg.get("acars"):
+            cfg["acars"] = False
+            acars.set_enabled(False)
+        set_vdl2(False, changes)
+        changes.pop("sample_rate", None)
+        cfg["dab_prev_rate"] = cfg["sample_rate"]
+        ch = channel if channel in CHANNEL_HZ else cfg.get("dab_channel", DAB_DEFAULT)
+        f = float(CHANNEL_HZ.get(ch, CHANNEL_HZ[DAB_DEFAULT]))
+        changes.update(sample_rate=DAB_RATE, center_hz=f, tune_hz=f)
+        dab.set_enabled(True, ch)
+    else:
+        dab.set_enabled(False)
+        if cfg.get("dab_prev_rate") in SAMPLE_RATES and cfg["dab_prev_rate"] != DAB_RATE:
+            changes["sample_rate"] = cfg.pop("dab_prev_rate")
+
+
+@app.route("/api/dab")
+def api_dab():
+    return jsonify(dab.mux())
+
+
+@app.route("/api/dab/slide/<sid>")
+def api_dab_slide(sid):
+    r = dab.slide(sid)
+    if r is None:
+        return "", 204
+    return Response(r[0], mimetype=r[1], headers={"Cache-Control": "no-store"})
+
+
+@app.route("/api/dab/audio/<sid>")
+def api_dab_audio(sid):
+    try:
+        gen = dab.audio(sid)
+    except OSError as e:
+        return jsonify({"error": f"DAB audio: {e}"}), 503
+    return Response(gen, mimetype="audio/mpeg", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.route("/api/devices")
@@ -680,6 +758,13 @@ def api_set():
             changes["notch"] = bool(body["notch"])
         if "audio_agc" in body:
             changes["audio_agc"] = bool(body["audio_agc"])
+        if "afi" in body:
+            changes["afi"] = bool(body["afi"])
+        if "afi_hz" in body:
+            hz = float(body["afi_hz"])
+            if not AFI_MIN_HZ <= hz <= AFI_MAX_HZ:
+                raise ValueError(f"AFI frequency must be {AFI_MIN_HZ:g} to {AFI_MAX_HZ:g} Hz")
+            changes["afi_hz"] = hz
         if "rtl_agc" in body:
             changes["rtl_agc"] = bool(body["rtl_agc"])
         if "ppm" in body:
@@ -754,6 +839,8 @@ def api_set():
         sstv.set_enabled(cfg["sstv"])
         save_config_later()
         hub.event("status", state())
+    if body.get("acars") or body.get("vdl2"):
+        set_dab(False, changes)                # the dongle cannot be at 131/136 MHz and in Band III at once
     if "acars" in body:
         cfg["acars"] = bool(body["acars"])
         if cfg["acars"]:
@@ -765,6 +852,15 @@ def api_set():
     if "vdl2" in body:
         set_vdl2(bool(body["vdl2"]), changes)
         sync_cpdlc()
+        save_config_later()
+        hub.event("status", state())
+    if "dab" in body or "dab_channel" in body:
+        ch = body.get("dab_channel")
+        if ch is not None and ch not in CHANNEL_HZ:
+            return jsonify({"error": "unknown DAB channel"}), 400
+        set_dab(bool(body.get("dab", dab.enabled)), changes, ch)
+        if ch:
+            cfg["dab_channel"] = ch
         save_config_later()
         hub.event("status", state())
     if "tune_hz" in changes and changes["tune_hz"] != cfg.get("tune_hz"):

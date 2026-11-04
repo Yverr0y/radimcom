@@ -22,6 +22,8 @@ Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
   the start of a transmission (airband). The level is marked on the S-meter with a yellow tick.
 - **Spectrum and waterfall** with 1×–32× zoom.
 - **Decoders:** FT8, WEFAX (radio fax with automatic format detection), CW (Morse with AFC and speed estimation), RTTY (Baudot, automatic shift 90–1000 Hz, speed 45.45/50/75/100 Bd and polarity), SSTV (colour images, 14 modes, VIS) and aircraft data link: ACARS (131.725 MHz and others, AM, MSK 2400 bit/s) and VDL2 (VDL Mode 2, 136.725–136.975 MHz, all channels at once, via dumpvdl2), with CPDLC (FANS-1/A and European ATN) and ADS-C position reports decoded to plain text; aircraft type, flight level and speed from adsb.fi / adsb.lol, country flag from the ICAO address. See [Aircraft data link](#aircraft-data-link-acars-vdl2-cpdlc-ads-c).
+- **DAB / DAB+ digital radio:** the **DAB** button in OTHER: station list of the ensemble, DLS text, slideshow and
+  audio, via welle-cli. See [DAB / DAB+ digital radio](#dab--dab-digital-radio).
 - **Daily logs:** the LOG checkbox in each decoder card writes to `data\logs\<decoder>_YYYY-MM-DD.txt` (UTC, one line per message; WEFAX/SSTV log the names of saved images), ACARS / VDL2 to `data\acars\acars_YYYY-MM-DD.txt` and (CPDLC, ADS-C) `data\acars\cpdlc_YYYY-MM-DD.txt`.
 - **Frequency memories** (MEM) with favourites and import from SDR# (`frequencies.xml`).
 - **Upconverter:** HF is tuned via the LO (e.g. 100 MHz), see [Shortwave (HF) reception](#shortwave-hf-reception-with-an-upconverter). For a VFO with a manual converter switch, crossing
@@ -164,6 +166,28 @@ The FANS-1/A message set and its wording (RTCA DO-258) are in `cpdlc_schema.py`,
 [libacars](https://github.com/szpajder/libacars) (MIT licence). dumpvdl2 and libacars for VDL2 are built
 with MSYS2; licences, sources and build steps are in `installer\VDL2.txt` (`lib\vdl2\README.txt` in the package).
 
+## DAB / DAB+ digital radio
+
+DAB and DAB+ are broadcast in Band III (174–240 MHz). One channel (e.g. 12C = 227.360 MHz) carries an ensemble
+(multiplex) of many stations, 1.5 MHz wide.
+
+- Press **DAB** in the OTHER band group. The VFO switches to 2.048 MS/s on the centre of the channel and the
+  **DAB+** card opens on the DECODERS tab. Pick the channel of your region in CHANNEL (remembered per VFO,
+  default 12C); after a few seconds the ensemble name, SNR and the station list appear.
+- Click a station to listen. The card shows its programme type, DAB / DAB+, bitrate, the DLS text ("now playing")
+  and the slideshow picture. Audio plays through MAIN volume; REC does not record DAB.
+- **DAB** again, **OFF** in the card or any other band button ends DAB and restores the previous sample rate. DAB turns ACARS and
+  VDL2 off (one dongle cannot be in two bands). RTL-SDR only; not on LimeSDR or on a chained VFO.
+- No stations: the channel has no ensemble at your place, or the signal is weak. Use a vertical antenna for Band III,
+  a manual RF gain (too much gain overloads the dongle) and check the SNR (DAB+ needs roughly 8 dB or more).
+
+Decoding is done by [welle-cli](https://github.com/AlbrechtL/welle.io) (welle.io, GPLv2+, `lib\dab\welle-cli.exe`),
+which runs as a separate program. The dongle stays in RADIMCOM: `dab.py` runs a local rtl_tcp server
+(127.0.0.1, free port) and welle-cli connects to it like to a network dongle; its tuning requests retune the VFO.
+The station list, DLS, slides and MP3 audio come from welle-cli's built-in web server and RADIMCOM passes them to
+the browser (`/api/dab…`, see the HTTP API). welle-cli is built with MSYS2 UCRT64 by `installer\build_dab.sh`;
+licences, sources and build steps are in `installer\DAB.txt` (`lib\dab\README.txt` in the package).
+
 ## Running
 
 ```bash
@@ -192,7 +216,7 @@ On Windows just double-click `start.bat`. Then open **http://localhost:8434** in
 | Tune to a point | click in the spectrum or waterfall |
 | Move the band | drag with the mouse in the spectrum or waterfall |
 | Filter width | drag the filter edge in the spectrum |
-| Band | buttons in the groups HF HAM, HF BROADCAST, VHF / UHF HAM, OTHER (FM BCAST tunes the last FM station listened to) |
+| Band | buttons in the groups HF HAM, HF BROADCAST, VHF / UHF HAM, OTHER (FM BCAST tunes the last FM station listened to, DAB turns on DAB radio) |
 
 Hovering over the spectrum or waterfall shows the frequency under the mouse.
 

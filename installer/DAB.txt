@@ -1,0 +1,28 @@
+DAB decoder (lib\dab)
+=====================
+
+RADIMCOM decodes DAB / DAB+ digital radio with welle-cli, the command line program of welle.io, which runs as a
+separate program. RADIMCOM keeps the dongle: welle-cli connects to a small rtl_tcp server inside RADIMCOM
+(127.0.0.1, a free port) and gets the raw I/Q samples of the VFO. Services, DLS text, slideshow and the MP3 audio
+come from welle-cli's built-in web server (127.0.0.1, a free port) and RADIMCOM passes them to the browser.
+
+Programs and libraries in this folder:
+
+- welle-cli.exe 2.7 - Copyright (c) Albrecht Lohofener and contributors, GNU General Public License v2 or later.
+  Source: https://github.com/AlbrechtL/welle.io (tag v2.7), built without changes.
+- libfftw3f-3.dll (FFTW, GPL v2+), libfaad-2.dll (FAAD2, GPL v2+), libmpg123-0.dll (mpg123, LGPL 2.1),
+  libmp3lame-0.dll (LAME, LGPL 2), libgcc_s_seh-1.dll, libstdc++-6.dll, libwinpthread-1.dll (GCC runtime,
+  GPL with runtime exception / MIT-style) and other DLLs copied by the build script - MSYS2 UCRT64 packages,
+  sources at https://github.com/msys2/MINGW-packages
+
+How it was built (MSYS2, "UCRT64" environment):
+
+  installer\build_dab.sh does all of it:
+  pacman -S git vim mingw-w64-ucrt-x86_64-{gcc,cmake,ninja,pkgconf,fftw,faad2,mpg123,lame}
+  git clone --branch v2.7 https://github.com/AlbrechtL/welle.io.git
+  cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_WELLE_IO=OFF -DBUILD_WELLE_CLI=ON
+        -DRTLSDR=OFF -DSOAPYSDR=OFF -DAIRSPY=OFF -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        -DCMAKE_CXX_STANDARD_LIBRARIES=-lws2_32
+  ninja -C build welle-cli
+  The DLLs are copied from C:\msys64\ucrt64\bin: the ones welle-cli.exe imports (objdump -p) and those they import:
+  libfaad-2, libfftw3f-3, libmp3lame-0, libmpg123-0, libstdc++-6, libgcc_s_seh-1, libwinpthread-1.

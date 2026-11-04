@@ -14,12 +14,14 @@ Features
 - HF through an upconverter (configurable LO), warning when the manual CONV/BYPASS switch
   has to be changed.
 - Squelch per mode, RF gain slider under each display (or AGC), audio ALC, automatic notch.
+- AFI: audio frequency inversion (voice inversion scrambler / descrambler), frequency in SET.
 - CUE: keep listening to other VFOs at a separate CUE level while one VFO is selected;
   MAIN and CUE volume faders, stereo level meter, MUTE.
 - REC: records the audio of the selected VFO to a WAV file.
 - Decoders: FT8, WEFAX (radio fax), CW (Morse), RTTY (auto shift/speed), SSTV (14 modes),
   ACARS (aircraft data link, VHF airband), CPDLC (controller-pilot messages in ACARS);
   optional daily log for each.
+- DAB / DAB+ digital radio (Band III): station list, DLS text, slideshow (via welle-cli).
 - Band buttons (HF/VHF/UHF ham, broadcast, airband, marine, PMR446, CB) and frequency
   memories with groups and favourites (import from SDR#).
 - Frequency correction (ppm), bias-tee, sample rate, waterfall colours, S-meter calibration.
@@ -68,6 +70,25 @@ More details: README.md.
 Change log
 ----------
 (also in CHANGELOG.md)
+
+Ver. 0.107
+- AFI key (AUDIO group): audio frequency inversion - voice inversion scrambler /
+  descrambler. The audio spectrum is mirrored around the inversion frequency
+  (f -> 2*F - f), so the same setting scrambles and descrambles. All modes except WFM;
+  remembered per VFO. Recording and decoders get the descrambled audio.
+- SET: "AFI - inversion frequency (Hz)", 500-4000 Hz, default 1750 Hz (band up to 3500 Hz).
+- HTTP API: new keys afi (true/false) and afi_hz in /api/set and /api/state.
+- DAB / DAB+ digital radio: DAB button in the OTHER band group. The VFO goes to 2.048 MS/s
+  on a Band III channel (5A-13F, default 12C); the DAB+ card shows the ensemble, SNR and the
+  station list; click a station to listen, with DLS text and slideshow picture. Decoded by
+  welle-cli (welle.io, GPLv2+) in lib\dab (see lib\dab\README.txt), fed by RADIMCOM over a
+  local rtl_tcp connection. Turns ACARS / VDL2 off; DAB again, another band button or OFF ends DAB.
+  RTL-SDR only. REC does not record DAB audio.
+- HTTP API: dab, dab_channel in /api/set and /api/state; GET /api/dab, /api/dab/audio/<sid>,
+  /api/dab/slide/<sid>.
+- WEFAX slant correction: SLANT field (ppm, -3000 to 3000) and ALIGN key in the WEFAX card (click two
+  points on a line that should be vertical). Corrects the sample clock error of the VFO's SDR, also
+  straightens the image received so far, kept after a restart. HTTP API: slant_ppm in /api/wefax.
 
 Ver. 0.106
 - VFO chaining: one dongle can serve several VFOs (e.g. one dongle for VFO A-D, or two

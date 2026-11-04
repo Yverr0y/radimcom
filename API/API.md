@@ -1,4 +1,4 @@
-# RADIMCOM HTTP API – Ver. 0.106
+# RADIMCOM HTTP API – Ver. 0.107
 
 The web page talks to the receivers through this HTTP API, and you can use it too (scripts, curl, other programs).
 Requests and responses are JSON unless stated otherwise. Errors return `{"error": "..."}` with HTTP 400 (bad input),
@@ -64,15 +64,17 @@ Main fields:
 | `vfo`, `serial`, `driver`, `device` | VFO name, dongle serial, `rtl` or `lime`, device index |
 | `chain_owner`, `out_of_band`, `chained_vfos` | chained VFO: VFO that owns the dongle (`null` otherwise), tuned outside the owner's band (silent, OOR); owner VFO: number of chained VFOs connected |
 | `ppm`, `rtl_agc`, `audio_agc`, `notch`, `notch_active`, `bias_tee`, `stereo_on`, `stereo`, `rds` | receiver options and WFM stereo / RDS |
+| `afi`, `afi_hz` | audio frequency inversion (voice scrambler / descrambler) on/off and its inversion frequency in Hz |
 | `status`, `error`, `opened`, `dropped`, `hw` | device status, last error, open flag, dropped blocks, LimeSDR stream info |
 | `ft8`, `cw`, `rtty`, `wefax`, `sstv`, `acars`, `vdl2`, `cpdlc` | decoders on/off |
 | `ft8_error`, `vdl2_error` | decoder errors |
+| `dab`, `dab_channel`, `dab_error` | DAB on/off, Band III channel (e.g. `12C`), welle-cli error |
 | `logs` | daily logs on/off: `{"ft8", "wefax", "cw", "rtty", "sstv", "acars", "cpdlc"}` |
 | `tx_capable`, `tx_enabled`, `can_tx`, `tx`, `tx_info` | transmitter (LimeSDR) |
 | `wf` | waterfall format: `bins`, `db_min`, `db_step`, `rows_per_s` |
 
 `/api/state` also returns the constants `sample_rates`, `modes`, `ft8_freqs`, `acars_freqs`, `vdl2_freqs`,
-`vdl2_center`, `vdl2_rate`.
+`vdl2_center`, `vdl2_rate`, `dab_channels` (`[[name, Hz], …]`).
 
 ### POST /api/set
 
@@ -86,7 +88,8 @@ Send any combination of these keys:
 | `mode` | `AM`, `FM`, `WFM`, `LSB`, `USB`, `CW` |
 | `bandwidth` | Hz, for the current (or the sent) mode: WFM 50000–250000, FM 500–50000, others 100–18000 |
 | `gain` | dB or `"auto"` |
-| `rtl_agc`, `audio_agc`, `notch`, `stereo_on`, `bias_tee` | true / false |
+| `rtl_agc`, `audio_agc`, `notch`, `afi`, `stereo_on`, `bias_tee` | true / false |
+| `afi_hz` | AFI inversion frequency, 500 – 4000 Hz (default 1750; audio is mirrored f → 2·afi_hz − f) |
 | `squelch` | dBFS, -120 (off) to 0; optional `squelch_mode` = the mode it applies to |
 | `sample_rate` | 1024000, 1536000, 2048000, 2100000, 2400000 |
 | `zoom` | 1, 2, 4, 8, 16, 32 |
@@ -96,6 +99,7 @@ Send any combination of these keys:
 | `device` | device index (single-receiver mode) |
 | `reset` | `true` = reset the dongle |
 | `ft8`, `cw`, `rtty`, `wefax`, `sstv`, `acars`, `vdl2` | decoders on / off. `vdl2: true` switches the VFO to 2.1 MS/s around 136.850 MHz and turns ACARS off (RTL-SDR only); `acars: true` turns VDL2 off |
+| `dab`, `dab_channel` | DAB on / off and channel. `dab: true` starts welle-cli and switches the VFO to 2.048 MS/s on the channel centre (ACARS and VDL2 off, RTL-SDR only); `dab: false` restores the sample rate; `dab_channel` alone retunes a running DAB |
 | `log` | daily logs, e.g. `{"log": {"cw": true, "ft8": false}}` |
 | `tx_enabled` | allow transmitting (only on a VFO that can transmit) |
 
@@ -110,11 +114,12 @@ On connect a `status` event with the full state, then:
 | `ft8`, `ft8cycle` | FT8 decode; start of a 15 s cycle |
 | `cwtext`, `cwstate` | CW text; CW decoder state (speed, tone, …) |
 | `rttytext`, `rttystate` | RTTY text; decoder state |
-| `wefaxrow`, `wefaxstate`, `wefaxnew`, `wefaxtrim` | WEFAX image rows, state, new image, trimmed image |
+| `wefaxrow`, `wefaxstate`, `wefaxnew`, `wefaxtrim`, `wefaxreload` | WEFAX image rows, state, new image, trimmed image, image changed (slant correction: load it again) |
 | `sstvrow`, `sstvstate`, `sstvnew`, `sstvdone` | SSTV image rows, state, new image, finished image |
 | `acars`, `acarsinfo`, `acarsstate` | ACARS / VDL2 message, later added details (ADS-B lookup), state |
 | `cpdlc`, `cpdlcstate` | CPDLC message, state |
 | `vdl2state` | VDL2 decoder state |
+| `dabstate` | DAB state (channel, welle-cli connected, dongle on channel, error) |
 
 A comment line `: ping` is sent every 15 s when nothing else happens.
 
@@ -143,8 +148,11 @@ Endless stream of 16-bit signed little-endian stereo PCM (L, R interleaved). Hea
 | GET | `/api/cpdlc` | CPDLC messages |
 | POST | `/api/cpdlc` | `{"action": "clear"}` |
 | GET | `/api/vdl2` | VDL2 decoder info |
+| GET | `/api/dab` | DAB ensemble: label, SNR, services (`sid`, `label`, `pty`, `type` DAB / DAB+, `bitrate`, `dls`, `mot_time`, error counters) |
+| GET | `/api/dab/audio/<sid>` | MP3 audio stream of a service (welle-cli decodes it while somebody listens) |
+| GET | `/api/dab/slide/<sid>` | last slideshow picture (JPEG / PNG), 204 if none |
 | GET | `/api/wefax` | WEFAX decoder info |
-| POST | `/api/wefax` | `{"action": "new"}` new image, `{"action": "phase", "x": 0.0–1.0}` set the line start, `{"lpm_mode": ...}`, `{"ioc_mode": ...}` |
+| POST | `/api/wefax` | `{"action": "new"}` new image, `{"action": "phase", "x": 0.0–1.0}` set the line start, `{"lpm_mode": ...}`, `{"ioc_mode": ...}`, `{"slant_ppm": -3000–3000}` slant correction (saved; the image so far is straightened too) |
 | GET | `/api/wefax/image.png` | current WEFAX image (PNG) |
 | GET | `/api/sstv` | SSTV decoder info |
 | POST | `/api/sstv` | `{"mode": "auto"}` or a mode name, `{"action": "stop"}` |

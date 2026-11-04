@@ -46,6 +46,7 @@ your settings, memories, logs and recordings (data\ folder) and the configuratio
 3. Run upgrade.bat in the RADIMCOM folder (updates the Python packages if needed).
 4. Start the receiver as usual.
 
+New program folders (e.g. lib\dab with the DAB decoder) come with the zip as well.
 What is new: see INSTALL.txt or CHANGELOG.md.
 """
 UPGRADE_BAT = r"""@echo off
@@ -77,7 +78,7 @@ def make_upgrade(full_zip):
     print(f"{out}: {n + 2} files, {os.path.getsize(out) / 1e6:.1f} MB")
 
 
-CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "lime.py", "rds.py", "cw.py", "rtty.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py", "cpdlc.py", "cpdlc_schema.py", "adsc.py", "vdl2.py",
+CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "lime.py", "rds.py", "cw.py", "rtty.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py", "cpdlc.py", "cpdlc_schema.py", "adsc.py", "vdl2.py", "dab.py",
         "memories.py", "iqshare.py", "eeprom_tool.py", "setup_sdr.py", "start.bat", "setup.bat", "README.md", "CHANGELOG.md",
         "LICENSE", "API/API.md"]
 LIBS = ["lib/librtlsdr.dll", "lib/libusb-1.0.dll"]
@@ -85,6 +86,9 @@ LIBS = ["lib/librtlsdr.dll", "lib/libusb-1.0.dll"]
 LIBS += ["lib/vdl2/" + f for f in ("dumpvdl2.exe", "msys-2.0.dll", "msys-acars-2-2.dll", "msys-gcc_s-seh-1.dll",
                                    "msys-glib-2.0-0.dll", "msys-iconv-2.dll", "msys-intl-8.dll", "msys-pcre2-8-0.dll",
                                    "msys-xml2-16.dll", "msys-z.dll")]
+# DAB: welle-cli built with MSYS2 UCRT64 (see installer/DAB.txt) with its DLLs - everything in lib/dab
+LIBS += sorted("lib/dab/" + f for f in os.listdir(os.path.join(ROOT, "lib", "dab"))
+               if f.lower().endswith((".exe", ".dll"))) if os.path.isdir(os.path.join(ROOT, "lib", "dab")) else []
 FROM_INSTALLER = ["install.bat", "requirements.txt", "config.json", "DRIVERS.txt", "INSTALL.txt"]
 # files from this PC that are bundled (target in the package: source)
 EXTERNAL = {
@@ -116,6 +120,7 @@ def main():
         for f in FROM_INSTALLER:
             copy(os.path.join(HERE, f), f, build)
         copy(os.path.join(HERE, "VDL2.txt"), "lib/vdl2/README.txt", build)   # licences and sources of dumpvdl2
+        copy(os.path.join(HERE, "DAB.txt"), "lib/dab/README.txt", build)     # licences and sources of welle-cli
         shutil.copytree(os.path.join(ROOT, "static"), os.path.join(build, "static"))
         for dst, src in EXTERNAL.items():
             copy(src, dst, build)

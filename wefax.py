@@ -29,6 +29,7 @@ RATE = 8000.0          # Hz, sample rate after FM demodulation
 START_TONES = {300.0: 576, 675.0: 288}
 STOP_TONE = 450.0
 TONE_BLOCKS = 8        # a tone must last 8 × 0.25 s
+SLANT_MAX = 3000.0     # ppm, limit of the slant correction (sample clock error of the SDR)
 SAVE_DIR = data("wefax")
 # Assigned frequencies of DWD Pinneberg and Northwood GYA (Royal Navy, UK; 2618.5 kHz mainly at night),
 # both 120 LPM, IOC 576.
@@ -57,6 +58,7 @@ class WefaxDecoder:
         self.enabled = False
         self.lpm_mode = "auto"
         self.ioc_mode = "auto"
+        self.slant_ppm = 0.0   # slant correction: the line is longer by this many ppm
         self.lock = threading.Lock()
         self.state = "idle"
         self.lpm = 120
@@ -84,8 +86,10 @@ class WefaxDecoder:
         self._emit_state()
 
     def command(self, b):
-        """Commands from the web page: action new/phase, lpm_mode, ioc_mode."""
+        """Commands from the web page: action new/phase, lpm_mode, ioc_mode, slant_ppm."""
         with self.lock:
+            if "slant_ppm" in b:
+                self._set_slant(float(b["slant_ppm"]))
             if "lpm_mode" in b:
                 m = str(b["lpm_mode"])
                 if m != "auto" and int(m) not in LPMS:
@@ -112,12 +116,28 @@ class WefaxDecoder:
                 self.pos += (x - 1 if x > 0.5 else x) * self._line_len()
         self._emit_state()
 
+    def _set_slant(self, ppm):
+        """New slant correction. The lines already received are straightened too: line k drifted by
+        d px per line against the last one, so it is shifted (circularly) by d × (last - k)."""
+        if not math.isfinite(ppm) or abs(ppm) > SLANT_MAX:
+            raise ValueError("slant out of range")
+        ppm = round(ppm, 1)
+        delta, self.slant_ppm = ppm - self.slant_ppm, ppm
+        if not self.rows or not delta:
+            return
+        W, last = len(self.rows[0]), len(self.rows) - 1
+        d = delta * 1e-6 * W
+        self.rows = [np.roll(np.frombuffer(r, np.uint8), int(round(d * (last - k)))).tobytes()
+                     for k, r in enumerate(self.rows)]
+        self.on_event("wefaxreload", {"id": self.image_id})
+
     def info(self):
         return {
             "enabled": self.enabled, "state": self.state, "lpm": self.lpm, "ioc": self.ioc,
             "width": ioc_width(self.ioc), "rows": len(self.rows), "image_id": self.image_id,
             "center_hz": round(self.center), "afc": self.afc_lock, "lpm_mode": self.lpm_mode,
             "ioc_mode": self.ioc_mode, "saved": self.saved, "conf": round(self.lpm_conf, 2),
+            "slant_ppm": self.slant_ppm,
             "freqs": WEFAX_FREQS,
         }
 
@@ -324,7 +344,7 @@ class WefaxDecoder:
                 self.state = "idle"
 
     def _line_len(self):
-        return self.r * 60 / self.lpm
+        return self.r * 60 / self.lpm * (1 + self.slant_ppm * 1e-6)
 
     def _lines(self):
         if self.state == "idle":
