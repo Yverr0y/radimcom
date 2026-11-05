@@ -1,5 +1,26 @@
 # Changelog
 
+## Ver. 0.109
+
+- **DSD mode: digital voice (first test version, it still needs more testing).** New **DSD** key under MODE decodes DMR, P25, D-Star, YSF, NXDN, dPMR, M17 and more with
+  [DSD-FME](https://github.com/lwvmobile/dsd-fme): voice in the audio output, a list of calls (talk group, ID, talker alias) in the DECODERS tab,
+  optional daily log. AUTO finds DMR, P25, D-Star, YSF and X2-TDMA; the others are selected in the card. Encrypted calls are marked and stay
+  muted. D-Star: callsigns from the radio header, or the caller from a GPS frame; readable text from the radio in Alias.
+  DSD-FME is **not in the package** (patent notice in `NOTICE.md`): **run `install_dsd.bat`** to download it (separate, optional step in the installation; the upgrade
+  zip keeps an installed one, and `upgrade.bat` reminds you if it is missing). It refuses to replace a decoder in use and leaves the installed version
+  as it was. Tested on real signals with DMR and D-Star; other protocols, both TDMA slots at once and long runs not yet.
+  HTTP API: `/api/dsd`, `dsd` in the state, `dsdcall` event.
+- **S-meter layouts in SET (DISPLAY tab):** six new layouts besides **Needle**, chosen by clicking a small sample of each: **Bar graph** (curved row of segments),
+  **LED bar** (straight row of segments), **VFD display** (glowing cyan bars), **Amber needle** (backlit dial), **7-segment** (large reading with a thin bar) and **Peak bar**
+  (continuous bar, a white mark holds the last peak). All have the same scale, calibration and response, and a squelch mark (dark blue on Amber needle, yellow elsewhere).
+  **Needle** stays the default; the choice is remembered in the browser, for all VFOs.
+- **S-meter reacts faster:** it now gets a level with every block of samples, as often as the spectrum (about 12 times per second at 1.536 MS/s), instead of
+  only one block in three. Short peaks are no longer missed, and the attack is faster. HTTP API: new `meter` event in `/api/events`.
+- **S-meter reading stays in place:** the text under the meter no longer jumps when the level goes above S9.
+- **SET is a large window with tabs** instead of a narrow side panel: **DONGLE** (dongle, upconverter, LO, ppm, gain, bias-tee, reset), **AUDIO** (squelch, LPF, HPF, AFI),
+  **DISPLAY** (display width, S-meter, waterfall, touchpad wheel speed) and **TX** (only for a dongle that can transmit). The open tab is remembered in the browser.
+- **Block diagram of all components in the README**, updated for this version; `docs/block_diagram.py` draws it.
+
 ## Ver. 0.108
 
 - **Project files for GitHub:** code of conduct, contributing guide, security policy, issue forms and pull request template.

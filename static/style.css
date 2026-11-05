@@ -78,11 +78,24 @@ body {
 }
 .meter-box { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 #smeter { width: 240px; max-width: 100%; height: auto; display: block; }
-#smeter text { font: 600 11px Arial, "Helvetica Neue", sans-serif; text-anchor: middle; dominant-baseline: middle; }
-#smeter text.big { font-size: 14px; font-weight: 700; }
-#smeter text.title { font-size: 9px; letter-spacing: .2em; }
+.meter-face text { font: 600 11px Arial, "Helvetica Neue", sans-serif; text-anchor: middle; dominant-baseline: middle; }
+.meter-face text.big { font-size: 14px; font-weight: 700; }
+.meter-face text.title { font-size: 9px; letter-spacing: .2em; }
+.meter-face text.unit { font-size: 9px; }
+.meter-face text.hood { font-size: 8px; letter-spacing: .25em; }
+/* SET: samples of the S-meter layouts */
+.meter-picks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.meter-pick { display: flex; flex-direction: column; gap: 4px; padding: 4px; background: #0b0e12; border: 1px solid var(--line2); border-radius: 6px;
+  color: var(--muted); font: 600 11px system-ui, sans-serif; cursor: pointer; }
+.meter-pick svg { width: 100%; height: auto; display: block; pointer-events: none; }
+.meter-pick:hover { border-color: var(--muted); }
+.meter-pick.on { border-color: var(--yellow); color: var(--yellow); box-shadow: 0 0 0 1px var(--yellow); }
 .meter-val { font: 11px ui-monospace, Consolas, monospace; color: var(--muted); }
 .meter-val b { color: var(--amber); font-weight: 600; }
+/* fixed columns, so the text stays in place when its length changes: "S9+60 dB", "-150.0 dBFS" */
+.meter-val b, .meter-val span { display: inline-block; text-align: right; }
+.meter-val b { width: 8ch; text-align: left; }   /* the S always starts at the same place */
+.meter-val span { width: 11ch; }
 
 /* flags in columns of three; SQL, ST and RDS go to the second column */
 /* fixed column width: a text change (2.7 kHz -> 3 kHz) must not shift the rest of the panel */
@@ -563,6 +576,20 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .type-tag { display: inline-block; font-size: 9px; line-height: 13px; padding: 0 4px; border-radius: 3px;
   font-weight: 700; letter-spacing: .3px; color: #0b1410; vertical-align: 1px; }
 .type-tag.t-acars { background: #8fa8c4; }
+.type-tag.t-enc { background: #ff8a6b; }
+.dsd table { table-layout: fixed; }
+.dsd .c-utc { width: 90px; }
+.dsd .c-freq { width: 100px; }
+.dsd .c-proto { width: 90px; }
+.dsd .c-slot { width: 60px; }
+.dsd .c-to { width: 120px; }
+.dsd .c-from { width: 130px; }
+.dsd .c-time { width: 70px; }
+.dsd td.alias { overflow: hidden; text-overflow: ellipsis; }
+.dsd-error { color: #ff8a6b; font-size: 13px; }
+.dsd-now { font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--green); }
+.dsd-now:empty { display: none; }
+.dsd-now b { color: var(--amber); font-weight: 600; }
 .type-tag.t-cpdlc { background: #6cff9c; }
 .type-tag.t-adsc { background: #c79bff; }
 .type-tag.t-atn { background: #6cff9c; }   /* ATN CPDLC: same colour as CPDLC (one filter tag for both) */
@@ -671,6 +698,30 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .setting select, .setting input[type=number] { width: 100%; }
 .setting.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .setting.two label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
+
+/* SET: a wide window with tabs, related settings as cards in columns (MEM stays a side drawer).
+   The window is inside the scaled .stage, so its size is in % of the stage. The virtual stage is never
+   narrow (see fitStage), so the columns always fit; zoom keeps the text readable in a large window.
+   It is only as tall as the open tab needs and the scrim stays clear, so the waterfall below it keeps
+   its true colours while they are being set. */
+.drawer.set-win {
+  top: 3%; bottom: auto; left: 6%; right: 6%; width: auto; max-height: 94%;
+  border: 1px solid var(--line2); border-radius: 10px; box-shadow: 0 20px 60px rgba(0, 0, 0, .7); overflow: hidden;
+}
+.set-tabs { padding-top: 8px; }
+.set-tabs button { min-width: 120px; padding: 6px 18px; font-size: 14px; }
+.set-error { padding: 8px 14px 0; }
+.set-panel { zoom: 1.25; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.set-panel[data-set-panel="tx"] { grid-template-columns: minmax(0, 1fr); }
+/* DISPLAY: settings as 2 x 2 on the left, the S-meter samples on the right, so the window stays low above the waterfall */
+.set-panel[data-set-panel="display"] { zoom: 1.1; grid-template-columns: 1fr 1fr 2.4fr; grid-template-rows: auto auto; gap: 10px; }
+.set-panel .meter-card { grid-column: 3; grid-row: 1 / span 2; }
+.meter-card .row small { color: var(--muted); font-size: 11px; font-weight: 400; }
+.meter-card .meter-picks { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.scrim:has(~ .set-win:not([hidden])) { background: transparent; }
+.set-panel .setting { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .02); }
+.set-panel .setting.two { align-content: start; }
+.set-win .drawer-head { font-size: 16px; }
 
 .memories { gap: 10px; }
 .mem-add { display: grid; grid-template-columns: 1fr 100px; gap: 6px; }

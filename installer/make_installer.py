@@ -47,6 +47,11 @@ your settings, memories, logs and recordings (data\ folder) and the configuratio
 4. Start the receiver as usual.
 
 New program folders (e.g. lib\dab with the DAB decoder) come with the zip as well.
+
+DSD mode (digital voice, first test version, it still needs more testing): its decoder DSD-FME is not in this zip.
+If you have it in lib\dsd-fme, it stays there and nothing has to be done. If not and you want it, run install_dsd.bat:
+it shows a patent notice and downloads it.
+
 What is new: see INSTALL.txt or CHANGELOG.md.
 """
 UPGRADE_BAT = r"""@echo off
@@ -56,6 +61,7 @@ if not exist ".venv\Scripts\python.exe" (echo .venv not found - for a new instal
 ".venv\Scripts\python.exe" -m pip install --disable-pip-version-check --only-binary=numpy,scipy -r requirements.txt
 if errorlevel 1 (echo Package installation failed - check the internet connection. & pause & exit /b 1)
 echo Upgrade done. Start the receiver with the RADIMCOM shortcut (or start.bat).
+if not exist "lib\dsd-fme\dsd-fme.exe" echo Optional, for the DSD mode (digital voice): run install_dsd.bat, it downloads the decoder.
 pause
 """
 
@@ -78,7 +84,7 @@ def make_upgrade(full_zip):
     print(f"{out}: {n + 2} files, {os.path.getsize(out) / 1e6:.1f} MB")
 
 
-CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "lime.py", "rds.py", "cw.py", "rtty.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py", "cpdlc.py", "cpdlc_schema.py", "adsc.py", "vdl2.py", "airports.py", "dab.py",
+CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "lime.py", "rds.py", "cw.py", "rtty.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py", "cpdlc.py", "cpdlc_schema.py", "adsc.py", "vdl2.py", "airports.py", "dab.py", "dsd.py", "install_dsd.py", "install_dsd.bat",
         "memories.py", "iqshare.py", "eeprom_tool.py", "setup_sdr.py", "start.bat", "setup.bat", "README.md", "CHANGELOG.md",
         "LICENSE", "NOTICE.md", "API/API.md"]
 LIBS = ["lib/librtlsdr.dll", "lib/libusb-1.0.dll"]

@@ -25,7 +25,7 @@
 <section class="radio radio-head" id="radioHead">
   <div class="r-top">
     <div class="meter-box">
-      <svg id="smeter" viewBox="0 0 260 100" aria-label="S-meter"></svg>
+      <svg id="smeter" class="meter-face" viewBox="0 0 260 100" aria-label="S-meter"></svg>
       <div id="smeterText" class="meter-val"></div>
     </div>
 
@@ -70,7 +70,7 @@
           </g>
           <circle class="r-logo-ring" cx="294" cy="-46" r="21" fill="none" stroke-width="11"/>
         </svg>
-        <span class="r-ver">Ver. 0.108</span>
+        <span class="r-ver">Ver. 0.109</span>
         </div>
         <!-- RDS: compact frame under the logo, as wide as the clock -->
         <div class="rds off" id="rds">
@@ -173,7 +173,7 @@
     <div class="audio-bubble" id="audioBubble" hidden><canvas id="audioBubbleCanvas"></canvas></div>
     <!-- DECODERS tab: the decoder cards cover the spectrum and waterfall (those keep running) -->
     <div class="dec-pane" id="decPane" hidden>
-      <div id="decEmpty" class="ft8-empty">No decoder is on. Turn one on under DECODE (FT8, WEFAX, CW, RTTY, SSTV, ACARS, VDL2, DAB).</div>
+      <div id="decEmpty" class="ft8-empty">No decoder is on. Turn one on under DECODE (FT8, WEFAX, CW, RTTY, SSTV, ACARS, VDL2, DAB), or select the DSD mode for digital voice.</div>
     <!-- ===== decoders ===== -->
     <!-- text decoders (CW, RTTY): the text fills the rest of the tab -->
     <section class="card ft8 txtdec" id="cwCard" hidden>
@@ -224,6 +224,34 @@
           <tbody id="ft8Rows"></tbody>
         </table>
         <div id="ft8Empty" class="ft8-empty">No messages yet.</div>
+      </div>
+    </section>
+
+    <section class="card ft8 dsd" id="dsdCard" hidden>
+      <div class="ft8-head">
+        <b>DSD</b>
+        <label class="wf-opt" title="AUTO finds DMR, P25, D-Star, YSF and X2-TDMA. NXDN, dPMR, M17 and ProVoice have to be selected. A change restarts the decoder.">Protocol
+          <select id="dsdProtocol">
+            <option value="auto">AUTO</option><option value="dmr">DMR</option><option value="p25p1">P25 phase 1</option>
+            <option value="p25p2">P25 phase 2</option><option value="dstar">D-Star</option><option value="ysf">YSF</option>
+            <option value="nxdn48">NXDN48</option><option value="nxdn96">NXDN96</option><option value="dpmr">dPMR</option>
+            <option value="m17">M17</option><option value="x2tdma">X2-TDMA</option><option value="provoice">ProVoice</option>
+          </select></label>
+        <label class="wf-opt" title="TDMA protocols (DMR, P25 phase 2): voice of which time slot. Both talking at once: slot 1 on the left, slot 2 on the right. A change restarts the decoder.">Slot
+          <select id="dsdSlot"><option value="both">Both</option><option value="1">1</option><option value="2">2</option></select></label>
+        <span class="txt-info" id="dsdInfo"></span>
+        <label class="wf-opt log-opt" title="Write to the daily log data\logs\dsd_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="dsd">LOG</label>
+        <button id="dsdClear" class="key small" title="Clear the list">CLR</button>
+      </div>
+      <div class="dsd-error" id="dsdError" hidden></div>
+      <div class="dsd-now" id="dsdNow"></div>
+      <div class="ft8-table">
+        <table>
+          <colgroup><col class="c-utc"><col class="c-freq"><col class="c-proto"><col class="c-slot"><col class="c-to"><col class="c-from"><col class="c-time"><col></colgroup>
+          <thead><tr><th>UTC</th><th title="Frequency in MHz">Freq</th><th>Protocol</th><th>Slot</th><th title="TG = talk group, ID = private call">To</th><th>From</th><th title="Duration">Time</th><th title="Talker alias or text sent by the radio">Alias</th></tr></thead>
+          <tbody id="dsdRows"></tbody>
+        </table>
+        <div id="dsdEmpty" class="ft8-empty">No calls yet. Tune to the centre of a digital voice channel; finished calls are listed here.</div>
       </div>
     </section>
 
@@ -348,112 +376,130 @@
 <!-- ===== drawers: settings and memories ===== -->
 <div class="scrim" id="scrim" hidden></div>
 
-<aside class="drawer" id="settingsCard" hidden aria-label="Settings">
+<aside class="drawer set-win" id="settingsCard" hidden aria-label="Settings">
   <div class="drawer-head"><b>SET · Settings</b><button class="key small" data-close>✕</button></div>
+  <div class="body-tabs set-tabs" id="setTabs" role="tablist">
+    <button data-set-tab="dongle" class="on" role="tab" aria-selected="true">DONGLE</button>
+    <button data-set-tab="audio" role="tab" aria-selected="false">AUDIO</button>
+    <button data-set-tab="display" role="tab" aria-selected="false">DISPLAY</button>
+    <button data-set-tab="tx" id="setTabTx" role="tab" aria-selected="false" hidden>TX</button>
+  </div>
+  <p id="settingsError" class="note error set-error" hidden></p>
   <div class="drawer-body">
-    <div class="setting" id="vfoSetting" hidden>
-      <div class="row"><span>Settings for</span></div>
-      <p class="note" id="vfoSettingText"></p>
-      <p class="note">Each VFO keeps its own settings. Dongles and VFO assignment are in <code>data\vfos.json</code>.</p>
-    </div>
-    <div class="setting" id="deviceSetting">
-      <div class="row"><span>Dongle</span><button id="devRefresh" class="key small" title="Search for connected dongles again">⟳</button></div>
-      <select id="device"></select>
-      <p class="note">Switching closes the dongle and opens the selected one. Each dongle remembers its own upconverter, LO and ppm.</p>
-    </div>
-    <div class="setting" id="upconvSetting">
-      <div class="row"><span>Upconverter</span></div>
-      <select id="upconv">
-        <option value="auto">Auto (HF via converter)</option>
-        <option value="on">Always via converter</option>
-        <option value="off">Off (24–1766 MHz)</option>
-      </select>
-      <p class="note">Auto: below 30 MHz via the converter, VHF/UHF direct.</p>
-      <p class="note warn">Above 30 MHz the signal must go straight to the dongle (bypass switch on the converter or another antenna).</p>
-    </div>
-    <div class="setting">
-      <div class="row"><span>Squelch <span id="squelchMode"></span></span><span id="squelchText" class="value"></span></div>
-      <input id="squelch" type="range" min="-120" max="-20" step="1" value="-120">
-      <p class="note">AM, FM and WFM each keep their own level; the slider sets the one for the current mode.
-        Audio is muted while the signal is below the level (yellow mark on the S-meter). Far left = off.
-        AM (airband): the carrier opens the squelch, so set it just above the noise level.</p>
-    </div>
-    <div class="setting">
-      <div class="row"><span>AFI – inversion frequency (Hz)</span></div>
-      <input id="afiHz" type="number" step="1" min="500" max="4000" value="1750">
-      <p class="note">Audio frequency inversion (AFI key): the audio spectrum is mirrored around this frequency
-        (f → 2·F − f, band 0 … 2·F). The same setting scrambles and descrambles. Default 1750 Hz (band up to 3500 Hz). 500–4000 Hz.</p>
-    </div>
-    <div class="setting">
-      <div class="row"><span>LPF – passes audio below (Hz)</span></div>
-      <input id="lpfHz" type="number" step="50" min="100" max="15000" value="3000">
-      <div class="row"><span>HPF – passes audio above (Hz)</span></div>
-      <input id="hpfHz" type="number" step="10" min="20" max="5000" value="300">
-      <p class="note">Audio filters of the LPF and HPF keys, for this VFO. Faster: turn the mouse wheel over the key.
-        LPF 100–15000 Hz, HPF 20–5000 Hz, 36 dB per octave. Together they make a band-pass, so HPF always stays below LPF.
-        What you hear and REC are filtered, decoders are not. Not for DAB.</p>
-    </div>
-    <div class="setting">
-      <div class="row"><span>Tuner gain</span><span id="gainText" class="value"></span></div>
-      <input id="gainSlider" type="range" min="0" max="0" step="1">
-      <label class="switch"><input id="gainAuto" type="checkbox"><span></span> Automatic gain</label>
-      <div id="rtlAgcBox">
-        <label class="switch"><input id="rtlAgc" type="checkbox"><span></span> RTL2832 digital AGC</label>
-        <p class="note">Digital gain in the RTL2832 after the A/D converter, independent of the tuner gain.
-          Helps weak signals at low tuner gain, but can overload with strong ones.</p>
+    <div class="set-panel" data-set-panel="dongle" role="tabpanel">
+      <div class="setting" id="vfoSetting" hidden>
+        <div class="row"><span>Settings for</span></div>
+        <p class="note" id="vfoSettingText"></p>
+        <p class="note">Each VFO keeps its own settings. Dongles and VFO assignment are in <code>data\vfos.json</code>.</p>
+      </div>
+      <div class="setting" id="deviceSetting">
+        <div class="row"><span>Dongle</span><button id="devRefresh" class="key small" title="Search for connected dongles again">⟳</button></div>
+        <select id="device"></select>
+        <p class="note">Switching closes the dongle and opens the selected one. Each dongle remembers its own upconverter, LO and ppm.</p>
+      </div>
+      <div class="setting" id="upconvSetting">
+        <div class="row"><span>Upconverter</span></div>
+        <select id="upconv">
+          <option value="auto">Auto (HF via converter)</option>
+          <option value="on">Always via converter</option>
+          <option value="off">Off (24–1766 MHz)</option>
+        </select>
+        <p class="note">Auto: below 30 MHz via the converter, VHF/UHF direct.</p>
+        <p class="note warn">Above 30 MHz the signal must go straight to the dongle (bypass switch on the converter or another antenna).</p>
+      </div>
+      <div class="setting two">
+        <label><span>Upconverter LO (MHz)</span><input id="lo" type="number" step="0.000001"></label>
+        <label><span>Correction (ppm)</span><input id="ppm" type="number" step="1"></label>
+      </div>
+      <div class="setting">
+        <div class="row"><span>Tuner gain</span><span id="gainText" class="value"></span></div>
+        <input id="gainSlider" type="range" min="0" max="0" step="1">
+        <label class="switch"><input id="gainAuto" type="checkbox"><span></span> Automatic gain</label>
+        <div id="rtlAgcBox">
+          <label class="switch"><input id="rtlAgc" type="checkbox"><span></span> RTL2832 digital AGC</label>
+          <p class="note">Digital gain in the RTL2832 after the A/D converter, independent of the tuner gain.
+            Helps weak signals at low tuner gain, but can overload with strong ones.</p>
+        </div>
+      </div>
+      <div class="setting" id="biasTeeSetting">
+        <label class="switch"><input id="biasTee" type="checkbox"><span></span> Bias-tee 4.5 V</label>
+        <p class="note warn">Only if the upconverter or LNA is powered by the dongle through the antenna connector.</p>
+      </div>
+      <div class="setting">
+        <button id="resetBtn" class="key wide">⟳ RESET DONGLE</button>
       </div>
     </div>
-    <div class="setting">
-      <div class="row"><span>Display width</span></div>
-      <select id="sampleRate"></select>
+    <div class="set-panel" data-set-panel="audio" role="tabpanel" hidden>
+      <div class="setting">
+        <div class="row"><span>Squelch <span id="squelchMode"></span></span><span id="squelchText" class="value"></span></div>
+        <input id="squelch" type="range" min="-120" max="-20" step="1" value="-120">
+        <p class="note">AM, FM and WFM each keep their own level; the slider sets the one for the current mode.
+          Audio is muted while the signal is below the level (yellow mark on the S-meter). Far left = off.
+          AM (airband): the carrier opens the squelch, so set it just above the noise level.</p>
+      </div>
+      <div class="setting">
+        <div class="row"><span>LPF – passes audio below (Hz)</span></div>
+        <input id="lpfHz" type="number" step="50" min="100" max="15000" value="3000">
+        <div class="row"><span>HPF – passes audio above (Hz)</span></div>
+        <input id="hpfHz" type="number" step="10" min="20" max="5000" value="300">
+        <p class="note">Audio filters of the LPF and HPF keys, for this VFO. Faster: turn the mouse wheel over the key.
+          LPF 100–15000 Hz, HPF 20–5000 Hz, 36 dB per octave. Together they make a band-pass, so HPF always stays below LPF.
+          What you hear and REC are filtered, decoders are not. Not for DAB.</p>
+      </div>
+      <div class="setting">
+        <div class="row"><span>AFI – inversion frequency (Hz)</span></div>
+        <input id="afiHz" type="number" step="1" min="500" max="4000" value="1750">
+        <p class="note">Audio frequency inversion (AFI key): the audio spectrum is mirrored around this frequency
+          (f → 2·F − f, band 0 … 2·F). The same setting scrambles and descrambles. Default 1750 Hz (band up to 3500 Hz). 500–4000 Hz.</p>
+      </div>
     </div>
-    <div class="setting two">
-      <label><span>Upconverter LO (MHz)</span><input id="lo" type="number" step="0.000001"></label>
-      <label><span>Correction (ppm)</span><input id="ppm" type="number" step="1"></label>
-    </div>
-    <div class="setting" id="biasTeeSetting">
-      <label class="switch"><input id="biasTee" type="checkbox"><span></span> Bias-tee 4.5 V</label>
-      <p class="note warn">Only if the upconverter or LNA is powered by the dongle through the antenna connector.</p>
+    <div class="set-panel" data-set-panel="display" role="tabpanel" hidden>
+      <div class="setting">
+        <div class="row"><span>Display width</span></div>
+        <select id="sampleRate"></select>
+      </div>
+      <div class="setting">
+        <div class="row"><span>S-meter: S9 =</span><span id="s9Text" class="value"></span></div>
+        <input id="s9" type="range" min="-90" max="-10" step="1" value="-40">
+        <p class="note">Calibration: level in dBFS shown as S9.</p>
+      </div>
+      <div class="setting">
+        <div class="row"><span>Waterfall – colour range</span><span id="wfRangeText" class="value"></span></div>
+        <input id="wfRange" type="range" min="20" max="80" step="1" value="35">
+        <div class="row"><span>Waterfall – colour offset</span><span id="wfShiftText" class="value"></span></div>
+        <input id="wfShift" type="range" min="-20" max="20" step="1" value="0">
+      </div>
+      <div class="setting">
+        <div class="row"><span>Touchpad wheel speed</span><span id="wheelSpeedText" class="value"></span></div>
+        <input id="wheelSpeed" type="range" min="1" max="10" step="1" value="4">
+        <p class="note">Tuning, ZOOM, LPF and HPF with touchpad scrolling. Left = slower, default 4. A mouse wheel notch is
+          always one step. Remembered in this browser, for all VFOs.</p>
+      </div>
+      <div class="setting meter-card">
+        <div class="row"><span>S-meter layout</span><small>remembered in this browser, for all VFOs</small></div>
+        <div class="meter-picks" id="meterStyles"></div>
+      </div>
     </div>
     <!-- transmitting: LimeSDR only, off by default -->
-    <div class="setting" id="txSetting" hidden>
-      <div class="tx-disclaimer" id="txDisclaimer">
-        <strong>⚠ IMPORTANT – TRANSMITTING DISCLAIMER</strong>
-        <p>Transmitting is legal <b>only</b> for a holder of a valid amateur radio licence (or another authorisation
-          required in your country), within the privileges of that licence and the national regulations based on the
-          ITU Radio Regulations, CEPT (T/R 61-01, T/R 61-02, ERC/REC 70-03), FCC Part 97 or your national authority.
-          PMR446 and CB may require type-approved equipment – an SDR transmitter may not be allowed there at all.</p>
-        <p>The SDR is not a certified transmitter: it can emit harmonics and spurious signals outside the band.
-          Use a suitable band-pass/low-pass filter and antenna, or a dummy load.</p>
-        <p><b>You, the operator, are fully and solely responsible for every transmission and its consequences</b>
-          (interference, fines, damage to equipment). The software is provided "AS IS", without any warranty;
-          the author accepts no liability.</p>
-        <p>TX is limited to: ham 160–10 m, 6 m, 4 m, 2 m, 70 cm, 23 cm, CB 27 MHz and PMR446.</p>
+    <div class="set-panel" data-set-panel="tx" role="tabpanel" hidden>
+      <div class="setting" id="txSetting" hidden>
+        <div class="tx-disclaimer" id="txDisclaimer">
+          <strong>⚠ IMPORTANT – TRANSMITTING DISCLAIMER</strong>
+          <p>Transmitting is legal <b>only</b> for a holder of a valid amateur radio licence (or another authorisation
+            required in your country), within the privileges of that licence and the national regulations based on the
+            ITU Radio Regulations, CEPT (T/R 61-01, T/R 61-02, ERC/REC 70-03), FCC Part 97 or your national authority.
+            PMR446 and CB may require type-approved equipment – an SDR transmitter may not be allowed there at all.</p>
+          <p>The SDR is not a certified transmitter: it can emit harmonics and spurious signals outside the band.
+            Use a suitable band-pass/low-pass filter and antenna, or a dummy load.</p>
+          <p><b>You, the operator, are fully and solely responsible for every transmission and its consequences</b>
+            (interference, fines, damage to equipment). The software is provided "AS IS", without any warranty;
+            the author accepts no liability.</p>
+          <p>TX is limited to: ham 160–10 m, 6 m, 4 m, 2 m, 70 cm, 23 cm, CB 27 MHz and PMR446.</p>
+        </div>
+        <label class="switch"><input id="txEnabled" type="checkbox"><span></span> Enable TX (PTT = hold SPACE)</label>
+        <p class="note warn">The LimeSDR transmits on the tuned frequency while SPACE is held (FM test message or carrier,
+          upconverter must be off). Retuning ends the transmission.</p>
       </div>
-      <label class="switch"><input id="txEnabled" type="checkbox"><span></span> Enable TX (PTT = hold SPACE)</label>
-      <p class="note warn">The LimeSDR transmits on the tuned frequency while SPACE is held (FM test message or carrier,
-        upconverter must be off). Retuning ends the transmission.</p>
-    </div>
-    <div class="setting">
-      <div class="row"><span>S-meter: S9 =</span><span id="s9Text" class="value"></span></div>
-      <input id="s9" type="range" min="-90" max="-10" step="1" value="-40">
-      <p class="note">Calibration: level in dBFS shown as S9.</p>
-    </div>
-    <div class="setting">
-      <div class="row"><span>Waterfall – colour range</span><span id="wfRangeText" class="value"></span></div>
-      <input id="wfRange" type="range" min="20" max="80" step="1" value="35">
-      <div class="row"><span>Waterfall – colour offset</span><span id="wfShiftText" class="value"></span></div>
-      <input id="wfShift" type="range" min="-20" max="20" step="1" value="0">
-    </div>
-    <div class="setting">
-      <div class="row"><span>Touchpad wheel speed</span><span id="wheelSpeedText" class="value"></span></div>
-      <input id="wheelSpeed" type="range" min="1" max="10" step="1" value="4">
-      <p class="note">Tuning, ZOOM, LPF and HPF with touchpad scrolling. Left = slower, default 4. A mouse wheel notch is
-        always one step. Remembered in this browser, for all VFOs.</p>
-    </div>
-    <div class="setting">
-      <button id="resetBtn" class="key wide">⟳ RESET DONGLE</button>
-      <p id="settingsError" class="note error" hidden></p>
     </div>
   </div>
 </aside>

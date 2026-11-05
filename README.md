@@ -6,6 +6,12 @@ Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
 
 ![RADIMCOM main screen: four VFOs, function keys, band buttons, spectrum and waterfall](docs/images/main.png)
 
+> [!IMPORTANT]
+> **The DSD mode (digital voice) needs one extra installation step.** Its decoder, DSD-FME, is **not in the install zip or the upgrade zip**.
+> After installing RADIMCOM, run **`install_dsd.bat`** once in the RADIMCOM folder, read the patent notice and type YES to download the decoder.
+> Without this step the DSD mode stays silent; everything else in RADIMCOM works without it.
+> DSD is a **first test version** and still needs more testing, see [DSD: digital voice](#dsd-digital-voice).
+
 ## Features
 
 - **Up to four VFOs, A–D.** Each VFO has its own SDR (RTL-SDR or LimeSDR Mini, selected by serial number)
@@ -26,6 +32,8 @@ Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
 - **Decoders:** FT8, WEFAX (radio fax with automatic format detection), CW (Morse with AFC and speed estimation), RTTY (Baudot, automatic shift 90–1000 Hz, speed 45.45/50/75/100 Bd and polarity), SSTV (colour images, 14 modes, VIS) and aircraft data link: ACARS (131.725 MHz and others, AM, MSK 2400 bit/s) and VDL2 (VDL Mode 2, 136.725–136.975 MHz, all channels at once, via dumpvdl2), with CPDLC (FANS-1/A and European ATN) and ADS-C position reports decoded to plain text; aircraft type, flight level and speed from adsb.fi / adsb.lol, country flag from the ICAO address. See [Aircraft data link](#aircraft-data-link-acars-vdl2-cpdlc-ads-c).
 - **DAB / DAB+ digital radio:** the **DAB** key in DECODE: station list of the ensemble, DLS text, slideshow and
   audio, via welle-cli. See [DAB / DAB+ digital radio](#dab--dab-digital-radio).
+- **Digital voice (first test version):** the **DSD** key in MODE: DMR, P25, D-Star, YSF, NXDN, dPMR, M17 and more, with a list of calls, via DSD-FME
+  (**separate download: run `install_dsd.bat`**). See [DSD: digital voice](#dsd-digital-voice).
 - **Daily logs:** the LOG checkbox in each decoder card writes to `data\logs\<decoder>_YYYY-MM-DD.txt` (UTC, one line per message; WEFAX/SSTV log the names of saved images), classic ACARS to `data\acars\acars_YYYY-MM-DD.txt` and VDL2 to `data\acars\vdl2_YYYY-MM-DD.txt`.
 - **Frequency memories** (MEM) with favourites and import from SDR# (`frequencies.xml`).
 - **Upconverter:** HF is tuned via the LO (e.g. 100 MHz), see [Shortwave (HF) reception](#shortwave-hf-reception-with-an-upconverter). For a VFO with a manual converter switch, crossing
@@ -64,6 +72,7 @@ put them there yourself:
 | `lib\LimeSuite.dll` | only for LimeSDR | PothosSDR (`C:\Program Files\PothosSDR\bin`); if it is not in `lib\`, it is loaded from the PothosSDR installation |
 | `drivers\zadig.exe` | WinUSB driver for RTL-SDR | zadig.akeo.ie |
 | `drivers\FTD3XXDriver_WHQLCertified_v1.3.0.4_Installer.exe` | D3XX driver for LimeSDR | FTDI (ftdichip.com, D3XX drivers) |
+| `lib\dsd-fme\` | only for the DSD mode; **not in the installer package either** | run `install_dsd.bat`, see [DSD: digital voice](#dsd-digital-voice) |
 
 `installer\make_installer.py` takes the RTL-SDR DLLs from `lib\`, `LimeSuite.dll` from PothosSDR and the drivers
 from `Downloads` on this PC.
@@ -190,6 +199,45 @@ The station list, DLS, slides and MP3 audio come from welle-cli's built-in web s
 the browser (`/api/dab…`, see the HTTP API). welle-cli is built with MSYS2 UCRT64 by `installer\build_dab.sh`;
 licences, sources and build steps are in `installer\DAB.txt` (`lib\dab\README.txt` in the package).
 
+## DSD: digital voice
+
+The **DSD** key in the MODE group decodes digital voice with [DSD-FME](https://github.com/lwvmobile/dsd-fme), which runs as a
+separate program (`dsd.py` feeds it the FM discriminator and takes the voice back).
+
+> [!WARNING]
+> **First test version, it still needs more testing.**
+> - **Tested on real signals:** DMR and D-Star voice and call information, on one multi-mode repeater.
+> - **Not tested yet:** P25, YSF, NXDN, dPMR, M17, ProVoice and X2-TDMA; two TDMA slots talking at once; long runs; CUE with a VFO in DSD.
+> - One call may show up as several short rows in the list of calls.
+>
+> Reports are welcome, also when a protocol works: please open an [issue](https://github.com/om2amr/RADIMCOM/issues/new/choose) with the protocol,
+> the frequency band and what you saw.
+
+> [!IMPORTANT]
+> **Installation: run `install_dsd.bat`.** DSD-FME is **not part of the RADIMCOM package**, neither the install zip nor the upgrade zip.
+> `install.bat` does not install it, so this is a separate step. It needs internet.
+
+Why it is separate: the voice codec of DSD-FME (mbelib, AMBE+2) may be covered by patents, see [NOTICE.md](NOTICE.md). `install_dsd.bat` shows the
+notice, and after you type YES it downloads the release of the author (about 38 MB, checked by SHA-256) into `lib\dsd-fme`. Without it the DSD mode
+stays silent and the card says what to do; if the mode is already selected, the decoder starts by itself a few seconds after the installation. To
+replace a version, first switch every VFO out of the DSD mode: a decoder in use cannot be replaced, and the script then leaves the installed version as it was.
+
+**Upgrade of RADIMCOM:** the upgrade zip does not touch `lib\dsd-fme`, so an installed DSD-FME stays. If it is not installed yet, run `install_dsd.bat`.
+The script always installs the one version tested with this RADIMCOM; if a new RADIMCOM needs a newer one, the change log says to run `install_dsd.bat` again.
+
+**New, empty folder:** `lib\dsd-fme` is not in `data\`, so a clean installation has no decoder. Run `install_dsd.bat` there as well.
+
+- Tune to the centre of the channel and press **DSD**. The channel is fixed at 12.5 kHz. The **DSD** card opens on the DECODERS tab.
+- **Protocol:** AUTO finds DMR, P25 (phase 1 and 2), D-Star, YSF and X2-TDMA. NXDN48, NXDN96, dPMR, M17 and ProVoice have to be selected.
+- **Slot** (DMR, P25 phase 2): voice of slot 1, slot 2 or both. Both talking at once: slot 1 on the left, slot 2 on the right. A change of the
+  protocol or the slot restarts the decoder, which takes about a second.
+- The card shows the running calls and a list of the finished ones: protocol, slot, talk group or private ID, caller and talker alias, if the
+  radio sends one. **LOG** writes them to `data\logs\dsd_YYYY-MM-DD.txt`. DMR and D-Star have been tested on real signals so far; other protocols may show
+  less. D-Star: the radio header gives To and From; without it the caller comes from a GPS frame, if the radio sends one, and To stays empty.
+- **ENC** marks an encrypted call: it stays muted, RADIMCOM has no decryption. No trunking: the VFO stays on its frequency.
+- Squelch, AFI, notch and ALC do not apply in this mode; LPF and HPF work on the decoded voice. Transmitting is blocked.
+- Bad decoding: check the tuning (the channel centre) and the RF gain; too much gain distorts digital signals earlier than it is heard in FM.
+
 ## Running
 
 ```bash
@@ -287,17 +335,21 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
   - CUE: keep hearing this VFO (at the CUE level) when another VFO is selected.
 - **Volume** (top right): vertical MAIN (active VFO) and CUE faders, stereo L/R level meter. Below them the speaker button
   is MUTE (green = sound on, red = muted) and under it **REC** records the audio of the active VFO to a WAV file.
-- **MENU → SET**: settings of the active VFO.
-  - Squelch for the current mode.
-  - Tuner gain (manual or automatic), RTL2832 digital AGC (RTL-SDR only).
-  - Display width (sample rate).
-  - Upconverter LO and ppm correction.
-  - Bias-tee 4.5 V (if the SDR has it). Turn it on only when the upconverter or preamplifier really needs it.
-  - Enable TX (LimeSDR only), see below.
-  - Touchpad wheel speed (1–10, default 4; left = slower), remembered in the browser for all VFOs. A mouse wheel notch is always one step.
-  - S-meter calibration (S9 level) and waterfall colour range / offset.
-  - RESET DONGLE.
-  - Without `vfos.json` (single receiver) also the dongle selection and the upconverter mode (auto / on / off).
+- **MENU → SET**: settings of the active VFO, in a large window with tabs. The open tab is remembered in the browser.
+  - **DONGLE**
+    - Without `vfos.json` (single receiver) the dongle selection and the upconverter mode (auto / on / off).
+    - Upconverter LO and ppm correction.
+    - Tuner gain (manual or automatic), RTL2832 digital AGC (RTL-SDR only).
+    - Bias-tee 4.5 V (if the SDR has it). Turn it on only when the upconverter or preamplifier really needs it.
+    - RESET DONGLE.
+  - **AUDIO**
+    - Squelch for the current mode.
+    - LPF and HPF frequency, AFI inversion frequency.
+  - **DISPLAY**
+    - Display width (sample rate).
+    - S-meter calibration (S9 level) and layout (needle, bar graph, LED bar, VFD display, amber needle, 7-segment, peak bar), waterfall colour range / offset.
+    - Touchpad wheel speed (1–10, default 4; left = slower), remembered in the browser for all VFOs. A mouse wheel notch is always one step.
+  - **TX** (LimeSDR only): Enable TX, see below.
 - **MENU → MEM**: frequency memories with groups, search and favourites. ＋ SAVE CURRENT stores the frequency,
   mode and width under a name and group; ★ marks a favourite.
   Memories in the visible part of the spectrum show their name on a green tag at the top of the spectrum;
@@ -438,6 +490,12 @@ Everything the web page does goes through an HTTP API on each VFO's port (tuning
 audio, memories), so the receivers can be controlled from scripts or other programs too. Description and examples:
 [API/API.md](API/API.md).
 
+## Block diagram
+
+All components and how the signals flow between them, from the hardware at the bottom to the browser at the top:
+
+![RADIMCOM block diagram: hardware, drivers and libraries, device layer, DSP chain, decoders, separate programs, HTTP API, browser and data folder](docs/images/block_diagram.png)
+
 ## Files
 
 | File | Contents |
@@ -448,6 +506,8 @@ audio, memories), so the receivers can be controlled from scripts or other progr
 | `rds.py` | RDS decoder |
 | `ft8.py`, `wefax.py`, `cw.py`, `rtty.py`, `sstv.py`, `acars.py`, `cpdlc.py`, `adsc.py` | decoders (`adsc.py`: ADS-C reports inside ACARS) |
 | `vdl2.py` | VDL2: runs `lib\vdl2\dumpvdl2.exe`, feeds it the raw samples, turns its messages into ACARS / CPDLC records |
+| `dsd.py` | DSD mode: runs `lib\dsd-fme\dsd-fme.exe`, feeds it the FM discriminator, plays its voice, follows the calls in its text output |
+| `install_dsd.bat`, `install_dsd.py` | downloads DSD-FME into `lib\dsd-fme` (not in the package, patent notice) |
 | `VDL2_Ground_Stations.txt` | VDL2 ground stations by address (airport, position and channel when known, city) for the Ground Station column. Source: [ACARS-VDL2 group](https://acars-vdl2.groups.io/), redistributed with approval. Thank you Sergi for amazing work. If you come across any new ground station that is not included in the list, please let us know. Thank you. |
 | `airports.py` | IATA to ICAO and city tables for the VDL2 Ground Station column (OurAirports, public domain) |
 | `cpdlc_schema.py` | CPDLC message set (generated data) |
@@ -463,6 +523,7 @@ audio, memories), so the receivers can be controlled from scripts or other progr
 | `static/` | web interface (`index.html`, `style.css`, `app.js`) |
 | `paths.py` | data paths (`data\`), migration of data from older versions |
 | `installer/` | building the installer package (`make_installer.py`) and the files it contains; the package is created in `dist\` |
+| `docs/block_diagram.py` | draws `docs/images/block_diagram.png` (needs Chrome or Edge) |
 
 ## Data folder (`data\`)
 
@@ -497,7 +558,7 @@ folder somewhere outside the RADIMCOM folder.
 
 **Reinstall / update:**
 - Unzipping a new installer package over the old folder keeps `data\` (the package has no `data\`).
-- In a new, empty folder: copy the backed-up `data\` into it before the first start.
+- In a new, empty folder: copy the backed-up `data\` into it before the first start. For the DSD mode, run `install_dsd.bat` again.
 - In `install.bat`, answer **N** to "Run the SDR setup now" to keep the existing VFO assignment; with Y a new
   assignment is created and the old one is moved to `data\config_backup\`.
 - Do not run two RADIMCOM folders at the same time: they share the dongles and port 8434.

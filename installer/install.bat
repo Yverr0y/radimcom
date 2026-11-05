@@ -66,6 +66,7 @@ echo.
 echo Done. Start the receiver with the RADIMCOM shortcut (or start.bat);
 echo the page opens at http://localhost:8434
 echo Dongles can be configured again any time with setup.bat.
+echo Optional, for the DSD mode (digital voice): run install_dsd.bat, it downloads the decoder.
 echo.
 choice /c YN /m "Start the receiver now"
 if not errorlevel 2 start "RADIMCOM" "%~dp0start.bat"

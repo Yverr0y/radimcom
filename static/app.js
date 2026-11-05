@@ -28,6 +28,7 @@ const BANDWIDTHS = {
   LSB: [1800, 2400, 2700, 3000],
   USB: [1800, 2400, 2700, 3000],
   CW: [300, 500, 800, 1200],
+  DSD: [12500],      // fixed channel width of the digital voice decoder
 };
 const STEPS = [10, 100, 500, 1000, 5000, 9000, 10000];
 let mems = [];   // memories (list in the panel and tags in the spectrum)
@@ -454,10 +455,14 @@ $("bandGroups").addEventListener("click", async (e) => {
   send({ mode: b.dataset.m });
 });
 
-// ---------- needle S-meter ----------
+// ---------- S-meter: layouts chosen in SET ----------
 
-// Flat wide arc like on a transceiver display; the needle pivot is below the bottom edge.
-const METER = { cx: 130, cy: 290, r: 252, a0: -25, a1: 25, s9pos: 0.6 };
+// All layouts share the scale: S0..S9 up to S9_POS, then up to +60 dB.
+const S9_POS = 0.6;
+const METER_LABELS = ["1", "3", "5", "7", "9", "20", "40", "60"].map((t, i) => [t, (2 * i + 1) / 15]);
+const METER_WHITE = "#e8edf2", METER_GREEN = "#3cf07c", METER_RED = "#ff3b30";
+const LED_ON = (i, n) => (i < n * S9_POS ? METER_GREEN : METER_RED);
+const LED_OFF = (i, n) => (i < n * S9_POS ? "#12291b" : "#33110e");
 let s9Dbfs = -40;
 let meterTarget = -120;
 let meterNow = -120;
@@ -465,77 +470,322 @@ let meterNow = -120;
 /** dBFS -> position 0..1 on the scale: S0..S9 in 6 dB steps, above S9 up to +60 dB. */
 function meterPos(dbfs) {
   const over = dbfs - s9Dbfs;
-  if (over <= 0) return Math.max(0, (over + 54) / 54) * METER.s9pos;
-  return METER.s9pos + Math.min(over, 60) / 60 * (1 - METER.s9pos);
+  if (over <= 0) return Math.max(0, (over + 54) / 54) * S9_POS;
+  return S9_POS + Math.min(over, 60) / 60 * (1 - S9_POS);
 }
 
-function meterPoint(pos, r) {
-  const a = (METER.a0 + pos * (METER.a1 - METER.a0)) * Math.PI / 180;
-  return [METER.cx + r * Math.sin(a), METER.cy - r * Math.cos(a)];
+const fx = (v) => v.toFixed(2);
+
+/** Flat wide arc like on a transceiver display; the pivot is below the bottom edge. */
+function meterArc(cx, cy, a) {
+  const pt = (p, r) => {
+    const rad = (-a + p * 2 * a) * Math.PI / 180;
+    return [cx + r * Math.sin(rad), cy - r * Math.cos(rad)];
+  };
+  const path = (p0, p1, r) => {
+    const [x0, y0] = pt(p0, r), [x1, y1] = pt(p1, r);
+    return `M${fx(x0)},${fx(y0)} A${r},${r} 0 0 1 ${fx(x1)},${fx(y1)}`;
+  };
+  return { cx, cy, a, pt, path };
 }
+
+function sqlLine(color = "#ffd84a") {
+  return `<line class="sql-mark" stroke="${color}" stroke-width="3" stroke-linecap="round" style="display:none"><title>Squelch</title></line>`;
+}
+
+/** Fills the SVG: background, clipped content and the frame. id keeps the defs of several meters apart. */
+function meterFace(svg, id, background, inner, defs = "") {
+  svg.innerHTML = `<defs>
+    <clipPath id="${id}clip"><rect x="0" y="0" width="260" height="100" rx="6"/></clipPath>${defs}
+  </defs>
+  <g clip-path="url(#${id}clip)">
+  <rect x="0" y="0" width="260" height="100" fill="${background}"/>${inner}
+  </g>
+  <rect x=".5" y=".5" width="259" height="99" rx="6" fill="none" stroke="#262c35"/>`;
+}
+
+/** Straight row of n segments (class seg). */
+function segmentRow(n, x0, x1, y, h, off, gap = 0.2) {
+  const w = (x1 - x0) / n;
+  let s = "";
+  for (let i = 0; i < n; i++) {
+    s += `<rect class="seg" x="${fx(x0 + i * w)}" y="${y}" width="${fx(w * (1 - gap))}" height="${h}" rx=".5" fill="${off(i, n)}"/>`;
+  }
+  return s;
+}
+
+/** Returns a function that lights the segments up to a scale position; touches only those that changed. */
+function segmentLighter(svg, on, off, glow = false) {
+  const segs = [...svg.querySelectorAll(".seg")];
+  const n = segs.length;
+  let lit = 0;
+  return (pos) => {
+    const want = Math.min(n, Math.floor(pos * n + 0.5));
+    for (let i = lit; i < want; i++) {
+      segs[i].setAttribute("fill", on(i, n));
+      if (glow) segs[i].style.filter = `drop-shadow(0 0 2px ${on(i, n)})`;
+    }
+    for (let i = want; i < lit; i++) {
+      segs[i].setAttribute("fill", off(i, n));
+      if (glow) segs[i].style.filter = "";
+    }
+    lit = want;
+  };
+}
+
+/** Numbers on a straight scale; tick(x, p) can add a mark to each. */
+function straightLabels(x0, x1, y, under, over, tick) {
+  return METER_LABELS.map(([t, p]) => {
+    const x = x0 + p * (x1 - x0);
+    return `<text x="${fx(x)}" y="${y}" fill="${p <= S9_POS ? under : over}">${t}</text>${tick ? tick(x, p) : ""}`;
+  }).join("");
+}
+
+const straightSql = (x0, x1, y0, y1) => (p) => {
+  const x = x0 + p * (x1 - x0);
+  return [x, y0, x, y1];
+};
+
+const NEEDLE_ARC = meterArc(130, 290, 25);
+const NEEDLE_R = 252;
+const BAR_ARC = meterArc(130, 366, 18.5);
+const BAR_R = 320, BAR_WIDTH = 10, BAR_SEGMENTS = 30;
+const AMBER_ARC = meterArc(130, 300, 24);
+const AMBER_R = 250;
+const SEVEN_SEG = { 0: "abcdef", 1: "bc", 2: "abged", 3: "abgcd", 4: "fgbc", 5: "afgcd", 6: "afgedc", 7: "abc", 8: "abcdefg", 9: "abcdfg" };
+
+// draw(svg, id) builds the meter and returns update(position, dB above S9); sql(position) = squelch mark line.
+const METER_STYLES = {
+  needle: {
+    name: "Needle",
+    draw(svg, id) {
+      // Meter look taken from a transceiver display: black background, white numbers and ticks,
+      // green band S1–S9, red above S9, thin red needle.
+      const { pt, path, cx, cy, a } = NEEDLE_ARC;
+      const r = NEEDLE_R, RED = "#ff3b30";
+      let s = `<path d="${path(0, S9_POS, r - 3)}" stroke="${METER_GREEN}" stroke-width="4" fill="none"/>
+        <path d="${path(S9_POS, 1, r - 3)}" stroke="${RED}" stroke-width="4" fill="none"/>
+        <path d="${path(0, 1, r + 1)}" stroke="${METER_WHITE}" stroke-width="1" fill="none" opacity=".75"/>`;
+      // ticks every S unit and every 10 dB, numbers on odd S units and on +20/+40/+60
+      for (let u = 0; u <= 9; u++) {
+        const p = (u / 9) * S9_POS, major = u % 2 === 1;
+        const [x0, y0] = pt(p, r + (major ? 7 : 4)), [x1, y1] = pt(p, r + 1);
+        s += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${METER_WHITE}" stroke-width="${major ? 1.6 : 1}"/>`;
+        if (major) {
+          const [tx, ty] = pt(p, r + 16);
+          s += `<text x="${tx}" y="${ty}" fill="${METER_WHITE}">${u}</text>`;
+        }
+      }
+      for (const db of [10, 20, 30, 40, 50, 60]) {
+        const p = S9_POS + db / 60 * (1 - S9_POS), major = db % 20 === 0;
+        const [x0, y0] = pt(p, r + (major ? 7 : 4)), [x1, y1] = pt(p, r + 1);
+        s += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${RED}" stroke-width="${major ? 1.6 : 1}"/>`;
+        if (major) {
+          const [tx, ty] = pt(p, r + 16);
+          s += `<text x="${tx}" y="${ty}" fill="${RED}">+${db}</text>`;
+        }
+      }
+      const [sx, sy] = pt(0, r + 4);
+      s += `<text x="${sx - 2}" y="${sy + 14}" class="big" fill="${METER_WHITE}">S</text>
+        <text x="236" y="90" fill="${RED}">dB</text>
+        <text x="130" y="88" class="title" fill="#7d8896">SIGNAL</text>
+        ${sqlLine()}
+        <g class="needle"><line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - r - 8}" stroke="${RED}" stroke-width="1.8" stroke-linecap="round"/></g>`;
+      meterFace(svg, id, `url(#${id}face)`, s, `<linearGradient id="${id}face" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#0b0f14"/><stop offset="1" stop-color="#020304"/></linearGradient>`);
+      const needle = svg.querySelector(".needle");
+      return (pos) => needle.setAttribute("transform", `rotate(${fx(-a + pos * 2 * a)} ${cx} ${cy})`);
+    },
+    sql: (p) => [...NEEDLE_ARC.pt(p, NEEDLE_R - 9), ...NEEDLE_ARC.pt(p, NEEDLE_R + 1)],
+  },
+  bar: {
+    name: "Bar graph",
+    draw(svg, id) {
+      // Numbers and dashes above a curved row of segments.
+      const { pt, path } = BAR_ARC;
+      const r = BAR_R, ri = r - BAR_WIDTH, labelR = r + 13, GREEN = "#a4e08c", RED = "#f0402c";
+      const on = (i, n) => (i < n * S9_POS ? GREEN : RED), off = (i, n) => (i < n * S9_POS ? "#1c3020" : "#3a1712");
+      let s = "", prev = 0;
+      for (const [t, p] of METER_LABELS) {
+        const color = p <= S9_POS ? GREEN : RED, pad = t.length > 1 ? 0.04 : 0.024;
+        const [tx, ty] = pt(p, labelR);
+        s += `<path d="${path(prev, p - pad, labelR)}" stroke="${color}" stroke-width="1.4" fill="none"/>
+          <text x="${fx(tx)}" y="${fx(ty)}" fill="${color}">${t}</text>`;
+        prev = p + pad;
+      }
+      const gap = 0.11 / BAR_SEGMENTS;
+      for (let i = 0; i < BAR_SEGMENTS; i++) {
+        const p0 = i / BAR_SEGMENTS + gap, p1 = (i + 1) / BAR_SEGMENTS - gap;
+        const [ax, ay] = pt(p0, r), [bx, by] = pt(p1, r), [cx, cy] = pt(p1, ri), [dx, dy] = pt(p0, ri);
+        s += `<path class="seg" d="M${fx(ax)},${fx(ay)} A${r},${r} 0 0 1 ${fx(bx)},${fx(by)} L${fx(cx)},${fx(cy)} A${ri},${ri} 0 0 0 ${fx(dx)},${fx(dy)} Z" fill="${off(i, BAR_SEGMENTS)}"/>`;
+      }
+      const [sx, sy] = pt(0, labelR), [ex, ey] = pt(1, labelR);
+      s += `<text x="${fx(sx - 8)}" y="${fx(sy)}" class="big" fill="${GREEN}">S</text>
+        <text x="${fx(ex + 16)}" y="${fx(ey)}" class="unit" fill="${RED}">dB</text>${sqlLine()}`;
+      meterFace(svg, id, "#050706", s);
+      return segmentLighter(svg, on, off);
+    },
+    sql: (p) => [...BAR_ARC.pt(p, 307), ...BAR_ARC.pt(p, 323)],
+  },
+  led: {
+    name: "LED bar",
+    draw(svg, id) {
+      const x0 = 24, x1 = 232;
+      meterFace(svg, id, "#07090c",
+        straightLabels(x0, x1, 34, METER_WHITE, METER_RED, (x, p) => `<line x1="${fx(x)}" x2="${fx(x)}" y1="43" y2="49" stroke="${p <= S9_POS ? METER_WHITE : METER_RED}" stroke-width="1.4"/>`) +
+        segmentRow(BAR_SEGMENTS, x0, x1, 53, 22, LED_OFF) +
+        `<text x="12" y="64" class="big" fill="${METER_WHITE}">S</text><text x="248" y="34" class="unit" fill="${METER_RED}">dB</text>${sqlLine()}`);
+      return segmentLighter(svg, LED_ON, LED_OFF);
+    },
+    sql: straightSql(24, 232, 50, 78),
+  },
+  vfd: {
+    name: "VFD display",
+    draw(svg, id) {
+      const x0 = 24, x1 = 232, s9 = x0 + S9_POS * (x1 - x0), CYAN = "#62f6e6", ORANGE = "#ffae66";
+      const on = (i, n) => (i < n * S9_POS ? CYAN : ORANGE), off = (i, n) => (i < n * S9_POS ? "#0b2a2d" : "#2b1c10");
+      meterFace(svg, id, `url(#${id}bg)`,
+        straightLabels(x0, x1, 26, CYAN, ORANGE) +
+        `<line x1="${x0}" x2="${fx(s9)}" y1="36" y2="36" stroke="${CYAN}" stroke-width="1.2"/><line x1="${fx(s9)}" x2="${x1}" y1="36" y2="36" stroke="${ORANGE}" stroke-width="1.2"/>` +
+        segmentRow(45, x0, x1, 44, 30, off, 0.42) +
+        `<text x="12" y="59" class="big" fill="${CYAN}">S</text><text x="248" y="26" class="unit" fill="${ORANGE}">dB</text>${sqlLine()}`,
+        `<linearGradient id="${id}bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#03181b"/><stop offset="1" stop-color="#020c0e"/></linearGradient>`);
+      return segmentLighter(svg, on, off, true);
+    },
+    sql: straightSql(24, 232, 40, 77),
+  },
+  amber: {
+    name: "Amber needle",
+    draw(svg, id) {
+      const { pt, path, cx, cy, a } = AMBER_ARC;
+      const r = AMBER_R, INK = "#1d1204", DARK_RED = "#8e1408";
+      let s = `<path d="${path(0, S9_POS, r)}" stroke="${INK}" stroke-width="2.4" fill="none"/>
+        <path d="${path(S9_POS, 1, r + 1)}" stroke="#a81c10" stroke-width="5" fill="none"/>`;
+      for (let u = 0; u <= 9; u++) {
+        const p = (u / 9) * S9_POS, major = u % 2 === 1;
+        const [x0, y0] = pt(p, r + (major ? 8 : 5)), [x1, y1] = pt(p, r);
+        s += `<line x1="${fx(x0)}" y1="${fx(y0)}" x2="${fx(x1)}" y2="${fx(y1)}" stroke="${INK}" stroke-width="${major ? 1.6 : 1}"/>`;
+      }
+      for (const [t, p] of METER_LABELS) {
+        const [tx, ty] = pt(p, r + 17);
+        s += `<text x="${fx(tx)}" y="${fx(ty)}" fill="${p <= S9_POS ? INK : DARK_RED}">${p > S9_POS ? "+" + t : t}</text>`;
+      }
+      // the yellow squelch mark would disappear on the amber face: it is dark blue here
+      s += `<text x="18" y="46" class="big" fill="${INK}">S</text>${sqlLine("#123a9c")}
+        <g class="needle"><line x1="${cx}" y1="${cy}" x2="${cx}" y2="${cy - r - 7}" stroke="#120a02" stroke-width="1.8"/></g>
+        <rect x="0" y="84" width="260" height="16" fill="#23170a"/><text x="130" y="92" class="hood" fill="#e6a540">SIGNAL</text>`;
+      meterFace(svg, id, `url(#${id}face)`, s, `<radialGradient id="${id}face" cx=".5" cy=".55" r=".75">
+        <stop offset="0" stop-color="#ffd27a"/><stop offset=".65" stop-color="#eba53c"/><stop offset="1" stop-color="#a8660f"/></radialGradient>`);
+      const needle = svg.querySelector(".needle");
+      return (pos) => needle.setAttribute("transform", `rotate(${fx(-a + pos * 2 * a)} ${cx} ${cy})`);
+    },
+    sql: (p) => [...AMBER_ARC.pt(p, AMBER_R - 9), ...AMBER_ARC.pt(p, AMBER_R + 3)],
+  },
+  digital: {
+    name: "7-segment",
+    draw(svg, id) {
+      // Reading in 7-segment digits (the S looks like a 5, as on a real display) with a thin bar below it.
+      const ON = "#ffb547", OFF = "#241a08", W = 26, H = 44, T = 5, Y = 9;
+      const bars = (x) => ({
+        a: [x + T, Y, W - 2 * T, T], g: [x + T, Y + (H - T) / 2, W - 2 * T, T], d: [x + T, Y + H - T, W - 2 * T, T],
+        f: [x, Y + T, T, (H - 3 * T) / 2], b: [x + W - T, Y + T, T, (H - 3 * T) / 2],
+        e: [x, Y + (H + T) / 2, T, (H - 3 * T) / 2], c: [x + W - T, Y + (H + T) / 2, T, (H - 3 * T) / 2],
+      });
+      let s = "";
+      [46, 80, 114, 148, 182].forEach((x, slot) => {
+        if (slot === 2) {   // plus sign
+          s += `<rect class="plus" x="${x + 4}" y="${Y + H / 2 - 2.5}" width="18" height="5" fill="${OFF}"/><rect class="plus" x="${x + 10.5}" y="${Y + H / 2 - 9}" width="5" height="18" fill="${OFF}"/>`;
+          return;
+        }
+        const b = bars(x);
+        for (const n of "abcdefg") s += `<rect class="d7" data-slot="${slot}" data-bar="${n}" x="${b[n][0]}" y="${b[n][1]}" width="${b[n][2]}" height="${b[n][3]}" fill="${OFF}"/>`;
+      });
+      meterFace(svg, id, "#07090c", s + segmentRow(BAR_SEGMENTS, 24, 232, 62, 9, LED_OFF, 0.25) +
+        straightLabels(24, 232, 84, METER_WHITE, METER_RED) + sqlLine());
+      const light = segmentLighter(svg, LED_ON, LED_OFF);
+      const digits = [...svg.querySelectorAll(".d7")], plus = [...svg.querySelectorAll(".plus")];
+      let last = "";
+      return (pos, over) => {
+        light(pos);
+        const up = over > 0 ? Math.min(99, Math.round(over)) : -1;
+        const unit = up >= 0 ? 9 : Math.max(0, Math.round(9 + over / 6));
+        const key = `${unit}/${up}`;
+        if (key === last) return;
+        last = key;
+        const show = { 0: 5, 1: unit, 3: up >= 10 ? Math.floor(up / 10) : "", 4: up >= 0 ? up % 10 : "" };
+        for (const d of digits) d.setAttribute("fill", (SEVEN_SEG[show[d.dataset.slot]] || "").includes(d.dataset.bar) ? ON : OFF);
+        for (const d of plus) d.setAttribute("fill", up >= 0 ? ON : OFF);
+      };
+    },
+    sql: straightSql(24, 232, 59, 74),
+  },
+  peak: {
+    name: "Peak bar",
+    draw(svg, id) {
+      // Continuous bar; the white mark holds the last peak for about a second, then falls slowly.
+      const x0 = 24, x1 = 232, w = x1 - x0;
+      meterFace(svg, id, "#07090c",
+        straightLabels(x0, x1, 32, METER_WHITE, METER_RED, (x, p) => `<line x1="${fx(x)}" x2="${fx(x)}" y1="42" y2="48" stroke="${p <= S9_POS ? METER_WHITE : METER_RED}" stroke-width="1.2"/>`) +
+        `<rect x="${x0}" y="52" width="${w}" height="20" rx="4" fill="#14181e"/><rect class="fill" x="${x0}" y="52" width="0" height="20" rx="4" fill="url(#${id}bar)"/>
+        <rect class="peak" x="${x0}" y="49" width="2.4" height="26" fill="#ffffff"/>
+        <text x="12" y="62" class="big" fill="${METER_WHITE}">S</text><text x="248" y="32" class="unit" fill="${METER_RED}">dB</text>${sqlLine()}`,
+        `<linearGradient id="${id}bar" gradientUnits="userSpaceOnUse" x1="${x0}" x2="${x1}" y1="0" y2="0"><stop offset="0" stop-color="#1fb45c"/><stop offset=".5" stop-color="#7be04d"/><stop offset=".62" stop-color="#ffd84a"/><stop offset=".78" stop-color="#ff8c1a"/><stop offset="1" stop-color="#ff3b30"/></linearGradient>`);
+      const fill = svg.querySelector(".fill"), mark = svg.querySelector(".peak");
+      let peak = 0, hold = 0;
+      return (pos) => {
+        if (pos >= peak) { peak = pos; hold = 60; }
+        else if (hold > 0) hold--;
+        else peak = Math.max(pos, peak - 0.004);
+        fill.setAttribute("width", fx(pos * w));
+        mark.setAttribute("x", fx(x0 + peak * w - 1.2));
+      };
+    },
+    sql: straightSql(24, 232, 47, 77),
+  },
+};
+
+let meterStyle = METER_STYLES[recall("meterStyle")] ? recall("meterStyle") : "needle";
+let meterUpdate = () => {};
 
 function buildMeter() {
-  const { r } = METER;
-  const arc = (p0, p1, rr) => {
-    const [x0, y0] = meterPoint(p0, rr), [x1, y1] = meterPoint(p1, rr);
-    return `M${x0.toFixed(1)},${y0.toFixed(1)} A${rr},${rr} 0 0 1 ${x1.toFixed(1)},${y1.toFixed(1)}`;
+  meterUpdate = METER_STYLES[meterStyle].draw($("smeter"), "m");
+  placeSqlMark();
+}
+
+/** SET: one small sample of each layout, shown at S9+20 dB; a click selects it. */
+function buildMeterPicker() {
+  const box = $("meterStyles");
+  for (const [key, style] of Object.entries(METER_STYLES)) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "meter-pick";
+    b.dataset.style = key;
+    b.innerHTML = `<svg class="meter-face" viewBox="0 0 260 100" aria-hidden="true"></svg><span>${style.name}</span>`;
+    box.appendChild(b);
+    style.draw(b.querySelector("svg"), `p${key}`)(S9_POS + 20 / 60 * (1 - S9_POS), 20);
+  }
+  const mark = () => {
+    for (const b of box.children) {
+      b.classList.toggle("on", b.dataset.style === meterStyle);
+      b.setAttribute("aria-pressed", b.dataset.style === meterStyle);
+    }
   };
-  // Meter look taken from a transceiver display: black background, white numbers and ticks,
-  // green band S1–S9, red above S9, thin red needle.
-  const WHITE = "#e8edf2", GREEN = "#3cf07c", RED = "#ff3b30";
-  const H = 100;
-  let svg = `<defs>
-    <linearGradient id="mface" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#0b0f14"/><stop offset="1" stop-color="#020304"/>
-    </linearGradient>
-    <clipPath id="mclip"><rect x="0" y="0" width="260" height="${H}" rx="6"/></clipPath>
-  </defs>
-  <g clip-path="url(#mclip)">
-  <rect x="0" y="0" width="260" height="${H}" fill="url(#mface)"/>
-  <path d="${arc(0, METER.s9pos, r - 3)}" stroke="${GREEN}" stroke-width="4" fill="none"/>
-  <path d="${arc(METER.s9pos, 1, r - 3)}" stroke="${RED}" stroke-width="4" fill="none"/>
-  <path d="${arc(0, 1, r + 1)}" stroke="${WHITE}" stroke-width="1" fill="none" opacity=".75"/>`;
-  // ticks every S unit and every 10 dB, numbers on odd S units and on +20/+40/+60
-  for (let s = 0; s <= 9; s++) {
-    const p = (s / 9) * METER.s9pos;
-    const major = s % 2 === 1;
-    const [x0, y0] = meterPoint(p, r + (major ? 7 : 4)), [x1, y1] = meterPoint(p, r + 1);
-    svg += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${WHITE}" stroke-width="${major ? 1.6 : 1}"/>`;
-    if (major) {
-      const [tx, ty] = meterPoint(p, r + 16);
-      svg += `<text x="${tx}" y="${ty}" fill="${WHITE}">${s}</text>`;
-    }
-  }
-  for (const db of [10, 20, 30, 40, 50, 60]) {
-    const p = METER.s9pos + db / 60 * (1 - METER.s9pos);
-    const major = db % 20 === 0;
-    const [x0, y0] = meterPoint(p, r + (major ? 7 : 4)), [x1, y1] = meterPoint(p, r + 1);
-    svg += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${RED}" stroke-width="${major ? 1.6 : 1}"/>`;
-    if (major) {
-      const [tx, ty] = meterPoint(p, r + 16);
-      svg += `<text x="${tx}" y="${ty}" fill="${RED}">+${db}</text>`;
-    }
-  }
-  const [sx, sy] = meterPoint(0, r + 4);
-  svg += `<text x="${sx - 2}" y="${sy + 14}" class="big" fill="${WHITE}">S</text>
-    <text x="236" y="${H - 10}" fill="${RED}">dB</text>
-    <text x="130" y="${H - 12}" class="title" fill="#7d8896">SIGNAL</text>
-    <line id="sqlMark" stroke="#ffd84a" stroke-width="3" stroke-linecap="round" style="display:none"><title>Squelch</title></line>
-    <g id="needle">
-      <line x1="${METER.cx}" y1="${METER.cy}" x2="${METER.cx}" y2="${METER.cy - r - 8}" stroke="${RED}" stroke-width="1.8" stroke-linecap="round"/>
-    </g>
-    </g>
-    <rect x=".5" y=".5" width="259" height="${H - 1}" rx="6" fill="none" stroke="#262c35"/>`;
-  $("smeter").innerHTML = svg;
+  box.addEventListener("click", (e) => {
+    const b = e.target.closest(".meter-pick");
+    if (!b) return;
+    meterStyle = b.dataset.style;
+    store("meterStyle", meterStyle);
+    buildMeter();
+    mark();
+  });
+  mark();
 }
 
 function animateMeter() {
   // Ballistics like an analogue meter: fast attack, slower return.
-  const k = meterTarget > meterNow ? 0.35 : 0.07;
+  const k = meterTarget > meterNow ? 0.6 : 0.07;
   meterNow += (meterTarget - meterNow) * k;
-  const a = METER.a0 + meterPos(meterNow) * (METER.a1 - METER.a0);
-  const needle = $("needle");
-  if (needle) needle.setAttribute("transform", `rotate(${a.toFixed(2)} ${METER.cx} ${METER.cy})`);
+  meterUpdate(meterPos(meterNow), meterNow - s9Dbfs);
   requestAnimationFrame(animateMeter);
 }
 
@@ -551,6 +801,7 @@ if (savedS9) { s9Dbfs = savedS9; $("s9").value = savedS9; }
 $("s9").addEventListener("input", () => { s9Dbfs = Number($("s9").value); store("s9", s9Dbfs); renderS9(); });
 renderS9();
 buildMeter();
+buildMeterPicker();
 requestAnimationFrame(animateMeter);
 
 // ---------- spectrum and waterfall ----------
@@ -893,6 +1144,7 @@ const BW_GRAB_PX = 5;
 const BW_LIMITS = { WFM: [50000, 250000, 1000], FM: [500, 50000, 50], other: [100, 18000, 50] }; // min, max, rounding
 
 function bwEdgeAt(x, w) {
+  if (st.mode === "DSD") return null;      // fixed width
   const [a, b] = passband();
   let x0 = freqToX(a, w), x1 = freqToX(b, w);
   if (x1 - x0 < 6) { const m = (x0 + x1) / 2; x0 = m - 3; x1 = m + 3; }
@@ -1205,6 +1457,8 @@ function renderSettings() {
   $("biasTeeSetting").hidden = st.has_bias_tee === false;
   $("biasTee").checked = st.bias_tee;
   $("txSetting").hidden = !st.tx_capable;
+  $("setTabTx").hidden = !st.tx_capable;
+  if (!st.tx_capable && $("setTabTx").classList.contains("on")) showSetTab("dongle");
   $("txEnabled").checked = !!st.tx_enabled;
   renderSquelch();
   renderWfLabels();
@@ -1230,13 +1484,13 @@ function renderSquelch() {
 
 /** Yellow squelch level mark on the S-meter scale. */
 function placeSqlMark() {
-  const mark = $("sqlMark");
+  const mark = $("smeter").querySelector(".sql-mark");
   if (!mark || !st) return;
   const v = squelchLevel();
   mark.style.display = v > SQUELCH_OFF ? "" : "none";
   if (v <= SQUELCH_OFF) return;
   const p = meterPos(v);
-  const [x0, y0] = meterPoint(p, METER.r - 9), [x1, y1] = meterPoint(p, METER.r + 1);
+  const [x0, y0, x1, y1] = METER_STYLES[meterStyle].sql(p);
   mark.setAttribute("x1", x0); mark.setAttribute("y1", y0);
   mark.setAttribute("x2", x1); mark.setAttribute("y2", y1);
 }
@@ -1253,7 +1507,7 @@ function renderRds() {
   const alcMode = ["AM", "LSB", "USB", "CW"].includes(st.mode);
   $("alcKey").disabled = !alcMode;
   $("alcKey").classList.toggle("on", alcMode && st.audio_agc !== false);
-  const afiMode = st.mode !== "WFM";
+  const afiMode = st.mode !== "WFM" && st.mode !== "DSD";
   $("afiKey").disabled = !afiMode;
   $("afiKey").classList.toggle("on", afiMode && !!st.afi);
   $("afiKey").title = `AFI: audio frequency inversion around ${st.afi_hz ?? 1750} Hz – voice inversion scrambler / descrambler (all modes except WFM); frequency in SET`;
@@ -1555,7 +1809,7 @@ function restoreBodyTab() {
 function guessBodyTab() {
   if (!bodyTabGuess) return;
   bodyTabGuess = false;
-  const any = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].some((id) => $(id).checked) || !!(st && st.dab);
+  const any = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].some((id) => $(id).checked) || !!(st && (st.dab || st.mode === "DSD"));
   setBodyTab(any ? "dec" : "scope");
 }
 
@@ -1571,7 +1825,7 @@ function setBodyTab(tab, save = true) {
 /** Number of enabled decoders on the tab and a text when none is enabled. */
 function renderDecTab() {
   // by the checkboxes – valid right after the click, even before the server confirms the state
-  const n = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].filter((id) => $(id).checked).length + (st && st.dab ? 1 : 0);
+  const n = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].filter((id) => $(id).checked).length + (st && st.dab ? 1 : 0) + (st && st.mode === "DSD" ? 1 : 0);
   $("decCount").textContent = n ? `(${n})` : "";
   $("decEmpty").hidden = n > 0;
 }
@@ -2342,6 +2596,75 @@ $("cwTune").addEventListener("click", () => {
   if (changes.mode) send(changes);
 });
 
+// ---------- DSD: digital voice (a mode, not a DECODE key: it replaces the audio) ----------
+
+const DSD_MAX_ROWS = 300;
+let dsdModeWas = null;   // mode of this VFO in the last state: selecting DSD opens the DECODERS tab, a restored state does not
+
+function dsdPost(body) {
+  return fetch(vbase + "/api/dsd", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+    .then((r) => r.json());
+}
+
+const dsdTarget = (c) => (!c.tgt ? "-" : c.type === "private" ? `ID ${c.tgt}` : c.type === "group" ? `TG ${c.tgt}` : c.tgt);
+const dsdDuration = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+const dsdEnc = (c) => (c.enc ? ` <span class="type-tag t-enc" title="Encrypted: not decoded, no audio">ENC</span>` : "");
+
+function addDsdCall(c) {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td>${new Date(c.time * 1000).toISOString().slice(11, 19)}</td><td>${fmtMHz(c.freq_hz, 4)}</td>` +
+    `<td>${escHtml(c.proto)}</td><td>${c.slot ?? "-"}</td><td>${escHtml(dsdTarget(c))}</td>` +
+    `<td>${escHtml(c.src || "-")}</td><td>${dsdDuration(c.duration)}</td>` +
+    `<td class="alias" title="${escHtml(c.alias)}">${escHtml(c.alias)}${dsdEnc(c)}</td>`;
+  const tb = $("dsdRows");
+  tb.prepend(tr);
+  while (tb.rows.length > DSD_MAX_ROWS) tb.lastChild.remove();
+  $("dsdEmpty").hidden = true;
+}
+
+function dsdReset() {
+  dsdModeWas = null;
+  $("dsdRows").innerHTML = "";
+  $("dsdEmpty").hidden = false;
+  $("dsdNow").textContent = "";
+}
+
+async function dsdLoad() {
+  const v = active;
+  try {
+    const d = await fetch(vbase + "/api/dsd").then((r) => r.json());
+    if (v !== active) return;
+    $("dsdRows").innerHTML = "";
+    for (const c of d.calls) addDsdCall(c);
+    $("dsdEmpty").hidden = d.calls.length > 0;
+  } catch { /* an older receiver without the DSD mode */ }
+}
+
+function renderDsd(s) {
+  const on = s.mode === "DSD";
+  if (on && dsdModeWas === false) setBodyTab("dec");
+  dsdModeWas = on;
+  $("dsdCard").hidden = !on;
+  const i = s.dsd;
+  if (!on || !i) return;
+  if (document.activeElement !== $("dsdProtocol")) $("dsdProtocol").value = i.protocol;
+  if (document.activeElement !== $("dsdSlot")) $("dsdSlot").value = i.slot;
+  $("dsdInfo").textContent = `${i.proto ? `● ${i.proto}` : "○ no digital signal"}${i.cc != null ? ` · CC ${i.cc}` : ""} · ${i.count} calls`;
+  $("dsdError").textContent = i.error || "";
+  $("dsdError").hidden = !i.error;
+  $("dsdNow").innerHTML = i.active.map((c) =>
+    `<div>${c.slot ? `S${c.slot} ` : ""}${escHtml(c.proto)} · <b>${escHtml(dsdTarget(c))}</b> · ${escHtml(c.src || "?")}` +
+    `${c.alias ? ` · <b>${escHtml(c.alias)}</b>` : ""}${dsdEnc(c)} · ${dsdDuration(c.duration)}</div>`).join("");
+}
+
+$("dsdProtocol").addEventListener("change", () => dsdPost({ protocol: $("dsdProtocol").value }));
+$("dsdSlot").addEventListener("change", () => dsdPost({ slot: $("dsdSlot").value }));
+$("dsdClear").addEventListener("click", () => {
+  dsdPost({ action: "clear" });
+  $("dsdRows").innerHTML = "";
+  $("dsdEmpty").hidden = false;
+});
+
 // ---------- daily logs: LOG checkbox in each decoder card ----------
 
 for (const box of document.querySelectorAll("input[data-log]")) {
@@ -2425,6 +2748,21 @@ for (const [key, d] of Object.entries(DRAWERS)) {
 $("scrim").addEventListener("click", () => openDrawer(null));
 for (const b of document.querySelectorAll("[data-close]")) b.addEventListener("click", () => openDrawer(null));
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("scrim").hidden) openDrawer(null); });
+
+// Tabs of the SET window; the open one is remembered in the browser.
+function showSetTab(name) {
+  for (const b of document.querySelectorAll("[data-set-tab]")) {
+    const on = b.dataset.setTab === name;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", on);
+  }
+  for (const p of document.querySelectorAll("[data-set-panel]")) p.hidden = p.dataset.setPanel !== name;
+}
+for (const b of document.querySelectorAll("[data-set-tab]")) {
+  b.addEventListener("click", () => { showSetTab(b.dataset.setTab); store("setTab", b.dataset.setTab); });
+}
+// TX is left out here: its key is hidden until the state says the dongle can transmit.
+if (["audio", "display"].includes(recall("setTab"))) showSetTab(recall("setTab"));
 
 // A click on the clock switches UTC / local time (LOC); the choice is remembered.
 let clockLocal = recall("clockLocal") === "1";
@@ -2646,7 +2984,7 @@ function onStatus(s) {
   st = s;
   renderStatusPill();
   meterTarget = s.smeter;
-  $("smeterText").innerHTML = `<b>${sReading(s.smeter)}</b> · ${s.smeter.toFixed(1)} dBFS`;
+  $("smeterText").innerHTML = `<b>${sReading(s.smeter)}</b> · <span>${s.smeter.toFixed(1)} dBFS</span>`;
   renderTuner();
   drawOverlays();
   renderSqlBadge();
@@ -2674,6 +3012,7 @@ function onStatus(s) {
   $("acarsCard").hidden = !(s.acars || s.vdl2);
   renderVdl2Info({ enabled: s.vdl2, error: s.vdl2_error });
   renderDab(s);
+  renderDsd(s);
   renderLinkBands();
   renderDecTab();
   guessBodyTab();
@@ -2714,6 +3053,7 @@ function connectEvents(v) {
     if (v.rows.length > VFO_ROWS_MAX) v.rows.splice(0, v.rows.length - VFO_ROWS_MAX);
     if (v === active) onRow(ev.c, ev.span, ev.row);
   });
+  on("meter", (d) => { meterTarget = d.db; });
   on("ft8", (d) => {
     addFt8(d, true);
     renderFt8Info(`cycle ${ft8Cycle} · ${ft8Count} messages`);
@@ -2731,6 +3071,7 @@ function connectEvents(v) {
   on("cwstate", renderCwInfo);
   on("rttytext", (d) => rttyOut.add(d.t));
   on("rttystate", renderRttyInfo);
+  on("dsdcall", (c) => { addDsdCall(c); decActivity(); });
   on("acars", (m) => { addAcars(m, true); decActivity(); });
   on("cpdlc", (c) => { if (c.imi === "ATN") { addAtn(c, true); decActivity(); } });   // others come inside "acars"
   on("ft8", decActivity);
@@ -2959,6 +3300,7 @@ async function selectVfo(v) {
   $("ft8Rows").innerHTML = ""; $("ft8Empty").hidden = false; ft8Cycle = null; ft8Count = 0;
   cwOut.clear(); rttyOut.clear();
   $("acarsRows").innerHTML = ""; $("acarsEmpty").hidden = false; renderAcarsFilter();
+  dsdReset();
   $("convWarn").hidden = true;
   if (v.st) {
     onStatus(v.st);
@@ -2986,6 +3328,7 @@ async function loadDecoders() {
   const v = active;
   await wefaxLoad();
   await sstvLoad();
+  await dsdLoad();
   const cwi = await fetch(vbase + "/api/cw").then((r) => r.json());
   if (v !== active) return;
   renderCwInfo(cwi);

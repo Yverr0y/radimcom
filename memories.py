@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 from paths import data
 
 PATH = data("memories.json")
-MODES = ("AM", "FM", "WFM", "LSB", "USB", "CW")
+MODES = ("AM", "FM", "WFM", "LSB", "USB", "CW", "DSD")
 DETECTORS = {"AM": "AM", "DSB": "AM", "NFM": "FM", "WFM": "WFM", "LSB": "LSB", "USB": "USB", "CW": "CW"}
 
 _lock = threading.Lock()

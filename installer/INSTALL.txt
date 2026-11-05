@@ -22,6 +22,8 @@ Features
 - Decoders: FT8, WEFAX (radio fax), CW (Morse), RTTY (auto shift/speed), SSTV (14 modes),
   ACARS (aircraft data link, VHF airband), CPDLC (controller-pilot messages in ACARS);
   optional daily log for each.
+- DSD mode (first test version): digital voice (DMR, P25, D-Star, YSF, NXDN, dPMR, M17...) with call list;
+  needs DSD-FME, which is not in the package: run install_dsd.bat (read its patent notice first).
 - DAB / DAB+ digital radio (Band III): station list, DLS text, slideshow (via welle-cli).
 - Band buttons (HF/VHF/UHF ham, broadcast, airband, marine, PMR446, CB) and frequency
   memories with groups and favourites (import from SDR#).
@@ -49,6 +51,14 @@ Installation on a new PC
    - create desktop shortcuts "RADIMCOM" and "RADIMCOM SDR setup".
 4. Start the receiver with the RADIMCOM shortcut. The page opens at http://localhost:8434
    (the first start of a LimeSDR takes ~10 s because of calibration).
+5. !!! SEPARATE STEP for the DSD mode (digital voice: DMR, P25, D-Star, YSF, NXDN, dPMR, M17...): run install_dsd.bat. !!!
+   install.bat does not do this. It shows a patent notice and, after you type YES, downloads the DSD-FME decoder
+   (about 38 MB, 80 MB unpacked, needs internet) into lib\dsd-fme. DSD-FME is not in the package; without it the DSD
+   mode stays silent, everything else works. DSD is a first test version and still needs more testing (see README.md).
+
+Upgrade: unzip RADIMCOM_upgrade_v<version>.zip over the installation and run upgrade.bat (see UPGRADE.txt in that zip).
+Settings in data\ and an installed DSD-FME stay. Without DSD-FME: step 5 above. A new RADIMCOM version may need a
+newer DSD-FME: then run install_dsd.bat again, the change log says so.
 
 Different dongles later: close the receiver and run "RADIMCOM SDR setup" (setup.bat) again.
 Old settings are moved to data\config_backup\.
@@ -71,6 +81,19 @@ More details: README.md.
 Change log
 ----------
 (also in CHANGELOG.md)
+
+Ver. 0.109
+- DSD mode (first test version, it still needs more testing): digital voice (DMR, P25, D-Star, YSF, NXDN, dPMR,
+  M17...) with DSD-FME, with a list of calls in the DECODERS tab. DSD-FME is not in the package: run install_dsd.bat
+  (read its patent notice first). Tested on real signals with DMR and D-Star so far.
+- S-meter layouts in SET (DISPLAY tab): Bar graph, LED bar, VFD display, Amber needle, 7-segment and Peak bar
+  besides Needle, chosen by clicking a small sample of each. Needle stays the default; remembered in the browser,
+  for all VFOs.
+- S-meter reacts faster: it gets a level as often as the spectrum, instead of only one block in three, so short
+  peaks are no longer missed.
+- The S-meter reading below the meter stays in place when the level goes above S9.
+- SET is a large window with tabs instead of a narrow side panel: DONGLE, AUDIO, DISPLAY and TX (only for a dongle
+  that can transmit). The open tab is remembered in the browser.
 
 Ver. 0.108
 - LICENSE is now the plain MIT text. The radio transmission notice moved to NOTICE.md, which also lists

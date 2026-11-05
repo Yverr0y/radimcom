@@ -34,6 +34,14 @@ does not contain the binaries; the release packages do, except where noted.
 | PyFT8 | FT8 decoder; `install.bat` installs it from PyPI, not in the package | GPL v3 or later | <https://github.com/G1OJS/PyFT8m> |
 | Flask, NumPy, SciPy | Python packages; `install.bat` installs them from PyPI, not in the package | BSD | PyPI |
 
+### Not in the package: DSD-FME
+
+The DSD mode uses [DSD-FME](https://github.com/lwvmobile/dsd-fme) (ISC, parts GPL v2; see `COPYRIGHT` there) as a separate
+program. It is **not distributed with RADIMCOM**; `install_dsd.bat` downloads the release of its author into `lib\dsd-fme` at
+the user's own decision. DSD-FME contains [mbelib](https://github.com/szechyjs/mbelib), an implementation of the AMBE+2 and IMBE
+voice codecs. According to the mbelib notice, its functions may be covered by patents owned by Digital Voice Systems, Inc., and compiling or using it
+may infringe patent rights in your jurisdiction and/or require a licence. Check this for your country before installing it.
+
 ### Source code
 
 Each release from Ver. 0.108 has `RADIMCOM_sources_v<version>.zip` with the source code of the GPL and LGPL components

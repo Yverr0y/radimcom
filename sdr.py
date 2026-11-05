@@ -24,7 +24,9 @@ WF_SEGMENTS = READ_SAMPLES // WF_FFT
 ZOOMS = (1, 2, 4, 8, 16, 32)   # at 32× the section has exactly WF_BINS points of the fine FFT
 WF_DB_MIN = -130.0
 WF_DB_STEP = 0.5
-MODES = ("AM", "FM", "WFM", "LSB", "USB", "CW")
+MODES = ("AM", "FM", "WFM", "LSB", "USB", "CW", "DSD")
+DSD_MODE = "DSD"       # digital voice (dsd.py): FM discriminator to the decoder, its voice to the audio output
+DSD_BW = 12500.0       # channel width of the DSD mode; fixed, 12.5 kHz covers the protocols it decodes
 UPCONV_MAX_HZ = 30e6   # in auto mode only HF (below 30 MHz) goes through the upconverter
 TUNER_MIN_HZ = 24e6    # R820T tuner range without a converter
 TUNER_MAX_HZ = 1766e6
@@ -609,10 +611,11 @@ class Channel:
 class Receiver:
     """Thread that reads from the dongle and produces waterfall lines and audio."""
 
-    def __init__(self, cfg, on_row, on_audio, on_status, on_baseband=None, on_demod=None):
+    def __init__(self, cfg, on_row, on_audio, on_status, on_baseband=None, on_demod=None, on_meter=None, on_dsd=None):
         self.cfg = cfg
         cfg.setdefault("bandwidth", {}).setdefault("CW", 500)
         cfg["bandwidth"].setdefault("WFM", 200000)
+        cfg["bandwidth"][DSD_MODE] = DSD_BW
         sq = cfg.get("squelch")
         if not isinstance(sq, dict):               # older version: one level for FM and WFM
             cfg["squelch"] = {} if sq is None else {"FM": float(sq), "WFM": float(sq)}
@@ -622,8 +625,10 @@ class Receiver:
         self.on_audio = on_audio
         self.on_baseband = on_baseband
         self.on_demod = on_demod
+        self.on_dsd = on_dsd      # DSD mode: gets the discriminator, returns the voice
         self.on_raw = None        # raw dongle samples (VDL2), set by app.py
         self.on_status = on_status
+        self.on_meter = on_meter   # S-meter level of every block; the status goes out only every 0.2 s
         self.lock = threading.Lock()
         self.pending = {}
         self.status = "stopped"
@@ -965,7 +970,8 @@ class Receiver:
             if self.on_baseband:
                 self.on_baseband(base, self.fs / DECIM, c["tune_hz"])
             mode = c["mode"]
-            bw = float(c.get("bandwidth", {}).get(mode, 3000))
+            dsd = mode == DSD_MODE
+            bw = DSD_BW if dsd else float(c.get("bandwidth", {}).get(mode, 3000))
             if mode == "WFM" or (mode == "FM" and bw > FM_NARROW_MAX):
                 # Wide FM does not fit the narrow channel: it is demodulated from the input samples.
                 if self.wfm_key != (self.fs, mode, bw):
@@ -975,7 +981,7 @@ class Receiver:
                 audio, self.smeter = self.wfm.process(shifted)
                 sub_db = self.wfm.sub_db
             else:
-                self.chan.configure(mode, bw)
+                self.chan.configure("FM" if dsd else mode, bw)
                 self.chan.notch_on = bool(c.get("notch", False))
                 self.chan.agc_on = bool(c.get("audio_agc", True))
                 audio, self.smeter = self.chan.process(base)
@@ -984,10 +990,14 @@ class Receiver:
             if cal:
                 self.smeter += cal
                 sub_db = sub_db + cal
-            if c.get("afi") and mode != "WFM" and audio.ndim == 1:   # AFI: voice inversion (de)scrambler
+            if self.on_meter:
+                self.on_meter(self.smeter)
+            if c.get("afi") and mode not in ("WFM", DSD_MODE) and audio.ndim == 1:   # AFI: voice inversion (de)scrambler
                 audio = self.afi.process(audio, self.fs / DECIM, float(c.get("afi_hz", AFI_DEFAULT_HZ)))
             if self.on_demod:                       # demodulated audio before the squelch (SSTV)
                 self.on_demod(audio if audio.ndim == 1 else audio.mean(axis=1), self.fs / DECIM)
+            if dsd and self.on_dsd:                 # from here on the audio is the decoded voice
+                audio = self.on_dsd(audio, self.fs / DECIM, c["tune_hz"])
             audio = self._audio_pass(audio)         # after the SSTV feed: LPF / HPF are for listening, not for decoders
             audio = self._squelch(audio, mode, sub_db)
             if audio.ndim == 1:                     # the browser always gets stereo (L, R interleaved)

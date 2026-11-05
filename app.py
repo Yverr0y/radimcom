@@ -35,8 +35,9 @@ from wefax import WefaxDecoder
 from sstv import SstvDecoder
 from acars import ACARS_FREQS, AcarsDecoder
 from vdl2 import VDL2_CENTER, VDL2_FREQS, VDL2_RATE, Vdl2Decoder
+from dsd import PROTOCOLS as DSD_PROTOCOLS, SLOTS as DSD_SLOTS, DsdDecoder
 from dab import CHANNEL_HZ, DAB_CHANNELS, DAB_DEFAULT, DAB_RATE, DabDecoder
-from sdr import (AFI_MAX_HZ, AFI_MIN_HZ, HPF_MAX_HZ, HPF_MIN_HZ, LPF_MAX_HZ, LPF_MIN_HZ, MODES, SQUELCH_OFF,
+from sdr import (AFI_MAX_HZ, AFI_MIN_HZ, DSD_MODE, HPF_MAX_HZ, HPF_MIN_HZ, LPF_MAX_HZ, LPF_MIN_HZ, MODES, SQUELCH_OFF,
                  UPCONV_MAX_HZ, ZOOMS, Receiver, list_devices, lowpass)
 
 
@@ -148,9 +149,9 @@ def save_config_later():
 
 # ---------- daily decoder logs (turned on with LOG in the decoder card) ----------
 
-LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars")
+LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd")
 _tag = cfg.get("vfo") or ""
-logs = {"ft8": DayLog("ft8", _tag), "wefax": DayLog("wefax", _tag), "sstv": DayLog("sstv", _tag),
+logs = {"ft8": DayLog("ft8", _tag), "wefax": DayLog("wefax", _tag), "sstv": DayLog("sstv", _tag), "dsd": DayLog("dsd", _tag),
         "cw": TextLog("cw", _tag), "rtty": TextLog("rtty", _tag)}
 _saved_logged = {"wefax": None, "sstv": None}
 
@@ -170,6 +171,11 @@ def decoder_event(kind, data):
         if kind == "ft8" and log_on("ft8"):
             logs["ft8"].write(f"{_mhz(data['freq_hz'])} {data['snr']:+d} dB DT {data['dt']:+.1f} "
                               f"{data['df']} Hz | {data['msg']}")
+        elif kind == "dsdcall" and log_on("dsd"):
+            slot = f" slot {data['slot']}" if data["slot"] else ""
+            alias = f" | {data['alias']}" if data["alias"] else ""
+            logs["dsd"].write(f"{_mhz(data['freq_hz'])} {data['proto']}{slot} {data['type'] or 'call'} to {data['tgt'] or '?'} "
+                              f"from {data['src'] or '?'} {data['duration']:.1f} s{' ENC' if data['enc'] else ''}{alias}")
         elif kind == "cwtext" and log_on("cw"):
             f = cw.dial + (cw.tone or 0.0)
             logs["cw"].add(data["t"], f"{_mhz(f)} {round(1200 / cw.dot_ms)} WPM")
@@ -199,6 +205,11 @@ rtty = RttyDecoder(on_event=decoder_event)
 sstv = SstvDecoder(on_event=decoder_event)
 acars = AcarsDecoder(on_event=hub.event, tag=_tag)
 acars.log_on = log_on("acars")
+dsd = DsdDecoder(on_event=decoder_event)
+if cfg.get("dsd_protocol") in DSD_PROTOCOLS:
+    dsd.protocol = cfg["dsd_protocol"]
+if cfg.get("dsd_slot") in DSD_SLOTS:
+    dsd.slot = cfg["dsd_slot"]
 vdl2 = Vdl2Decoder(on_acars=acars.accept_vdl2, on_atn=acars.accept_atn, on_state=lambda i: hub.event("vdl2state", i))
 
 
@@ -225,7 +236,7 @@ def state():
     capable = tx_capable()
     return dict(receiver.state(), ft8=ft8.enabled, ft8_error=ft8.error, wefax=wefax.enabled, cw=cw.enabled, rtty=rtty.enabled,
                 sstv=sstv.enabled, acars=acars.enabled, vdl2=vdl2.enabled, vdl2_error=vdl2.error, cpdlc=acars.cpdlc_on,
-                dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, logs={k: log_on(k) for k in LOG_KEYS},
+                dsd=dsd.info(), dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, logs={k: log_on(k) for k in LOG_KEYS},
                 tx_capable=capable, tx_enabled=bool(cfg.get("tx_enabled", False)),
                 can_tx=capable and bool(cfg.get("tx_enabled", False)) and hasattr(receiver.sdr, "tx_start"))
 
@@ -258,7 +269,10 @@ receiver = Receiver(
     on_status=lambda: hub.event("status", state()),
     on_baseband=on_baseband,
     on_demod=sstv.feed,
+    on_meter=lambda db: hub.event("meter", {"db": round(db, 1)}),
+    on_dsd=dsd.process,
 )
+dsd.set_enabled(cfg["mode"] == DSD_MODE)
 ft8.set_enabled(cfg.get("ft8", False))
 wefax.slant_ppm = float(cfg.get("wefax_slant_ppm", 0.0))
 wefax.set_enabled(cfg.get("wefax", False))
@@ -413,6 +427,8 @@ def api_tx():
     sdr = receiver.sdr
     if sdr is None or not hasattr(sdr, "tx_start"):
         return jsonify(error="this VFO cannot transmit"), 400
+    if body.get("ptt") and cfg["mode"] == DSD_MODE:
+        return jsonify(error="no transmitting in the DSD mode (receive only)"), 400
     if body.get("ptt") and not cfg.get("tx_enabled", False):
         return jsonify(error="TX is disabled (enable it in SET)"), 400
     with tx_lock:
@@ -556,6 +572,29 @@ def api_cpdlc_cmd():
     if request.get_json(force=True).get("action") == "clear":
         acars.clear_cpdlc()
     return jsonify(acars.cpdlc_info())
+
+
+@app.route("/api/dsd", methods=["GET"])
+def api_dsd():
+    return jsonify(dict(dsd.info(), calls=dsd.history(), protocols=list(DSD_PROTOCOLS), slots=list(DSD_SLOTS)))
+
+
+@app.route("/api/dsd", methods=["POST"])
+def api_dsd_cmd():
+    body = request.get_json(force=True)
+    protocol, slot = body.get("protocol"), body.get("slot")
+    if protocol is not None and protocol not in DSD_PROTOCOLS:
+        return jsonify({"error": "unknown DSD protocol"}), 400
+    if slot is not None and slot not in DSD_SLOTS:
+        return jsonify({"error": "unknown DSD slot"}), 400
+    if body.get("action") == "clear":
+        dsd.clear()
+    if protocol is not None or slot is not None:
+        dsd.set_options(protocol, slot)
+        cfg["dsd_protocol"], cfg["dsd_slot"] = dsd.protocol, dsd.slot
+        save_config_later()
+        hub.event("status", state())
+    return jsonify(dsd.info())
 
 
 @app.route("/api/vdl2", methods=["GET"])
@@ -881,7 +920,12 @@ def api_set():
             err = forward_to_owner(forward)
             if err:
                 return jsonify({"error": err}), 502
+    if changes.get("mode") == DSD_MODE:
+        with tx_lock:
+            tx_off("DSD mode")     # receive only
     receiver.update(changes)
+    if "mode" in changes:
+        dsd.set_enabled(changes["mode"] == DSD_MODE)
     if set(changes) - {"reset"}:
         save_config_later()
     return jsonify({"ok": True})

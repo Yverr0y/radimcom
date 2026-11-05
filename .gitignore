@@ -32,3 +32,8 @@ dist/
 /INSTALL.txt
 /DRIVERS.txt
 /requirements.txt
+/VDL2_Ground_Stations.txt
+
+# created by make_installer in the upgrade zip (unpacked upgrade)
+/UPGRADE.txt
+/upgrade.bat

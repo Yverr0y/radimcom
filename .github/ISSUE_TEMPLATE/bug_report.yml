@@ -6,7 +6,7 @@ body:
     id: version
     attributes:
       label: RADIMCOM version
-      description: Shown in the logo on the main screen, e.g. Ver. 0.108
+      description: Shown in the logo on the main screen, e.g. Ver. 0.109
     validations:
       required: true
   - type: input

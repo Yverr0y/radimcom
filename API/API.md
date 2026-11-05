@@ -1,4 +1,4 @@
-# RADIMCOM HTTP API – Ver. 0.108
+# RADIMCOM HTTP API – Ver. 0.109
 
 The web page talks to the receivers through this HTTP API, and you can use it too (scripts, curl, other programs).
 Requests and responses are JSON unless stated otherwise. Errors return `{"error": "..."}` with HTTP 400 (bad input),
@@ -115,6 +115,7 @@ On connect a `status` event with the full state, then:
 |---|---|
 | `status` | full state (as `/api/state`) after a change |
 | `wf` | waterfall row |
+| `meter` | S-meter level in dBFS, `{"db": -73.5}`, for every block of samples (as often as `wf`) |
 | `ft8`, `ft8cycle` | FT8 decode; start of a 15 s cycle |
 | `cwtext`, `cwstate` | CW text; CW decoder state (speed, tone, …) |
 | `rttytext`, `rttystate` | RTTY text; decoder state |
@@ -147,6 +148,8 @@ is removed. 0 dB is a sine at 75 kHz deviation. Outside WFM, `db` is empty and `
 
 | Method | Path | Description |
 |---|---|---|
+| GET | `/api/dsd` | DSD mode: `enabled`, `installed`, `error`, `protocol`, `slot`, detected `proto` and `cc`, running calls in `active`, finished calls in `calls`, the allowed values in `protocols` and `slots` |
+| POST | `/api/dsd` | `{"protocol": "auto"}` and/or `{"slot": "both"}` (restarts the decoder), `{"action": "clear"}` |
 | GET | `/api/ft8` | recent FT8 decodes |
 | GET | `/api/cw` | CW decoder info and text |
 | POST | `/api/cw` | `{"action": "clear"}` |
