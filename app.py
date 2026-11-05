@@ -36,7 +36,8 @@ from sstv import SstvDecoder
 from acars import ACARS_FREQS, AcarsDecoder
 from vdl2 import VDL2_CENTER, VDL2_FREQS, VDL2_RATE, Vdl2Decoder
 from dab import CHANNEL_HZ, DAB_CHANNELS, DAB_DEFAULT, DAB_RATE, DabDecoder
-from sdr import AFI_MAX_HZ, AFI_MIN_HZ, MODES, SQUELCH_OFF, UPCONV_MAX_HZ, ZOOMS, Receiver, list_devices, lowpass
+from sdr import (AFI_MAX_HZ, AFI_MIN_HZ, HPF_MAX_HZ, HPF_MIN_HZ, LPF_MAX_HZ, LPF_MIN_HZ, MODES, SQUELCH_OFF,
+                 UPCONV_MAX_HZ, ZOOMS, Receiver, list_devices, lowpass)
 
 
 def vfo_from_args():
@@ -147,7 +148,7 @@ def save_config_later():
 
 # ---------- daily decoder logs (turned on with LOG in the decoder card) ----------
 
-LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars", "cpdlc")
+LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars")
 _tag = cfg.get("vfo") or ""
 logs = {"ft8": DayLog("ft8", _tag), "wefax": DayLog("wefax", _tag), "sstv": DayLog("sstv", _tag),
         "cw": TextLog("cw", _tag), "rtty": TextLog("rtty", _tag)}
@@ -198,7 +199,6 @@ rtty = RttyDecoder(on_event=decoder_event)
 sstv = SstvDecoder(on_event=decoder_event)
 acars = AcarsDecoder(on_event=hub.event, tag=_tag)
 acars.log_on = log_on("acars")
-acars.cpdlc_log_on = log_on("cpdlc")
 vdl2 = Vdl2Decoder(on_acars=acars.accept_vdl2, on_atn=acars.accept_atn, on_state=lambda i: hub.event("vdl2state", i))
 
 
@@ -765,6 +765,14 @@ def api_set():
             if not AFI_MIN_HZ <= hz <= AFI_MAX_HZ:
                 raise ValueError(f"AFI frequency must be {AFI_MIN_HZ:g} to {AFI_MAX_HZ:g} Hz")
             changes["afi_hz"] = hz
+        for key, lo, hi in (("lpf", LPF_MIN_HZ, LPF_MAX_HZ), ("hpf", HPF_MIN_HZ, HPF_MAX_HZ)):
+            if key in body:
+                changes[key] = bool(body[key])
+            if key + "_hz" in body:
+                hz = float(body[key + "_hz"])
+                if not lo <= hz <= hi:
+                    raise ValueError(f"{key.upper()} frequency must be {lo:g} to {hi:g} Hz")
+                changes[key + "_hz"] = hz
         if "rtl_agc" in body:
             changes["rtl_agc"] = bool(body["rtl_agc"])
         if "ppm" in body:
@@ -813,7 +821,6 @@ def api_set():
                     logs[k].flush()          # write out the unfinished line
         cfg["logs"] = cur
         acars.log_on = log_on("acars")
-        acars.cpdlc_log_on = log_on("cpdlc")
         save_config_later()
         hub.event("status", state())
     if "rtty" in body:

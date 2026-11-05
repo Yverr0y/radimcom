@@ -47,8 +47,7 @@ const BAND_GROUPS = [
     ["2 m RPT", 145600000, "FM"], ["APRS", 144800000, "FM"], ["70 cm SSB", 432200000, "USB"], ["70 cm FM", 433500000, "FM"],
     ["70 cm RPT", 439000000, "FM"], ["23 cm", 1296200000, "USB"]]],
   ["OTHER", [
-    ["FM BCAST", 0, "WFM"], ["CB ch19", 27185000, "FM"], ["Airband", 127500000, "AM"], ["Marine ch16", 156800000, "FM"], ["PMR446", 446006250, "FM"],
-    ["DAB", "dab", "DAB+"]]],
+    ["FM BCAST", 0, "WFM"], ["CB", 27185000, "FM"], ["Airband", 127500000, "AM"], ["Marine ch16", 156800000, "FM"], ["PMR446", 446006250, "FM"]]],
 ];
 
 let st = null; // last state from the server
@@ -57,6 +56,7 @@ let pendingSet = {};
 let setTimer = null;
 let localChangeAt = 0;
 let stepHz = 1000;
+let zoomLast = Number(recall("zoomLast")) || 0;   // last zoom above 1×, the ZOOM key returns to it
 let errorUntil = 0; // until when to show the error of the last change in the status field
 let vbase = ""; // receiver address of the active VFO ("" = server of this page, mode without VFOs)
 let vfos = []; // [{name, port, serial, note, base, st, rows, online}]
@@ -170,7 +170,9 @@ function renderControls() {
   const bw = st.bandwidth[st.mode];
   segButtons($("bandwidths"), BANDWIDTHS[st.mode], bw, fmtBw);
   segButtons($("steps"), STEPS, stepHz, fmtBw);
-  segButtons($("zooms"), st.zooms, st.zoom, (z) => `${z}×`);
+  $("zoomKey").textContent = `${st.zoom}×`;
+  $("zoomKey").classList.toggle("active", st.zoom > 1);
+  if (st.zoom > 1 && st.zoom !== zoomLast) { zoomLast = st.zoom; store("zoomLast", zoomLast); }
   $("modeBadge").textContent = st.mode;
   $("bwBadge").textContent = fmtBw(bw);
   renderSqlBadge();
@@ -253,13 +255,57 @@ $("steps").addEventListener("click", (e) => {
   store("step", stepHz);
   renderControls();
 });
-$("zooms").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-v]");
-  if (!b) return;
-  st.zoom = Number(b.dataset.v);
+function setZoom(z) {
+  st.zoom = z;
   renderControls();
-  send({ zoom: st.zoom });
+  send({ zoom: z });
+}
+// Wheel direction of an event, +1 up, -1 down, 0 = no step yet. A mouse wheel notch is one step. A touchpad sends many
+// small deltas (also after the fingers are lifted), so they add up and one step is taken per wheelPx of scrolling.
+// SET: touchpad wheel speed 1-10 (this browser), one step per 600 / speed px.
+const WHEEL_SPEED_DEFAULT = 4;   // 150 px
+let wheelPx = 0;
+function setWheelSpeed(speed) {
+  wheelPx = 600 / speed;
+  $("wheelSpeed").value = speed;
+  $("wheelSpeedText").textContent = speed;
+}
+{
+  const saved = Number(recall("wheelSpeed"));
+  setWheelSpeed(saved >= 1 && saved <= 10 ? saved : WHEEL_SPEED_DEFAULT);
+}
+$("wheelSpeed").addEventListener("input", (e) => {
+  setWheelSpeed(Number(e.target.value));
+  store("wheelSpeed", e.target.value);
 });
+const wheelSum = { target: null, px: 0, at: 0 };
+function wheelStep(e) {
+  const lines = e.deltaMode !== 0;   // read first: Firefox then keeps its own units for a mouse wheel
+  const dy = e.deltaY;
+  if (!dy) return 0;
+  const notch = e.wheelDeltaY && e.wheelDeltaY % 120 === 0;
+  if (lines || notch) { wheelSum.px = 0; return dy < 0 ? 1 : -1; }
+  const fresh = wheelSum.target !== e.currentTarget || e.timeStamp - wheelSum.at > 400 || wheelSum.px * dy < 0;
+  wheelSum.target = e.currentTarget;
+  wheelSum.at = e.timeStamp;
+  wheelSum.px = (fresh ? 0 : wheelSum.px) + dy;
+  if (Math.abs(wheelSum.px) < wheelPx) return 0;
+  const dir = wheelSum.px < 0 ? 1 : -1;
+  wheelSum.px %= wheelPx;
+  return dir;
+}
+// One key: click = off (back to 1×) / on (last value above 1×), wheel = next zoom up or down; lit above 1×.
+$("zoomKey").addEventListener("click", () => {
+  if (!st) return;
+  setZoom(st.zoom > 1 ? 1 : st.zooms.includes(zoomLast) ? zoomLast : st.zooms[1]);
+});
+$("zoomKey").addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const dir = wheelStep(e);
+  if (!st || !dir) return;
+  const z = st.zooms[st.zooms.indexOf(st.zoom) + dir];
+  if (z) setZoom(z);
+}, { passive: false });
 document.addEventListener("keydown", (e) => {
   if (!st || e.target.closest("input, select, textarea")) return;
   if (e.key === "ArrowLeft") { tune(st.tune_hz - stepHz, true); e.preventDefault(); }
@@ -275,12 +321,14 @@ $("vfoList").addEventListener("wheel", (e) => {
   const row = e.target.closest(".vfo-row:not(.spare)");
   if (!digit || !row) return;
   e.preventDefault();
+  const dir = wheelStep(e);
+  if (!dir) return;
   const v = vfos.find((x) => String(x.name) === row.dataset.vfo);
   const s = v === active ? st : v.st;
   if (!s) return;
   const digits = [...digit.parentElement.querySelectorAll("svg")];
   const place = 10 ** (digits.length - 1 - digits.indexOf(digit));
-  let hz = s.tune_hz + (e.deltaY < 0 ? place : -place);
+  let hz = s.tune_hz + dir * place;
   // a chained VFO may leave the owner's band (it then shows OOR), so it is not clamped to it
   const [lo, hi] = s.chain_owner ? [0, Infinity] : s.range || [0, Infinity];
   hz = Math.min(hi, Math.max(lo, hz));
@@ -390,14 +438,12 @@ function rememberFm() {
 const fmtBand = (f) => (f >= 30e6 ? `${fmtMHz(f, 4)} MHz` : `${fmtKHz(f, 0)} kHz`);
 $("bandGroups").innerHTML = BAND_GROUPS.map(([title, list]) =>
   `<div class="bgroup"><span class="klabel">${title}</span><div class="bands">` +
-  list.map((b) => `<button data-f="${b[1]}" data-m="${b[2]}" title="${b[1] === "dab" ? "DAB / DAB+ digital radio, Band III 174–240 MHz (welle-cli, RTL-SDR only)"
-    : (b[1] ? fmtBand(b[1]) : "last FM station") + " · " + b[2]}">${b[0]}</button>`).join("") +
+  list.map((b) => `<button data-f="${b[1]}" data-m="${b[2]}" title="${(b[1] ? fmtBand(b[1]) : "last FM station") + " · " + b[2]}">${b[0]}</button>`).join("") +
   `</div></div>`).join("");
 $("bandGroups").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-f]");
   if (!b || !st) return;
-  if (b.dataset.f === "dab") { if (st.dab) dabOff(); else dabOn(); return; }   // DAB button toggles
-  if (st.dab) { st.dab = false; send({ dab: false }); }   // another band: DAB off (previous sample rate back)
+  if (st.dab) dabOff();   // another band: DAB off (previous sample rate back)
   const f = Number(b.dataset.f) || fmLast();
   await ensureVfoFor(f);   // e.g. an HF band on a VFO without upconverter -> VFO A
   if (!st) return;
@@ -827,11 +873,16 @@ function drawAxis() {
   }
 }
 
+/** Bands of the band plan on a frequency, narrowest first. */
+function bandsAt(f) {
+  return BANDPLAN.filter(([a, b]) => f >= a && f <= b).reverse();
+}
+
 // Tooltip above the axis: description of all bands under the cursor (narrowest first).
 $("axis").addEventListener("mousemove", (e) => {
   const cv = $("axis");
   const f = xToFreq(e.offsetX, cv.clientWidth);
-  const hits = BANDPLAN.filter(([a, b]) => f >= a && f <= b).reverse();
+  const hits = bandsAt(f);
   const tip = hits.map(([, , label, , desc]) => `${label}: ${desc}`).join("\n");
   if (cv.title !== tip) cv.title = tip;
 });
@@ -930,6 +981,18 @@ function audioBubbleTop() {
   const top = st.mode === "CW" ? CW_PITCH_HZ + bw / 2 : bw;
   return Math.min(top, (st.audio_rate || 48000) / 2, nyq);
 }
+/** LPF / HPF in the audio spectrum bubble: what they cut off is darkened, with a line at the cutoff. */
+function drawPassMarks(ctx, w, ph, top) {
+  ctx.fillStyle = "rgba(0,0,0,.5)";
+  ctx.strokeStyle = "#ffd84a";
+  const mark = (hz, x0, x1) => {
+    ctx.fillRect(x0, 0, x1 - x0, ph);
+    const x = Math.round(hz / top * w) + 0.5;
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, ph); ctx.stroke();
+  };
+  if (st.hpf && passHz("hpf") < top) mark(passHz("hpf"), 0, passHz("hpf") / top * w);
+  if (st.lpf && passHz("lpf") < top) mark(passHz("lpf"), passHz("lpf") / top * w, w);
+}
 function drawAudioBubble() {
   if (!audioBubblePos) return;
   // the label can move away from under a still mouse (wheel tuning) or the decoders can cover it
@@ -989,6 +1052,7 @@ function drawAudioBubble() {
     ctx.strokeStyle = "#ffb547";
     ctx.stroke();
   }
+  if (!note && !bubbleIsMpx() && !st.dab) drawPassMarks(ctx, w, ph, top);   // WFM shows MPX, not the audio
   audioBubbleRaf = requestAnimationFrame(drawAudioBubble);
 }
 
@@ -1065,7 +1129,8 @@ for (const id of ["specOverlay", "wfOverlay"]) {
   cv.addEventListener("wheel", (e) => { hoverHide(); hover = { x: e.clientX, y: e.clientY }; });
   cv.addEventListener("wheel", (e) => {
     e.preventDefault();
-    tune(st.tune_hz + (e.deltaY < 0 ? 1 : -1) * stepHz, true);
+    const dir = wheelStep(e);
+    if (dir) tune(st.tune_hz + dir * stepHz, true);
   }, { passive: false });
 }
 window.addEventListener("resize", () => {
@@ -1193,6 +1258,7 @@ function renderRds() {
   $("afiKey").classList.toggle("on", afiMode && !!st.afi);
   $("afiKey").title = `AFI: audio frequency inversion around ${st.afi_hz ?? 1750} Hz – voice inversion scrambler / descrambler (all modes except WFM); frequency in SET`;
   if (st.afi_hz != null && document.activeElement !== $("afiHz")) $("afiHz").value = st.afi_hz;
+  renderPassKeys();
   // ALC flag at the S-meter: green = on, grey = off; hidden in FM/WFM (no ALC)
   $("alcBadge").hidden = !alcMode;
   $("alcBadge").classList.toggle("dim", st.audio_agc === false);
@@ -1249,6 +1315,7 @@ $("afiKey").addEventListener("click", () => {
   if (!st) return;
   st.afi = !st.afi;
   renderRds();
+  renderVfoDisplays();
   send({ afi: st.afi });
 });
 $("afiHz").addEventListener("change", () => {
@@ -1259,6 +1326,69 @@ $("afiHz").addEventListener("change", () => {
   if (st) st.afi_hz = hz;
   send({ afi_hz: hz });
 });
+
+// LPF / HPF keys: click = on/off, mouse wheel over the key = cutoff; the same cutoffs can be typed in SET.
+const PASS = {
+  lpf: { min: 100, max: 15000, def: 3000, text: "LPF: audio low-pass, passes below" },
+  hpf: { min: 20, max: 5000, def: 300, text: "HPF: audio high-pass, passes above" },
+};
+const PASS_GAP_HZ = 50;   // the smallest band left between HPF and LPF
+
+const passHz = (kind) => st[kind + "_hz"] ?? PASS[kind].def;
+const passText = (hz) => (hz >= 1000 ? `${(hz / 1000).toFixed(hz % 100 && hz < 10000 ? 2 : 1)}k` : `${hz}`);
+
+function renderPassKeys() {
+  for (const kind of Object.keys(PASS)) {
+    const hz = passHz(kind), key = $(kind + "Key"), input = $(kind + "Hz");
+    key.disabled = !!st.dab;      // DAB audio comes from welle-cli, past the receiver's audio chain
+    key.classList.toggle("on", !st.dab && !!st[kind]);
+    key.title = `${PASS[kind].text} ${hz} Hz. Click = on/off, mouse wheel = frequency (also in SET)`;
+    $(kind + "Val").textContent = passText(hz);
+    if (document.activeElement !== input) input.value = hz;
+  }
+}
+
+/** New cutoff. HPF stays below LPF even when one of them is off, so turning a key on can never silence the audio. */
+function setPassHz(kind, value) {
+  const { min, max } = PASS[kind];
+  const hz = Math.max(min, Math.min(max, Math.round(value)));
+  const other = kind === "lpf" ? "hpf" : "lpf";
+  const changes = { [kind + "_hz"]: hz };
+  const o = passHz(other);
+  if (kind === "lpf" ? o > hz - PASS_GAP_HZ : o < hz + PASS_GAP_HZ) {
+    changes[other + "_hz"] = kind === "lpf" ? hz - PASS_GAP_HZ : hz + PASS_GAP_HZ;
+  }
+  Object.assign(st, changes);
+  renderPassKeys();
+  send(changes);
+}
+
+/** The next wheel stop: 10 Hz under 100 Hz, 50 Hz under 1 kHz, then 100 Hz (a typed value snaps to the grid). */
+function passWheelStep(hz, up) {
+  const edge = up ? hz : hz - 1;
+  const step = edge < 100 ? 10 : edge < 1000 ? 50 : 100;
+  return up ? (Math.floor(hz / step) + 1) * step : (Math.ceil(hz / step) - 1) * step;
+}
+
+for (const kind of Object.keys(PASS)) {
+  $(kind + "Key").addEventListener("click", () => {
+    if (!st) return;
+    st[kind] = !st[kind];
+    renderPassKeys();
+    send({ [kind]: st[kind] });
+  });
+  $(kind + "Key").addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const dir = wheelStep(e);
+    if (st && !st.dab && dir) setPassHz(kind, passWheelStep(passHz(kind), dir > 0));
+  }, { passive: false });
+  $(kind + "Hz").addEventListener("change", () => {
+    const v = Number($(kind + "Hz").value);
+    if (st && $(kind + "Hz").value !== "" && Number.isFinite(v)) setPassHz(kind, v);
+    else if (st) renderPassKeys();
+  });
+}
+
 $("rtlAgc").addEventListener("change", () => {
   st.rtl_agc = $("rtlAgc").checked;
   send({ rtl_agc: st.rtl_agc });
@@ -1408,7 +1538,7 @@ $("ft8Clear").addEventListener("click", () => {
 
 // the open tab is remembered for each VFO separately (bodyTab_A, bodyTab_B…)
 const tabKey = () => (active ? `bodyTab_${active.name}` : "bodyTab");
-let bodyTab = recall(tabKey()) === "dec" ? "dec" : "scope";
+let bodyTab = "scope";   // the saved tab is restored in init(), once the active VFO is known
 
 // VFO without a saved tab: the first state from the server decides (a decoder is running → DECODERS)
 let bodyTabGuess = false;
@@ -1462,7 +1592,7 @@ for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vd
     renderDecTab();
   });
 }
-setBodyTab(bodyTab);
+setBodyTab(bodyTab, false);
 
 // ---------- ACARS ----------
 
@@ -1487,6 +1617,7 @@ function renderLinkBands() {
   for (const el of document.querySelectorAll("#acarsCard [data-link]")) {
     el.hidden = el.dataset.link !== (vdl2 ? "vdl2" : "acars");
   }
+  renderAcarsFilter();
 }
 
 /** Click on a band button in the ACARS card. */
@@ -1558,10 +1689,11 @@ function addAcars(m, fresh) {
   const text = m.text ? `<div class="msg-text${m.cpdlc ? " raw" : ""}">${m.crc_ok ? "" : "✗ "}${escHtml(m.text)}</div>`
     : m.cpdlc ? "" : `<div class="msg-text"><span class='muted'>(no text)</span></div>`;
   if (!m.cpdlc) tr.classList.add("r-acars");
+  const gs = m.vdl2?.gs ? ` title="Ground station ${escHtml(m.vdl2.gs)}${m.vdl2.gs_info ? `: ${escHtml(m.vdl2.gs_info)}` : ""}"` : "";
   tr.innerHTML = `<td class="tag">${tag}</td><td>${m.time}</td><td class="num"${freqTitle(m)}>${fmtMHz(m.freq_hz, 3)}</td>` +
-    `<td class="cty"></td><td class="flt"></td><td class="reg"></td><td class="icao"></td><td class="act"></td><td class="model"></td>` +
+    `<td class="cty"></td><td class="flt"></td><td class="reg"></td><td class="icao"></td><td class="sqk"></td><td class="act"></td><td class="model"></td>` +
     `<td class="fl num"></td><td class="spd num"></td><td>${arrow} ${escHtml(m.label || "")}</td>` +
-    `<td class="desc">${escHtml(m.desc || "")}</td><td class="msg">${dec}${text}` +
+    `<td class="desc">${escHtml(m.desc || "")}</td><td class="loc"${gs}>${escHtml(m.vdl2?.gs_loc || "-")}${m.vdl2?.gs_city ? `<div class="ac-sub">${escHtml(m.vdl2.gs_city)}</div>` : ""}</td><td class="msg">${dec}${text}` +
     `${m.atn && m.cpdlc.detail ? `<div class="atn-detail">${escHtml(m.cpdlc.detail)}</div>` : ""}</td>`;
   // long message (technical reports with tables): shortened to 3 lines, a click expands/collapses it
   if (m.text && (m.text.split("\n").length > 3 || m.text.length > 240)) tr.querySelector("td.msg").classList.add("long");
@@ -1570,7 +1702,7 @@ function addAcars(m, fresh) {
   tr._msg = m;
   const kind = m.cpdlc ? decodedBlock(m.cpdlc)[0] : "acars";
   tr.dataset.kind = kind === "atn" ? "cpdlc" : kind;    // filter: CPDLC = FANS and ATN CPDLC
-  tr.hidden = acarsFilter.size > 0 && !acarsFilter.has(tr.dataset.kind);
+  tr.dataset.loc = m.vdl2?.gs_loc || "-";
   tr._lookupDone = !fresh;      // rows from the history: the lookup is long over, no waiting
   renderAcarsAircraft(tr, m.ac);
   tb.prepend(tr);
@@ -1582,16 +1714,37 @@ function addAcars(m, fresh) {
 
 const acarsFilter = new Set(JSON.parse(localStorage.getItem("acarsFilter") || "[]").map((k) => (k === "atn" ? "cpdlc" : k)));
 
-/** Show only rows of the selected kinds; the header says the filter is on and how many rows are shown. */
+let acarsLoc = localStorage.getItem("acarsLoc") || "";    // VDL2 location filter; "" = all
+
+/** Ground Station list: the locations of the rows in the table, "-" last. The selected one stays even without rows.
+ *  Rebuilt only when the list changes, so an open pull-down is not disturbed by new messages. */
+function renderAcarsLocOptions() {
+  const locs = new Set([...$("acarsRows").rows].map((tr) => tr.dataset.loc));
+  if (acarsLoc) locs.add(acarsLoc);
+  const list = [...locs].filter((l) => l !== "-").sort();
+  if (locs.has("-")) list.push("-");
+  const sel = $("acarsLoc");
+  const key = list.join("|");
+  if (sel._key !== key) {
+    sel._key = key;
+    sel.replaceChildren(new Option("All", ""), ...list.map((l) => new Option(l === "-" ? "- (not known)" : l, l)));
+  }
+  sel.value = acarsLoc;
+}
+
+/** Show only rows of the selected kinds and location (VDL2 only; classic ACARS has no locations);
+ *  the header says the filter is on and how many rows are shown. */
 function renderAcarsFilter() {
   const rows = $("acarsRows").rows;
+  const loc = linkShown ? acarsLoc : "";
   let shown = 0;
   for (const tr of rows) {
-    tr.hidden = acarsFilter.size > 0 && !acarsFilter.has(tr.dataset.kind);
+    tr.hidden = (acarsFilter.size > 0 && !acarsFilter.has(tr.dataset.kind)) || (loc !== "" && tr.dataset.loc !== loc);
     if (!tr.hidden) shown++;
   }
-  const on = acarsFilter.size > 0;
-  $("acarsFilter").classList.toggle("on", on);
+  renderAcarsLocOptions();
+  const on = acarsFilter.size > 0 || loc !== "";
+  $("acarsFilter").classList.toggle("on", acarsFilter.size > 0);
   for (const t of $("acarsFilter").querySelectorAll("[data-kind]")) t.classList.toggle("sel", acarsFilter.has(t.dataset.kind));
   const s = $("acarsFilterState");
   s.hidden = !on;
@@ -1601,9 +1754,18 @@ function renderAcarsFilter() {
 $("acarsFilter").addEventListener("click", (e) => {
   const t = e.target.closest("[data-kind]");
   if (t) acarsFilter.has(t.dataset.kind) ? acarsFilter.delete(t.dataset.kind) : acarsFilter.add(t.dataset.kind);
-  else if (e.target.closest(".tf-clear")) acarsFilter.clear();
-  else return;
+  else if (e.target.closest(".tf-clear")) {
+    acarsFilter.clear();
+    acarsLoc = "";
+    localStorage.removeItem("acarsLoc");
+  } else return;
   localStorage.setItem("acarsFilter", JSON.stringify([...acarsFilter]));
+  renderAcarsFilter();
+});
+
+$("acarsLoc").addEventListener("change", (e) => {
+  acarsLoc = e.target.value;
+  localStorage.setItem("acarsLoc", acarsLoc);
   renderAcarsFilter();
 });
 
@@ -1613,16 +1775,19 @@ function addAtn(c, fresh) {
     dir: c.dir, desc: c.imi_desc, text: "", crc_ok: true, cpdlc: c, ac: c.ac, atn: true }, fresh);
 }
 
+const SQUAWK_ALERT = new Set(["7500", "7600", "7700"]);   // these squawks get a red frame around the row
+
 /** Registration and flight; from ADS-B (adsb.fi / adsb.lol) type, position and a map link in a new window:
  *  registration -> globe.adsb.fi, flight -> adsb.lol. */
 function renderAcarsAircraft(tr, ac) {
+  tr.classList.toggle("sqk-alert", !!(ac && ac.found && SQUAWK_ALERT.has(ac.squawk)));
   const m = tr._msg;
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const link = (url, text, title) => `<a href="${url}" target="_blank" rel="noopener" title="${esc(title)}">${esc(text)}</a>`;
   // ATN messages (VDL2) carry only the 24-bit ICAO address: the registration comes from ADS-B
   const regText = m.atn && ac && ac.found && ac.reg ? ac.reg : m.reg;
   let reg = m.atn ? `<span title="24-bit ICAO address (ATN message)">${esc(m.reg)}</span>` : esc(m.reg), flt = esc(m.flight);
-  let actH = "", modelH = "", flH = "", spdH = "";
+  let sqkH = "", actH = "", modelH = "", flH = "", spdH = "";
   // ATN: wait for the ADS-B lookup instead of showing the ICAO address and then rewriting it;
   // without an answer in 15 s the ICAO address is shown after all
   if (m.atn && !ac && !tr._lookupDone) {
@@ -1636,6 +1801,7 @@ function renderAcarsAircraft(tr, ac) {
     // aircraft type, flight level and ground speed from ADS-B in their own columns (blue = from ADS-B)
     const src = `from ADS-B (${ac.src || "adsb.fi"}) at the time of the message`;
     const cell = (text, title) => (text ? `<span class="ext" title="${esc(title)}">${esc(text)}</span>` : "");
+    sqkH = cell(ac.squawk, `transponder squawk code · ${src}`);
     actH = cell(ac.type, src);
     modelH = cell(ac.desc, src);
     flH = cell(ac.ground ? "GND" : ac.alt_ft != null ? `FL${String(Math.round(ac.alt_ft / 100)).padStart(3, "0")}` : "",
@@ -1647,6 +1813,7 @@ function renderAcarsAircraft(tr, ac) {
   }
   tr.querySelector("td.reg").innerHTML = reg;
   tr.querySelector("td.flt").innerHTML = flt;
+  tr.querySelector("td.sqk").innerHTML = sqkH;
   tr.querySelector("td.act").innerHTML = actH;
   tr.querySelector("td.model").innerHTML = modelH;
   tr.querySelector("td.fl").innerHTML = flH;
@@ -1721,7 +1888,7 @@ let dabLastInfo = {};
 
 const dabEsc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-/** DAB button in OTHER: DAB on (the server tunes the VFO to the saved channel at 2.048 MS/s). */
+/** DAB key in DECODE: DAB on (the server tunes the VFO to the saved channel at 2.048 MS/s). */
 function dabOn() {
   if (st.driver === "lime" || st.chain_owner) {
     errorUntil = Date.now() + 5000;
@@ -1742,8 +1909,7 @@ function dabOn() {
 function renderDab(s) {
   const on = !!s.dab;
   $("dabCard").hidden = !on;
-  const b = $("bandGroups").querySelector('[data-f="dab"]');
-  if (b) b.classList.toggle("active", on);
+  $("dabKey").classList.toggle("on", on);
   if (on && s.dab_channel && $("dabChannel").value !== s.dab_channel) $("dabChannel").value = s.dab_channel;
   renderDabInfo({ enabled: on, error: s.dab_error });
   if (on && !dabTimer) { pollDab(); dabTimer = setInterval(pollDab, 1000); }
@@ -1848,7 +2014,7 @@ $("dabChannel").addEventListener("change", () => {
   st.dab_channel = $("dabChannel").value;
   send({ dab_channel: st.dab_channel });
 });
-/** DAB off (DAB button again, or OFF in the card): the previous sample rate comes back. */
+/** DAB off (DAB key again, another band button, or OFF in the card): the previous sample rate comes back. */
 function dabOff() {
   st.dab = false;
   send({ dab: false });
@@ -1856,6 +2022,7 @@ function dabOff() {
   renderDecTab();
 }
 $("dabOff").addEventListener("click", dabOff);
+$("dabKey").addEventListener("click", () => { if (st) { if (st.dab) dabOff(); else dabOn(); } });
 
 $("acarsBands").addEventListener("click", onLinkBand);
 $("acarsRows").addEventListener("click", (e) => {
@@ -2180,7 +2347,6 @@ $("cwTune").addEventListener("click", () => {
 for (const box of document.querySelectorAll("input[data-log]")) {
   box.addEventListener("change", () => {
     st.logs = { ...(st.logs || {}), [box.dataset.log]: box.checked };
-    if (box.dataset.logAlso) st.logs[box.dataset.logAlso] = box.checked;   // ACARS LOG = acars + cpdlc log
     send({ log: st.logs });   // the whole state, so two quick changes in one send do not overwrite each other
   });
 }
@@ -2306,6 +2472,7 @@ function renderMemGroups() {
 
 function renderMems() {
   drawOverlays();   // memory tags in the spectrum
+  renderVfoDisplays();   // memory name above each VFO
   const q = $("memSearch").value.trim().toLowerCase();
   const group = $("memGroup").value;
   const favOnly = $("memFav").checked;
@@ -2331,6 +2498,17 @@ function renderMems() {
   }
   $("memList").innerHTML = html;
   markActiveMem();
+}
+
+/** Memory on the frequency of a VFO (same tolerance as the MEM list). More on one frequency: same mode first, then favourite. */
+function memAt(hz, mode) {
+  let best = null, bestScore = -1;
+  for (const m of mems) {
+    if (Math.abs(m.freq_hz - hz) >= 50) continue;
+    const score = (m.mode === mode ? 2 : 0) + (m.fav ? 1 : 0);
+    if (score > bestScore) { best = m; bestScore = score; }
+  }
+  return best;
 }
 
 function markActiveMem() {
@@ -2590,10 +2768,10 @@ function renderSpareVfos() {
     row.className = "vfo-row spare";
     row.dataset.vfo = "spare";
     row.title = `VFO ${name}: no SDR assigned (connect one and run the SDR setup)`;
-    row.innerHTML = `<div class="vfo-head"><span class="flag vfo-stat off">NO SDR</span>` +
+    row.innerHTML = `<div class="vfo-memname"></div><div class="vfo-head"><span class="flag vfo-stat off">NO SDR</span>` +
       `<button class="key vfo-key" disabled>VFO-${name}</button><span class="flag vfo-mode">---</span>` +
       `<span class="flag vfo-cue">CUE</span></div>` +
-      `<div class="vfo-disp"><div class="freq">${seg7("          ")}<span class="unit">MHz</span></div></div>` +
+      `<div class="vfo-disp"><div class="freq">${seg7("          ")}<span class="unit"><span class="afi-tag">AFI</span>MHz</span></div></div>` +
       `<div class="vfo-foot"><label class="vfo-rf"><span>RF GAIN</span>` +
       `<input type="range" min="0" max="1" value="0" disabled></label><span class="flag vfo-gain">--- dB</span></div>` +
       `<div class="vfo-foot"><label class="vfo-rf vfo-sq"><span>SQUELCH</span>` +
@@ -2612,8 +2790,8 @@ function renderVfoDisplays() {
       row = v.row = document.createElement("div");
       row.className = "vfo-row";
       row.dataset.vfo = String(v.name);
-      // above the display the receiver state, VFO button, mode and CUE; under the display the RF GAIN slider and the gain value
-      row.innerHTML = (v.name ? `<div class="vfo-head"><span class="flag vfo-stat"></span>` +
+      // on top the name of the memory on this frequency or the band plan, above the display the receiver state, VFO button, mode and CUE; under the display the RF GAIN slider and the gain value
+      row.innerHTML = `<div class="vfo-memname"></div>` + (v.name ? `<div class="vfo-head"><span class="flag vfo-stat"></span>` +
         `<button class="key vfo-key">VFO-${v.name}</button><span class="flag vfo-mode"></span>` +
         `<span class="flag vfo-cue" role="button">CUE</span></div>` : "") +
         `<div class="vfo-disp"><div class="freq"></div></div>` +
@@ -2638,10 +2816,22 @@ function renderVfoDisplays() {
       const { txt, unit } = freqDigits(s.tune_hz);
       if (txt !== v.shown) {
         v.shown = txt;
-        fr.innerHTML = seg7(txt) + `<span class="unit">${unit}</span>`;
+        fr.innerHTML = seg7(txt) + `<span class="unit"><span class="afi-tag">AFI</span>${unit}</span>`;
         fr.setAttribute("aria-label", `${fmtMHz(s.tune_hz, 6)} MHz`);
       }
+      // AFI above the unit: lit while this VFO's audio is inverted (no AFI in WFM), otherwise dark like an unlit LCD segment
+      const afiTag = fr.querySelector(".afi-tag");
+      if (afiTag) afiTag.classList.toggle("on", !!s.afi && s.mode !== "WFM");
     }
+    // Frame on top of the VFO: name of the memory on this frequency, otherwise the band plan (narrowest band).
+    const mem = s ? memAt(s.tune_hz, s.mode) : null;
+    const bands = s && !mem ? bandsAt(s.tune_hz) : [];
+    const memEl = row.querySelector(".vfo-memname");
+    const memText = mem ? mem.name : bands.length ? bands[0][2] : "";
+    if (memEl.textContent !== memText) memEl.textContent = memText;
+    memEl.classList.toggle("band", !mem);
+    memEl.title = mem ? `${mem.name} · ${mem.group} · ${mem.mode} · ${fmtBw(mem.bw)}`
+      : bands.map(([, , label, , desc]) => `${label}: ${desc}`).join("\n");
     if (!v.name) continue;
     // VFO receiver state: RUNNING = dongle open and delivering samples.
     const stat = row.querySelector(".vfo-stat");
@@ -2765,10 +2955,10 @@ async function selectVfo(v) {
   closeFreqInput();
   st = null; view = null; wfRow = null; spec = null; floor = null;
   errorUntil = 0; convPrev = null;
-  for (const id of ["modes", "bandwidths", "steps", "zooms"]) $(id)._html = null;
+  for (const id of ["modes", "bandwidths", "steps"]) $(id)._html = null;
   $("ft8Rows").innerHTML = ""; $("ft8Empty").hidden = false; ft8Cycle = null; ft8Count = 0;
   cwOut.clear(); rttyOut.clear();
-  $("acarsRows").innerHTML = ""; $("acarsEmpty").hidden = false;
+  $("acarsRows").innerHTML = ""; $("acarsEmpty").hidden = false; renderAcarsFilter();
   $("convWarn").hidden = true;
   if (v.st) {
     onStatus(v.st);
@@ -3125,6 +3315,7 @@ async function init() {
     : [{ name: null, base: "", st: null, rows: [], online: false }];
   active = vfos.find((v) => v.name === recall("vfo")) || vfos[0];
   vbase = active.base;
+  restoreBodyTab();
   renderVfoDisplays();
   if (list && list.length) renderSpareVfos();
   renderCueKey();

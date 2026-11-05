@@ -23,6 +23,7 @@ import time
 
 import numpy as np
 
+from airports import IATA_CITY, IATA_ICAO
 from paths import BASE
 
 EXE = os.path.join(BASE, "lib", "vdl2", "dumpvdl2.exe")
@@ -31,6 +32,7 @@ VDL2_RATE = 2100000           # 105 000 * 20
 VDL2_CENTER = 136850000       # all channels within ±150 kHz, the DC spike between 136.825 and 136.875
 SYMBOL_RATE = 105000
 EDGE_HZ = 20000               # a channel must be this far inside the received band
+STATION_FILE = "VDL2_Ground_Stations.txt"    # ground station list: root folder of a package, installer folder while developing
 
 
 class Vdl2Decoder:
@@ -168,9 +170,11 @@ class Vdl2Decoder:
     def _handle(self, v):
         avlc = v.get("avlc") or {}
         src, dst = avlc.get("src") or {}, avlc.get("dst") or {}
+        down = src.get("type") == "Aircraft"
+        gs = dst.get("addr", "") if down else src.get("addr", "")
         meta = {"freq_hz": int(v.get("freq") or 0), "sig_db": v.get("sig_level"), "noise_db": v.get("noise_level"),
                 "src": src.get("addr", ""), "dst": dst.get("addr", ""),
-                "dir": "down" if src.get("type") == "Aircraft" else "up"}
+                "dir": "down" if down else "up", "gs": gs, "gs_loc": gs_location(gs), "gs_city": gs_city(gs), "gs_info": gs_info(gs)}
         a = avlc.get("acars")
         if a is not None:
             if a.get("err"):
@@ -189,6 +193,83 @@ class Vdl2Decoder:
         if force or now - self._last_state > 1.0:
             self._last_state = now
             self.on_state(self.info())
+
+
+def _gs_iata(addr):
+    """IATA airport code in the 24-bit address of a ground station, or None. Only SITA (prefix 2): 4 bits prefix,
+    3 x 5 bits IATA letters (A=1), 5 bits radio. The other networks (ARINC, prefix 1) number their stations differently."""
+    try:
+        a = int(addr, 16)
+    except (TypeError, ValueError):
+        return None
+    if not 0 <= a <= 0xFFFFFF or a >> 20 != 2:
+        return None
+    letters = [(a >> s) & 31 for s in (15, 10, 5)]
+    if not all(1 <= x <= 26 for x in letters):
+        return None
+    return "".join(chr(64 + x) for x in letters)
+
+
+def _station_loc(addr, code):
+    """Location from the first word of a station file entry: "LZIB", "UIA-LICU", "TRH-NONE" or "IATA:BZF/FAA:085".
+    The IATA code comes from the ICAO code, so all stations of an airport (ARINC and SITA) get the same location."""
+    if code == "NONE":                # placeholder entry ("NONE temporary GS")
+        return "-"
+    m = re.match(r"IATA:(\w+)", code)
+    if m:
+        return m.group(1)
+    m = re.match(r"(\w+)-(\w+)$", code)
+    if m:
+        return m.group(1) if m.group(2) == "NONE" else f"{m.group(1)}/{m.group(2)}"
+    iata = ICAO_IATA.get(code) or _gs_iata(addr)
+    return f"{iata}/{code}" if iata else code
+
+
+def _load_stations():
+    """Station file -> {address: (location, city, description)}. Lines: 1191BA [LHBP Budapest Hungary 136.825] [Budapest]
+    An address shared by two regions lists both ("KJFK ... / RKJJ ..."): the location is the first, city and description have both.
+    Without the file: empty, the addresses of SITA stations are still decoded."""
+    for path in (os.path.join(BASE, STATION_FILE), os.path.join(BASE, "installer", STATION_FILE)):
+        try:
+            with open(path, encoding="cp1252", errors="replace") as f:
+                lines = f.read().splitlines()
+        except OSError:
+            continue
+        found = (re.match(r"([0-9A-Fa-f]{6}) \[(.+)\] \[(.*)\]$", line.strip()) for line in lines)
+        return {m[1].upper(): (_station_loc(m[1], m[2].split()[0]), m[3], m[2]) for m in found if m}
+    return {}
+
+
+def _station(addr):
+    return STATIONS.get(str(addr or "").upper())
+
+
+def gs_location(addr):
+    """Location of a ground station: "BTS/LZIB" (IATA/ICAO), "XYZ" if only one code is known, "-" if not known."""
+    st = _station(addr)
+    if st:
+        return st[0]
+    iata = _gs_iata(addr)
+    if not iata:
+        return "-"
+    icao = IATA_ICAO.get(iata)
+    return f"{iata}/{icao}" if icao else iata
+
+
+def gs_city(addr):
+    """City of the ground station's airport ("Bratislava"), "" if not known."""
+    st = _station(addr)
+    return st[1] if st else IATA_CITY.get(_gs_iata(addr), "")
+
+
+def gs_info(addr):
+    """Whole entry of a ground station in the station file ("LHBP Budapest Hungary 136.825"), "" if not there."""
+    st = _station(addr)
+    return st[2] if st else ""
+
+
+ICAO_IATA = {icao: iata for iata, icao in IATA_ICAO.items()}
+STATIONS = _load_stations()
 
 
 def _clean(s):

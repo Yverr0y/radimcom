@@ -42,7 +42,7 @@ LOOKUP_URLS = ("https://opendata.adsb.fi/api/v2/registration/{}", "https://api.a
 LOOKUP_HEX_URLS = ("https://opendata.adsb.fi/api/v2/hex/{}", "https://api.adsb.lol/v2/hex/{}")
 LOOKUP_CACHE_S = 60          # the position changes: the same registration again after a minute at the earliest
 LOOKUP_GAP_S = 1.1           # adsb.fi allows 1 request per second
-LOG_DIR = data("acars")   # daily log acars_YYYY-MM-DD.txt (UTC)
+LOG_DIR = data("acars")   # daily logs acars_YYYY-MM-DD.txt and vdl2_YYYY-MM-DD.txt (UTC)
 
 SYNC = 0x011616             # SYN SYN SOH (with parity), received left to right = lower byte first
 SOH, STX, ETX, ETB, DEL = 0x01, 0x82, 0x83, 0x97, 0x7F   # with odd parity
@@ -187,10 +187,10 @@ class AcarsDecoder:
         self.tag = tag            # VFO name in the log (the log is shared by all VFOs)
         self.log_dir = log_dir
         self.log_on = False       # daily log only after LOG is turned on in the ACARS card
+        self._log_lock = threading.Lock()   # receiver and ADS-B threads: an append on Windows is not atomic
         self.enabled = False      # ACARS card with the classic ACARS demodulator (131.x MHz)
         self.vdl2_on = False      # messages come from VDL2 (vdl2.py) instead: the demodulator rests
         self.cpdlc_on = False     # CPDLC card (uses the same demodulator)
-        self.cpdlc_log_on = False
         self.cpdlc_msgs = collections.deque(maxlen=300)
         self.cpdlc_count = 0
         self._reasm = cpdlc.Reassembler()
@@ -386,7 +386,7 @@ class AcarsDecoder:
                 return
             except queue.Full:
                 pass
-        self._log_cpdlc(r)
+        self._log_atn(r)
 
     def _accept(self, m, now):
         """Common path of a received ACARS message (both links): CPDLC, card, ADS-B lookup, log."""
@@ -441,52 +441,66 @@ class AcarsDecoder:
         return r
 
     def _log(self, m):
-        """Line to the daily log (UTC); multi-line text indented. ADS-B data in [ADS-B: ...]."""
-        if self.cpdlc_on and m.get("cpdlc"):
-            self._log_cpdlc(m)
+        """Line to the daily log of the decoder it came from (UTC); multi-line text indented.
+        ADS-B data in [ADS-B: ...]; decoded CPDLC / ADS-C (FANS) after the raw text."""
         if not (self.log_on and self.shown):
             return
         head = [f"{m['date']} {m['time']}Z", f"{m['freq_hz'] / 1e6:.3f}", f"VFO-{self.tag}" if self.tag else "",
-                "VDL2" if m.get("link") == "VDL2" else "",
                 m["reg"] or "-", m["flight"] or "-", f"label {m['label']}", m["dir"],
                 "" if m["crc_ok"] else "CRC-ERROR"]
-        line = " ".join(h for h in head if h) + f" | {m['desc']}"
-        ac = m.get("ac")
-        if ac and ac.get("found"):
-            pos = f"{ac['lat']:.3f},{ac['lon']:.3f}" if ac.get("lat") is not None else ""
-            alt = "ground" if ac.get("ground") else (f"{ac['alt_ft']} ft" if ac.get("alt_ft") is not None else "")
-            ext = ", ".join(x for x in (ac.get("type"), ac.get("desc"), ac.get("callsign"), ac.get("hex"), pos, alt) if x)
-            line += f" | [ADS-B {ac.get('src', '')}: {ext}]"
+        gs = (m.get("vdl2") or {}).get("gs")
+        line = " ".join(h for h in head if h) + f" | {m['desc']} | {self._gs_loc(m)}" + (f" ({gs})" if gs else "")
+        line += self._adsb_ext(m.get("ac"))
         if m["text"]:
             line += "\n    " + m["text"].replace("\n", "\n    ")
-        try:
-            os.makedirs(self.log_dir, exist_ok=True)
-            with open(os.path.join(self.log_dir, f"acars_{m['date']}.txt"), "a", encoding="utf-8") as f:
-                f.write(line + "\n")
-        except OSError:
-            pass
+        c = m.get("cpdlc")
+        if c:
+            line += "\n    decoded: " + " ".join(self._cpdlc_head(c, c["imi"]))
+            line += "\n    " + (c["text"] or c["error"]).replace("\n", "\n    ")
+        self._write_log(m, line)
 
-    def _log_cpdlc(self, m):
-        """CPDLC daily log cpdlc_YYYY-MM-DD.txt next to the ACARS log."""
-        if not self.cpdlc_log_on:
+    def _log_atn(self, r):
+        """ATN message (VDL2, not inside ACARS) to the VDL2 daily log."""
+        if not self.log_on:
             return
-        c = next((x for x in reversed(self.cpdlc_msgs) if x["id"] == m["id"]), None)
-        if not c:
-            return
-        head = [f"{c['date']} {c['time']}Z", f"{c['freq_hz'] / 1e6:.3f}", f"VFO-{self.tag}" if self.tag else "",
-                "VDL2" if c.get("link") == "VDL2" else "", c["reg"] or "-", c["flight"] or "-", "uplink" if c["dir"] == "up" else "downlink",
-                f"ground {c['gs']}", c["imi"], f"MIN {c['min']}" if c["min"] is not None else "",
+        head = [f"{r['date']} {r['time']}Z", f"{r['freq_hz'] / 1e6:.3f}", f"VFO-{self.tag}" if self.tag else "",
+                r["reg"] or "-", "uplink" if r["dir"] == "up" else "downlink"] + self._cpdlc_head(r, r["imi_desc"])
+        line = " ".join(h for h in head if h) + f" | {self._gs_loc(r)}"
+        line += self._adsb_ext(r.get("ac"), with_reg=True)      # the head has only the ICAO address
+        line += "\n    " + (r["text"] or r["error"]).replace("\n", "\n    ")
+        self._write_log(r, line)
+
+    @staticmethod
+    def _gs_loc(m):
+        """Ground Station column: airport of the VDL2 ground station ("BTS/LZIB"), "-" if not known (also classic ACARS)."""
+        return (m.get("vdl2") or {}).get("gs_loc") or "-"
+
+    @staticmethod
+    def _adsb_ext(ac, with_reg=False):
+        """ADS-B part of a log line, in the order of the table columns; position last. Empty if not found."""
+        if not (ac and ac.get("found")):
+            return ""
+        alt = ac.get("alt_ft")
+        level = "GND" if ac.get("ground") else f"FL{round(alt / 100):03d} ({alt} ft)" if alt is not None else ""
+        gs = ac.get("gs_kt")
+        fields = (ac.get("reg") if with_reg else "", ac.get("callsign"), ac.get("hex"),
+                  f"squawk {ac['squawk']}" if ac.get("squawk") else "", ac.get("type"), ac.get("desc"), level,
+                  f"{round(gs)} kt" if gs is not None and not ac.get("ground") else "",
+                  f"{ac['lat']:.3f},{ac['lon']:.3f}" if ac.get("lat") is not None and ac.get("lon") is not None else "")
+        return f" | [ADS-B {ac.get('src', '')}: " + ", ".join(x for x in fields if x) + "]"
+
+    @staticmethod
+    def _cpdlc_head(c, kind):
+        head = [f"ground {c['gs']}", kind, f"MIN {c['min']}" if c["min"] is not None else "",
                 f"MRN {c['mrn']}" if c["mrn"] is not None else "", c["ts"], "" if c["crc_ok"] else "CRC-ERROR"]
-        line = " ".join(h for h in head if h)
-        ac = m.get("ac")
-        if ac and ac.get("found"):
-            reg = ac.get("reg") if c.get("atn") else ""          # ATN: the head has only the ICAO address
-            ext = ", ".join(str(x) for x in (reg, ac.get("type"), ac.get("callsign"), ac.get("hex")) if x)
-            line += f" | [ADS-B {ac.get('src', '')}: {ext}]"
-        line += "\n    " + (c["text"] or c["error"]).replace("\n", "\n    ")
+        return [h for h in head if h]
+
+    def _write_log(self, m, line):
+        """Classic ACARS decoder -> acars_YYYY-MM-DD.txt, VDL2 decoder -> vdl2_YYYY-MM-DD.txt."""
+        name = "vdl2" if m.get("link") == "VDL2" else "acars"
         try:
             os.makedirs(self.log_dir, exist_ok=True)
-            with open(os.path.join(self.log_dir, f"cpdlc_{c['date']}.txt"), "a", encoding="utf-8") as f:
+            with self._log_lock, open(os.path.join(self.log_dir, f"{name}_{m['date']}.txt"), "a", encoding="utf-8") as f:
                 f.write(line + "\n")
         except OSError:
             pass
@@ -519,7 +533,7 @@ class AcarsDecoder:
                     c["ac"] = m["ac"]
             self.on_event("acarsinfo", {"id": m["id"], "ac": m["ac"]})
             if atn:
-                self._log_cpdlc(m)
+                self._log_atn(m)
             else:
                 self._log(m)
 
@@ -541,7 +555,7 @@ class AcarsDecoder:
                 "found": True, "hex": a.get("hex", ""), "reg": a.get("r", ""), "type": a.get("t", ""), "desc": a.get("desc", ""),
                 "callsign": (a.get("flight") or "").strip(), "lat": a.get("lat"), "lon": a.get("lon"),
                 "alt_ft": alt if isinstance(alt, (int, float)) else None, "ground": alt == "ground",
-                "gs_kt": a.get("gs"), "src": "adsb.fi" if "adsb.fi" in url else "adsb.lol",
+                "gs_kt": a.get("gs"), "squawk": a.get("squawk", ""), "src": "adsb.fi" if "adsb.fi" in url else "adsb.lol",
             }
         return None
 

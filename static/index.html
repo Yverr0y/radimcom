@@ -70,7 +70,7 @@
           </g>
           <circle class="r-logo-ring" cx="294" cy="-46" r="21" fill="none" stroke-width="11"/>
         </svg>
-        <span class="r-ver">Ver. 0.107</span>
+        <span class="r-ver">Ver. 0.108</span>
         </div>
         <!-- RDS: compact frame under the logo, as wide as the clock -->
         <div class="rds off" id="rds">
@@ -120,7 +120,7 @@
       <button id="agcKey" class="key" title="Automatic tuner gain on/off for this VFO (manual gain in SET)">AGC</button>
     </div></div>
     <div class="kgroup"><span class="klabel">STEP</span><div class="keys" id="steps"></div></div>
-    <div class="kgroup"><span class="klabel">ZOOM</span><div class="keys" id="zooms"></div></div>
+    <div class="kgroup"><span class="klabel">ZOOM</span><div class="keys"><button id="zoomKey" title="Click: zoom on (last value) / off (1×). Mouse wheel: change zoom"></button></div></div>
     <div class="kgroup"><span class="klabel">DECODE</span><div class="keys">
       <label class="key toggle"><input id="ft8On" type="checkbox">FT8</label>
       <label class="key toggle"><input id="wefaxOn" type="checkbox">WEFAX</label>
@@ -129,10 +129,13 @@
       <label class="key toggle"><input id="sstvOn" type="checkbox">SSTV</label>
       <label class="key toggle" title="ACARS (classic VHF link, AM 2400 bit/s) – 131.525–131.825 MHz"><input id="acarsOn" type="checkbox">ACARS</label>
       <label class="key toggle" title="VDL Mode 2 (digital link, ACARS + CPDLC) – 136.725–136.975 MHz. Sets the VFO to 2.1 MS/s around 136.85 MHz; turns classic ACARS off. RTL-SDR only, not supported on LimeSDR."><input id="vdl2On" type="checkbox">VDL2</label>
+      <button id="dabKey" class="key" title="DAB / DAB+ digital radio, Band III 174–240 MHz (welle-cli, RTL-SDR only)">DAB</button>
     </div></div>
     <div class="kgroup"><span class="klabel">AUDIO</span><div class="keys">
-      <button id="stereoKey" class="key" title="WFM stereo on/off (off = mono, less noise on weak stations)">STEREO</button>
-      <button id="notchKey" class="key" title="Automatic notch: removes steady tones (whistles, carriers) in AM/LSB/USB">NOTCH</button>
+      <button id="stereoKey" class="key" title="S/M: WFM stereo / mono (mono = less noise on weak stations)">S/M</button>
+      <button id="notchKey" class="key" title="NF: automatic notch filter, removes steady tones (whistles, carriers) in AM/LSB/USB">NF</button>
+      <button id="lpfKey" class="key pass-key" aria-label="LPF"><svg class="pass-icon" viewBox="60 180 680 440" aria-hidden="true"><path d="M100 228H340Q390 228 415 270L580 540Q610 576 650 576H695"/></svg><span id="lpfVal" class="pass-val"></span></button>
+      <button id="hpfKey" class="key pass-key" aria-label="HPF"><svg class="pass-icon" viewBox="60 180 680 440" aria-hidden="true"><path d="M100 576H150Q190 576 215 535L390 265Q415 228 460 228H695"/></svg><span id="hpfVal" class="pass-val"></span></button>
       <button id="alcKey" class="key" title="Audio ALC (automatic audio level) in AM/LSB/USB/CW; off = fixed gain, set the level with MAIN">ALC</button>
       <button id="afiKey" class="key" title="AFI: audio frequency inversion – voice inversion scrambler / descrambler (all modes except WFM); the inversion frequency is set in SET">AFI</button>
       <button id="cueKey" class="key" title="CUE: keep hearing this VFO (at CUE level) when another VFO is selected">CUE</button>
@@ -170,7 +173,7 @@
     <div class="audio-bubble" id="audioBubble" hidden><canvas id="audioBubbleCanvas"></canvas></div>
     <!-- DECODERS tab: the decoder cards cover the spectrum and waterfall (those keep running) -->
     <div class="dec-pane" id="decPane" hidden>
-      <div id="decEmpty" class="ft8-empty">No decoder is on. Turn one on under DECODE (FT8, WEFAX, CW, RTTY, SSTV, ACARS, CPDLC), or DAB under OTHER.</div>
+      <div id="decEmpty" class="ft8-empty">No decoder is on. Turn one on under DECODE (FT8, WEFAX, CW, RTTY, SSTV, ACARS, VDL2, DAB).</div>
     <!-- ===== decoders ===== -->
     <!-- text decoders (CW, RTTY): the text fills the rest of the tab -->
     <section class="card ft8 txtdec" id="cwCard" hidden>
@@ -232,7 +235,8 @@
         <span id="acarsInfo" class="muted"></span>
         <span id="acarsFilter" class="tag-filter" title="Click a tag to show only those messages (more tags can be combined); click again to remove it">
           <span class="type-tag t-acars" data-kind="acars">ACARS</span><span class="type-tag t-cpdlc" data-kind="cpdlc" title="FANS CPDLC (in ACARS) and ATN CPDLC (VDL2)">CPDLC</span><span class="type-tag t-adsc" data-kind="adsc" title="FANS ADS-C (in ACARS) and ATN ADS-C (VDL2)">ADS-C</span><span id="acarsFilterState" hidden></span></span>
-        <label class="wf-opt log-opt" title="Write the daily logs data\acars\acars_YYYY-MM-DD.txt and cpdlc_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="acars" data-log-also="cpdlc">LOG</label>
+        <label class="wf-opt" data-link="vdl2" hidden title="Show only messages of this ground station location. The list has the locations of the messages in the table; - = not known (station not in the list)">Ground Station<select id="acarsLoc"><option value="">All</option></select></label>
+        <label class="wf-opt log-opt" title="Write the daily log: classic ACARS to data\acars\acars_YYYY-MM-DD.txt, VDL2 to data\acars\vdl2_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="acars">LOG</label>
         <button id="acarsClear" class="key small">CLR</button>
       </div>
       <p class="note"><span data-link="acars">Classic ACARS on the VHF airband (AM, 2400 bit/s). Works in any mode: the decoder
@@ -250,8 +254,8 @@
         click the callsign or flight to open the map. Country = from the aircraft's ICAO address.</p>
       <div class="ft8-table">
         <table class="acars-table">
-          <colgroup><col class="c-type"><col class="c-utc"><col class="c-freq"><col class="c-cty"><col class="c-flt"><col class="c-ac"><col class="c-icao"><col class="c-act"><col class="c-model"><col class="c-fl"><col class="c-spd"><col class="c-lbl"><col class="c-desc"><col class="c-msg"></colgroup>
-          <thead><tr><th>Type</th><th>UTC</th><th title="Frequency in MHz">Freq</th><th title="Country of registration, from the 24-bit ICAO address">Country</th><th>Flight</th><th title="Registration (ATN: from ADS-B by the ICAO address); click for the map">Callsign</th><th title="24-bit ICAO aircraft address (hex)">ICAO</th><th title="Aircraft type code from ADS-B">ACFT type</th><th title="Aircraft model from ADS-B">Model</th><th title="Flight level from ADS-B">FL</th><th title="Ground speed from ADS-B">Speed</th><th>Label</th><th title="Approximate meaning: many labels are defined by each airline">Description</th><th>Message</th></tr></thead>
+          <colgroup><col class="c-type"><col class="c-utc"><col class="c-freq"><col class="c-cty"><col class="c-flt"><col class="c-ac"><col class="c-icao"><col class="c-sqk"><col class="c-act"><col class="c-model"><col class="c-fl"><col class="c-spd"><col class="c-lbl"><col class="c-desc"><col class="c-loc"><col class="c-msg"></colgroup>
+          <thead><tr><th>Type</th><th>UTC</th><th title="Frequency in MHz">Freq</th><th title="Country of registration, from the 24-bit ICAO address">Country</th><th>Flight</th><th title="Registration (ATN: from ADS-B by the ICAO address); click for the map">Callsign</th><th title="24-bit ICAO aircraft address (hex)">ICAO</th><th title="Transponder squawk code from ADS-B">Squawk</th><th title="Aircraft type code from ADS-B">ACFT type</th><th title="Aircraft model from ADS-B">Model</th><th title="Flight level from ADS-B">FL</th><th title="Ground speed from ADS-B">Speed</th><th>Label</th><th title="Approximate meaning: many labels are defined by each airline">Description</th><th title="Airport of the VDL2 ground station (IATA/ICAO), from the ground station list by its address; - = not known. The tooltip of a cell has the address and the list entry">Ground Station</th><th>Message</th></tr></thead>
           <tbody id="acarsRows"></tbody>
         </table>
         <div id="acarsEmpty" class="ft8-empty"><span data-link="acars">No messages yet. ACARS bursts are short and come every few
@@ -381,6 +385,15 @@
         (f → 2·F − f, band 0 … 2·F). The same setting scrambles and descrambles. Default 1750 Hz (band up to 3500 Hz). 500–4000 Hz.</p>
     </div>
     <div class="setting">
+      <div class="row"><span>LPF – passes audio below (Hz)</span></div>
+      <input id="lpfHz" type="number" step="50" min="100" max="15000" value="3000">
+      <div class="row"><span>HPF – passes audio above (Hz)</span></div>
+      <input id="hpfHz" type="number" step="10" min="20" max="5000" value="300">
+      <p class="note">Audio filters of the LPF and HPF keys, for this VFO. Faster: turn the mouse wheel over the key.
+        LPF 100–15000 Hz, HPF 20–5000 Hz, 36 dB per octave. Together they make a band-pass, so HPF always stays below LPF.
+        What you hear and REC are filtered, decoders are not. Not for DAB.</p>
+    </div>
+    <div class="setting">
       <div class="row"><span>Tuner gain</span><span id="gainText" class="value"></span></div>
       <input id="gainSlider" type="range" min="0" max="0" step="1">
       <label class="switch"><input id="gainAuto" type="checkbox"><span></span> Automatic gain</label>
@@ -431,6 +444,12 @@
       <input id="wfRange" type="range" min="20" max="80" step="1" value="35">
       <div class="row"><span>Waterfall – colour offset</span><span id="wfShiftText" class="value"></span></div>
       <input id="wfShift" type="range" min="-20" max="20" step="1" value="0">
+    </div>
+    <div class="setting">
+      <div class="row"><span>Touchpad wheel speed</span><span id="wheelSpeedText" class="value"></span></div>
+      <input id="wheelSpeed" type="range" min="1" max="10" step="1" value="4">
+      <p class="note">Tuning, ZOOM, LPF and HPF with touchpad scrolling. Left = slower, default 4. A mouse wheel notch is
+        always one step. Remembered in this browser, for all VFOs.</p>
     </div>
     <div class="setting">
       <button id="resetBtn" class="key wide">⟳ RESET DONGLE</button>

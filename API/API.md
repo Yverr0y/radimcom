@@ -1,4 +1,4 @@
-# RADIMCOM HTTP API – Ver. 0.107
+# RADIMCOM HTTP API – Ver. 0.108
 
 The web page talks to the receivers through this HTTP API, and you can use it too (scripts, curl, other programs).
 Requests and responses are JSON unless stated otherwise. Errors return `{"error": "..."}` with HTTP 400 (bad input),
@@ -66,11 +66,12 @@ Main fields:
 | `chain_owner`, `out_of_band`, `chained_vfos` | chained VFO: VFO that owns the dongle (`null` otherwise), tuned outside the owner's band (silent, OOR); owner VFO: number of chained VFOs connected |
 | `ppm`, `rtl_agc`, `audio_agc`, `notch`, `notch_active`, `bias_tee`, `stereo_on`, `stereo`, `rds` | receiver options and WFM stereo / RDS |
 | `afi`, `afi_hz` | audio frequency inversion (voice scrambler / descrambler) on/off and its inversion frequency in Hz |
+| `lpf`, `lpf_hz`, `hpf`, `hpf_hz` | audio low-pass and high-pass filter on/off and their cutoff frequencies in Hz |
 | `status`, `error`, `opened`, `dropped`, `hw` | device status, last error, open flag, dropped blocks, LimeSDR stream info |
 | `ft8`, `cw`, `rtty`, `wefax`, `sstv`, `acars`, `vdl2`, `cpdlc` | decoders on/off |
 | `ft8_error`, `vdl2_error` | decoder errors |
 | `dab`, `dab_channel`, `dab_error` | DAB on/off, Band III channel (e.g. `12C`), welle-cli error |
-| `logs` | daily logs on/off: `{"ft8", "wefax", "cw", "rtty", "sstv", "acars", "cpdlc"}` |
+| `logs` | daily logs on/off: `{"ft8", "wefax", "cw", "rtty", "sstv", "acars"}` (`acars` covers both the ACARS and the VDL2 log) |
 | `tx_capable`, `tx_enabled`, `can_tx`, `tx`, `tx_info` | transmitter (LimeSDR) |
 | `wf` | waterfall format: `bins`, `db_min`, `db_step`, `rows_per_s` |
 
@@ -89,8 +90,10 @@ Send any combination of these keys:
 | `mode` | `AM`, `FM`, `WFM`, `LSB`, `USB`, `CW` |
 | `bandwidth` | Hz, for the current (or the sent) mode: WFM 50000–250000, FM 500–50000, others 100–18000 |
 | `gain` | dB or `"auto"` |
-| `rtl_agc`, `audio_agc`, `notch`, `afi`, `stereo_on`, `bias_tee` | true / false |
+| `rtl_agc`, `audio_agc`, `notch`, `afi`, `lpf`, `hpf`, `stereo_on`, `bias_tee` | true / false |
 | `afi_hz` | AFI inversion frequency, 500 – 4000 Hz (default 1750; audio is mirrored f → 2·afi_hz − f) |
+| `lpf_hz` | LPF cutoff, 100 – 15000 Hz (default 3000) |
+| `hpf_hz` | HPF cutoff, 20 – 5000 Hz (default 300). With both filters on, `hpf_hz` above `lpf_hz` gives silence (the web UI keeps them in order, the API does not) |
 | `squelch` | dBFS, -120 (off) to 0; optional `squelch_mode` = the mode it applies to |
 | `sample_rate` | 1024000, 1536000, 2048000, 2100000, 2400000 |
 | `zoom` | 1, 2, 4, 8, 16, 32 |
@@ -149,7 +152,7 @@ is removed. 0 dB is a sine at 75 kHz deviation. Outside WFM, `db` is empty and `
 | POST | `/api/cw` | `{"action": "clear"}` |
 | GET | `/api/rtty` | RTTY decoder info and text |
 | POST | `/api/rtty` | `{"action": "clear"}` and/or `{"opts": {...}}` (decoder options, saved to the config) |
-| GET | `/api/acars` | ACARS / VDL2 messages |
+| GET | `/api/acars` | ACARS / VDL2 messages; VDL2 ones have `vdl2.gs` (ground station address) and `vdl2.gs_loc` (`BTS/LZIB`, `-` if not known), `vdl2.gs_city` (`Bratislava`, empty if not known) and `vdl2.gs_info` (entry in the ground station list, `LHBP Budapest Hungary 136.825`, empty if not there) |
 | POST | `/api/acars` | `{"action": "clear"}` |
 | GET | `/api/cpdlc` | CPDLC messages |
 | POST | `/api/cpdlc` | `{"action": "clear"}` |

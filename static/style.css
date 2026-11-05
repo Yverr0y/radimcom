@@ -90,7 +90,9 @@ body {
  * SQL with squelch on goes to the second column */
 .r-flags { display: grid; grid-template-rows: repeat(5, auto); grid-auto-flow: column; grid-auto-columns: 76px; gap: 4px 6px; }
 /* lower and with a smaller font than the other flags; the column width stays fixed */
-.r-flags .flag { white-space: nowrap; padding: 2px 4px; font-size: 11px; }
+/* --flag-h: one height for all flags, at the S-meter and in the VFO head/foot, whatever the state (a border stays inside it) */
+:root { --flag-h: 17px; }
+.r-flags .flag { height: var(--flag-h); white-space: nowrap; padding: 2px 4px; font-size: 11px; }
 .flag {
   min-width: 58px; text-align: center; padding: 3px 8px; border-radius: 4px;
   font: 700 13px/1.2 system-ui, sans-serif; letter-spacing: .04em;
@@ -114,8 +116,8 @@ body {
 .r-info-text .r-brandline { order: -1; align-self: center; display: flex; align-items: flex-end; gap: 6px; }
 .r-info-text .r-logo { margin: 2px 0 0; }
 .r-ver { font: 600 10px system-ui, sans-serif; color: var(--muted); white-space: nowrap; margin-bottom: 1px; }
-/* author under the RDS frame */
-.r-credit { align-self: center; margin-top: -2px; font: 10px system-ui, sans-serif; letter-spacing: .03em;
+/* author directly under the logo (same order as the brandline, follows it in the source) */
+.r-credit { order: -1; align-self: center; margin-top: -2px; font: 10px system-ui, sans-serif; letter-spacing: .03em;
   color: var(--dim); white-space: nowrap; }
 .freq {
   display: flex; align-items: flex-end; gap: .04em; cursor: text; font-size: 64px; line-height: 1;
@@ -128,7 +130,11 @@ body {
 .freq svg:nth-last-of-type(-n+3) { height: .62em; width: .4em; }
 .freq svg:nth-last-of-type(-n+3) .on { fill: var(--green); filter: drop-shadow(0 0 4px rgba(60, 240, 124, .6)); }
 .freq .gap { width: .16em; }
-.freq .unit { margin-left: .25em; margin-bottom: .1em; font: 700 15px system-ui, sans-serif; color: var(--green); }
+.freq .unit { position: relative; margin-left: .25em; margin-bottom: .1em; font: 700 15px system-ui, sans-serif; color: var(--green); }
+/* AFI above MHz, same size as the unit; out of the flow so the digits do not move */
+.freq .afi-tag { position: absolute; left: 0; bottom: 100%; color: rgba(255, 255, 255, .035); }   /* off: same as an unlit LCD segment */
+.freq .afi-tag.on { color: var(--yellow); animation: afi-tag-blink 1s steps(1) infinite; }
+@keyframes afi-tag-blink { 50% { color: #6e5d20; } }
 .freq-input { font: 600 34px ui-monospace, Consolas, monospace; width: 320px; text-align: center; }
 .sub { font: 11px ui-monospace, Consolas, monospace; color: var(--muted); padding: 0 6px; }
 
@@ -145,7 +151,8 @@ body {
 /* the header shrinks with the width so that three VFOs fit side by side */
 .vfo-head { gap: .4em .5em; font-size: clamp(9px, 1.3cqw, 12px); white-space: nowrap;
   flex-wrap: wrap; justify-content: center; }   /* in a narrow window the header wraps into two rows */
-.vfo-head .flag { min-width: 0; padding: .2em .6em; font-size: 1em; }
+.vfo-head .flag, .vfo-foot .flag { display: inline-flex; align-items: center; justify-content: center; height: var(--flag-h);
+  min-width: 0; padding: 0 .6em; font-size: min(1em, 11px); }   /* letters as at the S-meter; smaller only when a narrow window shrinks the header */
 .vfo-head .vfo-key { padding: .25em .8em; font-size: 1.08em; }
 /* fixed widths: a content change (USB icon / OFFLINE, LSB / WFM, RF 9.0 / 28.0 dB) does not shift the header or footer */
 .vfo-head, .vfo-foot { flex-wrap: nowrap; }
@@ -154,6 +161,13 @@ body {
 .vfo-head .vfo-key { width: 6em; padding-left: 0; padding-right: 0; }
 .vfo-head .vfo-mode { width: 3.9em; padding-left: 0; padding-right: 0; }
 .vfo-head .flag.vfo-cue { width: 3.6em; padding-left: 0; padding-right: 0; }
+/* name of the memory on the VFO frequency (green), otherwise the band plan (grey), in a frame as wide as the VFO; always in place, so the layout does not shift.
+   width 0 + min-width 100%: a long name is cut with an ellipsis and does not widen the VFO */
+.vfo-memname { width: 0; min-width: 100%; min-height: 1.7em; padding: 0 .6em; border: 1px solid var(--line); border-radius: 6px;
+  background: #080c10; color: #5f6874; font: 700 clamp(10px, 1.4cqw, 13px)/1.6 system-ui, sans-serif; text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vfo-row.active .vfo-memname { border-color: #2c3642; color: #7ee0a8; }
+.vfo-row.active .vfo-memname.band { color: var(--muted); }
 /* frequency display in a frame like the clock */
 .vfo-disp { display: flex; justify-content: center; max-width: 100%; padding: 3px 8px; border: 1px solid var(--line);
   border-radius: 6px; background: #080c10; }
@@ -162,13 +176,12 @@ body {
 .vfo-list .vfo-row { display: grid; grid-template-columns: minmax(0, max-content); justify-content: center; }
 .vfo-row .vfo-head { justify-content: space-between; }
 .vfo-foot { display: flex; align-items: stretch; gap: .5em; white-space: nowrap; font-size: clamp(9px, 1.3cqw, 12px); }
-.vfo-foot .flag { min-width: 0; padding: .15em .6em; font-size: 1em; }
 .vfo-foot .vfo-gain, .vfo-foot .vfo-sql { width: 5.6em; flex: none; padding-left: 0; padding-right: 0; }
 /* squelch in a mode without squelch (SSB, CW): stays in place, only strongly dimmed */
 .vfo-foot.na { opacity: .3; }
 .vfo-foot.na .vfo-rf { cursor: default; }
 /* frame with the RF GAIN slider, as tall as the gain value */
-.vfo-rf { flex: 1; min-width: 0; display: flex; align-items: center; gap: .5em; padding: 0 .5em; cursor: pointer;
+.vfo-rf { flex: 1; min-width: 0; height: var(--flag-h); display: flex; align-items: center; gap: .5em; padding: 0 .5em; cursor: pointer;
   border: 1px solid var(--line); border-radius: 4px; background: #080c10; }
 .vfo-rf span { font: 700 .85em system-ui, sans-serif; letter-spacing: .08em; color: var(--muted); width: 5.4em; flex: none; }
 .vfo-rf input[type=range] { flex: 1; min-width: 0; height: 1.2em; margin: 0; }
@@ -178,11 +191,11 @@ body {
 .vfo-row:not(.active) .vfo-rf input[type=range]::-webkit-slider-thumb { background: #7d8794; }
 .vfo-row:not(.active) .vfo-rf input[type=range]::-moz-range-thumb { background: #7d8794; }
 /* VFO receiver state: RUNNING green, WAIT/OPENING orange, OFFLINE (unplugged dongle, error) grey */
-.flag.vfo-stat.usb { display: inline-flex; align-items: center; padding: .15em .7em; }
+.flag.vfo-stat.usb { padding: 0 .7em; }
 .usb-icon { display: block; height: 1.15em; width: auto; }
 /* chained VFO (shares the dongle of another VFO): green CHAIN instead of the USB icon */
 .flag.vfo-stat.chain, .vfo-row:not(.active) .flag.vfo-stat.chain { background: var(--green); color: #0b1a0f;
-  font-weight: 800; letter-spacing: .06em; box-shadow: 0 0 10px rgba(60, 240, 124, .35); }
+  box-shadow: 0 0 10px rgba(60, 240, 124, .35); }
 .flag.wait { background: var(--amber); color: #2a1a04; box-shadow: none; }
 .flag.off { background: #1a2029; color: #7d8794; border: 1px solid var(--line2); box-shadow: none; }
 /* inactive VFO: mode and gain dark; the receiver state is always lit (RUNNING green if the dongle delivers data) */
@@ -289,6 +302,15 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid rgba(255, 2
   color: var(--yellow); background: linear-gradient(180deg, var(--key-on-a), var(--key-on-b));
   box-shadow: inset 0 -2px 0 var(--yellow), inset 0 1px 0 rgba(255, 255, 255, .12);
 }
+/* AFI on: the usual yellow backlit key, blinking, because the audio is inverted */
+#afiKey.on { animation: afi-key-blink 1s steps(1) infinite; }
+@keyframes afi-key-blink {
+  50% { color: #6e5d20; box-shadow: inset 0 -2px 0 #6e5d20, inset 0 1px 0 rgba(255, 255, 255, .12); }
+}
+/* LPF / HPF: filter curve and cutoff on two lines, as high and wide as the other keys */
+.key.pass-key, .keys button.pass-key { flex-direction: column; gap: 1px; padding-top: 2px; padding-bottom: 2px; line-height: 1; }
+.pass-icon { width: 19px; height: 12px; fill: none; stroke: currentColor; stroke-width: 56; stroke-linecap: round; stroke-linejoin: round; }
+.pass-val { font-size: 9px; font-weight: 600; letter-spacing: 0; opacity: .85; }
 .key.toggle input { display: none; }
 .key.small { min-width: 0; padding: 4px 8px; font-size: 11px; }
 .key.wide { width: 100%; }
@@ -303,14 +325,18 @@ label.key.disabled { opacity: .4; cursor: default; }
   color: var(--amber); font: 700 34px system-ui, sans-serif; letter-spacing: .04em;
   text-align: center; box-shadow: 0 0 40px rgba(255,180,60,.25);
   animation: conv-blink 1s ease-in-out infinite alternate; }
-.spk { background: none; border: 0; padding: 0; cursor: pointer; color: var(--green); line-height: 0; }
+/* speaker and REC under the volume sliders: one above the other, as tall as the flags and as wide as the sliders */
+.spk, .rec { display: flex; align-items: center; justify-content: center; align-self: stretch; height: var(--flag-h);
+  padding: 0; border-radius: 4px; cursor: pointer; }
+/* speaker: green = sound on, red = muted */
+.spk { border: 0; color: #0b1a0f; background: var(--green); box-shadow: 0 0 10px rgba(60, 240, 124, .35); }
+.spk svg { width: 15px; height: 15px; }
 .spk .spk-x { display: none; }
-.spk.on { color: var(--red); }
+.spk.on { color: #fff; background: var(--red); box-shadow: 0 0 10px rgba(255, 75, 62, .45); }
 .spk.on .spk-x { display: inline; }
 .rec {
-  display: inline-flex; align-items: center; gap: 4px; padding: 2px 5px; border-radius: 4px;
-  font-size: 10px; font-weight: 700; letter-spacing: .5px; color: var(--muted); background: none; cursor: pointer;
-  font-variant-numeric: tabular-nums;
+  gap: 4px; font: 700 11px/1.2 system-ui, sans-serif; letter-spacing: .04em; color: #b8c2cf;
+  background: #1a2029; border: 1px solid var(--line2); font-variant-numeric: tabular-nums;
 }
 .rec-dot { width: 8px; height: 8px; border-radius: 50%; background: #7a2a26; flex: none; }
 .rec.on { color: var(--red); border-color: var(--red); }
@@ -509,7 +535,7 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .acars td { vertical-align: top; }
 .acars td.tag { padding-right: 4px; }
 /* fixed column widths: the table looks the same whichever rows the filter shows */
-.acars table.acars-table { table-layout: fixed; min-width: 1400px; }
+.acars table.acars-table { table-layout: fixed; min-width: 1520px; }
 .acars-table col.c-type { width: 76px; }
 .acars-table col.c-utc { width: 78px; }
 .acars-table col.c-freq { width: 76px; }
@@ -517,16 +543,18 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .acars-table col.c-flt { width: 88px; }
 .acars-table col.c-ac { width: 96px; }
 .acars-table col.c-icao { width: 72px; }
+.acars-table col.c-sqk { width: 72px; }
 .acars-table col.c-act { width: 92px; }
 .acars-table col.c-model { width: 170px; }
 .acars-table col.c-fl { width: 60px; }
 .acars-table col.c-spd { width: 64px; }
 .acars-table col.c-lbl { width: 60px; }
 .acars-table col.c-desc { width: 200px; }
+.acars-table col.c-loc { width: 120px; }
 .acars-table td { overflow: hidden; text-overflow: ellipsis; }
 .acars-table td.reg, .acars-table td.flt, .acars-table td.model { white-space: normal; overflow-wrap: anywhere; }
 .acars td.icao { color: var(--muted); }
-.acars-table td.reg .ac-sub { white-space: normal; }
+.acars-table td.reg .ac-sub, .acars-table td.loc .ac-sub { white-space: normal; }
 .acars-table td.desc, .acars-table td.msg { min-width: 0; max-width: none; }
 .acars .cflag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
 .acars .cflag img { width: 20px; height: 15px; object-fit: cover; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .15); }
@@ -549,6 +577,10 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .acars tr.r-cpdlc td:first-child { box-shadow: inset 3px 0 #6cff9c; }
 .acars tr.r-adsc td:first-child { box-shadow: inset 3px 0 #c79bff; }
 .acars tr.r-atn td:first-child { box-shadow: inset 3px 0 #6cff9c; }
+/* emergency squawk: red frame around the whole row */
+.acars tr.sqk-alert td { box-shadow: inset 0 2px var(--red), inset 0 -2px var(--red); }
+.acars tr.sqk-alert td:first-child { box-shadow: inset 2px 0 var(--red), inset 0 2px var(--red), inset 0 -2px var(--red); }
+.acars tr.sqk-alert td:last-child { box-shadow: inset -2px 0 var(--red), inset 0 2px var(--red), inset 0 -2px var(--red); }
 .acars .dec { margin-bottom: 3px; white-space: pre-wrap; }
 .acars .dec.cp-up .cp-el { color: var(--amber); }
 .acars .dec.cp-down .cp-el { color: #6cff9c; }
@@ -681,8 +713,11 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
    and gaps, so that the button row and the band row each fit on one line and do not take the waterfall's
    height. The font stays the same. The .compact class is set by app.js (fitStage) – @media would measure
    the real window, not the virtual one. Smaller windows are not rearranged any more, the whole page is just scaled down. */
-html.compact .r-keys { column-gap: 8px; padding-left: 8px; padding-right: 8px; }
+html.compact .r-keys { column-gap: 5px; padding-left: 4px; padding-right: 4px; }
 html.compact .r-bands { column-gap: 10px; }
 html.compact .r-keys .keys button, html.compact .r-keys .key { min-width: 32px; padding-left: 4px; padding-right: 4px; }
 html.compact .r-keys .keys, html.compact .r-bands .bands { gap: 3px; }
+html.compact .r-keys .keys button.pass-key { width: 32px; padding-left: 1px; padding-right: 1px; }
+html.compact .r-keys .keys:has(.pass-key) { gap: 2px; }
+html.compact .r-keys .keys { padding: 2px; }
 html.compact .r-bands .bands button { min-width: 36px; padding-left: 5px; padding-right: 5px; }

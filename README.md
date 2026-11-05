@@ -15,16 +15,18 @@ Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
 - **VFO chaining:** one dongle can serve several VFOs, e.g. one dongle for VFO A–D, or two dongles with two VFOs
   each. A chained VFO listens anywhere inside the band its dongle receives and shows a green CHAIN flag
   (see [VFO chaining](#vfo-chaining-one-dongle-for-several-vfos)).
+- **Memory name or band plan above each VFO:** a frame on top of the VFO window shows the name of the memory on its
+  frequency, otherwise the band plan label for that frequency, e.g. `HAM 70cm` (in grey).
 - **RF GAIN and SQUELCH sliders** under each VFO display.
 - **Modes:** AM, FM, WFM, LSB, USB and CW with selectable filter width.
 - **WFM stereo** (19 kHz pilot, **ST** flag) and **RDS**: station name (PS), RadioText, PI, PTY, TP/TA and clock (CT).
 - **Squelch** for AM, FM and WFM, each mode with its own level. It decides every ~8 ms, so it does not cut off
-  the start of a transmission (airband). The level is marked on the S-meter with a yellow tick.
+  the start of a transmission (airband), and closes about 25 ms after the signal drops below the level. The level is marked on the S-meter with a yellow tick.
 - **Spectrum and waterfall** with 1×–32× zoom.
 - **Decoders:** FT8, WEFAX (radio fax with automatic format detection), CW (Morse with AFC and speed estimation), RTTY (Baudot, automatic shift 90–1000 Hz, speed 45.45/50/75/100 Bd and polarity), SSTV (colour images, 14 modes, VIS) and aircraft data link: ACARS (131.725 MHz and others, AM, MSK 2400 bit/s) and VDL2 (VDL Mode 2, 136.725–136.975 MHz, all channels at once, via dumpvdl2), with CPDLC (FANS-1/A and European ATN) and ADS-C position reports decoded to plain text; aircraft type, flight level and speed from adsb.fi / adsb.lol, country flag from the ICAO address. See [Aircraft data link](#aircraft-data-link-acars-vdl2-cpdlc-ads-c).
-- **DAB / DAB+ digital radio:** the **DAB** button in OTHER: station list of the ensemble, DLS text, slideshow and
+- **DAB / DAB+ digital radio:** the **DAB** key in DECODE: station list of the ensemble, DLS text, slideshow and
   audio, via welle-cli. See [DAB / DAB+ digital radio](#dab--dab-digital-radio).
-- **Daily logs:** the LOG checkbox in each decoder card writes to `data\logs\<decoder>_YYYY-MM-DD.txt` (UTC, one line per message; WEFAX/SSTV log the names of saved images), ACARS / VDL2 to `data\acars\acars_YYYY-MM-DD.txt` and (CPDLC, ADS-C) `data\acars\cpdlc_YYYY-MM-DD.txt`.
+- **Daily logs:** the LOG checkbox in each decoder card writes to `data\logs\<decoder>_YYYY-MM-DD.txt` (UTC, one line per message; WEFAX/SSTV log the names of saved images), classic ACARS to `data\acars\acars_YYYY-MM-DD.txt` and VDL2 to `data\acars\vdl2_YYYY-MM-DD.txt`.
 - **Frequency memories** (MEM) with favourites and import from SDR# (`frequencies.xml`).
 - **Upconverter:** HF is tuned via the LO (e.g. 100 MHz), see [Shortwave (HF) reception](#shortwave-hf-reception-with-an-upconverter). For a VFO with a manual converter switch, crossing
   30 MHz shows a warning whether the converter must be switched on (CONV) or set to BYPASS.
@@ -115,7 +117,7 @@ Airliners exchange data with the ground over two VHF links, and RADIMCOM receive
   VDL2 works with RTL-SDR dongles only; it is not supported on LimeSDR.
 - Every message shows its type tag, time, frequency, country flag (from the aircraft's ICAO address), flight, callsign
   (registration; click for the live map), ICAO address, aircraft type, model, flight level and ground speed (from ADS-B,
-  in blue), label, description and text. The **tag** in the first column says what it is (click a tag at the top to filter):
+  in blue), label, description and text. On VDL2 the **Ground Station** column shows the airport of the ground station (from `VDL2_Ground_Stations.txt` by its address, the tooltip has the details) and the pull-down at the top filters by it. The **tag** in the first column says what it is (click a tag at the top to filter):
 
   | Tag | Meaning |
   |---|---|
@@ -137,8 +139,8 @@ Airliners exchange data with the ground over two VHF links, and RADIMCOM receive
   e.g. `dM6 REQUEST FL360`, `dM106 PREFERRED LEVEL FL350`, `dM0 WILCO`, plus connect / abort / release.
   ATN messages identify the aircraft only by its 24-bit ICAO address; the registration, type, position and
   callsign are looked up on ADS-B by that address (the address stays under the registration).
-- **LOG** writes `data\acars\acars_YYYY-MM-DD.txt` and (CPDLC, ADS-C, ATN) `data\acars\cpdlc_YYYY-MM-DD.txt`,
-  UTC; messages from VDL2 are tagged `VDL2`.
+- **LOG** writes one daily log per decoder (UTC): everything from classic ACARS to `data\acars\acars_YYYY-MM-DD.txt`,
+  everything from VDL2 (ACARS, CPDLC, ADS-C, ATN) to `data\acars\vdl2_YYYY-MM-DD.txt`. Decoded CPDLC / ADS-C follows the raw text.
 
 **What to expect:** on 131.725 MHz mostly long-haul aircraft (ADS-C reports every few minutes); on VDL2 many
 messages per minute from all airlines and, near busy airspace, European CPDLC (requests, WILCO, logical
@@ -171,7 +173,7 @@ with MSYS2; licences, sources and build steps are in `installer\VDL2.txt` (`lib\
 DAB and DAB+ are broadcast in Band III (174–240 MHz). One channel (e.g. 12C = 227.360 MHz) carries an ensemble
 (multiplex) of many stations, 1.5 MHz wide.
 
-- Press **DAB** in the OTHER band group. The VFO switches to 2.048 MS/s on the centre of the channel and the
+- Press **DAB** in the DECODE group. The VFO switches to 2.048 MS/s on the centre of the channel and the
   **DAB+** card opens on the DECODERS tab. Pick the channel of your region in CHANNEL (remembered per VFO,
   default 12C); after a few seconds the ensemble name, SNR and the station list appear.
 - Click a station to listen. The card shows its programme type, DAB / DAB+, bitrate, the DLS text ("now playing")
@@ -243,7 +245,7 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
 
 - **MODE**: demodulation. **FILTER**: bandwidth for the current mode.
 - **GAIN**: AGC switches automatic tuner gain on/off (manual gain with the RF GAIN slider or in SET).
-- **STEP**: tuning step (10 Hz – 10 kHz). **ZOOM**: spectrum and waterfall span (1×–32×).
+- **STEP**: tuning step (10 Hz – 10 kHz). **ZOOM**: spectrum and waterfall span (1×–32×), one key: click turns it on (last value) and off (1×), the mouse wheel over it changes the zoom, lit above 1×.
 - **DECODE**: turns on the FT8, WEFAX, CW, RTTY, SSTV, ACARS or VDL2 decoder. The panels are in the
   **DECODERS** tab next to SPECTRUM; turning a decoder on opens it, a green dot signals a new message/image.
   Every panel has a LOG checkbox for the daily log:
@@ -275,13 +277,16 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
     RTL-SDR only, not supported on LimeSDR.
 
 - **AUDIO**:
-  - STEREO: WFM stereo on/off (mono = less noise on weak stations).
-  - NOTCH: automatic notch for AM/LSB/USB, finds and removes steady tones (whistles, carriers) by ~40 dB and
+  - S/M: WFM stereo / mono (mono = less noise on weak stations).
+  - NF: automatic notch filter for AM/LSB/USB, finds and removes steady tones (whistles, carriers) by ~40 dB and
     leaves speech. It also feeds the SSTV decoder, so turn it off for SSTV.
+  - LPF / HPF (keys with the filter curve icon): audio low-pass and high-pass filter in all modes except DAB (36 dB per
+    octave; both on = band-pass). The key shows the cutoff; change it with the mouse wheel over the key or type it in SET.
+    The audio spectrum bubble darkens what they cut off. You hear and REC the filtered audio, decoders still get the full audio.
   - ALC: automatic audio level in AM/LSB/USB/CW; off = fixed gain.
   - CUE: keep hearing this VFO (at the CUE level) when another VFO is selected.
-- **Volume** (top right): vertical MAIN (active VFO) and CUE faders, stereo L/R level meter, the speaker icon
-  below them is MUTE, and **REC** records the audio of the active VFO to a WAV file.
+- **Volume** (top right): vertical MAIN (active VFO) and CUE faders, stereo L/R level meter. Below them the speaker button
+  is MUTE (green = sound on, red = muted) and under it **REC** records the audio of the active VFO to a WAV file.
 - **MENU → SET**: settings of the active VFO.
   - Squelch for the current mode.
   - Tuner gain (manual or automatic), RTL2832 digital AGC (RTL-SDR only).
@@ -289,6 +294,7 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
   - Upconverter LO and ppm correction.
   - Bias-tee 4.5 V (if the SDR has it). Turn it on only when the upconverter or preamplifier really needs it.
   - Enable TX (LimeSDR only), see below.
+  - Touchpad wheel speed (1–10, default 4; left = slower), remembered in the browser for all VFOs. A mouse wheel notch is always one step.
   - S-meter calibration (S9 level) and waterfall colour range / offset.
   - RESET DONGLE.
   - Without `vfos.json` (single receiver) also the dongle selection and the upconverter mode (auto / on / off).
@@ -442,6 +448,8 @@ audio, memories), so the receivers can be controlled from scripts or other progr
 | `rds.py` | RDS decoder |
 | `ft8.py`, `wefax.py`, `cw.py`, `rtty.py`, `sstv.py`, `acars.py`, `cpdlc.py`, `adsc.py` | decoders (`adsc.py`: ADS-C reports inside ACARS) |
 | `vdl2.py` | VDL2: runs `lib\vdl2\dumpvdl2.exe`, feeds it the raw samples, turns its messages into ACARS / CPDLC records |
+| `VDL2_Ground_Stations.txt` | VDL2 ground stations by address (airport, position and channel when known, city) for the Ground Station column. Source: [ACARS-VDL2 group](https://acars-vdl2.groups.io/), redistributed with approval. Thank you Sergi for amazing work. If you come across any new ground station that is not included in the list, please let us know. Thank you. |
+| `airports.py` | IATA to ICAO and city tables for the VDL2 Ground Station column (OurAirports, public domain) |
 | `cpdlc_schema.py` | CPDLC message set (generated data) |
 | `CHANGELOG.md` | version history |
 | `API/API.md` | HTTP API description (control the receivers from scripts) |
@@ -473,7 +481,7 @@ The paths are defined in `paths.py`.
 | `config_A/B/C/D.json` | settings of each VFO (frequency, mode, filters, squelch, gain, ppm, …), saved on every change | launcher at first start, from `config.json` + `init` |
 | `memories.json` | frequency memories | MEM, import from SDR# |
 | `logs\` | daily decoder logs `<decoder>_YYYY-MM-DD.txt` (UTC) | LOG checkbox in decoder cards |
-| `acars\` | ACARS / VDL2 and CPDLC / ADS-C daily logs `acars_YYYY-MM-DD.txt`, `cpdlc_YYYY-MM-DD.txt` (UTC) | ACARS / VDL2 with LOG on |
+| `acars\` | daily logs: classic ACARS `acars_YYYY-MM-DD.txt`, VDL2 `vdl2_YYYY-MM-DD.txt` (UTC) | ACARS / VDL2 with LOG on |
 | `wefax\`, `sstv\` | saved WEFAX / SSTV images (PNG) | the decoders |
 | `config_backup\<date_time>\` | previous `vfos.json` and `config_X.json` | `setup_sdr.py` before writing a new assignment |
 | `eeprom_backup\` | dongle EEPROM backups (`.bin`) | `eeprom_tool.py`, `setup_sdr.py` |

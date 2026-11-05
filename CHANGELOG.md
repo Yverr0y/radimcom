@@ -1,5 +1,46 @@
 # Changelog
 
+## Ver. 0.108
+
+- **ZOOM is one key** instead of a row of buttons. It shows the zoom and is lit only above 1×. A click turns it off (back to 1× at once)
+  or on (last value above 1×, remembered in the browser); the **mouse wheel over the key** changes it up and down (1×–32×).
+- **LPF and HPF keys** (filter curve icons) in the AUDIO group: audio low-pass and high-pass filter, in all modes except DAB; on/off and
+  frequency remembered per VFO. The key shows the cutoff. Change it with the **mouse wheel over the key** or type it in **SET**
+  (LPF 100–15000 Hz, default 3000; HPF 20–5000 Hz, default 300). 6th-order Butterworth (36 dB per octave), both on = band-pass;
+  HPF always stays below LPF. Changes crossfade without a click. The audio spectrum bubble darkens the part they cut off.
+  You hear and REC the filtered audio, decoders still get the full audio (new `PassFilter` in `sdr.py`).
+- HTTP API: `lpf`, `lpf_hz`, `hpf`, `hpf_hz` in `/api/set` and `/api/state`.
+- **Shorter AUDIO keys** so the key row fits on one line: **STEREO** is now **S/M**, **NOTCH** is now **NF**.
+- **DAB key moved to the DECODE group** (from the OTHER band group); the **CB ch19** band button is now just **CB**.
+- **Memory name above the VFO:** new frame on top of each VFO window, as wide as the VFO. When the VFO frequency matches
+  a memory (within 50 Hz, like the MEM list), it shows the name; the tooltip adds the group, mode and bandwidth. More memories on
+  one frequency: the one with the same mode wins, then a favourite. Inactive VFOs too.
+- Without a memory on the frequency the frame shows the **band plan** instead (axis label of the narrowest band, e.g. `HAM 70cm`, in grey;
+  the tooltip lists all bands on the frequency). Outside the band plan it stays empty.
+- **Squelch closes faster:** the hold after the signal drops below the level is 20 ms instead of 200 ms.
+- **ACARS / VDL2 Squawk column:** new column between ICAO and ACFT type, the transponder code from ADS-B (adsb.fi / adsb.lol).
+- **Emergency squawks:** a row with squawk 7500, 7600 or 7700 gets a red frame in the ACARS / VDL2 table.
+- **ACARS / VDL2 daily logs:** the `[ADS-B ...]` part now has all ADS-B values from the table, in the column order: registration
+  (ATN messages), callsign, ICAO, squawk, type, model, flight level with feet, speed; position last. The field order changed.
+- **ACARS / VDL2 Ground Station column:** new column after Description, also in the daily logs (`| BTS/LZIB` after the description; ATN
+  lines after the header). Airport of the VDL2 ground station (IATA/ICAO), found by its address in the ground station list, ARINC and SITA
+  stations alike, so all stations of an airport have the same location; classic ACARS shows `-`. ACARS log lines also have the address
+  (`| BUD/LHBP (1191BA)`). The card has the city of the airport under it, in small blue (not in the logs).
+  New `airports.py` (IATA to ICAO and city tables, OurAirports, public domain).
+- **VDL2 Ground Station filter:** pull-down in the card header with the locations of the messages in the table; shows only the selected
+  location, together with the type tags. Remembered in the browser; the ✕ of FILTER ON clears it too.
+- **Ground station list:** new `VDL2_Ground_Stations.txt` (2519 stations: address, airport, position and channel when known, city), source: [ACARS-VDL2 group](https://acars-vdl2.groups.io/), redistributed with approval. Thank you Sergi for amazing work. If you come across any new ground station that is not included in the list, please let us know. Thank you. The
+  tooltip of a Ground Station cell shows the address and the list entry. A station not in the list falls back to decoding the address
+  (SITA stations only); the program also works that way without the file.
+- HTTP API: `vdl2.gs` (ground station address), `vdl2.gs_loc` (location), `vdl2.gs_city` (city) and `vdl2.gs_info` (list entry) in the `/api/acars` and `/api/cpdlc` messages.
+- **One size for all flags:** the flags at the S-meter and in the VFO windows (USB / state, mode, CUE, AGC / gain, squelch) have the
+  same height and letter size in every state; the RF GAIN and SQUELCH frames match them.
+- **Speaker and REC** under the volume faders are now flag-sized buttons, one above the other, as wide as the faders.
+  The speaker is green with sound on and red when muted.
+- **Slower wheel on a touchpad:** VFO digits, spectrum and waterfall tuning, ZOOM, LPF and HPF now add up the small touchpad scroll
+  movements and take one step per 150 px of scrolling at the default speed. A mouse wheel notch is still exactly one step.
+  **SET → Touchpad wheel speed** (1–10, default 4; left = slower) changes it, remembered in the browser.
+
 ## Ver. 0.107
 
 - **AFI – audio frequency inversion** (voice inversion scrambler / descrambler): new **AFI** key in the AUDIO group.

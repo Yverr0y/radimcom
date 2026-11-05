@@ -34,7 +34,7 @@ TUNER_LIMITS = {"rtl": (TUNER_MIN_HZ, TUNER_MAX_HZ), "lime": (1e6, 3500e6)}
 SSB_LOW_CUT = 300.0   # Hz, lower edge of the SSB passband
 CW_PITCH = 700.0      # Hz, tone pitch of a CW signal tuned exactly to the frequency
 SQUELCH_OFF = -120.0  # dBFS, squelch at this level and below is off
-SQUELCH_HANG_S = 0.2  # s, how long the squelch stays open after the signal drops
+SQUELCH_HANG_S = 0.02  # s, how long the squelch stays open after the signal drops
 FM_NARROW_MAX = 18000.0   # FM up to this width in the narrow channel (input / DECIM), wider via WideFm (up to 50 kHz)
 SQUELCH_SUB = 8      # the squelch decides 8× per block (~8 ms) so it does not cut off the start of a transmission
 BAND_EDGE = 0.95      # chained VFO: usable part of the shared band (the edges are cut by the dongle filter)
@@ -455,6 +455,44 @@ class FreqInverter:
         return np.clip(np.convolve(buf, self.h, mode="valid"), -1, 1).astype(np.float32)
 
 
+PASS_ORDER = 6             # Butterworth order of the LPF / HPF keys: 36 dB per octave
+LPF_DEFAULT_HZ, LPF_MIN_HZ, LPF_MAX_HZ = 3000.0, 100.0, 15000.0
+HPF_DEFAULT_HZ, HPF_MIN_HZ, HPF_MAX_HZ = 300.0, 20.0, 5000.0
+
+
+class PassFilter:
+    """Audio low-pass or high-pass (LPF / HPF keys), an IIR because a FIR would need thousands of taps at a low
+    cutoff. Input (n, 2). A change of the cutoff or on/off crossfades over one block, so it does not click."""
+
+    def __init__(self, btype):
+        from scipy.signal import butter, sosfilt
+        self.btype = btype
+        self._butter, self._sosfilt = butter, sosfilt
+        self.key = None             # (fs, hz) of the running filter, None = off
+        self.sos = self.zi = None
+
+    def _run(self, x):
+        if self.sos is None:
+            return x
+        y, self.zi = self._sosfilt(self.sos, x, axis=0, zi=self.zi)
+        return y
+
+    def process(self, x, fs, hz):
+        """hz = cutoff, or None = off (passes the input through)."""
+        y = self._run(x)
+        key = (fs, hz) if hz else None
+        if key != self.key:
+            self.key = key
+            self.sos = self.zi = None
+            if key:
+                # a low sample rate has a low Nyquist: the cutoff stays below it
+                self.sos = self._butter(PASS_ORDER, min(hz, 0.45 * fs), self.btype, fs=fs, output="sos")
+                self.zi = np.zeros((len(self.sos), 2, 2))
+            ramp = np.linspace(0.0, 1.0, len(x))[:, None]
+            y = y * (1 - ramp) + self._run(x) * ramp
+        return y
+
+
 class Channel:
     """Channel filter, demodulation and AGC at rate fs (= input / DECIM)."""
 
@@ -737,6 +775,8 @@ class Receiver:
         self.dec = Decimator(self.fs, cutoff=min(10000.0, self.fs / DECIM / 3))
         self.chan = Channel(self.fs / DECIM)
         self.afi = FreqInverter()
+        self.lpf = PassFilter("lowpass")
+        self.hpf = PassFilter("highpass")
         self.wfm, self.wfm_key = None, None
         self.phase = 0.0
         self.win = np.hanning(WF_FFT).astype(np.float32)
@@ -791,6 +831,9 @@ class Receiver:
             c["afi"] = changes["afi"]
         if "afi_hz" in changes:
             c["afi_hz"] = changes["afi_hz"]
+        for k in ("lpf", "lpf_hz", "hpf", "hpf_hz"):
+            if k in changes:
+                c[k] = changes[k]
         if "rtl_agc" in changes:
             c["rtl_agc"] = changes["rtl_agc"]
             sdr.set_rtl_agc(c["rtl_agc"])
@@ -945,6 +988,7 @@ class Receiver:
                 audio = self.afi.process(audio, self.fs / DECIM, float(c.get("afi_hz", AFI_DEFAULT_HZ)))
             if self.on_demod:                       # demodulated audio before the squelch (SSTV)
                 self.on_demod(audio if audio.ndim == 1 else audio.mean(axis=1), self.fs / DECIM)
+            audio = self._audio_pass(audio)         # after the SSTV feed: LPF / HPF are for listening, not for decoders
             audio = self._squelch(audio, mode, sub_db)
             if audio.ndim == 1:                     # the browser always gets stereo (L, R interleaved)
                 audio = np.repeat(audio[:, None], 2, axis=1)
@@ -976,6 +1020,19 @@ class Receiver:
         if int(meta["fs"]) != int(c["sample_rate"]):
             c["sample_rate"] = int(meta["fs"])
             self._configure(sdr)                    # new decimator and FFT window for the new rate
+
+    def _audio_pass(self, audio):
+        """LPF and HPF keys. Runs also in the block after switching off, for the crossfade."""
+        c = self.cfg
+        lp = float(c.get("lpf_hz", LPF_DEFAULT_HZ)) if c.get("lpf") else None
+        hp = float(c.get("hpf_hz", HPF_DEFAULT_HZ)) if c.get("hpf") else None
+        if lp is None and hp is None and self.lpf.key is None and self.hpf.key is None:
+            return audio
+        fs = self.fs / DECIM
+        mono = audio.ndim == 1                      # 2 channels always: WFM changes between mono and stereo
+        x = np.stack((audio, audio), axis=1) if mono else audio
+        x = self.hpf.process(self.lpf.process(x, fs, lp), fs, hp)
+        return np.clip(x[:, 0] if mono else x, -1, 1).astype(np.float32)   # overshoot must not wrap in 16 bits
 
     def _squelch(self, audio, mode, sub_db):
         """Squelch for AM/FM/WFM: mutes the sound while the channel power is below the mode's level.
@@ -1043,6 +1100,10 @@ class Receiver:
             "audio_agc": bool(c.get("audio_agc", True)),
             "afi": bool(c.get("afi", False)),
             "afi_hz": float(c.get("afi_hz", AFI_DEFAULT_HZ)),
+            "lpf": bool(c.get("lpf", False)),
+            "lpf_hz": float(c.get("lpf_hz", LPF_DEFAULT_HZ)),
+            "hpf": bool(c.get("hpf", False)),
+            "hpf_hz": float(c.get("hpf_hz", HPF_DEFAULT_HZ)),
             "notch_active": bool(getattr(getattr(self, "chan", None), "notch", None)
                                  and self.chan.notch.notched and c["mode"] in NOTCH_MODES),
             "rds": wfm.rds.info() if wfm else None,
