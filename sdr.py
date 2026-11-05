@@ -1093,6 +1093,8 @@ class Receiver:
     def state(self):
         c = self.cfg
         wfm = getattr(self, "wfm", None) if c["mode"] == "WFM" else None   # does not exist yet before the thread starts
+        if not isinstance(wfm, Wfm):                # after FM -> WFM it stays WideFm until the thread's next block
+            wfm = None
         return {
             "stereo": bool(wfm and wfm.stereo),
             "stereo_on": bool(c.get("stereo_on", True)),
