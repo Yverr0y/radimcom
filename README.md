@@ -452,6 +452,7 @@ audio, memories), so the receivers can be controlled from scripts or other progr
 | `airports.py` | IATA to ICAO and city tables for the VDL2 Ground Station column (OurAirports, public domain) |
 | `cpdlc_schema.py` | CPDLC message set (generated data) |
 | `CHANGELOG.md` | version history |
+| `NOTICE.md` | radio transmission notice, third-party components and their licences |
 | `API/API.md` | HTTP API description (control the receivers from scripts) |
 | `daylog.py` | daily decoder logs |
 | `memories.py` | memories and import from SDR# |
@@ -501,8 +502,20 @@ folder somewhere outside the RADIMCOM folder.
   assignment is created and the old one is moved to `data\config_backup\`.
 - Do not run two RADIMCOM folders at the same time: they share the dongles and port 8434.
 
+## Contributing and support
+
+- **Bugs and feature requests:** [issues](https://github.com/om2amr/RADIMCOM/issues/new/choose)
+- **Questions and help with setup:** [Discussions](https://github.com/om2amr/RADIMCOM/discussions)
+- **Contributing code:** [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md)
+
+## Security
+
+> [!WARNING]
+> **Trusted network only, never expose RADIMCOM to the internet.** It has no login, and by default it listens on all
+> network interfaces. See [SECURITY.md](SECURITY.md), which also explains how to report a vulnerability.
+
 ## License
 
 RADIMCOM is released under the [MIT License](LICENSE): provided "AS IS", without any warranty, and the author
-accepts no liability. The LICENSE file also has a radio transmission notice. Third-party components (dumpvdl2,
-libacars, LimeSuite, MSYS2 libraries) keep their own licences, listed in `installer\VDL2.txt`.
+accepts no liability. [NOTICE.md](NOTICE.md) has the radio transmission notice and lists the third-party components,
+which keep their own licences, and where to get their source code.

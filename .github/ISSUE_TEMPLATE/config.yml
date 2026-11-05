@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or help with setup
+    url: https://github.com/om2amr/RADIMCOM/discussions
+    about: Ask here for help with installation, SDR setup or how to use a feature.
+  - name: Security problem
+    url: https://github.com/om2amr/RADIMCOM/blob/main/SECURITY.md
+    about: Please do not report vulnerabilities in public. See the security policy.

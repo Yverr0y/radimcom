@@ -2,6 +2,9 @@
 
 ## Ver. 0.108
 
+- **Project files for GitHub:** code of conduct, contributing guide, security policy, issue forms and pull request template.
+- **Licence files:** `LICENSE` is now the plain MIT text. The radio transmission notice moved to the new `NOTICE.md`, which also lists all third-party
+  components and their licences. `RADIMCOM_sources_v<version>.zip` on the release page has the source code of the GPL and LGPL components (new `installer/make_sources.py`).
 - **ZOOM is one key** instead of a row of buttons. It shows the zoom and is lit only above 1×. A click turns it off (back to 1× at once)
   or on (last value above 1×, remembered in the browser); the **mouse wheel over the key** changes it up and down (1×–32×).
 - **LPF and HPF keys** (filter curve icons) in the AUDIO group: audio low-pass and high-pass filter, in all modes except DAB; on/off and

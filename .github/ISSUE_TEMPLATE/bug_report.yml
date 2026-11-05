@@ -1,0 +1,52 @@
+name: Bug report
+description: Something does not work as it should
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: RADIMCOM version
+      description: Shown in the logo on the main screen, e.g. Ver. 0.108
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version and browser
+      placeholder: Windows 10 22H2, Chrome 130
+    validations:
+      required: true
+  - type: input
+    id: sdr
+    attributes:
+      label: SDR hardware
+      description: Dongle or LimeSDR model, how many, and any upconverter
+      placeholder: RTL-SDR Blog V4 x2, Ham It Up upconverter on VFO A
+    validations:
+      required: true
+  - type: input
+    id: mode
+    attributes:
+      label: Mode, decoder and frequency
+      placeholder: VDL2, 136.850 MHz
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Press ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Console output or logs
+      description: Text from the server window or the browser console (F12). Remove anything private first.
+      render: text

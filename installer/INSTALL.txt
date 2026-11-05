@@ -73,6 +73,9 @@ Change log
 (also in CHANGELOG.md)
 
 Ver. 0.108
+- LICENSE is now the plain MIT text. The radio transmission notice moved to NOTICE.md, which also lists
+  all third-party components and their licences. RADIMCOM_sources_v<version>.zip on the release page has
+  the source code of the GPL and LGPL components.
 - ZOOM is one key instead of a row of buttons, lit only above 1x. A click turns it off (back to 1x at once) or
   on (last value above 1x); the mouse wheel over the key changes it up and down (1x-32x).
 - LPF and HPF keys (filter curve icons) in the AUDIO group: audio low-pass and high-pass filter, all modes
