@@ -190,6 +190,8 @@ with MSYS2; licences, sources and build steps are in `installer\VDL2.txt` (`lib\
 DAB and DAB+ are broadcast in Band III (174–240 MHz). One channel (e.g. 12C = 227.360 MHz) carries an ensemble
 (multiplex) of many stations, 1.5 MHz wide.
 
+![DAB+ card on channel 6D: station list, Radio_FM playing with its slideshow picture and DLS text, SIGNAL, ENSEMBLE and MULTIPLEX CAPACITY panels](docs/images/dab_decoder.png)
+
 - Press **DAB** in the DECODE group. The VFO switches to 2.048 MS/s on the centre of the channel and the
   **DAB+** card opens on the DECODERS tab. Pick the channel of your region in CHANNEL (remembered per VFO,
   default 12C); after a few seconds the ensemble name with its country flag and the station list appear.
