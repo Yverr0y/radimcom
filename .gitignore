@@ -25,6 +25,7 @@ dist/
 
 # third-party binaries (make_installer takes them from this PC)
 /lib/
+/apps/
 /drivers/
 
 # copies from installer/ in the root folder (unpacked installation)

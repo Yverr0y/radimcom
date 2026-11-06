@@ -1,0 +1,18 @@
+ISM decoder (lib\ism)
+=====================
+
+RADIMCOM decodes devices on 433 and 868 MHz with rtl_433, which runs as a separate program. It connects to a small
+rtl_tcp server in RADIMCOM (127.0.0.1) for the raw I/Q samples of the VFO and writes the decoded messages (JSON) to its
+standard output.
+
+Program in this folder:
+
+- rtl_433.exe 25.12 - Copyright (c) Benjamin Larsson and contributors, GNU General Public License v2 or later.
+  Source: https://github.com/merbanan/rtl_433 (tag 25.12). Not built by us and not changed: this is
+  rtl_433_64bit_static.exe from rtl_433-win-x64-25.12.zip of the release page, renamed.
+  SHA-256 of that zip: ed42651d2a2a94f6419f7675955bd65449d8247e27822c65c363595b715b7de6
+- Linked into it by its author:
+  rtl-sdr 2.0.2, GNU GPL v2 or later, https://github.com/osmocom/rtl-sdr
+  libusb 1.0.29, GNU LGPL v2.1 or later, https://github.com/libusb/libusb
+
+The sources of rtl_433, rtl-sdr and libusb in these versions are in RADIMCOM_sources_v<version>.zip on the release page.

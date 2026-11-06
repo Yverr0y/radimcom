@@ -104,7 +104,7 @@ body {
 .r-flags { display: grid; grid-template-rows: repeat(5, auto); grid-auto-flow: column; grid-auto-columns: 76px; gap: 4px 6px; }
 /* lower and with a smaller font than the other flags; the column width stays fixed */
 /* --flag-h: one height for all flags, at the S-meter and in the VFO head/foot, whatever the state (a border stays inside it) */
-:root { --flag-h: 17px; }
+:root { --flag-h: 17px; --rec-red: #ff1a1a; }
 .r-flags .flag { height: var(--flag-h); white-space: nowrap; padding: 2px 4px; font-size: 11px; }
 .flag {
   min-width: 58px; text-align: center; padding: 3px 8px; border-radius: 4px;
@@ -124,7 +124,12 @@ body {
 /* RADIMCOM logo under the clock (as wide as the clock): light letters, the ring above I in receiver green */
 .r-logo { display: block; height: 36px; width: auto; max-width: 100%; color: #e8edf2; margin: 4px 0 2px;
   align-self: center; overflow: visible; }
-.r-logo-ring { stroke: var(--green); }
+/* 3D: stacked hard shadows make the extrusion. Lengths are in SVG units here (1 screen px = about 5 units) */
+.r-logo-letters { filter: drop-shadow(0 5px 0 #6d7987) drop-shadow(0 5px 0 #414a55) drop-shadow(0 8px 6px rgba(0, 0, 0, .8)); }
+/* opacity only, so the shading and glow fade together and the filter does not have to be animated */
+.r-logo-ring { filter: drop-shadow(0 4px 0 #07481f) drop-shadow(0 0 14px rgba(60, 240, 124, .8));
+  animation: r-logo-pulse 1.8s ease-in-out infinite alternate; }
+@keyframes r-logo-pulse { from { opacity: 1; } to { opacity: .12; } }
 /* right column: logo at the top, clock in the middle, RDS at the bottom */
 .r-info-text .r-brandline { order: -1; align-self: center; display: flex; align-items: flex-end; gap: 6px; }
 .r-info-text .r-logo { margin: 2px 0 0; }
@@ -143,11 +148,28 @@ body {
 .freq svg:nth-last-of-type(-n+3) { height: .62em; width: .4em; }
 .freq svg:nth-last-of-type(-n+3) .on { fill: var(--green); filter: drop-shadow(0 0 4px rgba(60, 240, 124, .6)); }
 .freq .gap { width: .16em; }
-.freq .unit { position: relative; margin-left: .25em; margin-bottom: .1em; font: 700 15px system-ui, sans-serif; color: var(--green); }
+.freq .unit { position: relative; margin-left: .25em; margin-bottom: -.25em; font: 700 15px system-ui, sans-serif; color: var(--green); }
 /* AFI above MHz, same size as the unit; out of the flow so the digits do not move */
-.freq .afi-tag { position: absolute; left: 0; bottom: 100%; color: rgba(255, 255, 255, .035); }   /* off: same as an unlit LCD segment */
+.freq .afi-tag { position: absolute; left: 0; bottom: 85%; color: rgba(255, 255, 255, .035); }   /* off: same as an unlit LCD segment */
 .freq .afi-tag.on { color: var(--yellow); animation: afi-tag-blink 1s steps(1) infinite; }
 @keyframes afi-tag-blink { 50% { color: #6e5d20; } }
+/* red struck-through speaker above AFI: the audio of this VFO is muted by a decoder. A background, not an svg: the svg elements in .freq are its digits */
+.freq .mute-tag { position: absolute; left: 50%; bottom: 170%; width: 1.15em; height: 1.15em; transform: translateX(-50%);
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ff4b3e' d='M2 9v6h4l6 5V4L6 9z'/%3E%3Cpath fill='none' stroke='%23ff4b3e' stroke-width='2' d='M15 8a5 5 0 0 1 0 8'/%3E%3Cpath stroke='%23000' stroke-width='5' d='M3 2l18 20'/%3E%3Cpath stroke='%23ff4b3e' stroke-width='2.5' d='M3 2l18 20'/%3E%3C/svg%3E") center / contain no-repeat; }
+.freq .mute-tag[hidden] { display: none; }
+/* narrow window: the digits are too low for three rows, so beside AFI */
+@container (max-width: 820px) {
+  .vfo-list:has(.vfo-key) .freq .mute-tag { left: 1.65em; bottom: 85%; width: 1.15em; height: 1.15em; transform: none; }
+}
+@container (max-width: 1100px) {
+  .vfo-list:has(.vfo-row:nth-child(4)) .freq .mute-tag { left: 1.65em; bottom: 85%; width: 1.15em; height: 1.15em; transform: none; }
+}
+/* recording of this VFO: a dot in the corner of the display; clicks go through to the frequency */
+.rec-tag { display: none; position: absolute; left: 4px; top: 4px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--rec-red); box-shadow: 0 0 7px 1px var(--rec-red); pointer-events: none; }
+.rec-tag.on { display: block; }
+.rec-tag.writing { animation: rec-tag-blink .6s steps(1) infinite; }   /* 0.3 s on, 0.3 s off */
+@keyframes rec-tag-blink { 50% { opacity: 0; } }
 .freq-input { font: 600 34px ui-monospace, Consolas, monospace; width: 320px; text-align: center; }
 .sub { font: 11px ui-monospace, Consolas, monospace; color: var(--muted); padding: 0 6px; }
 
@@ -181,8 +203,10 @@ body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vfo-row.active .vfo-memname { border-color: #2c3642; color: #7ee0a8; }
 .vfo-row.active .vfo-memname.band { color: var(--muted); }
+/* transponder selected in Gpredict */
+.vfo-row .vfo-memname.trsp, .vfo-row.active .vfo-memname.trsp { color: #6db3ff; }
 /* frequency display in a frame like the clock */
-.vfo-disp { display: flex; justify-content: center; max-width: 100%; padding: 3px 8px; border: 1px solid var(--line);
+.vfo-disp { position: relative; display: flex; justify-content: center; max-width: 100%; padding: 3px 8px; border: 1px solid var(--line);
   border-radius: 6px; background: #080c10; }
 .vfo-row.active .vfo-disp { border-color: #2c3642; }
 /* header, display and footer are equally wide (by the frequency frame) and aligned to its edges */
@@ -322,6 +346,10 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid rgba(255, 2
 }
 /* LPF / HPF: filter curve and cutoff on two lines, as high and wide as the other keys */
 .key.pass-key, .keys button.pass-key { flex-direction: column; gap: 1px; padding-top: 2px; padding-bottom: 2px; line-height: 1; }
+/* SAT key: the icon is taller than a line of key text; the negative margin keeps the key as high as the others */
+.sat-icon { width: 22px; height: 18px; margin-block: calc((1.1em - 18px) / 2); fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+/* lit like the other keys (.key.on), in blue: --blue itself is too dark on the lit key */
+#satKey.on, #gpredictKey.on { color: #6db3ff; box-shadow: inset 0 -2px 0 #6db3ff, inset 0 1px 0 rgba(255, 255, 255, .12); }
 .pass-icon { width: 19px; height: 12px; fill: none; stroke: currentColor; stroke-width: 56; stroke-linecap: round; stroke-linejoin: round; }
 .pass-val { font-size: 9px; font-weight: 600; letter-spacing: 0; opacity: .85; }
 .key.toggle input { display: none; }
@@ -351,9 +379,12 @@ label.key.disabled { opacity: .4; cursor: default; }
   gap: 4px; font: 700 11px/1.2 system-ui, sans-serif; letter-spacing: .04em; color: #b8c2cf;
   background: #1a2029; border: 1px solid var(--line2); font-variant-numeric: tabular-nums;
 }
-.rec-dot { width: 8px; height: 8px; border-radius: 50%; background: #7a2a26; flex: none; }
-.rec.on { color: var(--red); border-color: var(--red); }
-.rec.on .rec-dot { background: var(--red); box-shadow: 0 0 6px var(--red); animation: rec-blink 1s steps(2) infinite; }
+.rec-dot { width: 8px; height: 8px; border-radius: 50%; background: #a8201c; flex: none; }
+/* recording red: a pure, bright red of its own, livelier than the general --red */
+.rec.on, .rec.armed { color: var(--rec-red); border-color: var(--rec-red); background: rgba(255, 26, 26, .16);
+  box-shadow: 0 0 7px rgba(255, 26, 26, .55); }
+.rec.on .rec-dot, .rec.armed .rec-dot { background: var(--rec-red); box-shadow: 0 0 7px 1px var(--rec-red); }
+.rec.on .rec-dot { animation: rec-blink 1s steps(2) infinite; }
 @keyframes rec-blink { 50% { opacity: .25; } }
 
 .r-keys {
@@ -540,6 +571,10 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .acars .ext { color: #6cb8ff; }
 .acars td.desc { white-space: normal; min-width: 12em; max-width: 18em; color: var(--text); }
 .acars tr.bad td { color: var(--dim); }
+/* scroll pause: the marked message; the position is held by acarsKeepView() alone */
+.acars tr.picked td { background: rgba(255, 255, 255, .17); }
+.acars .ft8-table.paused { overflow-anchor: none; }
+.scroll-paused { padding: 0 6px; font-size: 11px; font-weight: 700; line-height: 16px; color: #000; background: var(--amber); border-radius: 3px; }
 /* long message: 3 lines and a ▾ mark, a click expands it fully (▴ collapses) */
 .acars td.msg.long { cursor: pointer; }
 .acars td.msg.long:not(.open) .msg-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -587,6 +622,15 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .dsd .c-time { width: 70px; }
 .dsd td.alias { overflow: hidden; text-overflow: ellipsis; }
 .dsd-error { color: #ff8a6b; font-size: 13px; }
+.ism .c-dev { width: 210px; }
+.ism .c-id { width: 90px; }
+.ism .c-ch { width: 50px; }
+.ism .c-level { width: 120px; }
+.ism td.dev, .ism td.id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ism td.data { white-space: normal; word-break: break-word; }
+.ism .rep { color: var(--muted); margin-left: 6px; }
+#ismInfo { font-size: 12px; font-variant-numeric: tabular-nums; }
+#ismInfo.err { color: #ff7b6b; }
 .dsd-now { font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--green); }
 .dsd-now:empty { display: none; }
 .dsd-now b { color: var(--amber); font-weight: 600; }
@@ -648,25 +692,74 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .sstv-gallery span { display: block; padding: 2px 4px; font-size: 10px; color: var(--muted); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
 /* DAB: list of stations on the left, the playing station (DLS text, slideshow) on the right */
-.dab-ens { font: 600 13px system-ui, sans-serif; color: var(--text); }
+.dab-head { gap: 10px; }
+.ft8 .dab-badge { padding: 2px 8px; border-radius: 5px; background: linear-gradient(135deg, #ffd84a, #f08a24); color: #15120a; letter-spacing: .03em; }
+.dab-flag { width: 24px; height: 18px; object-fit: cover; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .18); }
+.dab-ens { font: 700 15px system-ui, sans-serif; color: var(--text); }
 #dabInfo { font-size: 12px; font-variant-numeric: tabular-nums; }
 #dabInfo.err { color: #ff7b6b; }
-.dab-main { display: flex; gap: 12px; align-items: stretch; flex-wrap: wrap; min-height: 0; flex: 1 1 auto; }
-.dab-list { flex: 0 1 300px; min-width: 220px; max-height: 420px; overflow: auto; border: 1px solid var(--line);
-  border-radius: 6px; background: #000; }
-.dab-list button { display: flex; width: 100%; gap: 8px; align-items: baseline; padding: 5px 10px; border: 0;
-  border-top: 1px solid rgba(255, 255, 255, .04); background: none; color: var(--text); font: 13px system-ui, sans-serif;
+.dab-main { display: grid; grid-template-columns: minmax(230px, 300px) minmax(340px, 1fr) minmax(220px, 290px); gap: 12px;
+  min-height: 0; flex: 1 1 auto; overflow: hidden; }
+.dab-cap { display: block; margin-bottom: 5px; font: 700 10px system-ui, sans-serif; letter-spacing: .12em; color: var(--muted); }
+/* station list */
+.dab-list { min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 8px; background: #05070a; }
+.dab-st { display: flex; width: 100%; gap: 10px; align-items: center; padding: 6px 10px; border: 0;
+  border-top: 1px solid rgba(255, 255, 255, .05); background: none; color: var(--text); font: 13px system-ui, sans-serif;
   text-align: left; cursor: pointer; }
-.dab-list button:hover { background: #151a21; }
-.dab-list button.on { background: #2a2410; color: var(--yellow); }
-.dab-list button:disabled { color: var(--dim); cursor: default; }
-.dab-list button small { margin-left: auto; color: var(--muted); font-size: 10px; white-space: nowrap; }
-.dab-now { flex: 1 1 320px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.dab-title { font: 700 18px system-ui, sans-serif; color: var(--yellow); }
-.dab-meta { font-size: 11px; font-variant-numeric: tabular-nums; }
-.dab-dls { min-height: 2.6em; font-size: 14px; color: var(--text); word-break: break-word; }
-.dab-slide img { display: block; max-width: 100%; width: 320px; height: auto; border: 1px solid var(--line);
-  border-radius: 4px; background: #000; }
+.dab-st:hover { background: #151a21; }
+.dab-st.on { background: linear-gradient(90deg, #33290d, #15130b); box-shadow: inset 3px 0 0 var(--yellow); }
+.dab-st:disabled { opacity: .45; cursor: default; }
+.dab-mono { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border-radius: 8px; color: #fff;
+  background: linear-gradient(135deg, hsl(var(--h, 210), 70%, 42%), hsl(calc(var(--h, 210) + 40), 75%, 26%));
+  font: 700 13px system-ui, sans-serif; }
+.dab-st-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.dab-st-text b, .dab-st-text small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dab-st-text b { font-weight: 600; }
+.dab-st.on .dab-st-text b { color: var(--yellow); }
+.dab-st-text small { color: var(--muted); font-size: 11px; }
+.dab-st-tag { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; color: var(--muted); font-size: 10px; }
+.dab-st-tag em { padding: 0 4px; border-radius: 3px; background: #1d2630; color: #9fc4e8; font: 700 10px system-ui, sans-serif; }
+/* three bars moving on the station playing */
+.dab-eq { display: none; flex: none; gap: 2px; align-items: flex-end; height: 16px; }
+.dab-st.on .dab-eq { display: flex; }
+.dab-eq i { width: 3px; background: var(--yellow); animation: dab-eq 1s ease-in-out infinite alternate; }
+.dab-eq i:nth-child(2) { animation-delay: -.35s; }
+.dab-eq i:nth-child(3) { animation-delay: -.7s; }
+@keyframes dab-eq { from { height: 20%; } to { height: 100%; } }
+/* now playing */
+.dab-now { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; overflow: auto; }
+.dab-hero { position: relative; flex: none; display: flex; gap: 14px; padding: 12px; overflow: hidden; border: 1px solid var(--line); border-radius: 10px; background: #0a0e13; }
+.dab-glow { position: absolute; inset: -40px; background: center / cover no-repeat; filter: blur(34px) saturate(1.4); opacity: .4; pointer-events: none; }
+/* the picture keeps its own proportions, whatever they are: slides are mostly 4:3, some are square */
+.dab-art { position: relative; flex: none; width: 320px; max-width: 45%; aspect-ratio: 4 / 3; align-self: flex-start; display: grid; place-items: center;
+  overflow: hidden; border-radius: 8px; background: rgba(0, 0, 0, .55); box-shadow: 0 4px 18px rgba(0, 0, 0, .6); }
+.dab-art .dab-mono { width: 84px; height: 84px; border-radius: 18px; font-size: 32px; }
+.dab-art .dab-mono:empty { visibility: hidden; }
+.dab-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.dab-hero-text { position: relative; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.dab-title { font: 700 30px/1.15 system-ui, sans-serif; color: var(--yellow); overflow-wrap: anywhere; }
+.dab-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.dab-chips span { padding: 1px 7px; border-radius: 9px; background: rgba(255, 255, 255, .1); color: var(--text); font: 600 11px system-ui, sans-serif; }
+.dab-chips span.pty { background: #2b4a6b; color: #d6eaff; }
+.dab-meta { color: #b9c3cf; font-size: 12px; font-variant-numeric: tabular-nums; }
+.dab-dls-box { padding: 7px 10px; border-radius: 6px; background: rgba(0, 0, 0, .4); }
+.dab-dls { font: 600 18px/1.3 system-ui, sans-serif; color: var(--text); overflow-wrap: anywhere; }
+.dab-health { flex: none; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.dab-health .ok { color: #3cf07c; }
+.dab-health .bad { color: #ffb347; }
+/* signal, ensemble, capacity */
+.dab-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; overflow: auto; }
+.dab-panel { flex: none; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: #0a0e13; font-size: 12px; }
+.dab-snr { display: flex; align-items: baseline; gap: 6px; }
+.dab-snr b { font: 700 24px system-ui, sans-serif; font-variant-numeric: tabular-nums; color: var(--q, var(--text)); }
+.dab-snr span { color: var(--q, var(--muted)); font-weight: 600; }
+.dab-gauge { height: 6px; margin: 3px 0 7px; overflow: hidden; border-radius: 3px; background: rgba(255, 255, 255, .1); }
+.dab-gauge i { display: block; height: 100%; border-radius: 3px; background: var(--q, #3cf07c); transition: width .9s linear; }
+.dab-row { display: flex; justify-content: space-between; gap: 10px; padding: 1px 0; color: var(--muted); }
+.dab-row b { min-width: 0; font-weight: 600; color: var(--text); text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.dab-cap-bar { display: flex; gap: 1px; height: 14px; margin-bottom: 5px; overflow: hidden; border-radius: 3px; background: rgba(255, 255, 255, .06); }
+.dab-cap-bar i { display: block; min-width: 2px; background: hsl(var(--h, 210), 45%, 36%); }
+.dab-cap-bar i.on { background: var(--yellow); }
 .note { margin: 0; font-size: 11px; color: var(--muted); }
 /* TX disclaimer in SET: strongly red */
 .tx-disclaimer { margin: 0 0 8px; padding: 8px 10px; border: 2px solid var(--red); border-radius: 6px;
@@ -677,17 +770,20 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .note.warn { color: var(--amber); }
 .note.error { color: var(--red); font-size: 12px; }
 
-/* ---------- drawers (SET, MEM) ---------- */
-.scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0, 0, 0, .45); }
+/* ---------- floating windows (SET, MEM) ----------
+   They have no scrim, so the radio stays usable behind them, and they are moved by the title bar (see makeFloating).
+   They are inside the scaled .stage, so sizes are in stage px and % of the stage. */
 .drawer {
-  position: fixed; z-index: 21; top: 0; right: 0; bottom: 0; width: 360px;
+  position: fixed; z-index: 21; top: 3%; max-height: 94%;
   display: flex; flex-direction: column; background: linear-gradient(180deg, #12161c, #0a0d11);
-  border-left: 1px solid var(--line2); box-shadow: -20px 0 50px rgba(0, 0, 0, .6);
+  border: 1px solid var(--line2); border-radius: 10px; box-shadow: 0 20px 60px rgba(0, 0, 0, .7); overflow: hidden;
 }
 .drawer-head {
-  display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line);
-  font: 700 13px system-ui, sans-serif; letter-spacing: .06em; color: var(--yellow);
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line);
+  font: 700 14px system-ui, sans-serif; letter-spacing: .06em; color: var(--yellow);
+  cursor: move; user-select: none; touch-action: none;
 }
+.drawer-head button { cursor: pointer; }
 .drawer-head b { flex: 1; }
 .drawer-head .muted { font: 11px system-ui, sans-serif; letter-spacing: 0; }
 .drawer-body { flex: 1; overflow: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
@@ -699,30 +795,66 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .setting.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .setting.two label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
 
-/* SET: a wide window with tabs, related settings as cards in columns (MEM stays a side drawer).
-   The window is inside the scaled .stage, so its size is in % of the stage. The virtual stage is never
-   narrow (see fitStage), so the columns always fit; zoom keeps the text readable in a large window.
-   It is only as tall as the open tab needs and the scrim stays clear, so the waterfall below it keeps
-   its true colours while they are being set. */
-.drawer.set-win {
-  top: 3%; bottom: auto; left: 6%; right: 6%; width: auto; max-height: 94%;
-  border: 1px solid var(--line2); border-radius: 10px; box-shadow: 0 20px 60px rgba(0, 0, 0, .7); overflow: hidden;
-}
-.set-tabs { padding-top: 8px; }
-.set-tabs button { min-width: 120px; padding: 6px 18px; font-size: 14px; }
+/* SET: tabs, related settings as cards in columns. The virtual stage is never narrow (see fitStage), so the
+   fixed width always fits; the window is only as tall as the open tab needs. */
+.set-win { left: calc(50% - 620px); width: 1240px; }
+.set-tabs { padding-top: 6px; }
+.set-tabs button { min-width: 96px; padding: 5px 14px; font-size: 12px; }
 .set-error { padding: 8px 14px 0; }
-.set-panel { zoom: 1.25; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.set-win .drawer-body { padding: 10px; }
+.set-panel { zoom: 1.1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .set-panel[data-set-panel="tx"] { grid-template-columns: minmax(0, 1fr); }
 /* DISPLAY: settings as 2 x 2 on the left, the S-meter samples on the right, so the window stays low above the waterfall */
-.set-panel[data-set-panel="display"] { zoom: 1.1; grid-template-columns: 1fr 1fr 2.4fr; grid-template-rows: auto auto; gap: 10px; }
+.set-panel[data-set-panel="display"] { grid-template-columns: 1fr 1fr 2.4fr; grid-template-rows: auto auto; }
 .set-panel .meter-card { grid-column: 3; grid-row: 1 / span 2; }
 .meter-card .row small { color: var(--muted); font-size: 11px; font-weight: 400; }
 .meter-card .meter-picks { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.scrim:has(~ .set-win:not([hidden])) { background: transparent; }
-.set-panel .setting { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .02); }
+.set-panel .setting { padding: 10px; gap: 6px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .02); }
+.set-panel .setting { font-size: 13px; }
+.set-panel select, .set-panel input[type=number] { padding: 5px 9px; font-size: 13px; }
+.set-panel .setting .row { align-items: center; min-height: 22px; }
+.set-panel .setting .row:has(> label) { gap: 8px; align-items: flex-end; }
+.set-panel .setting .row > label { flex: 1 1 0; min-width: 0; }
 .set-panel .setting.two { align-content: start; }
-.set-win .drawer-head { font-size: 16px; }
+.set-panel .setting.two label { font-size: inherit; color: inherit; }
+/* ROTOR: the Gpredict note goes under the other three cards at their full width, so the window stays low */
+.set-panel[data-set-panel="rotor"] .setting:last-child { grid-column: 1 / -1; }
 
+/* SAT: the antenna in 3D and the dials. It does not close SET or MEM, the port is chosen in SET. */
+.sat-win { left: 1%; top: 38%; width: 370px; max-height: 60%; }     /* over the waterfall, not over the keys */
+.sat-win .drawer-body { padding: 10px; gap: 8px; }
+.sat-pass { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: #6db3ff; font-size: 13px; }
+.sat-pass[hidden] { display: none; }
+.sat-pass span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sat-pass b { flex: none; font: 700 20px ui-monospace, Consolas, monospace; }
+.sat-view { display: grid; grid-template-columns: minmax(0, 1fr) 112px; gap: 8px; align-items: center; }
+.sat-3d { display: block; width: 100%; }
+.sat-3d text { fill: var(--muted); font: 700 11px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; }
+.sat3d-ground { fill: rgba(255, 255, 255, .04); stroke: var(--line2); stroke-width: 1; }
+.sat3d-cross { stroke: var(--line2); stroke-width: .7; }
+.sat3d-shadow { stroke: rgba(0, 0, 0, .6); stroke-linecap: round; }
+.sat3d-part { stroke: #d5dbe3; stroke-linecap: round; }
+.sat3d-mast { stroke: var(--muted); }
+.sat3d-driven { stroke: var(--orange); }
+.sat3d-front { stroke: var(--yellow); }
+.sat-gauges { display: flex; flex-direction: column; gap: 6px; }
+.sat-gauges figure { margin: 0; text-align: center; color: var(--muted); font-size: 11px; }
+.sat-gauges figcaption b { color: var(--yellow); font: 600 15px ui-monospace, Consolas, monospace; }
+.sat-dial { display: block; width: 100%; }
+.sat-dial text { fill: var(--muted); font: 700 20px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; }
+.sat-rim { fill: rgba(255, 255, 255, .03); stroke: var(--line2); stroke-width: 2; }
+.sat-ticks line { stroke: var(--muted); stroke-width: 1.5; }
+.sat-needle { fill: var(--yellow); }
+.sat-target { fill: #6db3ff; }
+.sat-ctrl { display: flex; align-items: center; gap: 10px; }
+.sat-ctrl .key { flex: none; }
+.sat-win .note { margin: 0; font-size: 12px; }
+.sat-win .note:empty { display: none; }
+.sat-flag { align-self: flex-start; }
+.sat-flag.lost { background: var(--red); color: #fff; box-shadow: 0 0 14px rgba(255, 75, 62, .7); }
+
+/* MEM: narrow and tall, the list scrolls inside it */
+.mem-win { right: 1%; width: 440px; height: 85%; }
 .memories { gap: 10px; }
 .mem-add { display: grid; grid-template-columns: 1fr 100px; gap: 6px; }
 .mem-add button, .mem-add .note { grid-column: 1 / -1; }
@@ -755,6 +887,7 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .mem-io > * + * { margin-top: 6px; }
 .mem-io-label { display: block; font-size: 12px; color: var(--muted); }
 .mem-io-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
+#memImportJson { grid-column: 2; }
 .mem-io-row.two { grid-template-columns: 1fr 1fr; }
 .mem-io-row input { width: 100%; min-width: 0; padding: 6px 9px; font-size: 13px; }
 .mem-io-row button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

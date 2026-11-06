@@ -14,6 +14,7 @@ import time
 
 from flask import Flask, jsonify, send_from_directory
 
+import gpredict
 from paths import BASE, data
 
 VFOS_PATH = data("vfos.json")
@@ -51,6 +52,7 @@ def main():
         time.sleep(0.5 if v.get("chain") else 1.5)
 
     app = Flask(__name__, static_folder="static")
+    app.register_blueprint(gpredict.bp)
 
     @app.route("/")
     def index():

@@ -1,6 +1,6 @@
 """VDL Mode 2 decoder: raw dongle samples -> dumpvdl2.exe (lib\\vdl2\\) -> ACARS / CPDLC messages.
 
-VDL2 is the digital VHF data link (136.725-136.975 MHz in Europe, D8PSK 31.5 kbit/s) that carries most of
+VDL2 is the digital VHF data link (136.100-136.975 MHz, D8PSK 31.5 kbit/s) that carries most of
 today's ACARS traffic and the European ATN CPDLC. The heavy lifting (demodulation, FEC, AVLC / X.25 / CLNP /
 COTP, ATN ASN.1) is done by dumpvdl2 (Tomasz Lemiech, GPLv3, https://github.com/szpajder/dumpvdl2), which runs
 as a separate process: it reads I/Q samples on its standard input and writes one JSON object per message.
@@ -11,8 +11,9 @@ as a separate process: it reads I/Q samples on its standard input and writes one
 
 dumpvdl2 needs a sample rate that is a multiple of 105 000 S/s, so the VFO runs at 2.1 MS/s (oversample 20)
 while VDL2 is on. The centre frequency and the channel list are fixed when dumpvdl2 starts; a change of the
-centre or the sample rate restarts it.
+centre, the sample rate or the region restarts it. dumpvdl2 decodes at most 16 channels at once.
 """
+import datetime
 import json
 import os
 import re
@@ -27,12 +28,25 @@ from airports import IATA_CITY, IATA_ICAO
 from paths import BASE
 
 EXE = os.path.join(BASE, "lib", "vdl2", "dumpvdl2.exe")
-VDL2_FREQS = (136725000, 136775000, 136825000, 136875000, 136975000)   # European VDL2 channels
+VDL2_EU = tuple(range(136700000, 136975001, 25000))    # European channels: today's and those planned from January 2027
+VDL2_EU_GUARD = 136675000     # still a European data channel, a guard channel from VDL2_EU_GUARD_FROM
+VDL2_EU_GUARD_FROM = datetime.date(2027, 1, 1)
+VDL2_US = (136100000, 136300000, 136650000, 136800000, 136975000)
+VDL2_REGIONS = ("eu", "us")
 VDL2_RATE = 2100000           # 105 000 * 20
-VDL2_CENTER = 136850000       # all channels within ±150 kHz, the DC spike between 136.825 and 136.875
+VDL2_CENTER = 136500000       # all channels of both regions within ±475 kHz, the DC spike between 136.300 and 136.650
 SYMBOL_RATE = 105000
 EDGE_HZ = 20000               # a channel must be this far inside the received band
 STATION_FILE = "VDL2_Ground_Stations.txt"    # ground station list: root folder of a package, installer folder while developing
+
+
+def region_freqs(region):
+    """Channels of a region ("eu" or "us") in Hz."""
+    if region == "us":
+        return list(VDL2_US)
+    if datetime.datetime.now(datetime.timezone.utc).date() < VDL2_EU_GUARD_FROM:
+        return [VDL2_EU_GUARD, *VDL2_EU]
+    return list(VDL2_EU)
 
 
 class Vdl2Decoder:
@@ -45,6 +59,7 @@ class Vdl2Decoder:
         self.count = 0
         self.frames = 0           # all decoded VDL2 frames (also those without ACARS / CPDLC)
         self.channels = []
+        self.region = "eu"
         self.lock = threading.Lock()
         self.proc = None
         self.key = None           # (fs, centre, sample format) of the running dumpvdl2
@@ -62,9 +77,18 @@ class Vdl2Decoder:
                 self.error = None
         self._emit_state()
 
+    def set_region(self, region):
+        """region: one of VDL2_REGIONS. dumpvdl2 restarts with the new channels on the next samples."""
+        if region not in VDL2_REGIONS or region == self.region:
+            return
+        with self.lock:
+            self.region = region
+            self._stop()
+        self._emit_state()
+
     def info(self):
         return {"enabled": self.enabled, "error": self.error, "count": self.count, "frames": self.frames,
-                "channels": self.channels, "dropped": self.dropped}
+                "channels": self.channels, "region": self.region, "dropped": self.dropped}
 
     # ---------- samples from the receiver thread ----------
 
@@ -97,9 +121,9 @@ class Vdl2Decoder:
             self._emit_state(force=True)
             return
         half = fs / 2 - EDGE_HZ
-        self.channels = [f for f in VDL2_FREQS if abs(f - center) < half]
+        self.channels = [f for f in region_freqs(self.region) if abs(f - center) < half]
         if not self.channels:
-            self.error = "no VDL2 channel in the received band (136.725-136.975 MHz)"
+            self.error = f"no VDL2 channel of {self.region.upper()} in the received band"
             self._emit_state(force=True)
             return
         if not os.path.exists(EXE):

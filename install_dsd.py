@@ -5,6 +5,7 @@ It is a separate step on purpose: DSD-FME is not part of the RADIMCOM package be
 import hashlib
 import os
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -35,11 +36,41 @@ Listening to some radio services can also be restricted by law.
 """
 
 
+def download_windows(path):
+    """Download with the tools of Windows. Python only reads the certificates already in the Windows store, while these
+    use the TLS of Windows, which fetches a missing root certificate by itself. They verify the certificate as well."""
+    system = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32")
+    commands = (
+        [os.path.join(system, "curl.exe"), "-fL", "-o", path, URL],
+        [os.path.join(system, "WindowsPowerShell", "v1.0", "powershell.exe"), "-NoProfile", "-Command",
+         "$ProgressPreference = 'SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = 'Tls12'; "
+         "Invoke-WebRequest -UseBasicParsing -Uri $env:DSD_URL -OutFile $env:DSD_OUT"],
+    )
+    env = dict(os.environ, DSD_URL=URL, DSD_OUT=path)
+    for command in commands:
+        try:
+            if subprocess.run(command, env=env, check=False).returncode == 0:
+                return True
+        except OSError:
+            pass                   # this tool is not on this Windows
+    return False
+
+
 def download(path):
     def progress(blocks, size, total):
         if total > 0:
             print(f"\r  {min(blocks * size, total) / 1e6:.1f} / {total / 1e6:.1f} MB", end="", flush=True)
-    urllib.request.urlretrieve(URL, path, progress)
+    try:
+        urllib.request.urlretrieve(URL, path, progress)
+    except OSError as e:           # URLError is an OSError too
+        print()
+        reason = getattr(e, "reason", e)
+        if not isinstance(reason, ssl.SSLCertVerificationError):
+            sys.exit(f"The download failed: {reason}\nCheck the internet connection and run this again; nothing was installed.")
+        print("Python does not trust the certificate of the server, trying the download tools of Windows...")
+        if not download_windows(path):
+            sys.exit("The download failed, Windows could not verify the server either. An antivirus or a proxy\n"
+                     "may be interfering with secure connections. Nothing was installed.")
     print()
     h = hashlib.sha256()
     with open(path, "rb") as f:

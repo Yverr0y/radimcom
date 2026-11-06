@@ -35,6 +35,17 @@ def _save(items):
     os.replace(tmp, PATH)
 
 
+def name_at(hz, mode):
+    """Name of the memory on this frequency, as shown above the VFO display: same mode first, then favourite."""
+    best, best_score = "", -1
+    for m in load():
+        if abs(m["freq_hz"] - hz) < 50:
+            score = (2 if m["mode"] == mode else 0) + (1 if m.get("fav") else 0)
+            if score > best_score:
+                best, best_score = m["name"], score
+    return best
+
+
 def make(name, group, freq_hz, mode, bw, fav=False):
     """Validates and creates an entry; ValueError on invalid data."""
     name = str(name).strip()[:80]
@@ -132,6 +143,36 @@ def import_sdrsharp(path, lo_offset_hz=100_000_000):
             if (m["freq_hz"], m["name"]) in seen:
                 skipped += 1
                 continue
+            seen.add((m["freq_hz"], m["name"]))
+            items.append(m)
+            added += 1
+        items.sort(key=lambda m: m["freq_hz"])
+        _save(items)
+    return added, skipped
+
+
+def import_json(entries, dab_channels):
+    """Imports a list of memories (a RADIMCOM export). Returns (added, skipped): invalid entries and duplicates are
+    skipped. Every entry gets a new id. dab_channels: {channel: centre Hz}, for entries with a dab_channel."""
+    if not isinstance(entries, list):
+        raise ValueError("expected a JSON list of memories")
+    with _lock:
+        items = load()
+        seen = {(m["freq_hz"], m["name"]) for m in items}
+        added = skipped = 0
+        for e in entries:
+            try:
+                ch = e.get("dab_channel")
+                m = make(e.get("name", ""), e.get("group", ""), dab_channels[ch] if ch else e["freq_hz"],
+                         e["mode"], e.get("bw", 3000), e.get("fav", False))
+            except (AttributeError, KeyError, TypeError, ValueError, OverflowError):
+                skipped += 1
+                continue
+            if (m["freq_hz"], m["name"]) in seen:
+                skipped += 1
+                continue
+            if ch:
+                m["dab_channel"] = ch
             seen.add((m["freq_hz"], m["name"]))
             items.append(m)
             added += 1

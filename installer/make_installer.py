@@ -47,6 +47,7 @@ your settings, memories, logs and recordings (data\ folder) and the configuratio
 4. Start the receiver as usual.
 
 New program folders (e.g. lib\dab with the DAB decoder) come with the zip as well.
+Close Gpredict before unzipping, otherwise its files cannot be overwritten.
 
 DSD mode (digital voice, first test version, it still needs more testing): its decoder DSD-FME is not in this zip.
 If you have it in lib\dsd-fme, it stays there and nothing has to be done. If not and you want it, run install_dsd.bat:
@@ -58,7 +59,7 @@ UPGRADE_BAT = r"""@echo off
 rem RADIMCOM upgrade: updates the Python packages in .venv; data\ and the configuration stay untouched.
 cd /d "%~dp0"
 if not exist ".venv\Scripts\python.exe" (echo .venv not found - for a new installation use the install zip and install.bat & pause & exit /b 1)
-".venv\Scripts\python.exe" -m pip install --disable-pip-version-check --only-binary=numpy,scipy -r requirements.txt
+".venv\Scripts\python.exe" -m pip install --disable-pip-version-check --only-binary=numpy,scipy,lameenc -r requirements.txt
 if errorlevel 1 (echo Package installation failed - check the internet connection. & pause & exit /b 1)
 echo Upgrade done. Start the receiver with the RADIMCOM shortcut (or start.bat).
 if not exist "lib\dsd-fme\dsd-fme.exe" echo Optional, for the DSD mode (digital voice): run install_dsd.bat, it downloads the decoder.
@@ -84,8 +85,8 @@ def make_upgrade(full_zip):
     print(f"{out}: {n + 2} files, {os.path.getsize(out) / 1e6:.1f} MB")
 
 
-CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "lime.py", "rds.py", "cw.py", "rtty.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py", "cpdlc.py", "cpdlc_schema.py", "adsc.py", "vdl2.py", "airports.py", "dab.py", "dsd.py", "install_dsd.py", "install_dsd.bat",
-        "memories.py", "iqshare.py", "eeprom_tool.py", "setup_sdr.py", "start.bat", "setup.bat", "README.md", "CHANGELOG.md",
+CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "lime.py", "rds.py", "cw.py", "rtty.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py", "cpdlc.py", "cpdlc_schema.py", "adsc.py", "vdl2.py", "airports.py", "dab.py", "ism.py", "dsd.py", "recorder.py", "install_dsd.py", "install_dsd.bat",
+        "memories.py", "rotor.py", "gpredict.py", "iqshare.py", "eeprom_tool.py", "setup_sdr.py", "start.bat", "setup.bat", "README.md", "CHANGELOG.md",
         "LICENSE", "NOTICE.md", "API/API.md"]
 LIBS = ["lib/librtlsdr.dll", "lib/libusb-1.0.dll"]
 # VDL2: dumpvdl2 built with MSYS2 (see installer/VDL2.txt), with its MSYS2 runtime DLLs
@@ -95,6 +96,10 @@ LIBS += ["lib/vdl2/" + f for f in ("dumpvdl2.exe", "msys-2.0.dll", "msys-acars-2
 # DAB: welle-cli built with MSYS2 UCRT64 (see installer/DAB.txt) with its DLLs - everything in lib/dab
 LIBS += sorted("lib/dab/" + f for f in os.listdir(os.path.join(ROOT, "lib", "dab"))
                if f.lower().endswith((".exe", ".dll"))) if os.path.isdir(os.path.join(ROOT, "lib", "dab")) else []
+# ISM: the static rtl_433 of its release (see installer/ISM.txt), no DLLs needed
+LIBS += ["lib/ism/rtl_433.exe"]
+# Gpredict 2.7 with our patch, built by installer/build_gpredict.sh (see installer/GPREDICT.txt) - everything in apps/gpredict
+GPREDICT = os.path.join(ROOT, "apps", "gpredict")
 FROM_INSTALLER = ["install.bat", "requirements.txt", "config.json", "DRIVERS.txt", "INSTALL.txt", "VDL2_Ground_Stations.txt"]
 # files from this PC that are bundled (target in the package: source)
 EXTERNAL = {
@@ -116,7 +121,7 @@ def copy(src, dst_rel, build):
 
 
 def main():
-    missing = [p for p in list(EXTERNAL.values()) + [D3XX_ZIP] if not os.path.exists(p)]
+    missing = [p for p in list(EXTERNAL.values()) + [D3XX_ZIP, os.path.join(GPREDICT, "gpredict.exe")] if not os.path.exists(p)]
     if missing:
         sys.exit("missing: " + ", ".join(missing))
     with tempfile.TemporaryDirectory() as tmp:
@@ -127,7 +132,10 @@ def main():
             copy(os.path.join(HERE, f), f, build)
         copy(os.path.join(HERE, "VDL2.txt"), "lib/vdl2/README.txt", build)   # licences and sources of dumpvdl2
         copy(os.path.join(HERE, "DAB.txt"), "lib/dab/README.txt", build)     # licences and sources of welle-cli
+        copy(os.path.join(HERE, "ISM.txt"), "lib/ism/README.txt", build)     # licences and sources of rtl_433
         shutil.copytree(os.path.join(ROOT, "static"), os.path.join(build, "static"))
+        shutil.copytree(GPREDICT, os.path.join(build, "apps", "gpredict"))
+        copy(os.path.join(HERE, "GPREDICT.txt"), "apps/gpredict/README.txt", build)   # licences and sources of Gpredict
         for dst, src in EXTERNAL.items():
             copy(src, dst, build)
         with zipfile.ZipFile(D3XX_ZIP) as z:

@@ -370,17 +370,19 @@ class AcarsDecoder:
         if not (self.vdl2_on and self.cpdlc_on):
             return
         now = time.time()
+        by_hex = re.fullmatch(r"[0-9A-Fa-f]{6}", r["air"] or "")
         with self.lock:
             r.update(id=self._next_id, time=time.strftime("%H:%M:%S", time.gmtime(now)),
                      date=time.strftime("%Y-%m-%d", time.gmtime(now)), freq_hz=r["vdl2"]["freq_hz"],
-                     reg=r["air"], flight="", label="", ac=None, atn=True)
+                     reg=r["air"], flight="", label="", ac=None, atn=True,
+                     lookup=bool(by_hex) and not self._lookups.full())    # the browser shows the row after the "acarsinfo"
             self._next_id += 1
             self.cpdlc_count += 1
             self.cpdlc_msgs.append(r)
         self.on_event("cpdlc", r)
         self._emit_cpdlc_state()
         # registration, type and position by the ICAO address; the log line waits for them
-        if re.fullmatch(r"[0-9A-Fa-f]{6}", r["air"] or ""):
+        if by_hex:
             try:
                 self._lookups.put_nowait(r)
                 return
@@ -396,6 +398,8 @@ class AcarsDecoder:
         self._next_id += 1
         m["ac"] = None
         m["cpdlc"] = None
+        by_reg = len(m["reg"]) >= 3 and self.crc_ok_reg(m)
+        m["lookup"] = by_reg and not self._lookups.full()    # the browser shows the row after the "acarsinfo"
         c = self._cpdlc(m) if m["crc_ok"] else None
         if self.shown:
             self.count += 1
@@ -408,7 +412,7 @@ class AcarsDecoder:
             self._emit_cpdlc_state()
         if not self.shown and not (c and self.cpdlc_on):
             return
-        if len(m["reg"]) >= 3 and self.crc_ok_reg(m):
+        if by_reg:
             try:
                 self._lookups.put_nowait(m)      # goes to the log only with the ADS-B data
                 return

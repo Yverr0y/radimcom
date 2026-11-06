@@ -1,4 +1,4 @@
-# RADIMCOM HTTP API – Ver. 0.109
+# RADIMCOM HTTP API – Ver. 0.110
 
 The web page talks to the receivers through this HTTP API, and you can use it too (scripts, curl, other programs).
 Requests and responses are JSON unless stated otherwise. Errors return `{"error": "..."}` with HTTP 400 (bad input),
@@ -64,19 +64,23 @@ Main fields:
 | `range` | tuning range of this VFO |
 | `vfo`, `serial`, `driver`, `device` | VFO name, dongle serial, `rtl` or `lime`, device index |
 | `chain_owner`, `out_of_band`, `chained_vfos` | chained VFO: VFO that owns the dongle (`null` otherwise), tuned outside the owner's band (silent, OOR); owner VFO: number of chained VFOs connected |
-| `ppm`, `rtl_agc`, `audio_agc`, `notch`, `notch_active`, `bias_tee`, `stereo_on`, `stereo`, `rds` | receiver options and WFM stereo / RDS |
+| `ppm`, `rtl_agc`, `dc_remove`, `dc_hz`, `dc_db`, `spur_on`, `spur_hz`, `spur_edge`, `spur_shift`, `spur_db`, `spur_count`, `spur_learning`, `spur_found`, `audio_agc`, `notch`, `notch_active`, `bias_tee`, `stereo_on`, `stereo`, `rds` | receiver options and WFM stereo / RDS |
 | `afi`, `afi_hz` | audio frequency inversion (voice scrambler / descrambler) on/off and its inversion frequency in Hz |
 | `lpf`, `lpf_hz`, `hpf`, `hpf_hz` | audio low-pass and high-pass filter on/off and their cutoff frequencies in Hz |
 | `status`, `error`, `opened`, `dropped`, `hw` | device status, last error, open flag, dropped blocks, LimeSDR stream info |
 | `ft8`, `cw`, `rtty`, `wefax`, `sstv`, `acars`, `vdl2`, `cpdlc` | decoders on/off |
 | `ft8_error`, `vdl2_error` | decoder errors |
-| `dab`, `dab_channel`, `dab_error` | DAB on/off, Band III channel (e.g. `12C`), welle-cli error |
-| `logs` | daily logs on/off: `{"ft8", "wefax", "cw", "rtty", "sstv", "acars"}` (`acars` covers both the ACARS and the VDL2 log) |
+| `vdl2_region` | selected VDL2 channel set, `"eu"` or `"us"` |
+| `audio_muted` | the audio of this VFO is muted because the ACARS, VDL2 or ISM decoder runs |
+| `recording` | `{"cont": {...}, "squelch": {...}, "dropped": n}`: REC and REC SQ, each with `on`, `open` (a file is being written), `file` (current or last file in `data\recordings`), `secs` (length of the current file), `saved` (files finished since switched on), `error`; `dropped` = audio blocks lost because the disk did not keep up |
+| `dab`, `dab_channel`, `dab_sids`, `dab_error` | DAB on/off, Band III channel (e.g. `12C`), last station of each channel (`{"12C": "0x5464"}`, `null` = stopped), welle-cli error |
+| `logs` | daily logs on/off: `{"ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism"}` (`acars` covers both the ACARS and the VDL2 log) |
+| `trsp_name`, `trsp_sat` | transponder and satellite selected in Gpredict (our build sends them), empty otherwise |
 | `tx_capable`, `tx_enabled`, `can_tx`, `tx`, `tx_info` | transmitter (LimeSDR) |
 | `wf` | waterfall format: `bins`, `db_min`, `db_step`, `rows_per_s` |
 
-`/api/state` also returns the constants `sample_rates`, `modes`, `ft8_freqs`, `acars_freqs`, `vdl2_freqs`,
-`vdl2_center`, `vdl2_rate`, `dab_channels` (`[[name, Hz], …]`).
+`/api/state` also returns the constants `sample_rates`, `modes`, `ft8_freqs`, `acars_freqs`, `vdl2_freqs` (channels of the
+selected region), `vdl2_region_freqs` (`{"eu": […], "us": […]}`), `vdl2_center`, `vdl2_rate`, `dab_channels` (`[[name, Hz], …]`), `ism_freqs`. The state has `ism`, `ism_error` and `ism_hz`; `GET /api/ism` gives the decoder state with the last `messages`, `POST /api/ism` with `{"action": "clear"}` clears them.
 
 ### POST /api/set
 
@@ -90,7 +94,13 @@ Send any combination of these keys:
 | `mode` | `AM`, `FM`, `WFM`, `LSB`, `USB`, `CW` |
 | `bandwidth` | Hz, for the current (or the sent) mode: WFM 50000–250000, FM 500–50000, others 100–18000 |
 | `gain` | dB or `"auto"` |
-| `rtl_agc`, `audio_agc`, `notch`, `afi`, `lpf`, `hpf`, `stereo_on`, `bias_tee` | true / false |
+| `rtl_agc`, `dc_remove`, `audio_agc`, `notch`, `afi`, `lpf`, `hpf`, `stereo_on`, `bias_tee` | true / false |
+| `dc_hz` | width of the DC peak removal, 0 – 1000 Hz (default 0 = the peak itself only; above 0 = cutoff of a high-pass that also takes out its skirts) |
+| `dc_db` | depth of the DC peak removal, 0 – 60 dB (default 60) |
+| `spur_on` | use the learned spurs, true / false (default false) |
+| `spur_hz`, `spur_edge`, `spur_db` | band-stop on each spur: stopband 100 – 10000 Hz (default 3000), width of each side 0 – 3000 Hz (default 1000), depth at most 0 – 60 dB (default 40; each point goes down to the noise around the band-stop and no further) |
+| `spur_shift` | moves all spur band-stops, -1000 – 1000 Hz (default 0) |
+| `spur_learn`, `spur_clear` | `true`: learn the spurs of the band received now (5 s; `spur_learning` while running, `spur_found` = lines found); forget all learned spurs |
 | `afi_hz` | AFI inversion frequency, 500 – 4000 Hz (default 1750; audio is mirrored f → 2·afi_hz − f) |
 | `lpf_hz` | LPF cutoff, 100 – 15000 Hz (default 3000) |
 | `hpf_hz` | HPF cutoff, 20 – 5000 Hz (default 300). With both filters on, `hpf_hz` above `lpf_hz` gives silence (the web UI keeps them in order, the API does not) |
@@ -102,8 +112,12 @@ Send any combination of these keys:
 | `lo_offset_hz` | upconverter LO, 0 to 1 000 000 000 Hz |
 | `device` | device index (single-receiver mode) |
 | `reset` | `true` = reset the dongle |
-| `ft8`, `cw`, `rtty`, `wefax`, `sstv`, `acars`, `vdl2` | decoders on / off. `vdl2: true` switches the VFO to 2.1 MS/s around 136.850 MHz and turns ACARS off (RTL-SDR only); `acars: true` turns VDL2 off |
+| `ft8`, `cw`, `rtty`, `wefax`, `sstv`, `acars`, `vdl2` | decoders on / off. `vdl2: true` switches the VFO to 2.1 MS/s around 136.500 MHz and turns ACARS off (RTL-SDR only); `acars: true` turns VDL2 off |
+| `vdl2_region` | VDL2 channel set: `"eu"` or `"us"`. Restarts dumpvdl2 with the new channels |
+| `dab_sid` | remembers the station of the current DAB channel (`"0x5464"`, `null` = stopped) |
 | `dab`, `dab_channel` | DAB on / off and channel. `dab: true` starts welle-cli and switches the VFO to 2.048 MS/s on the channel centre (ACARS and VDL2 off, RTL-SDR only); `dab: false` restores the sample rate; `dab_channel` alone retunes a running DAB |
+| `ism`, `ism_hz` | ISM decoder on / off and preset (one of `ism_freqs`). `ism: true` starts rtl_433, mutes the audio and switches the VFO to 2.048 MS/s on that preset in AM (ACARS, VDL2 and DAB off, RTL-SDR only); `ism: false` restores the sample rate; `ism_hz` alone re-centres a running decoder |
+| `rec`, `rec_sq` | MP3 recording on / off: `rec` everything, a new file after 15 min; `rec_sq` only with an open squelch, each session in its own file |
 | `log` | daily logs, e.g. `{"log": {"cw": true, "ft8": false}}` |
 | `tx_enabled` | allow transmitting (only on a VFO that can transmit) |
 
@@ -125,6 +139,7 @@ On connect a `status` event with the full state, then:
 | `cpdlc`, `cpdlcstate` | CPDLC message, state |
 | `vdl2state` | VDL2 decoder state |
 | `dabstate` | DAB state (channel, welle-cli connected, dongle on channel, error) |
+| `ism`, `ismstate` | ISM device message (the same `id` again = the repeat count `n` of a message grew); decoder state (`enabled`, `error`, `count`, `dropped`, `running`) |
 
 A comment line `: ping` is sent every 15 s when nothing else happens.
 
@@ -155,12 +170,12 @@ is removed. 0 dB is a sine at 75 kHz deviation. Outside WFM, `db` is empty and `
 | POST | `/api/cw` | `{"action": "clear"}` |
 | GET | `/api/rtty` | RTTY decoder info and text |
 | POST | `/api/rtty` | `{"action": "clear"}` and/or `{"opts": {...}}` (decoder options, saved to the config) |
-| GET | `/api/acars` | ACARS / VDL2 messages; VDL2 ones have `vdl2.gs` (ground station address) and `vdl2.gs_loc` (`BTS/LZIB`, `-` if not known), `vdl2.gs_city` (`Bratislava`, empty if not known) and `vdl2.gs_info` (entry in the ground station list, `LHBP Budapest Hungary 136.825`, empty if not there) |
+| GET | `/api/acars` | ACARS / VDL2 messages; VDL2 ones have `vdl2.gs` (ground station address) and `vdl2.gs_loc` (`BTS/LZIB`, `-` if not known), `vdl2.gs_city` (`Bratislava`, empty if not known) and `vdl2.gs_info` (entry in the ground station list, `LHBP Budapest Hungary 136.825`, empty if not there). A message with `lookup: true` gets an `acarsinfo` event with the ADS-B data; the web page shows its row after that |
 | POST | `/api/acars` | `{"action": "clear"}` |
 | GET | `/api/cpdlc` | CPDLC messages |
 | POST | `/api/cpdlc` | `{"action": "clear"}` |
 | GET | `/api/vdl2` | VDL2 decoder info |
-| GET | `/api/dab` | DAB ensemble: label, SNR, services (`sid`, `label`, `pty`, `type` DAB / DAB+, `bitrate`, `dls`, `mot_time`, error counters) |
+| GET | `/api/dab` | DAB ensemble: `ensemble`, `ensemble_short`, `ensemble_id`, `country`, `snr`, `freq_corr`, `fic_errors`, `utc`, `local`, `capacity_cu`, `services` (`sid`, `label`, `short`, `pty`, `language`, `type` DAB / DAB+, `bitrate`, `protection`, `cu`, `subch`, `encrypted`, `channels`, `mode`, `samplerate`, `dls`, `mot_time`, error counters) |
 | GET | `/api/dab/audio/<sid>` | MP3 audio stream of a service (welle-cli decodes it while somebody listens) |
 | GET | `/api/dab/slide/<sid>` | last slideshow picture (JPEG / PNG), 204 if none |
 | GET | `/api/wefax` | WEFAX decoder info |
@@ -173,15 +188,21 @@ is removed. 0 dB is a sine at 75 kHz deviation. Outside WFM, `db` is empty and `
 
 ## Memories
 
-A memory: `{"id", "name", "group", "freq_hz", "mode", "bw", "fav"}`.
+A memory: `{"id", "name", "group", "freq_hz", "mode", "bw", "fav"}`, and `"dab_channel"` (e.g. `"12C"`) on a DAB memory.
 
 | Method | Path | Description |
 |---|---|---|
+| GET | `/api/rotor` | antenna rotor and Gpredict link: `on`, `connected`, `device`, `az`, `el`, `target`, `aim`, `source`, `control`, `fault`, `link_error`, `gpredict_rotor`, `gpredict_radio`, `rot_port`, `rig_port`, `next_pass`; `?ports=1` adds the serial `ports` |
+| POST | `/api/rotor` | any of `{"enabled": true/false, "port", "usb_serial"}` (link on / off, saved), `{"start": true}` (CTRL on), `{"stop": true}` (stop the rotor, CTRL off), `{"reset": true}` (clear a fault), `{"goto": [az, el]}` (azimuth 0–360, elevation 0–180). **Moves the antenna.** Refused with 403 from a page of another host |
+| GET | `/api/gpredict` | `running`, `available` (one program for the whole PC) |
+| POST | `/api/gpredict` | `{"on": true/false}` starts or closes Gpredict. Refused with 403 from a page of another host |
 | GET | `/api/memories` | all memories |
-| POST | `/api/memories` | add: `{"name", "group", "freq_hz", "mode", "bw"}`; returns the new memory with its `id`. Name up to 80 characters, group up to 40, frequency 0–1766 MHz, `bw` clamped to the mode's range |
+| POST | `/api/memories` | add: `{"name", "group", "freq_hz", "mode", "bw"}`; returns the new memory with its `id`. Name up to 80 characters, group up to 40, frequency 0–1766 MHz, `bw` clamped to the mode's range. With `dab_channel` the frequency is the centre of that channel |
 | PATCH | `/api/memories/<id>` | change `{"fav": true/false}` and/or `{"name": "..."}` |
 | DELETE | `/api/memories/<id>` | delete |
 | POST | `/api/memories/import` | import from SDR#: `{"path": "C:\\SDRSharp"}`. Reads `frequencies.xml` in the folder and in profile subfolders (e.g. `Instances\Profile1`), or a single profile folder / `frequencies.xml`. Duplicates (same frequency and name) are skipped. Returns `{"added", "skipped", "files", "errors"}` |
+
+`POST /api/memories/import_json` imports a JSON list of memories, the format of the export: each entry needs `freq_hz` (or `dab_channel`) and `mode`, and every imported memory gets a new `id`. Duplicates (same frequency and name) and invalid entries are skipped. Returns `{"added", "skipped"}`.
 
 Export (EXPORT ★ / EXPORT group in the MEM drawer) is done in the browser from `GET /api/memories`.
 

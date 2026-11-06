@@ -25,10 +25,32 @@ for /f "delims=" %%v in ('%PY% --version') do echo [1/5] %%v found
 
 rem ---- 2. virtual environment and packages ----
 echo [2/5] Installing Python packages (needs internet, about 60 MB - may take a few minutes)...
-if not exist ".venv\Scripts\python.exe" %PY% -m venv .venv
+rem python.exe in .venv is only a launcher: it exists even when the Python it points to (pyvenv.cfg) is gone,
+rem e.g. .venv from an earlier attempt or a removed Python - so it has to be run, not just looked for.
+set "VENV_OK="
+if exist ".venv\Scripts\python.exe" ".venv\Scripts\python.exe" -c "import pip" >nul 2>nul && set "VENV_OK=1"
+if not defined VENV_OK if exist ".venv" (
+  echo    The existing .venv does not work, creating it again...
+  rmdir /s /q ".venv"
+)
+if not defined VENV_OK %PY% -m venv .venv
 if errorlevel 1 (echo Could not create .venv & pause & exit /b 1)
+".venv\Scripts\python.exe" -c "import pip" >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo .venv was created but it does not start. This is a problem with the Python installation, not with the internet.
+  echo Python used:
+  %PY% -c "import sys; print('  ', sys.executable); print('  ', sys._base_executable)"
+  echo .venv points to:
+  type ".venv\pyvenv.cfg"
+  echo.
+  echo Try to run install.bat without "Run as administrator". If it does not help, install Python
+  echo from https://www.python.org/downloads/windows/ with "Add python.exe to PATH" and run install.bat again.
+  pause
+  exit /b 1
+)
 rem no -q: on a slow internet connection the download progress is visible
-".venv\Scripts\python.exe" -m pip install --disable-pip-version-check --only-binary=numpy,scipy -r requirements.txt
+".venv\Scripts\python.exe" -m pip install --disable-pip-version-check --only-binary=numpy,scipy,lameenc -r requirements.txt
 if errorlevel 1 (echo Package installation failed - check the internet connection. & pause & exit /b 1)
 rem PyFT8 is only for the FT8 decoder; if it fails, the receiver works without it.
 rem --no-deps: PyAudio (sound card) is not needed and has no ready package for new Python versions

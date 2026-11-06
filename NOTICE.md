@@ -19,8 +19,12 @@ does not contain the binaries; the release packages do, except where noted.
 |---|---|---|---|
 | dumpvdl2 2.7.0 | VDL2 decoder (separate program) | GPL v3 | <https://github.com/szpajder/dumpvdl2> |
 | libacars 2.2.1 | used by dumpvdl2 | MIT | <https://github.com/szpajder/libacars> |
-| welle-cli (welle.io 2.7) | DAB / DAB+ decoder (separate program) | GPL v2 or later | <https://github.com/AlbrechtL/welle.io> |
+| welle-cli (welle.io 2.7), **modified** (`installer/welle_radimcom.patch`) | DAB / DAB+ decoder (separate program) | GPL v2 or later | <https://github.com/AlbrechtL/welle.io> |
+| rtl_433 25.12 (release build of its author, not changed) | ISM decoder, 433 / 868 MHz (separate program) | GPL v2 or later | <https://github.com/merbanan/rtl_433> |
+| rtl-sdr 2.0.2, libusb 1.0.29 | linked into `rtl_433.exe` | GPL v2 or later; LGPL v2.1 or later | <https://github.com/osmocom/rtl-sdr>, <https://github.com/libusb/libusb> |
 | FFTW, FAAD2 | used by welle-cli | GPL v2 or later | MSYS2 packages |
+| Gpredict 2.7, **modified** (`installer/gpredict_radimcom.patch`) | satellite tracking (separate program, `apps/gpredict`) | GPL v2 or later | <https://github.com/csete/gpredict> |
+| GTK 3, GLib, GDK-PixBuf, Pango, Cairo, ATK, FriBidi, librsvg and others | used by Gpredict; full list in `apps/gpredict/README.txt` | LGPL; jbigkit GPL v2; others permissive | MSYS2 packages |
 | mpg123, LAME | used by welle-cli | LGPL | MSYS2 packages |
 | MSYS2 runtime | runs dumpvdl2 | LGPL v3 | <https://github.com/msys2/msys2-runtime> |
 | GLib, libiconv, gettext (libintl) | used by dumpvdl2 | LGPL | MSYS2 packages |
@@ -32,7 +36,8 @@ does not contain the binaries; the release packages do, except where noted.
 | LimeSuite | LimeSDR access | Apache 2.0 | <https://github.com/myriadrf/LimeSuite> |
 | FTDI D3XX driver | LimeSDR USB driver | FTDI driver licence | <https://ftdichip.com/drivers/d3xx-drivers/> |
 | PyFT8 | FT8 decoder; `install.bat` installs it from PyPI, not in the package | GPL v3 or later | <https://github.com/G1OJS/PyFT8m> |
-| Flask, NumPy, SciPy | Python packages; `install.bat` installs them from PyPI, not in the package | BSD | PyPI |
+| Flask, NumPy, SciPy, pyserial | Python packages; `install.bat` installs them from PyPI, not in the package | BSD | PyPI |
+| lameenc (with the LAME MP3 encoder) | MP3 recording; `install.bat` installs it from PyPI, not in the package | LGPL v3 or later (LAME: LGPL) | <https://github.com/chrisstaite/lameenc> |
 
 ### Not in the package: DSD-FME
 
@@ -46,7 +51,7 @@ may infringe patent rights in your jurisdiction and/or require a licence. Check 
 
 Each release from Ver. 0.108 has `RADIMCOM_sources_v<version>.zip` with the source code of the GPL and LGPL components
 in that release, in the exact versions used, and the build instructions (`installer/VDL2.txt`, `installer/DAB.txt`,
-`installer/build_dab.sh`). The list of its contents is `SOURCES.txt` in that zip. It is built by
+`installer/build_dab.sh`, `installer/welle_radimcom.patch`, `installer/GPREDICT.txt`, `installer/build_gpredict.sh`). The list of its contents is `SOURCES.txt` in that zip. It is built by
 `installer/make_sources.py`.
 
 **librtlsdr:** the exact source of the `librtlsdr.dll` in the packages is still being confirmed, so it is not in that

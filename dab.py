@@ -12,6 +12,7 @@ It runs as a separate process. The dongle stays in RADIMCOM: welle-cli connects 
 The rtl_tcp header says "unknown tuner", so welle-cli does not run its own gain control: gain stays the VFO's.
 """
 import collections
+import datetime
 import json
 import os
 import queue
@@ -43,10 +44,27 @@ DAB_CHANNELS = [(n, k * 1000) for n, k in (
     ("13A", 230784), ("13B", 232496), ("13C", 234208), ("13D", 235776), ("13E", 237488), ("13F", 239200))]
 CHANNEL_HZ = dict(DAB_CHANNELS)
 TCP_QUEUE = 64                # raw blocks waiting for welle-cli (~2 s); more = welle-cli is stuck, drop
+ENSEMBLE_CU = 864             # capacity units of an ensemble (ETSI EN 300 401)
+# Country from ECC and the first digit of the ensemble ID (ETSI TS 101 756): Europe.
+ECC_COUNTRIES = {
+    0xE0: {1: "de", 2: "dz", 3: "ad", 4: "il", 5: "it", 6: "be", 7: "ru", 8: "ps", 9: "al", 10: "at", 11: "hu", 12: "mt", 13: "de", 15: "eg"},
+    0xE1: {1: "gr", 2: "cy", 3: "sm", 4: "ch", 5: "jo", 6: "fi", 7: "lu", 8: "bg", 9: "dk", 10: "gi", 11: "iq", 12: "gb", 13: "ly", 14: "ro", 15: "fr"},
+    0xE2: {1: "ma", 2: "cz", 3: "pl", 4: "va", 5: "sk", 6: "sy", 7: "tn", 9: "li", 10: "is", 11: "mc", 12: "lt", 13: "rs", 14: "es", 15: "no"},
+    0xE3: {1: "me", 2: "ie", 3: "tr", 4: "mk", 8: "nl", 9: "lv", 10: "lb", 11: "az", 12: "hr", 13: "kz", 14: "se", 15: "by"},
+    0xE4: {1: "md", 2: "ee", 3: "kg", 6: "ua", 8: "pt", 9: "si", 10: "am", 12: "ge", 15: "ba"},
+}
 
 
 def channel_of(hz):
     return next((n for n, f in DAB_CHANNELS if abs(f - hz) < 1000), None)
+
+
+def country_of(ecc, ensemble_id):
+    """ISO country code of an ensemble, or "" when it is not known. Both come from mux.json as hex strings."""
+    try:
+        return ECC_COUNTRIES.get(int(ecc, 16), {}).get(int(ensemble_id, 16) >> 12, "")
+    except (TypeError, ValueError):
+        return ""
 
 
 def _free_port():
@@ -260,7 +278,8 @@ class DabDecoder:
 
     def mux(self):
         """Ensemble, services, DLS and signal from welle-cli's mux.json, in a smaller form for the web page."""
-        out = dict(self.info(), ensemble="", services=[], snr=None, freq_corr=None, fic_errors=None, utc=None)
+        out = dict(self.info(), ensemble="", ensemble_short="", ensemble_id="", country="", services=[], snr=None, freq_corr=None,
+                   fic_errors=None, utc=None, local=None, capacity_cu=ENSEMBLE_CU)
         if not self.proc:
             return out
         try:
@@ -269,19 +288,31 @@ class DabDecoder:
         except (OSError, ValueError):
             return out                       # still starting
         lab = lambda x: ((x or {}).get("label") or "").strip() if isinstance(x, dict) else str(x or "").strip()
-        out["ensemble"] = lab((j.get("ensemble") or {}).get("label"))
+        ens = j.get("ensemble") or {}
+        out["ensemble"] = lab(ens.get("label"))
+        out["ensemble_short"] = ((ens.get("label") or {}).get("shortlabel") or "").strip()
+        out["ensemble_id"] = ens.get("id") or ""
+        out["country"] = country_of(ens.get("ecc"), ens.get("id"))
         dem = j.get("demodulator") or {}
         out.update(snr=dem.get("snr"), freq_corr=dem.get("frequencycorrection"),
                    fic_errors=(dem.get("fic") or {}).get("numcrcerrors"))
         u = j.get("utctime") or {}
         if u.get("year"):
             out["utc"] = f"{u['year']:04d}-{u['month']:02d}-{u['day']:02d} {u['hour']:02d}:{u['minutes']:02d}"
+            try:
+                t = datetime.datetime(u["year"], u["month"], u["day"], u["hour"], u["minutes"]) + datetime.timedelta(hours=u.get("lto") or 0)
+                out["local"] = t.strftime("%Y-%m-%d %H:%M")
+            except (KeyError, TypeError, ValueError, OverflowError):
+                pass
         for s in j.get("services") or []:
             comp = next((c for c in s.get("components") or [] if c.get("transportmode") == "audio"), None)
             sub = (comp or {}).get("subchannel") or {}
             err = s.get("errorcounters") or {}
             out["services"].append({
-                "sid": s.get("sid"), "label": lab(s.get("label")), "pty": s.get("ptystring") or "",
+                "sid": s.get("sid"), "label": lab(s.get("label")), "short": ((s.get("label") or {}).get("shortlabel") or "").strip(),
+                "pty": s.get("ptystring") or "", "language": s.get("languagestring") or sub.get("languagestring") or "",
+                "protection": sub.get("protection") or "", "cu": sub.get("cu") or 0, "subch": sub.get("subchid"),
+                "encrypted": bool((comp or {}).get("caflag")), "channels": s.get("channels") or 0,
                 "audio": bool(s.get("url_mp3")), "type": (comp or {}).get("ascty") or "",
                 "bitrate": sub.get("bitrate"), "mode": s.get("mode") if s.get("samplerate") else "",
                 "samplerate": s.get("samplerate") or 0,

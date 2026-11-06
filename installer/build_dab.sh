@@ -5,7 +5,7 @@
 set -e
 export MSYSTEM=UCRT64
 export PATH=/ucrt64/bin:/usr/bin:$PATH
-DEST=/c/RADIMCOM/lib/dab
+DEST=${DEST:-/c/RADIMCOM/lib/dab}
 SRC=${TMP:-/tmp}/welle-build
 
 pacman -S --noconfirm --needed git vim mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja \
@@ -14,6 +14,8 @@ pacman -S --noconfirm --needed git vim mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-
 
 rm -rf "$SRC"
 git clone --depth 1 --branch v2.7 https://github.com/AlbrechtL/welle.io.git "$SRC"
+# our change: audio at the right speed on HE-AAC v2 stations
+git -C "$SRC" apply --ignore-whitespace "$(dirname "$(readlink -f "$0")")/welle_radimcom.patch"
 cmake -S "$SRC" -B "$SRC/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
       -DBUILD_WELLE_IO=OFF -DBUILD_WELLE_CLI=ON -DRTLSDR=OFF -DSOAPYSDR=OFF -DAIRSPY=OFF \
       -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \

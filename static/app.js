@@ -445,6 +445,7 @@ $("bandGroups").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-f]");
   if (!b || !st) return;
   if (st.dab) dabOff();   // another band: DAB off (previous sample rate back)
+  if (st.ism) ismOff();   // ISM too
   const f = Number(b.dataset.f) || fmLast();
   await ensureVfoFor(f);   // e.g. an HF band on a VFO without upconverter -> VFO A
   if (!st) return;
@@ -1143,15 +1144,27 @@ $("axis").addEventListener("mousemove", (e) => {
 const BW_GRAB_PX = 5;
 const BW_LIMITS = { WFM: [50000, 250000, 1000], FM: [500, 50000, 50], other: [100, 18000, 50] }; // min, max, rounding
 
-function bwEdgeAt(x, w) {
-  if (st.mode === "DSD") return null;      // fixed width
+/** Passband on the screen, at least 6 px wide as it is drawn. */
+function passX(w) {
   const [a, b] = passband();
   let x0 = freqToX(a, w), x1 = freqToX(b, w);
   if (x1 - x0 < 6) { const m = (x0 + x1) / 2; x0 = m - 3; x1 = m + 3; }
+  return [x0, x1];
+}
+
+function bwEdgeAt(x, w) {
+  if (st.mode === "DSD") return null;      // fixed width
+  const [x0, x1] = passX(w);
   const d0 = st.mode === "USB" ? Infinity : Math.abs(x - x0);
   const d1 = st.mode === "LSB" ? Infinity : Math.abs(x - x1);
   if (Math.min(d0, d1) > BW_GRAB_PX) return null;
   return d0 < d1 ? "lo" : "hi";
+}
+
+/** The pointer is on the passband in the spectrum or on its label (x, y from the overlay's corner, w its width). */
+function inPassband(x, y, w) {
+  const [x0, x1] = passX(w);
+  return (x >= x0 && x <= x1) || inPassLabel({ x: x / uiScale, y: y / uiScale });
 }
 
 function bwFromX(x, w) {
@@ -1312,7 +1325,8 @@ for (const id of ["specOverlay", "wfOverlay"]) {
   const cv = $(id);
   const spectrum = id === "specOverlay";
   // A click without movement tunes the point under the mouse. Dragging moves the whole waterfall: the passband stays in
-  // place on the screen and the frequency changes under it.
+  // place on the screen and the frequency changes under it. Dragging from the passband in the spectrum is the opposite:
+  // the shown section stays in place and only the passband moves, up to the edge of the section.
   cv.addEventListener("pointerdown", (e) => {
     if (!st || e.button !== 0) return;
     cv.setPointerCapture(e.pointerId);
@@ -1322,13 +1336,15 @@ for (const id of ["specOverlay", "wfOverlay"]) {
       return;
     }
     const v = viewNow();
-    drag = { x0: e.clientX, tune0: st.tune_hz, off: v.c - st.tune_hz, moved: false };
+    const band = spectrum && inPassband(e.clientX - r.left, e.clientY - r.top, r.width);
+    drag = { x0: e.clientX, tune0: st.tune_hz, off: v.c - st.tune_hz, moved: false, band };
   });
   cv.addEventListener("pointermove", (e) => {
     const r = cv.getBoundingClientRect();
     if (spectrum && !drag && st) {
       const m = memTagAt((e.clientX - r.left) / uiScale, (e.clientY - r.top) / uiScale);
-      cv.style.cursor = bwEdgeAt(e.clientX - r.left, r.width) ? "ew-resize" : m ? "pointer" : "";
+      const onBand = inPassband(e.clientX - r.left, e.clientY - r.top, r.width);
+      cv.style.cursor = bwEdgeAt(e.clientX - r.left, r.width) ? "ew-resize" : m ? "pointer" : onBand ? "grab" : "";
       const tip = m ? `${m.name} · ${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} MHz` : `${fmtKHz(m.freq_hz, 2)} kHz`} · ${m.mode} · ${m.group}` : "";
       if (cv.title !== tip) cv.title = tip;
     }
@@ -1344,15 +1360,25 @@ for (const id of ["specOverlay", "wfOverlay"]) {
     }
     const dx = e.clientX - drag.x0;
     if (!drag.moved && Math.abs(dx) < 4) return;
-    if (!drag.moved) { drag.moved = true; cv.parentElement.classList.add("dragging"); }
-    let t = drag.tune0 - (dx / r.width) * viewNow().span;
+    if (!drag.moved) {
+      drag.moved = true;
+      cv.parentElement.classList.add("dragging");
+      if (drag.band) cv.style.cursor = "grabbing";
+    }
+    const v = viewNow();
+    let t = drag.tune0 + (drag.band ? dx : -dx) / r.width * v.span;
     t = Math.max(0, Math.round(t / stepHz) * stepHz);
+    if (drag.band) {
+      t = Math.max(t, Math.ceil((v.c - v.span / 2) / stepHz) * stepHz);
+      t = Math.min(t, Math.floor((v.c + v.span / 2) / stepHz) * stepHz);
+    }
     if (t === st.tune_hz) return;
     st.tune_hz = t;
     viewLocalAt = Date.now();
-    if (view) setView(t + drag.off);
+    if (drag.band) drawOverlays();
+    else if (view) setView(t + drag.off);
     renderTuner();
-    send({ tune_hz: t, view_hz: t + drag.off });
+    send({ tune_hz: t, view_hz: drag.band ? v.c : t + drag.off });
   });
   const end = (e) => {
     if (!drag) return;
@@ -1363,6 +1389,7 @@ for (const id of ["specOverlay", "wfOverlay"]) {
       else tune(xToFreq(e.clientX - r.left, r.width), true);
     }
     if (drag.moved && !drag.bw) viewLocalAt = Date.now();
+    if (drag.band && drag.moved) cv.style.cursor = "grab";
     drag = null;
     if (cv.hasPointerCapture(e.pointerId)) cv.releasePointerCapture(e.pointerId);
     cv.parentElement.classList.remove("dragging");
@@ -1430,12 +1457,40 @@ function renderGain() {
   renderVfoDisplays();
 }
 
+const spurShiftText = (hz) => `${hz > 0 ? "+" : ""}${hz} Hz`;
+
+/** LEARN changes this on the server at any time, so it is drawn with every status. */
+function renderSpurInfo() {
+  $("spurKey").classList.toggle("on", !!st.spur_on);
+  $("spurOn").checked = !!st.spur_on;
+  $("spurHz").disabled = $("spurEdge").disabled = $("spurShift").disabled = $("spurDb").disabled = !st.spur_on;
+  $("spurLearn").disabled = !!st.spur_learning;
+  $("spurClear").disabled = !st.spur_count;
+  $("spurInfo").textContent = st.spur_learning ? "learning…"
+    : st.spur_found === 0 ? `none found · ${st.spur_count} stored` : `${st.spur_count} lines stored`;
+}
+
 function renderSettings() {
   renderGain();
   $("sampleRate").innerHTML = st.sample_rates.map((r) =>
     `<option value="${r}">${(r / 1e6).toLocaleString(LOCALE)} MHz</option>`).join("");
   $("sampleRate").value = String(st.sample_rate);
   $("ppm").value = st.ppm;
+  $("dcRemove").checked = st.dc_remove !== false;
+  $("dcHz").value = st.dc_hz || 0;
+  $("dcHz").disabled = $("dcDb").disabled = st.dc_remove === false;
+  $("spurHz").value = st.spur_hz;
+  $("spurDb").value = st.spur_db;
+  $("spurEdge").value = st.spur_edge;
+  $("spurShift").value = st.spur_shift;
+  $("spurShiftText").textContent = spurShiftText(st.spur_shift);
+  $("spurHzText").textContent = `${st.spur_hz} Hz`;
+  $("spurEdgeText").textContent = `${st.spur_edge} Hz`;
+  $("spurDbText").textContent = `${st.spur_db} dB`;
+  renderSpurInfo();
+  $("dcDb").value = st.dc_db ?? 60;
+  $("dcDbText").textContent = `${st.dc_db ?? 60} dB`;
+  $("dcHzText").textContent = st.dc_hz ? `${st.dc_hz} Hz` : "peak only";
   $("lo").value = st.lo_offset_hz / 1e6;
   $("upconv").value = st.upconv;
   // The VFO has a fixed dongle (by serial number) and upconverter wiring: the dongle selection is hidden.
@@ -1643,6 +1698,54 @@ for (const kind of Object.keys(PASS)) {
   });
 }
 
+$("dcRemove").addEventListener("change", () => {
+  st.dc_remove = $("dcRemove").checked;
+  $("dcHz").disabled = $("dcDb").disabled = !st.dc_remove;
+  send({ dc_remove: st.dc_remove });
+});
+$("dcHz").addEventListener("input", () => {
+  st.dc_hz = Number($("dcHz").value);
+  $("dcHzText").textContent = st.dc_hz ? `${st.dc_hz} Hz` : "peak only";
+  send({ dc_hz: st.dc_hz });
+});
+function setSpurOn(on) {
+  st.spur_on = on;
+  renderSpurInfo();
+  send({ spur_on: on });
+}
+$("spurOn").addEventListener("change", () => setSpurOn($("spurOn").checked));
+$("spurKey").addEventListener("click", () => { if (st) setSpurOn(!st.spur_on); });
+$("spurHz").addEventListener("input", () => {
+  st.spur_hz = Number($("spurHz").value);
+  $("spurHzText").textContent = `${st.spur_hz} Hz`;
+  send({ spur_hz: st.spur_hz });
+});
+$("spurEdge").addEventListener("input", () => {
+  st.spur_edge = Number($("spurEdge").value);
+  $("spurEdgeText").textContent = `${st.spur_edge} Hz`;
+  send({ spur_edge: st.spur_edge });
+});
+$("spurShift").addEventListener("input", () => {
+  st.spur_shift = Number($("spurShift").value);
+  $("spurShiftText").textContent = spurShiftText(st.spur_shift);
+  send({ spur_shift: st.spur_shift });
+});
+$("spurDb").addEventListener("input", () => {
+  st.spur_db = Number($("spurDb").value);
+  $("spurDbText").textContent = `${st.spur_db} dB`;
+  send({ spur_db: st.spur_db });
+});
+$("spurLearn").addEventListener("click", () => {
+  st.spur_learning = true;
+  renderSpurInfo();
+  send({ spur_learn: true });
+});
+$("spurClear").addEventListener("click", () => send({ spur_clear: true }));
+$("dcDb").addEventListener("input", () => {
+  st.dc_db = Number($("dcDb").value);
+  $("dcDbText").textContent = `${st.dc_db} dB`;
+  send({ dc_db: st.dc_db });
+});
 $("rtlAgc").addEventListener("change", () => {
   st.rtl_agc = $("rtlAgc").checked;
   send({ rtl_agc: st.rtl_agc });
@@ -1809,7 +1912,7 @@ function restoreBodyTab() {
 function guessBodyTab() {
   if (!bodyTabGuess) return;
   bodyTabGuess = false;
-  const any = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].some((id) => $(id).checked) || !!(st && (st.dab || st.mode === "DSD"));
+  const any = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].some((id) => $(id).checked) || !!(st && (st.dab || st.ism || st.mode === "DSD"));
   setBodyTab(any ? "dec" : "scope");
 }
 
@@ -1825,7 +1928,7 @@ function setBodyTab(tab, save = true) {
 /** Number of enabled decoders on the tab and a text when none is enabled. */
 function renderDecTab() {
   // by the checkboxes – valid right after the click, even before the server confirms the state
-  const n = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].filter((id) => $(id).checked).length + (st && st.dab ? 1 : 0) + (st && st.mode === "DSD" ? 1 : 0);
+  const n = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].filter((id) => $(id).checked).length + (st && st.dab ? 1 : 0) + (st && st.ism ? 1 : 0) + (st && st.mode === "DSD" ? 1 : 0);
   $("decCount").textContent = n ? `(${n})` : "";
   $("decEmpty").hidden = n > 0;
 }
@@ -1852,21 +1955,22 @@ setBodyTab(bodyTab, false);
 
 const ACARS_MAX_ROWS = 300;
 
-let linkFreqs = { acars: [], vdl2Center: 0, vdl2Rate: 0, vdl2Freqs: [] };
+let linkFreqs = { acars: [], vdl2Center: 0, vdl2Rate: 0, vdl2RegionFreqs: {} };
 let linkShown = null;
 
 /** Band buttons, title and notes of the ACARS and CPDLC cards by the active link:
- *  ACARS = the classic channels, VDL2 = one centre button (all VDL2 channels are received at once). */
+ *  ACARS = the classic channels, VDL2 = one centre button (all channels of the region are received at once) and the region. */
 function renderLinkBands() {
   const vdl2 = !!(st && st.vdl2);
   if (vdl2 === linkShown) return;
   linkShown = vdl2;
   const f = linkFreqs;
   const html = vdl2
-    ? `<button data-vdl2="1" title="VDL2 centre ${fmtMHz(f.vdl2Center, 3)} MHz, 2.1 MS/s: receives ` +
-      `${f.vdl2Freqs.map((x) => fmtMHz(x, 3)).join(", ")} MHz at once">${fmtMHz(f.vdl2Center, 3)}</button>`
+    ? `<button data-vdl2="1">${fmtMHz(f.vdl2Center, 3)}</button>` +
+      `<button data-region="eu">EU</button><button data-region="us">US</button>`
     : f.acars.map((x) => `<button data-f="${x}" title="${fmtMHz(x, 3)} MHz AM">${fmtMHz(x, 3)}</button>`).join("");
   $("acarsBands").innerHTML = html;
+  renderVdl2Region();
   $("acarsTitle").textContent = vdl2 ? "VDL2" : "ACARS";
   for (const el of document.querySelectorAll("#acarsCard [data-link]")) {
     el.hidden = el.dataset.link !== (vdl2 ? "vdl2" : "acars");
@@ -1874,10 +1978,29 @@ function renderLinkBands() {
   renderAcarsFilter();
 }
 
+/** EU / US buttons and the tooltips with the channels of the VDL2 regions. */
+function renderVdl2Region() {
+  if (!st) return;
+  const mhz = (r) => (linkFreqs.vdl2RegionFreqs[r] || []).map((x) => fmtMHz(x, 3)).join(", ");
+  for (const b of document.querySelectorAll("#acarsBands [data-region]")) {
+    b.classList.toggle("active", st.vdl2_region === b.dataset.region);
+    b.title = `Decode the ${b.dataset.region.toUpperCase()} channels: ${mhz(b.dataset.region)} MHz`;
+  }
+  const c = document.querySelector("#acarsBands [data-vdl2]");
+  if (c) c.title = `VDL2 centre ${fmtMHz(linkFreqs.vdl2Center, 3)} MHz, 2.1 MS/s: receives ${mhz(st.vdl2_region)} MHz at once`;
+}
+
 /** Click on a band button in the ACARS card. */
 async function onLinkBand(e) {
-  const b = e.target.closest("[data-f], [data-vdl2]");
+  const b = e.target.closest("[data-f], [data-vdl2], [data-region]");
   if (!b || !st) return;
+  if (b.dataset.region) {                      // VDL2 channels of one region
+    if (b.dataset.region === st.vdl2_region) return;
+    st.vdl2_region = b.dataset.region;
+    renderVdl2Region();
+    send({ vdl2_region: st.vdl2_region });
+    return;
+  }
   if (b.dataset.vdl2) {                        // re-centre the VFO for VDL2
     const f = linkFreqs;
     st.mode = "AM";
@@ -1921,6 +2044,93 @@ function decodedBlock(c) {
     `<span class="type-tag t-${kind}">${name}</span>`];
 }
 
+// ---------- scroll pause: a click on a message holds the list still, the mouse wheel over the list resumes ----------
+
+let acarsPausedRow = null;    // the marked row; null = list runs normally
+
+const acarsBox = () => $("acarsRows").closest(".ft8-table");
+
+/** Mark the row and hold the list still. New rows still come in above it (hidden from view). */
+function acarsPause(tr) {
+  acarsPausedRow?.classList.remove("picked");
+  acarsPausedRow = tr;
+  tr.classList.add("picked");
+  acarsBox().classList.add("paused");
+  $("acarsPaused").hidden = false;
+}
+
+/** Back to the running list: newest messages at the top, rows kept while paused trimmed to the normal limit. */
+function acarsResume() {
+  if (!acarsPausedRow) return;
+  acarsPausedRow.classList.remove("picked");
+  acarsPausedRow = null;
+  const box = acarsBox();
+  box.classList.remove("paused");
+  $("acarsPaused").hidden = true;
+  box.scrollTop = 0;
+  const tb = $("acarsRows");
+  if (tb.rows.length > ACARS_MAX_ROWS) {
+    while (tb.rows.length > ACARS_MAX_ROWS) tb.lastChild.remove();
+    renderAcarsFilter();
+  }
+}
+
+/** Run a change of the table; while paused, the marked row stays at the same place on the screen. */
+function acarsKeepView(change) {
+  const tr = acarsPausedRow;
+  if (!tr) { change(); return; }
+  const y = tr.offsetTop;
+  change();
+  if (acarsPausedRow === tr) acarsBox().scrollTop += tr.offsetTop - y;
+}
+
+acarsBox().addEventListener("wheel", (e) => {
+  if (!acarsPausedRow) return;
+  e.preventDefault();     // this notch only resumes; the next ones scroll
+  acarsResume();
+}, { passive: false });
+
+// A new message waits here until its row is complete: ADS-B answer, then the flag image.
+const ACARS_HOLD_MS = 15000;   // no ADS-B answer by then (longer than the 2 x 6 s of the server): shown without it, and filled in if it still comes
+const ACARS_FLAG_MS = 3000;    // the same for the flag image
+const acarsHeld = new Map();   // message id -> { m, timer }
+
+function acarsHex(m, ac) { return m.atn ? m.reg : ac && ac.found ? ac.hex : ""; }
+function flagUrl(cc) { return `https://flagcdn.com/w40/${cc}.png`; }
+
+function acarsReceive(m) {
+  const h = { m, timer: null };
+  acarsHeld.set(m.id, h);
+  if (m.lookup && !m.ac) h.timer = setTimeout(() => acarsRelease(m.id), ACARS_HOLD_MS);
+  else acarsRelease(m.id);
+}
+
+/** ADS-B done: load the flag, then show the row. Rows keep the order of the messages (see addAcars). */
+function acarsRelease(id) {
+  const h = acarsHeld.get(id);
+  if (!h) return;
+  clearTimeout(h.timer);
+  const show = () => {
+    if (acarsHeld.get(id) !== h) return;     // cleared, or already shown
+    clearTimeout(h.timer);
+    acarsHeld.delete(id);
+    const tr = $("acarsRows").querySelector(`tr[data-id="${id}"]`);   // came with the history in the meantime
+    if (tr) { tr._msg.ac = h.m.ac; acarsKeepView(() => renderAcarsAircraft(tr, h.m.ac)); } else addAcars(h.m, true);
+  };
+  const hex = acarsHex(h.m, h.m.ac);
+  const cty = hex ? icaoCountry(hex) : null;
+  if (!cty || !cty.cc) { show(); return; }
+  h.timer = setTimeout(show, ACARS_FLAG_MS);
+  h.img = new Image();                       // in the browser cache for the row, which then has it at once
+  h.img.onload = h.img.onerror = show;
+  h.img.src = flagUrl(cty.cc);
+}
+
+function acarsDropHeld() {
+  for (const h of acarsHeld.values()) clearTimeout(h.timer);
+  acarsHeld.clear();
+}
+
 /** One row of the ACARS card: an ACARS message (with decoded CPDLC / ADS-C inside) or an ATN message. */
 function addAcars(m, fresh) {
   const tb = $("acarsRows");
@@ -1957,11 +2167,17 @@ function addAcars(m, fresh) {
   const kind = m.cpdlc ? decodedBlock(m.cpdlc)[0] : "acars";
   tr.dataset.kind = kind === "atn" ? "cpdlc" : kind;    // filter: CPDLC = FANS and ATN CPDLC
   tr.dataset.loc = m.vdl2?.gs_loc || "-";
-  tr._lookupDone = !fresh;      // rows from the history: the lookup is long over, no waiting
   renderAcarsAircraft(tr, m.ac);
-  tb.prepend(tr);
-  while (tb.rows.length > ACARS_MAX_ROWS) tb.lastChild.remove();
-  renderAcarsFilter();
+  acarsKeepView(() => {
+    // newest on top by message number: a held row may come after a newer one that had nothing to wait for
+    let next = tb.firstElementChild;
+    while (next && Number(next.dataset.id) > m.id) next = next.nextElementSibling;
+    tb.insertBefore(tr, next);
+    // while paused the rows under the marked one stay in view: twice the limit, the rest is trimmed on resume
+    const max = acarsPausedRow ? ACARS_MAX_ROWS * 2 : ACARS_MAX_ROWS;
+    while (tb.rows.length > max) (tb.lastChild === acarsPausedRow ? acarsPausedRow.previousSibling : tb.lastChild).remove();
+    renderAcarsFilter();
+  });
 }
 
 // ---------- message filter (tags at the top of the card) ----------
@@ -1992,10 +2208,13 @@ function renderAcarsFilter() {
   const rows = $("acarsRows").rows;
   const loc = linkShown ? acarsLoc : "";
   let shown = 0;
-  for (const tr of rows) {
-    tr.hidden = (acarsFilter.size > 0 && !acarsFilter.has(tr.dataset.kind)) || (loc !== "" && tr.dataset.loc !== loc);
-    if (!tr.hidden) shown++;
-  }
+  acarsKeepView(() => {
+    for (const tr of rows) {
+      tr.hidden = (acarsFilter.size > 0 && !acarsFilter.has(tr.dataset.kind)) || (loc !== "" && tr.dataset.loc !== loc);
+      if (!tr.hidden) shown++;
+    }
+  });
+  if (acarsPausedRow?.hidden) acarsResume();     // the marked message was filtered out
   renderAcarsLocOptions();
   const on = acarsFilter.size > 0 || loc !== "";
   $("acarsFilter").classList.toggle("on", acarsFilter.size > 0);
@@ -2025,8 +2244,9 @@ $("acarsLoc").addEventListener("change", (e) => {
 
 /** ATN message (European CPDLC over VDL2, no ACARS around it) as a row of the ACARS card. */
 function addAtn(c, fresh) {
-  addAcars({ id: c.id, time: c.time, freq_hz: c.freq_hz, link: c.link, vdl2: c.vdl2, reg: c.reg, flight: "", label: "",
-    dir: c.dir, desc: c.imi_desc, text: "", crc_ok: true, cpdlc: c, ac: c.ac, atn: true }, fresh);
+  const m = { id: c.id, time: c.time, freq_hz: c.freq_hz, link: c.link, vdl2: c.vdl2, reg: c.reg, flight: "", label: "",
+    dir: c.dir, desc: c.imi_desc, text: "", crc_ok: true, cpdlc: c, ac: c.ac, atn: true, lookup: c.lookup };
+  if (fresh) acarsReceive(m); else addAcars(m, false);
 }
 
 const SQUAWK_ALERT = new Set(["7500", "7600", "7700"]);   // these squawks get a red frame around the row
@@ -2042,12 +2262,6 @@ function renderAcarsAircraft(tr, ac) {
   const regText = m.atn && ac && ac.found && ac.reg ? ac.reg : m.reg;
   let reg = m.atn ? `<span title="24-bit ICAO address (ATN message)">${esc(m.reg)}</span>` : esc(m.reg), flt = esc(m.flight);
   let sqkH = "", actH = "", modelH = "", flH = "", spdH = "";
-  // ATN: wait for the ADS-B lookup instead of showing the ICAO address and then rewriting it;
-  // without an answer in 15 s the ICAO address is shown after all
-  if (m.atn && !ac && !tr._lookupDone) {
-    if (!tr._lookupTimer) tr._lookupTimer = setTimeout(() => { tr._lookupDone = true; if (!tr._msg.ac) renderAcarsAircraft(tr, null); }, 15000);
-    reg = `<span class="ac-sub none" title="ICAO ${esc(m.reg)}: looking up on ADS-B">…</span>`;
-  }
   if (ac && ac.found && ac.hex) {
     reg = link(`https://globe.adsb.fi/?icao=${encodeURIComponent(ac.hex)}`, regText, "Show on the map (adsb.fi)");
     if (m.flight || ac.callsign)
@@ -2074,22 +2288,24 @@ function renderAcarsAircraft(tr, ac) {
   tr.querySelector("td.spd").innerHTML = spdH;
   // country of registration from the 24-bit ICAO address (ATN: in the message; ACARS: from the ADS-B lookup),
   // the same way the adsb.fi map shows it
-  const hex = m.atn ? m.reg : ac && ac.found ? ac.hex : "";
+  const hex = acarsHex(m, ac);
   tr.querySelector("td.icao").textContent = (hex || "").toUpperCase();
-  const cty = hex && !(m.atn && !ac && !tr._lookupDone) ? icaoCountry(hex) : null;   // ATN: together with the lookup
+  const cty = hex ? icaoCountry(hex) : null;
   tr.querySelector("td.cty").innerHTML = !cty ? ""
-    : cty.cc ? `<span class="cflag" title="${esc(cty.name)}"><img src="https://flagcdn.com/w40/${cty.cc}.png" alt="${cty.cc.toUpperCase()}"` +
+    : cty.cc ? `<span class="cflag" title="${esc(cty.name)}"><img src="${flagUrl(cty.cc)}" alt="${cty.cc.toUpperCase()}"` +
       ` onerror="this.replaceWith(this.alt)"><span>${cty.cc.toUpperCase()}</span></span>`
     : `<span class="muted" title="${esc(cty.name)}">—</span>`;
 }
 
 function onAcarsInfo(d) {
+  const held = acarsHeld.get(d.id);
+  if (held) { held.m.ac = d.ac; acarsRelease(d.id); return; }
   // the same aircraft data for the ACARS row and the CPDLC row of the message
   for (const tb of ["acarsRows"]) {
     const tr = $(tb).querySelector(`tr[data-id="${d.id}"]`);
     if (!tr) continue;
     tr._msg.ac = d.ac;
-    renderAcarsAircraft(tr, d.ac);
+    acarsKeepView(() => renderAcarsAircraft(tr, d.ac));
   }
 }
 
@@ -2120,12 +2336,14 @@ function renderVdl2Info(d) {
   el.hidden = !i.enabled;
   el.classList.toggle("err", !!i.error);
   if (i.error) { el.textContent = `VDL2: ${i.error}`; return; }
-  const ch = (i.channels || []).map((f) => fmtMHz(f, 3)).join(" ");
-  el.textContent = `VDL2${ch ? " " + ch : ""}${i.frames ? ` · ${i.frames} frames` : ""}`;
+  const n = (i.channels || []).length;
+  el.title = n ? `Decoded channels: ${i.channels.map((f) => fmtMHz(f, 3)).join(", ")} MHz` : "";
+  el.textContent = `VDL2${n ? ` ${n} channels` : ""}${i.frames ? ` · ${i.frames} frames` : ""}`;
 }
 
 $("vdl2On").addEventListener("change", () => {
   st.vdl2 = $("vdl2On").checked;
+  if (st.vdl2) st.ism = false;
   if (st.vdl2 && st.acars) { st.acars = false; $("acarsOn").checked = false; }
   renderAcarsInfo();
   renderLinkBands();
@@ -2153,6 +2371,7 @@ function dabOn() {
   if (!st.dab) {
     st.dab = true;
     if (st.acars || st.vdl2) { st.acars = st.vdl2 = false; $("acarsOn").checked = $("vdl2On").checked = false; }
+    st.ism = false;
     send({ dab: true });
   }
   renderDab(st);
@@ -2177,11 +2396,78 @@ function renderDabInfo(d) {
   if (i.error) { el.textContent = i.error; return; }
   const parts = [];
   if (i.freq_hz) parts.push(`${fmtMHz(i.freq_hz, 3)} MHz`);
-  if (i.snr != null) parts.push(`SNR ${Number(i.snr).toFixed(1)} dB`);
   if (i.enabled && i.connected === false) parts.push("starting welle-cli…");
   else if (i.enabled && i.on_channel === false) parts.push("tuning…");
-  if (i.utc) parts.push(`${i.utc} UTC`);
   el.textContent = parts.join(" · ");
+}
+
+const dabHue = (t) => [...String(t)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+/** Two letters for a station without a picture: "Radio Rock" -> RR, "Radio_FM" -> RF. */
+const dabInitials = (t) => String(t).split(/[\s_-]+/).filter(Boolean).slice(0, 2).map((w) => w[0].toUpperCase()).join("");
+const dabRow = (k, v) => (v === "" || v == null ? "" : `<div class="dab-row"><span>${k}</span><b>${dabEsc(v)}</b></div>`);
+const dabRegion = new Intl.DisplayNames(["en"], { type: "region" });
+
+function dabShowArt(label) {
+  const el = $("dabArtMono");
+  el.textContent = label ? dabInitials(label) : "";
+  el.style.setProperty("--h", dabHue(label || ""));
+}
+
+/** Station of this channel to play: the last one selected (null = it was stopped by hand). */
+function dabRemembered(channel) { return ((st && st.dab_sids) || {})[channel] || null; }
+
+function dabRemember(sid) {
+  const channel = dabLastInfo.channel || st.dab_channel;
+  st.dab_sids = { ...(st.dab_sids || {}), [channel]: sid };
+  send({ dab_sid: sid });
+}
+
+function renderDabSide(m, cur) {
+  const snr = m.snr == null ? null : Number(m.snr);
+  const quality = snr == null ? ["", ""] : snr >= 12 ? ["good", "#3cf07c"] : snr >= 8 ? ["usable", "#ffd84a"] : ["weak", "#ff7b6b"];
+  $("dabSignal").innerHTML = (snr == null ? `<div class="dab-row"><span>No signal yet</span></div>`
+    : `<div class="dab-snr" style="--q:${quality[1]}"><b>${snr.toFixed(1)}</b> dB SNR <span>${quality[0]}</span></div>` +
+      `<div class="dab-gauge" style="--q:${quality[1]}"><i style="width:${Math.max(0, Math.min(100, snr * 4))}%"></i></div>`) +
+    dabRow("Frequency", m.freq_hz ? `${fmtMHz(m.freq_hz, 3)} MHz` : "") +
+    dabRow("Correction", m.freq_corr != null ? `${Math.round(m.freq_corr)} Hz` : "") +
+    dabRow("FIC CRC errors", m.fic_errors);
+  $("dabEnsInfo").innerHTML = dabRow("Name", m.ensemble) +
+    dabRow("Country", m.country ? dabRegion.of(m.country.toUpperCase()) : "") +
+    dabRow("ID", m.ensemble_id) +
+    dabRow("Stations", m.services.length || "") +
+    dabRow("Local time", m.local) +
+    dabRow("UTC", m.utc);
+  const used = m.services.reduce((a, x) => a + (x.cu || 0), 0);
+  $("dabCapacity").parentElement.hidden = !used;
+  $("dabCapacity").innerHTML = !used ? "" :
+    `<div class="dab-cap-bar">` + m.services.filter((x) => x.cu).map((x) =>
+      `<i class="${x.sid === dabSid ? "on" : ""}" style="flex:${x.cu} 0 0;--h:${dabHue(x.label || x.sid)}" title="${dabEsc(x.label || x.sid)}: ${x.bitrate} kbit/s, ${x.cu} CU"></i>`).join("") +
+    `<span style="flex:${Math.max(0, m.capacity_cu - used)} 0 0"></span></div>` +
+    dabRow("Used", `${Math.round(used / m.capacity_cu * 100)} % (${used} of ${m.capacity_cu} CU)`) +
+    (cur ? dabRow("This station", `${Math.round((cur.cu || 0) / m.capacity_cu * 100)} %`) : "");
+  const flag = $("dabFlag");
+  if (flag.dataset.cc !== (m.country || "")) {
+    flag.dataset.cc = m.country || "";
+    flag.hidden = true;
+    if (m.country) flag.src = flagUrl(m.country);
+  }
+}
+
+function renderDabNow(cur) {
+  const label = cur.label || cur.sid;
+  $("dabNowLabel").textContent = label;
+  dabShowArt(label);
+  const chips = [cur.pty && `<span class="pty">${dabEsc(cur.pty)}</span>`, cur.type && `<span>${dabEsc(cur.type)}</span>`,
+    cur.bitrate && `<span>${cur.bitrate} kbit/s</span>`, cur.language && `<span>${dabEsc(cur.language)}</span>`,
+    cur.protection && `<span title="Error protection of the subchannel">${dabEsc(cur.protection)}</span>`];
+  $("dabChips").innerHTML = chips.filter(Boolean).join("");
+  $("dabNowMeta").textContent = cur.mode || "buffering…";
+  $("dabDls").textContent = cur.dls || "";
+  $("dabDlsBox").hidden = !cur.dls;
+  const e = cur.errors || {};
+  const errs = (e.frameerrors || 0) + (e.rserrors || 0) + (e.aacerrors || 0);
+  $("dabHealth").innerHTML = (errs ? `<span class="bad">●</span> errors: frame ${e.frameerrors} · RS ${e.rserrors} · AAC ${e.aacerrors}` : `<span class="ok">●</span> no decoding errors`) +
+    ` · SID ${dabEsc(cur.sid)}` + (cur.subch != null ? ` · subchannel ${cur.subch}` : "");
 }
 
 /** Stops polling and audio (DAB off, or another VFO selected). */
@@ -2193,9 +2479,9 @@ function stopDab() {
   $("dabServices")._key = null;
   $("dabServices").innerHTML = `<div class="ft8-empty">Searching the ensemble…</div>`;
   $("dabEnsemble").textContent = "";
-  $("dabNowLabel").textContent = "–";
-  $("dabNowMeta").textContent = "";
-  $("dabDls").textContent = "";
+  $("dabFlag").hidden = true;
+  $("dabFlag").dataset.cc = "";
+  for (const id of ["dabSignal", "dabEnsInfo", "dabCapacity"]) $(id).innerHTML = "";
 }
 
 async function pollDab() {
@@ -2208,24 +2494,28 @@ async function pollDab() {
   renderDabInfo(m);
   $("dabEnsemble").textContent = m.ensemble || "";
   const list = $("dabServices");
-  const key = m.services.map((x) => x.sid + x.label + x.audio).join("|") + "#" + !!m.ensemble;
+  const key = m.services.map((x) => [x.sid, x.label, x.audio, x.pty, x.type, x.bitrate, x.encrypted].join()).join("|") + "#" + !!m.ensemble;
   if (list._key !== key) {
     list._key = key;
     list.innerHTML = m.services.length
-      ? m.services.map((x) => `<button data-sid="${x.sid}" ${x.audio ? "" : "disabled"} title="${dabEsc(x.pty || "")} · SID ${x.sid}">` +
-        `<span>${dabEsc(x.label || x.sid)}</span><small>${x.type || ""}${x.bitrate ? " " + x.bitrate + "k" : ""}</small></button>`).join("")
+      ? m.services.map((x) => {
+        const label = x.label || x.sid;
+        return `<button class="dab-st" data-sid="${x.sid}" data-label="${dabEsc(label)}" ${x.audio && !x.encrypted ? "" : "disabled"} title="${dabEsc(label)} · SID ${x.sid}${x.encrypted ? " · encrypted" : ""}">` +
+          `<i class="dab-mono" style="--h:${dabHue(label)}">${dabEsc(dabInitials(label))}</i>` +
+          `<span class="dab-st-text"><b>${dabEsc(label)}</b><small>${dabEsc(x.pty || (x.audio ? "Radio" : "Data"))}</small></span>` +
+          `<span class="dab-eq"><i></i><i></i><i></i></span>` +
+          `<span class="dab-st-tag">${x.type ? `<em>${x.type}</em>` : ""}${x.bitrate ? `<small>${x.bitrate} kbit/s</small>` : ""}</span></button>`;
+      }).join("")
       : `<div class="ft8-empty">${m.ensemble ? "No stations yet…" : "Searching the ensemble… (no DAB signal on this channel?)"}</div>`;
   }
   for (const b of list.querySelectorAll("button")) b.classList.toggle("on", b.dataset.sid === dabSid);
+  // the last station of this channel comes back by itself (after a restart, another VFO, another channel)
+  const wanted = !dabSid && m.channel === st.dab_channel && dabRemembered(m.channel);
+  if (wanted && m.services.some((x) => x.sid === wanted && x.audio && !x.encrypted)) dabPlay(wanted);
   const cur = m.services.find((x) => x.sid === dabSid);
+  renderDabSide(m, cur);
   if (!cur) return;
-  $("dabNowLabel").textContent = cur.label || cur.sid;
-  const e = cur.errors || {};
-  const errs = (e.frameerrors || 0) + (e.rserrors || 0) + (e.aacerrors || 0);
-  $("dabNowMeta").textContent = [cur.pty, cur.type, cur.bitrate && `${cur.bitrate} kbit/s`, cur.mode,
-    cur.samplerate && `${cur.samplerate / 1000} kHz`, errs && `errors: frame ${e.frameerrors} · RS ${e.rserrors} · AAC ${e.aacerrors}`]
-    .filter(Boolean).join(" · ");
-  $("dabDls").textContent = cur.dls || "";
+  renderDabNow(cur);
   if (cur.mot_time && cur.mot_time !== dabMotTime) {
     dabMotTime = cur.mot_time;
     $("dabSlide").src = `${base}/api/dab/slide/${cur.sid}?t=${cur.mot_time}`;
@@ -2238,9 +2528,16 @@ function dabPlay(sid) {
   dabMotTime = 0;
   $("dabSlide").hidden = true;
   $("dabSlide").removeAttribute("src");
+  $("dabGlow").style.backgroundImage = "";
   if (dabEl) { dabEl.pause(); dabEl.removeAttribute("src"); dabEl.load(); }
   for (const b of $("dabServices").querySelectorAll("button")) b.classList.toggle("on", b.dataset.sid === sid);
-  if (!sid) return;
+  if (!sid) {
+    $("dabNowLabel").textContent = "Select a station";
+    for (const id of ["dabNowMeta", "dabDls", "dabHealth", "dabChips"]) $(id).textContent = "";
+    $("dabDlsBox").hidden = true;
+    dabShowArt("");
+    return;
+  }
   const ctx = audioContext();
   if (!dabEl) {
     dabEl = new Audio();
@@ -2248,26 +2545,51 @@ function dabPlay(sid) {
     ctx.createMediaElementSource(dabEl).connect(audioTap);
   }
   dabEl.src = `${vbase}/api/dab/audio/${sid}`;
-  dabEl.play().catch(() => {});
+  dabEl.play().catch(() => {
+    // the browser allows sound only after the first click or key on the page (a remembered station after a reload)
+    const retry = () => { if (dabSid === sid) dabEl.play().catch(() => {}); };
+    for (const ev of ["pointerdown", "keydown"]) document.addEventListener(ev, retry, { capture: true, once: true });
+  });
   ctx.resume();
-  const b = $("dabServices").querySelector(`[data-sid="${sid}"] span`);
-  $("dabNowLabel").textContent = b ? b.textContent : sid;
+  const b = $("dabServices").querySelector(`[data-sid="${sid}"]`);
+  const label = b ? b.dataset.label : sid;
+  $("dabNowLabel").textContent = label;
+  dabShowArt(label);
+  $("dabChips").textContent = "";
   $("dabNowMeta").textContent = "buffering…";
   $("dabDls").textContent = "";
+  $("dabDlsBox").hidden = true;
 }
 
-$("dabSlide").addEventListener("load", () => { $("dabSlide").hidden = false; });
+$("dabSlide").addEventListener("load", () => {
+  $("dabSlide").hidden = false;
+  $("dabGlow").style.backgroundImage = `url("${$("dabSlide").src}")`;
+});
+$("dabFlag").addEventListener("load", () => { $("dabFlag").hidden = false; });
+$("dabFlag").addEventListener("error", () => { $("dabFlag").hidden = true; });
 $("dabSlide").addEventListener("error", () => { $("dabSlide").hidden = true; });
 $("dabServices").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-sid]");
-  if (b && !b.disabled) dabPlay(b.dataset.sid === dabSid ? null : b.dataset.sid);
+  if (!b || b.disabled) return;
+  const sid = b.dataset.sid === dabSid ? null : b.dataset.sid;
+  dabPlay(sid);
+  dabRemember(sid);
 });
-$("dabChannel").addEventListener("change", () => {
-  dabPlay(null);
-  $("dabServices")._key = null;
-  st.dab_channel = $("dabChannel").value;
-  send({ dab_channel: st.dab_channel });
-});
+/** Goes to another DAB channel: the station of the old one stops, the last station of the new one comes back in pollDab. */
+function dabSetChannel(ch) {
+  if (st.dab && ch !== st.dab_channel) {
+    dabPlay(null);
+    $("dabServices")._key = null;
+  }
+  st.dab_channel = ch;
+  send({ dab_channel: ch });
+}
+$("dabChannel").addEventListener("change", () => dabSetChannel($("dabChannel").value));
+/** A DAB memory: DAB on, on its channel. Where DAB cannot run, dabOn says why. */
+function dabRecall(ch) {
+  if (st.driver !== "lime" && !st.chain_owner) dabSetChannel(ch);
+  dabOn();
+}
 /** DAB off (DAB key again, another band button, or OFF in the card): the previous sample rate comes back. */
 function dabOff() {
   st.dab = false;
@@ -2280,11 +2602,15 @@ $("dabKey").addEventListener("click", () => { if (st) { if (st.dab) dabOff(); el
 
 $("acarsBands").addEventListener("click", onLinkBand);
 $("acarsRows").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr");
+  if (tr && !e.target.closest("a")) acarsPause(tr);     // links (callsign, flight) only open the map
   const td = e.target.closest("td.msg.long");
   if (!td || e.target.closest(".atn-detail") || String(getSelection())) return;   // selecting text in the detail
   td.classList.toggle("open");
 });
 $("acarsClear").addEventListener("click", () => {
+  acarsDropHeld();
+  acarsResume();
   for (const api of ["/api/acars", "/api/cpdlc"]) {
     fetch(vbase + api, { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"action":"clear"}' });
   }
@@ -2596,6 +2922,103 @@ $("cwTune").addEventListener("click", () => {
   if (changes.mode) send(changes);
 });
 
+// ---------- ISM: 433 / 868 MHz devices (rtl_433; the VFO feeds it through rtl_tcp) ----------
+
+const ISM_MAX_ROWS = 300;
+const ISM_TITLE = $("ismKey").title;   // tooltip from index.html (replaced on LimeSDR and a chained VFO)
+let ismLast = {};   // the status sends only on/off and the error; the counts come from ismstate
+
+function ismRow(tr, m) {
+  const level = m.rssi == null ? "-" : `${Number(m.rssi).toFixed(1)} / ${Number(m.snr).toFixed(1)} dB`;
+  tr.innerHTML = `<td>${new Date(m.time * 1000).toISOString().slice(11, 19)}</td><td>${fmtMHz(m.freq_hz, 3)}</td>` +
+    `<td class="dev" title="${escHtml(m.model)}${m.protocol ? ` · rtl_433 protocol ${escHtml(m.protocol)}` : ""}">${escHtml(m.model)}</td>` +
+    `<td class="id" title="${escHtml(m.dev_id)}">${escHtml(m.dev_id || "-")}</td><td>${escHtml(m.channel || "-")}</td>` +
+    `<td title="${escHtml(m.mod)}">${level}</td>` +
+    `<td class="data" title="${escHtml(m.mic ? `Check: ${m.mic}` : "")}">${escHtml(m.text)}` +
+    `${m.n > 1 ? `<span class="rep" title="Same message received ${m.n} times in a row">×${m.n}</span>` : ""}</td>`;
+}
+
+function addIsm(m) {
+  const tb = $("ismRows");
+  let tr = tb.firstElementChild;
+  if (!tr || Number(tr.dataset.id) !== m.id) {
+    tr = document.createElement("tr");
+    tr.dataset.id = m.id;
+    tb.prepend(tr);
+    while (tb.rows.length > ISM_MAX_ROWS) tb.lastChild.remove();
+  }
+  ismRow(tr, m);
+  $("ismEmpty").hidden = true;
+}
+
+function ismReset() {
+  ismLast = {};
+  $("ismRows").innerHTML = "";
+  $("ismEmpty").hidden = false;
+}
+
+async function ismLoad() {
+  const v = active;
+  try {
+    const d = await fetch(vbase + "/api/ism").then((r) => r.json());
+    if (v !== active) return;
+    $("ismRows").innerHTML = "";
+    for (const m of d.messages) addIsm(m);
+    $("ismEmpty").hidden = d.messages.length > 0;
+    renderIsmInfo(d);
+  } catch { /* an older receiver without ISM */ }
+}
+
+function renderIsmInfo(d) {
+  const i = (ismLast = { ...ismLast, ...d });
+  const el = $("ismInfo");
+  el.classList.toggle("err", !!i.error);
+  if (i.error) { el.textContent = `ISM: ${i.error}`; return; }
+  el.textContent = !i.enabled ? "" : i.running === false ? "starting rtl_433…"
+    : `${i.count || 0} messages${i.dropped ? ` · ${i.dropped} blocks dropped` : ""}`;
+}
+
+function renderIsm(s) {
+  const on = !!s.ism;
+  $("ismCard").hidden = !on;
+  $("ismKey").classList.toggle("on", on);
+  const no = s.driver === "lime" || !!s.chain_owner;   // needs the raw samples of its own RTL dongle
+  $("ismKey").disabled = no;
+  $("ismKey").title = s.chain_owner ? `ISM needs its own dongle (this VFO shares the dongle of VFO ${s.chain_owner})`
+    : s.driver === "lime" ? "ISM is not supported on LimeSDR (RTL-SDR only)" : ISM_TITLE;
+  for (const b of $("ismBands").children) b.classList.toggle("active", Number(b.dataset.f) === s.center_hz);
+  renderIsmInfo({ enabled: on, error: s.ism_error });
+}
+
+function ismOn() {
+  st.ism = true;
+  if (st.acars || st.vdl2 || st.dab) { st.acars = st.vdl2 = st.dab = false; $("acarsOn").checked = $("vdl2On").checked = false; }
+  send({ ism: true });
+  renderIsm(st);
+  setBodyTab("dec");
+  renderDecTab();
+}
+
+/** ISM off (ISM key again, another band button, or OFF in the card): the previous sample rate comes back. */
+function ismOff() {
+  st.ism = false;
+  send({ ism: false });
+  renderIsm(st);
+  renderDecTab();
+}
+
+$("ismKey").addEventListener("click", () => { if (st) { if (st.ism) ismOff(); else ismOn(); } });
+$("ismOff").addEventListener("click", ismOff);
+$("ismBands").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-f]");
+  if (b && st) send({ ism_hz: Number(b.dataset.f) });
+});
+$("ismClear").addEventListener("click", () => {
+  fetch(vbase + "/api/ism", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"action":"clear"}' });
+  ismReset();
+  renderIsmInfo({ count: 0 });
+});
+
 // ---------- DSD: digital voice (a mode, not a DECODE key: it replaces the audio) ----------
 
 const DSD_MAX_ROWS = 300;
@@ -2739,15 +3162,66 @@ function openDrawer(id) {
     $(d).hidden = d !== id;
     $(key).classList.toggle("on", d === id);
   }
-  $("scrim").hidden = !id;
+  if (id) placeFloating[id]();
   if (id === "memCard") $("memSearch").focus();
 }
 for (const [key, d] of Object.entries(DRAWERS)) {
   $(key).addEventListener("click", () => openDrawer($(d).hidden ? d : null));
 }
-$("scrim").addEventListener("click", () => openDrawer(null));
 for (const b of document.querySelectorAll("[data-close]")) b.addEventListener("click", () => openDrawer(null));
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("scrim").hidden) openDrawer(null); });
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || [...Object.values(DRAWERS), "satCard"].every((d) => $(d).hidden)) return;
+  // the radio stays usable behind the window: Esc in its fields (frequency entry) must not close the window
+  if (e.target.closest("input, select, textarea") && !e.target.closest(".drawer")) return;
+  openDrawer(null);
+  showSat(false);
+});
+
+// A floating window is moved by its title bar; the place is remembered in the browser. It is inside the scaled
+// .stage, so everything here is in stage px (screen px / uiScale). The title bar always stays reachable, and
+// the window is only as tall as the space below its top edge (the rest of it scrolls). Returns the placing function.
+const FLOAT_KEEP_W = 160, FLOAT_KEEP_H = 100, FLOAT_MARGIN = 8;
+function makeFloating(win, storeKey) {
+  const head = win.querySelector(".drawer-head");
+  let pos = null;     // {x, y} once it has been moved, null = the place from the CSS
+  let drag = null;    // {dx, dy} from the top left corner of the window to the pointer
+  try { pos = JSON.parse(recall(storeKey)); } catch (e) { /* bad value: the default place */ }
+
+  function place() {
+    if (!pos || win.hidden) return;
+    const stage = $("stage");
+    const x = Math.max(FLOAT_KEEP_W - win.offsetWidth, Math.min(pos.x, stage.clientWidth - FLOAT_KEEP_W));
+    const y = Math.max(0, Math.min(pos.y, stage.clientHeight - FLOAT_KEEP_H));
+    win.style.left = `${x}px`;
+    win.style.right = "auto";
+    win.style.top = `${y}px`;
+    win.style.maxHeight = `${stage.clientHeight - y - FLOAT_MARGIN}px`;
+  }
+  head.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || e.target.closest("button")) return;
+    const r = win.getBoundingClientRect();
+    drag = { dx: (e.clientX - r.left) / uiScale, dy: (e.clientY - r.top) / uiScale };
+    head.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  head.addEventListener("pointermove", (e) => {
+    if (!drag) return;
+    pos = { x: e.clientX / uiScale - drag.dx, y: e.clientY / uiScale - drag.dy };
+    place();
+  });
+  for (const type of ["pointerup", "pointercancel"]) {
+    head.addEventListener(type, () => {
+      if (!drag) return;
+      drag = null;
+      if (!win.style.left) return;     // pressed without moving, it stays at the place from the CSS
+      pos = { x: parseFloat(win.style.left), y: parseFloat(win.style.top) };
+      store(storeKey, JSON.stringify(pos));
+    });
+  }
+  window.addEventListener("resize", place);
+  return place;
+}
+const placeFloating = Object.fromEntries(Object.values(DRAWERS).map((d) => [d, makeFloating($(d), `${d}Pos`)]));
 
 // Tabs of the SET window; the open one is remembered in the browser.
 function showSetTab(name) {
@@ -2762,7 +3236,256 @@ for (const b of document.querySelectorAll("[data-set-tab]")) {
   b.addEventListener("click", () => { showSetTab(b.dataset.setTab); store("setTab", b.dataset.setTab); });
 }
 // TX is left out here: its key is hidden until the state says the dongle can transmit.
-if (["audio", "display"].includes(recall("setTab"))) showSetTab(recall("setTab"));
+if (["audio", "display", "rotor"].includes(recall("setTab"))) showSetTab(recall("setTab"));
+
+// ---------- ROTOR tab of SET: K3NG rotor and the Gpredict link (rotor.py) ----------
+
+let rotorPortsFor = null;     // the address of the VFO the port list belongs to
+let rotorHoldUntil = 0;       // a message from a click stays this long, the regular update does not clear it
+
+function rotorShowError(text, hold) {
+  if (hold) rotorHoldUntil = Date.now() + 5000;
+  else if (Date.now() < rotorHoldUntil) return;
+  for (const id of ["rotorError", "satError"]) {
+    $(id).textContent = text || "";
+    $(id).hidden = !text;
+  }
+}
+
+async function rotorPost(body) {
+  try {
+    const res = await fetch(vbase + "/api/rotor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const info = await res.json();
+    if (!res.ok) { rotorShowError(info.error || "Error", true); return; }
+    rotorHoldUntil = 0;
+    renderRotor(info);
+  } catch (e) {
+    rotorShowError("Receiver is not reachable", true);
+  }
+}
+
+function fillRotorPorts(info) {
+  const sel = $("rotorPort");
+  sel.textContent = "";
+  const ports = info.ports || [];
+  const chosen = ports.find((p) => info.usb_serial && p.usb_serial === info.usb_serial) || ports.find((p) => p.device === info.device);
+  if (!chosen) sel.add(new Option(info.device ? `${info.device} (not found)` : "Choose a port", ""));
+  for (const p of ports) {
+    const opt = new Option(`${p.device} – ${p.description}${p.usb_serial ? ` (${p.usb_serial})` : ""}`, p.device);
+    opt.dataset.usbSerial = p.usb_serial;
+    sel.add(opt);
+  }
+  if (chosen) sel.value = chosen.device;
+}
+
+function renderRotor(info) {
+  $("rotorEnabled").checked = info.on;
+  $("rotorPos").textContent = info.az == null ? "–" : `AZ ${Math.round(info.az)}°  EL ${Math.round(info.el ?? 0)}°`;
+  $("rotorTarget").textContent = info.target
+    ? `Moving to AZ ${Math.round(info.target[0])}° EL ${Math.round(info.target[1])}° (${info.source})` : "No target";
+  rotorShowError(info.fault ? `Fault: ${info.fault}` : info.link_error || info.error);
+  $("rotorReset").hidden = !info.fault;
+  $("rotorRotPort").textContent = info.rot_port;
+  $("rotorRigPort").textContent = info.rig_port;
+  $("rotorGpredict").textContent = !info.on ? "Link is off"
+    : `Rotator: ${info.gpredict_rotor ? "connected" : "not connected"}, radio: ${info.gpredict_radio ? "connected" : "not connected"}`
+      + (info.unknown.length ? `. Commands not handled: ${info.unknown.join(", ")}` : "");
+  renderSat(info);
+}
+
+// ---------- SAT window: antenna position on two dials and in 3D, rotor control on and off ----------
+$("satAzTicks").innerHTML = Array.from({ length: 36 }, (_, i) => i * 10)
+  .map((a) => `<line y1="-92" y2="${a % 30 ? -87 : -81}" transform="rotate(${a})"/>`).join("");
+$("satElTicks").innerHTML = Array.from({ length: 19 }, (_, i) => i * 10)
+  .map((a) => `<line x1="92" x2="${a % 30 ? 87 : 81}" transform="rotate(${-a})"/>`).join("");
+
+// Turns a dial mark to an angle; null hides it.
+function satMark(id, angle) {
+  $(id).setAttribute("visibility", angle == null ? "hidden" : "visible");
+  if (angle != null) $(id).setAttribute("transform", `rotate(${angle})`);
+}
+const satElAngle = (el) => (el == null ? null : -Math.min(Math.max(el, 0), 180));     // the elevation dial turns against the clock
+
+// The antenna in 3D: a 5 element Yagi seen from the south and from 45 degrees above, so north is away from the viewer
+// and east to the right. World coordinates: x east, y north, z up.
+const SAT3D_DIST = 500, SAT3D_MAST = 56, SAT3D_GROUND = 72;
+const SAT3D_ELEMENTS = [[-50, 25], [-25, 23], [-3, 21], [20, 20], [47, 19]];     // place on the boom, half length; reflector first
+
+// -> [screen x, screen y, scale, depth (more = nearer to the viewer)]
+function sat3dProject([x, y, z]) {
+  const depth = (z - y) * Math.SQRT1_2, scale = SAT3D_DIST / (SAT3D_DIST - depth);
+  return [x * scale, -(y + z) * Math.SQRT1_2 * scale, scale, depth];
+}
+
+function sat3dLine(a, b, cls, width, opacity = 1) {
+  const p = sat3dProject(a), q = sat3dProject(b);
+  return `<line class="${cls}" x1="${p[0].toFixed(1)}" y1="${p[1].toFixed(1)}" x2="${q[0].toFixed(1)}" y2="${q[1].toFixed(1)}"`
+    + ` stroke-width="${(width * (p[2] + q[2]) / 2).toFixed(2)}" opacity="${opacity.toFixed(2)}"/>`;
+}
+
+// The ground with the compass does not move, so it is drawn once.
+{
+  const ring = Array.from({ length: 72 }, (_, i) => {
+    const a = i * 5 * Math.PI / 180, p = sat3dProject([SAT3D_GROUND * Math.sin(a), SAT3D_GROUND * Math.cos(a), 0]);
+    return `${p[0].toFixed(1)},${p[1].toFixed(1)}`;
+  }).join(" ");
+  const r = SAT3D_GROUND, label = r + 9;
+  const text = [["N", 0, label], ["E", label, 0], ["S", 0, -label], ["W", -label, 0]].map(([t, x, y]) => {
+    const p = sat3dProject([x, y, 0]);
+    return `<text x="${p[0].toFixed(1)}" y="${p[1].toFixed(1)}">${t}</text>`;
+  }).join("");
+  $("sat3dGround").innerHTML = `<polygon class="sat3d-ground" points="${ring}"/>`
+    + sat3dLine([0, -r, 0], [0, r, 0], "sat3d-cross", 0.7) + sat3dLine([-r, 0, 0], [r, 0, 0], "sat3d-cross", 0.7) + text;
+}
+
+function renderSat3d(az, el) {
+  if (az == null) { $("sat3dAnt").innerHTML = ""; return; }
+  const a = az * Math.PI / 180, e = (el ?? 0) * Math.PI / 180;
+  const boom = [Math.sin(a) * Math.cos(e), Math.cos(a) * Math.cos(e), Math.sin(e)];     // above 90 degrees it looks backwards
+  const side = [Math.cos(a), -Math.sin(a), 0];     // the elevation axis: the elements stay level
+  const at = (t, h = 0) => [boom[0] * t + side[0] * h, boom[1] * t + side[1] * h, SAT3D_MAST + boom[2] * t];
+  const onGround = ([x, y]) => [x, y, 0];
+  const parts = [{ from: at(-58), to: at(58), cls: "", width: 2.2 }, { from: at(58), to: at(60), cls: "sat3d-front", width: 7 },
+    { from: [0, 0, 0], to: at(0), cls: "sat3d-mast", width: 2.5 },
+    ...SAT3D_ELEMENTS.map(([t, h], i) => ({ from: at(t, -h), to: at(t, h), cls: i === 1 ? "sat3d-driven" : "", width: 1.8 }))];
+  const shadow = parts.filter((p) => p.cls !== "sat3d-mast" && p.cls !== "sat3d-front")
+    .map((p) => sat3dLine(onGround(p.from), onGround(p.to), "sat3d-shadow", p.width));
+  const depth = (p) => sat3dProject(p.from)[3] + sat3dProject(p.to)[3];
+  // Far parts first and dimmer, so the near ones cover them.
+  const lines = parts.sort((p, q) => depth(p) - depth(q)).map((p) => {
+    const fade = Math.min(Math.max(0.75 + depth(p) / 300, 0.5), 1);
+    return sat3dLine(p.from, p.to, `sat3d-part ${p.cls}`, p.width, fade);
+  });
+  $("sat3dAnt").innerHTML = shadow.join("") + lines.join("");
+}
+
+// Time to the next pass event from Gpredict, written the way Gpredict writes it.
+function fmtPassTime(seconds) {
+  const h = Math.floor(seconds / 3600), m = Math.floor(seconds / 60) % 60, s = seconds % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return h ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+function renderSat(info) {
+  const pass = info.next_pass;
+  $("satPass").hidden = !pass;
+  if (pass) {
+    $("satPassName").textContent = pass.sat;
+    $("satPassTime").textContent = `${pass.event} in ${fmtPassTime(pass.seconds)}`;
+  }
+  $("satAz").textContent = info.az == null ? "–" : `${Math.round(info.az)}°`;
+  $("satEl").textContent = info.el == null ? "–" : `${Math.round(info.el)}°`;
+  satMark("satAzNeedle", info.az);
+  satMark("satElNeedle", satElAngle(info.el));
+  // The blue marks: the move in progress, otherwise where Gpredict wants the antenna.
+  const aim = info.target || info.aim;
+  satMark("satAzTarget", aim ? aim[0] : null);
+  satMark("satElTarget", aim ? satElAngle(aim[1]) : null);
+  renderSat3d(info.az, info.el);
+  $("satCtrl").classList.toggle("on", info.control);
+  const target = aim ? ` Target (blue) AZ ${Math.round(aim[0])}° EL ${Math.round(aim[1])}°.` : "";
+  $("satStatus").textContent = info.fault ? "Reset the fault in SET, ROTOR tab."
+    : !info.on ? "Rotor link is off. CTRL turns it on."
+    : info.control ? `Following Gpredict.${target}`
+    : info.target ? `Manual move.${target}` : "Stopped. Gpredict does not move the rotor.";
+  $("satGpredict").textContent = `Gpredict rotator: ${info.gpredict_rotor ? "engaged" : "not engaged"}`;
+  $("satGpredict").classList.toggle("lost", !info.gpredict_rotor);
+}
+
+const placeSat = makeFloating($("satCard"), "satCardPos");
+let satReopen = false;     // closed by a VFO switch, not by hand
+function showSat(open) {
+  satReopen = false;
+  $("satCard").hidden = !open;
+  $("satKey").classList.toggle("on", open);
+  if (open) { placeSat(); pollRotor(); }
+}
+// The rotor belongs to one VFO: switching to a VFO without it closes the window, and back to one with it opens it again.
+async function syncSatWithVfo() {
+  if ($("satCard").hidden && !satReopen) return;
+  const base = vbase;
+  try {
+    const info = await fetch(base + "/api/rotor").then((r) => r.json());
+    if (base !== vbase) return;
+    if ($("satCard").hidden) {
+      if (satReopen && info.on) showSat(true);
+    } else if (!info.on) {
+      showSat(false);
+      satReopen = true;
+    }
+  } catch (e) { /* the receiver is away: the window stays and says so */ }
+}
+$("satKey").addEventListener("click", () => showSat($("satCard").hidden));
+$("satClose").addEventListener("click", () => showSat(false));
+$("satCtrl").addEventListener("click", (e) => rotorPost(e.currentTarget.classList.contains("on") ? { stop: true } : { start: true }));
+
+async function pollRotor() {
+  const panel = document.querySelector('[data-set-panel="rotor"]');
+  const setOpen = !panel.hidden && !$("settingsCard").hidden;
+  if (!setOpen) rotorPortsFor = null;
+  if (!setOpen && $("satCard").hidden) return;
+  const needPorts = setOpen && rotorPortsFor !== vbase;
+  try {
+    const info = await fetch(vbase + `/api/rotor${needPorts ? "?ports=1" : ""}`).then((r) => r.json());
+    if (needPorts) { fillRotorPorts(info); rotorPortsFor = vbase; }
+    renderRotor(info);
+  } catch (e) {
+    rotorShowError("Receiver is not reachable");
+  }
+}
+
+$("rotorRefresh").addEventListener("click", () => { rotorPortsFor = null; pollRotor(); });
+$("rotorEnabled").addEventListener("change", (e) => {
+  const opt = $("rotorPort").selectedOptions[0];
+  if (e.target.checked && !opt?.value) {
+    e.target.checked = false;
+    rotorShowError("Choose a port first", true);
+    return;
+  }
+  rotorPost({ enabled: e.target.checked, port: opt?.value || "", usb_serial: opt?.dataset.usbSerial || "" });
+});
+$("rotorStop").addEventListener("click", () => rotorPost({ stop: true }));
+$("rotorReset").addEventListener("click", () => rotorPost({ reset: true }));
+$("rotorGo").addEventListener("click", () => {
+  if ($("rotorAz").value === "" || $("rotorEl").value === "") { rotorShowError("Enter azimuth and elevation", true); return; }
+  rotorPost({ goto: [Number($("rotorAz").value), Number($("rotorEl").value)] });
+});
+setInterval(pollRotor, 500);
+
+// ---------- GP key: starts and closes Gpredict (gpredict.py); one program for the PC, so the launcher port and not vbase ----------
+let gpredictBusy = false;
+
+function renderGpredict(info) {
+  const key = $("gpredictKey");
+  key.classList.toggle("on", info.running);
+  key.setAttribute("aria-pressed", String(info.running));
+  key.disabled = !info.running && !info.available;
+  key.title = info.running ? "Gpredict is open (click to close it)"
+    : info.available ? "Open Gpredict (satellite tracking)" : "Gpredict is not installed (apps\\gpredict)";
+}
+
+async function pollGpredict() {
+  if (gpredictBusy) return;
+  try {
+    renderGpredict(await fetch("/api/gpredict").then((r) => r.json()));
+  } catch (e) { /* the server is away: the key keeps its state */ }
+}
+
+$("gpredictKey").addEventListener("click", async () => {
+  const key = $("gpredictKey");
+  gpredictBusy = key.disabled = true;     // starting and closing take a moment
+  let error = null;
+  try {
+    const res = await fetch("/api/gpredict", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ on: !key.classList.contains("on") }) });
+    if (!res.ok) error = (await res.json()).error || "Gpredict: error";
+  } catch (e) { error = "Gpredict: server is not reachable"; }
+  gpredictBusy = false;
+  if (error) { errorUntil = Date.now() + 5000; renderStatusPill(error); }
+  await pollGpredict();
+});
+pollGpredict();
+setInterval(pollGpredict, 2000);
 
 // A click on the clock switches UTC / local time (LOC); the choice is remembered.
 let clockLocal = recall("clockLocal") === "1";
@@ -2831,7 +3554,7 @@ function renderMems() {
     html += `<div class="mem" data-id="${m.id}" title="${escHtml(m.name)} · ${escHtml(m.group)} · ${fmtBw(m.bw)}">` +
       `<button class="star${m.fav ? " on" : ""}" data-star aria-label="Favourite">${m.fav ? "★" : "☆"}</button>` +
       `<span class="name">${escHtml(m.name)}</span>` +
-      `<span class="meta">${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} M` : fmtKHz(m.freq_hz, 2)}<b>${m.mode}</b></span>` +
+      `<span class="meta">${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} M` : fmtKHz(m.freq_hz, 2)}<b>${m.dab_channel ? `DAB ${escHtml(m.dab_channel)}` : m.mode}</b></span>` +
       `<button class="del" data-del aria-label="Delete">×</button></div>`;
   }
   $("memList").innerHTML = html;
@@ -2853,7 +3576,8 @@ function markActiveMem() {
   if (!st) return;
   for (const el of $("memList").querySelectorAll(".mem")) {
     const m = mems.find((x) => x.id === el.dataset.id);
-    el.classList.toggle("active", !!m && Math.abs(m.freq_hz - st.tune_hz) < 50 && m.mode === st.mode);
+    el.classList.toggle("active", !!m && (m.dab_channel ? !!st.dab && st.dab_channel === m.dab_channel
+      : !st.dab && Math.abs(m.freq_hz - st.tune_hz) < 50 && m.mode === st.mode));
   }
 }
 
@@ -2877,10 +3601,16 @@ $("memList").addEventListener("click", async (e) => {
   recallMem(m);
 });
 
-/** Recall a memory: frequency, mode and bandwidth (on a VFO that can receive the frequency). */
+/** Recall a memory: frequency, mode and bandwidth (on a VFO that can receive the frequency). A DAB memory: DAB on with its channel. */
 async function recallMem(m) {
   await ensureVfoFor(m.freq_hz);
   if (!st) return;
+  if (m.dab_channel) {
+    dabRecall(m.dab_channel);
+    markActiveMem();
+    return;
+  }
+  if (st.dab) dabOff();   // an ordinary memory ends DAB like another band does (previous sample rate back)
   st.mode = m.mode;
   st.bandwidth[m.mode] = m.bw;
   renderControls();
@@ -2891,9 +3621,10 @@ async function recallMem(m) {
 
 $("memSave").addEventListener("click", async () => {
   if (!st) return;
-  const name = $("memName").value.trim() || `${fmtKHz(st.tune_hz, 2)} kHz ${st.mode}`;
+  const dabName = st.dab ? ["DAB", st.dab_channel, dabLastInfo.ensemble].filter(Boolean).join(" ") : "";
+  const name = $("memName").value.trim() || dabName || `${fmtKHz(st.tune_hz, 2)} kHz ${st.mode}`;
   const body = { name, group: $("memGroupNew").value.trim() || $("memGroup").value || "My",
-    freq_hz: st.tune_hz, mode: st.mode, bw: st.bandwidth[st.mode] };
+    freq_hz: st.tune_hz, mode: st.mode, bw: st.bandwidth[st.mode], ...(st.dab ? { dab_channel: st.dab_channel } : {}) };
   const res = await fetch(vbase + "/api/memories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const data = await res.json();
   $("memError").hidden = res.ok;
@@ -2962,6 +3693,27 @@ $("memImport").addEventListener("click", async () => {
     $("memImport").disabled = false;
   }
 });
+$("memImportJson").addEventListener("click", () => $("memJsonFile").click());
+$("memJsonFile").addEventListener("change", async () => {
+  const file = $("memJsonFile").files[0];
+  $("memJsonFile").value = "";   // the same file can be chosen again
+  if (!file) return;
+  $("memImportJson").disabled = true;
+  try {
+    const res = await fetch(vbase + "/api/memories/import_json", { method: "POST", headers: { "Content-Type": "application/json" }, body: file });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      memIoNote(data.error || `Import failed (HTTP ${res.status}${res.status === 405 || res.status === 404 ? " – restart RADIMCOM to load the new version" : ""})`, true);
+      return;
+    }
+    memIoNote(`Imported ${data.added}, skipped ${data.skipped} (duplicates / invalid) from ${file.name}.`);
+    await loadMems();
+  } catch (e) {
+    memIoNote("Import failed: " + e.message, true);
+  } finally {
+    $("memImportJson").disabled = false;
+  }
+});
 $("memExportFav").addEventListener("click", () => exportMems(mems.filter((m) => m.fav), "starred"));
 $("memExportGroup").addEventListener("click", () => {
   const g = $("memGroup").value;
@@ -2978,11 +3730,13 @@ function onStatus(s) {
   const rateChanged = st && st.audio_rate !== s.audio_rate;
   // Shortly after a local change, do not let an older state from the server overwrite tuning and selection.
   if (st && Date.now() - localChangeAt < 700) {
-    for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "stereo_on", "notch", "ft8", "wefax", "cw", "rtty", "sstv", "acars", "cpdlc", "dab", "logs", "upconv", "device", "squelch_levels"]) s[k] = st[k];
+    for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "dc_remove", "dc_hz", "dc_db", "spur_on", "spur_hz", "spur_edge", "spur_shift", "spur_db", "spur_learning", "stereo_on", "notch", "ft8", "wefax", "cw", "rtty", "sstv", "acars", "cpdlc", "dab", "dab_channel", "dab_sids", "logs", "upconv", "device", "squelch_levels"]) s[k] = st[k];
   }
   s.sample_rates = sampleRates;
   st = s;
+  renderRec();
   renderStatusPill();
+  renderSpurInfo();
   meterTarget = s.smeter;
   $("smeterText").innerHTML = `<b>${sReading(s.smeter)}</b> · <span>${s.smeter.toFixed(1)} dBFS</span>`;
   renderTuner();
@@ -3011,7 +3765,9 @@ function onStatus(s) {
     : lime ? "VDL2 is not supported on LimeSDR (RTL-SDR only)" : VDL2_TITLE;
   $("acarsCard").hidden = !(s.acars || s.vdl2);
   renderVdl2Info({ enabled: s.vdl2, error: s.vdl2_error });
+  renderVdl2Region();
   renderDab(s);
+  renderIsm(s);
   renderDsd(s);
   renderLinkBands();
   renderDecTab();
@@ -3072,7 +3828,7 @@ function connectEvents(v) {
   on("rttytext", (d) => rttyOut.add(d.t));
   on("rttystate", renderRttyInfo);
   on("dsdcall", (c) => { addDsdCall(c); decActivity(); });
-  on("acars", (m) => { addAcars(m, true); decActivity(); });
+  on("acars", (m) => { acarsReceive(m); decActivity(); });
   on("cpdlc", (c) => { if (c.imi === "ATN") { addAtn(c, true); decActivity(); } });   // others come inside "acars"
   on("ft8", decActivity);
   on("cwtext", decActivity);
@@ -3082,6 +3838,8 @@ function connectEvents(v) {
   on("acarsstate", renderAcarsInfo);
   on("vdl2state", renderVdl2Info);
   on("dabstate", (d) => { if (st) renderDabInfo(d); });
+  on("ism", (m) => { addIsm(m); if (m.n === 1) decActivity(); });
+  on("ismstate", (d) => { if (st) renderIsmInfo(d); });
   on("acarsinfo", onAcarsInfo);
   on("ft8cycle", (d) => renderFt8Info(`cycle ${d.time} · decoding…`));
   es.onerror = () => {
@@ -3112,7 +3870,7 @@ function renderSpareVfos() {
     row.innerHTML = `<div class="vfo-memname"></div><div class="vfo-head"><span class="flag vfo-stat off">NO SDR</span>` +
       `<button class="key vfo-key" disabled>VFO-${name}</button><span class="flag vfo-mode">---</span>` +
       `<span class="flag vfo-cue">CUE</span></div>` +
-      `<div class="vfo-disp"><div class="freq">${seg7("          ")}<span class="unit"><span class="afi-tag">AFI</span>MHz</span></div></div>` +
+      `<div class="vfo-disp"><span class="rec-tag"></span><div class="freq">${seg7("          ")}<span class="unit"><span class="mute-tag" hidden></span><span class="afi-tag">AFI</span>MHz</span></div></div>` +
       `<div class="vfo-foot"><label class="vfo-rf"><span>RF GAIN</span>` +
       `<input type="range" min="0" max="1" value="0" disabled></label><span class="flag vfo-gain">--- dB</span></div>` +
       `<div class="vfo-foot"><label class="vfo-rf vfo-sq"><span>SQUELCH</span>` +
@@ -3135,7 +3893,7 @@ function renderVfoDisplays() {
       row.innerHTML = `<div class="vfo-memname"></div>` + (v.name ? `<div class="vfo-head"><span class="flag vfo-stat"></span>` +
         `<button class="key vfo-key">VFO-${v.name}</button><span class="flag vfo-mode"></span>` +
         `<span class="flag vfo-cue" role="button">CUE</span></div>` : "") +
-        `<div class="vfo-disp"><div class="freq"></div></div>` +
+        `<div class="vfo-disp"><span class="rec-tag"></span><div class="freq"></div></div>` +
         (v.name ? `<div class="vfo-foot"><label class="vfo-rf"><span>RF GAIN</span>` +
         `<input type="range" min="0" max="0" step="1" value="0"></label>` +
         `<span class="flag vfo-gain" title="RF gain"></span></div>` +
@@ -3157,21 +3915,30 @@ function renderVfoDisplays() {
       const { txt, unit } = freqDigits(s.tune_hz);
       if (txt !== v.shown) {
         v.shown = txt;
-        fr.innerHTML = seg7(txt) + `<span class="unit"><span class="afi-tag">AFI</span>${unit}</span>`;
+        fr.innerHTML = seg7(txt) + `<span class="unit"><span class="mute-tag" title="Audio muted while the ACARS, VDL2 or ISM decoder runs" hidden></span><span class="afi-tag">AFI</span>${unit}</span>`;
         fr.setAttribute("aria-label", `${fmtMHz(s.tune_hz, 6)} MHz`);
       }
       // AFI above the unit: lit while this VFO's audio is inverted (no AFI in WFM), otherwise dark like an unlit LCD segment
       const afiTag = fr.querySelector(".afi-tag");
       if (afiTag) afiTag.classList.toggle("on", !!s.afi && s.mode !== "WFM");
+      const muteTag = fr.querySelector(".mute-tag");
+      if (muteTag) muteTag.hidden = !s.audio_muted;
+      // red dot in the corner of the display: blinks while a file is being written, steady while waiting for the squelch
+      const recs = [s.recording?.cont, s.recording?.squelch];
+      const recTag = row.querySelector(".rec-tag");
+      recTag.classList.toggle("on", recs.some((r) => r?.on) && (!v.name || v.online));
+      recTag.classList.toggle("writing", recs.some((r) => r?.on && r.open));
     }
-    // Frame on top of the VFO: name of the memory on this frequency, otherwise the band plan (narrowest band).
+    // Frame on top of the VFO: satellite and transponder selected in Gpredict, otherwise the memory on this frequency, otherwise the band plan (narrowest band).
+    const trsp = s && s.trsp_name ? [s.trsp_sat, s.trsp_name].filter(Boolean).join(" · ") : "";
     const mem = s ? memAt(s.tune_hz, s.mode) : null;
     const bands = s && !mem ? bandsAt(s.tune_hz) : [];
     const memEl = row.querySelector(".vfo-memname");
-    const memText = mem ? mem.name : bands.length ? bands[0][2] : "";
+    const memText = trsp || (mem ? mem.name : bands.length ? bands[0][2] : "");
     if (memEl.textContent !== memText) memEl.textContent = memText;
-    memEl.classList.toggle("band", !mem);
-    memEl.title = mem ? `${mem.name} · ${mem.group} · ${mem.mode} · ${fmtBw(mem.bw)}`
+    memEl.classList.toggle("band", !mem && !trsp);
+    memEl.classList.toggle("trsp", !!trsp);
+    memEl.title = trsp ? `Gpredict: ${trsp}` : mem ? `${mem.name} · ${mem.group} · ${mem.mode} · ${fmtBw(mem.bw)}`
       : bands.map(([, , label, , desc]) => `${label}: ${desc}`).join("\n");
     if (!v.name) continue;
     // VFO receiver state: RUNNING = dongle open and delivering samples.
@@ -3299,8 +4066,11 @@ async function selectVfo(v) {
   for (const id of ["modes", "bandwidths", "steps"]) $(id)._html = null;
   $("ft8Rows").innerHTML = ""; $("ft8Empty").hidden = false; ft8Cycle = null; ft8Count = 0;
   cwOut.clear(); rttyOut.clear();
+  acarsResume();
+  acarsDropHeld();
   $("acarsRows").innerHTML = ""; $("acarsEmpty").hidden = false; renderAcarsFilter();
   dsdReset();
+  ismReset();
   $("convWarn").hidden = true;
   if (v.st) {
     onStatus(v.st);
@@ -3312,6 +4082,7 @@ async function selectVfo(v) {
   }
   renderVfoDisplays();
   renderCueKey();
+  syncSatWithVfo();
   startAudio();
   await loadDecoders();
 }
@@ -3329,6 +4100,7 @@ async function loadDecoders() {
   await wefaxLoad();
   await sstvLoad();
   await dsdLoad();
+  await ismLoad();
   const cwi = await fetch(vbase + "/api/cw").then((r) => r.json());
   if (v !== active) return;
   renderCwInfo(cwi);
@@ -3499,7 +4271,6 @@ async function pumpStream(ctx, base, me, isMain) {
       const n = even / frame;
       if (!n) continue;
       const dv = new DataView(bytes.buffer, bytes.byteOffset, even);
-      if (isMain) recordChunk(bytes.slice(0, even), rate, chans);
       const buf = ctx.createBuffer(chans, n, rate);
       for (let c = 0; c < chans; c++) {
         const ch = buf.getChannelData(c);
@@ -3527,69 +4298,37 @@ function stopAudio() {
   audio = null;
 }
 
-// ---------- recording (WAV) ----------
-// Stores raw PCM from the stream of the active VFO (before volume and MUTE); on a VFO switch it continues
-// with the new stream. After stopping, the file is downloaded through the browser.
-let rec = null;
-
-function recordChunk(bytes, rate, chans) {
-  if (!rec) return;
-  if (!rec.rate) { rec.rate = rate; rec.chans = chans; }
-  if (rate !== rec.rate || chans !== rec.chans) return; // a different format would corrupt the WAV
-  rec.chunks.push(bytes);
-  rec.bytes += bytes.length;
-}
-
-function recStamp(d) {
-  const p = n => String(n).padStart(2, "0");
-  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
-}
-
-function wavBlob(chunks, dataLen, rate, chans) {
-  const h = new DataView(new ArrayBuffer(44));
-  const str = (o, s) => { for (let i = 0; i < s.length; i++) h.setUint8(o + i, s.charCodeAt(i)); };
-  str(0, "RIFF"); h.setUint32(4, 36 + dataLen, true); str(8, "WAVE");
-  str(12, "fmt "); h.setUint32(16, 16, true); h.setUint16(20, 1, true); h.setUint16(22, chans, true);
-  h.setUint32(24, rate, true); h.setUint32(28, rate * chans * 2, true); h.setUint16(32, chans * 2, true);
-  h.setUint16(34, 16, true);
-  str(36, "data"); h.setUint32(40, dataLen, true);
-  return new Blob([h, ...chunks], { type: "audio/wav" });
-}
+// ---------- recording (MP3, on the server, data\recordings) ----------
+// The buttons switch the recording of the active VFO; it goes on without the page, so the state comes from the receiver.
+const REC_BUTTONS = [
+  { btn: "recBtn", time: "recTime", key: "cont", send: "rec", label: "REC",
+    title: "Record everything to MP3 until switched off, a new file every 15 min (data\\recordings)" },
+  { btn: "recSqBtn", time: "recSqTime", key: "squelch", send: "rec_sq", label: "REC SQ",
+    title: "Record to MP3 only while the squelch is open, each session in its own file (data\\recordings)" },
+];
+const recErrors = {};
 
 function renderRec() {
-  $("recBtn").classList.toggle("on", !!rec);
-  let t = "REC";
-  if (rec) {
-    const s = Math.floor((Date.now() - rec.t0) / 1000);
-    t = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  const rec = (st && st.recording) || {};
+  for (const b of REC_BUTTONS) {
+    const r = rec[b.key] || {};
+    const btn = $(b.btn);
+    btn.classList.toggle("on", !!r.on && !!r.open);
+    btn.classList.toggle("armed", !!r.on && !r.open);
+    $(b.time).textContent = r.on && r.open ? `${Math.floor(r.secs / 60)}:${String(r.secs % 60).padStart(2, "0")}` : b.label;
+    btn.title = r.error || (r.on ? `Recording, click to stop${r.file ? "\n" + r.file : ""}` : b.title);
+    if (r.error && r.error !== recErrors[b.key]) { errorUntil = Date.now() + 5000; renderStatusPill(r.error); }
+    recErrors[b.key] = r.error;
   }
-  $("recTime").textContent = t;
-  $("recBtn").title = rec ? "Stop recording and save WAV" : "Record audio (WAV)";
 }
 
-$("recBtn").addEventListener("click", () => {
-  if (!rec) {
-    const name = active ? active.name : "";
-    const f = st ? (st.tune_hz / 1e3).toFixed(1) + "kHz_" + st.mode : "";
-    rec = { chunks: [], bytes: 0, rate: 0, chans: 0, t0: Date.now(),
-            file: `rec_${recStamp(new Date())}${name ? "_VFO-" + name : ""}${f ? "_" + f : ""}.wav`,
-            timer: setInterval(renderRec, 500) };
-    renderRec();
-    return;
-  }
-  const r = rec;
-  rec = null;
-  clearInterval(r.timer);
-  renderRec();
-  if (!r.bytes) return;
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(wavBlob(r.chunks, r.bytes, r.rate, r.chans));
-  a.download = r.file;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-});
+for (const b of REC_BUTTONS) {
+  $(b.btn).addEventListener("click", () => {
+    const r = (st && st.recording && st.recording[b.key]) || {};
+    send({ [b.send]: !r.on });
+  });
+}
+renderRec();
 
 // ---------- stereo level meter next to the sliders ----------
 // LEDs from the bottom up: 10 green up to 0 dB, then yellow (+3 dB) and red (+6 dB = 0 dBFS, clipping).
@@ -3673,9 +4412,10 @@ async function init() {
   sampleRates = info.sample_rates;
   renderFt8Bands(info.ft8_freqs);
   $("dabChannel").innerHTML = (info.dab_channels || []).map(([n, f]) => `<option value="${n}">${n} · ${fmtMHz(f, 3)}</option>`).join("");
-  linkFreqs = { acars: info.acars_freqs || [], vdl2Center: info.vdl2_center || 136850000,
+  $("ismBands").innerHTML = (info.ism_freqs || []).map((f) => `<button data-f="${f}" title="Centre the VFO on ${fmtMHz(f, 2)} MHz">${fmtMHz(f, 2)}</button>`).join("");
+  linkFreqs = { acars: info.acars_freqs || [], vdl2Center: info.vdl2_center || 136500000,
     vdl2Rate: info.vdl2_rate || 2100000,
-    vdl2Freqs: info.vdl2_freqs || [] };
+    vdl2RegionFreqs: info.vdl2_region_freqs || {} };
   linkShown = null;
   renderLinkBands();
   loadMems();

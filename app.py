@@ -8,6 +8,7 @@ import base64
 import json
 import os
 import queue
+import re
 import sys
 import threading
 import time
@@ -31,13 +32,17 @@ from ft8 import FT8_FREQS, Ft8Decoder
 from cw import CwDecoder
 from rtty import RttyDecoder
 from daylog import DayLog, TextLog
+from recorder import Recorder
+import rotor as rotor_module
+from gpredict import bp as gpredict_bp, same_host
 from wefax import WefaxDecoder
 from sstv import SstvDecoder
 from acars import ACARS_FREQS, AcarsDecoder
-from vdl2 import VDL2_CENTER, VDL2_FREQS, VDL2_RATE, Vdl2Decoder
+from vdl2 import VDL2_CENTER, VDL2_RATE, VDL2_REGIONS, Vdl2Decoder, region_freqs
 from dsd import PROTOCOLS as DSD_PROTOCOLS, SLOTS as DSD_SLOTS, DsdDecoder
 from dab import CHANNEL_HZ, DAB_CHANNELS, DAB_DEFAULT, DAB_RATE, DabDecoder
-from sdr import (AFI_MAX_HZ, AFI_MIN_HZ, DSD_MODE, HPF_MAX_HZ, HPF_MIN_HZ, LPF_MAX_HZ, LPF_MIN_HZ, MODES, SQUELCH_OFF,
+from ism import ISM_DEFAULT, ISM_FREQS, ISM_RATE, IsmDecoder
+from sdr import (AFI_MAX_HZ, AFI_MIN_HZ, DECIM, DSD_MODE, HPF_MAX_HZ, HPF_MIN_HZ, LPF_MAX_HZ, LPF_MIN_HZ, MODES, SQUELCH_OFF,
                  UPCONV_MAX_HZ, ZOOMS, Receiver, list_devices, lowpass)
 
 
@@ -122,8 +127,12 @@ if VFO:
         cfg["chain"] = {"owner": OWNER["name"], "port": iqshare.iq_port(OWNER)}
         cfg["vdl2"] = False          # VDL2 needs its own centre and sample rate
         cfg["dab"] = False           # DAB too
+        cfg["ism"] = False           # ISM too
     else:
         cfg.pop("chain", None)
+if cfg.get("vdl2") and cfg.get("center_hz") == 136850000:
+    cfg["center_hz"] = float(VDL2_CENTER)     # VDL2 left on with the centre of older versions: now a channel, on the DC spike
+    cfg["tune_hz"] = float(VDL2_CENTER)
 hub = Hub()
 save_lock = threading.Lock()
 save_timer = None
@@ -149,9 +158,9 @@ def save_config_later():
 
 # ---------- daily decoder logs (turned on with LOG in the decoder card) ----------
 
-LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd")
+LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism")
 _tag = cfg.get("vfo") or ""
-logs = {"ft8": DayLog("ft8", _tag), "wefax": DayLog("wefax", _tag), "sstv": DayLog("sstv", _tag), "dsd": DayLog("dsd", _tag),
+logs = {"ft8": DayLog("ft8", _tag), "wefax": DayLog("wefax", _tag), "sstv": DayLog("sstv", _tag), "dsd": DayLog("dsd", _tag), "ism": DayLog("ism", _tag),
         "cw": TextLog("cw", _tag), "rtty": TextLog("rtty", _tag)}
 _saved_logged = {"wefax": None, "sstv": None}
 
@@ -176,6 +185,11 @@ def decoder_event(kind, data):
             alias = f" | {data['alias']}" if data["alias"] else ""
             logs["dsd"].write(f"{_mhz(data['freq_hz'])} {data['proto']}{slot} {data['type'] or 'call'} to {data['tgt'] or '?'} "
                               f"from {data['src'] or '?'} {data['duration']:.1f} s{' ENC' if data['enc'] else ''}{alias}")
+        elif kind == "ism" and data["n"] == 1 and log_on("ism"):     # a repeated message only once
+            dev = f" id {data['dev_id']}" if data["dev_id"] else ""
+            ch = f" ch {data['channel']}" if data["channel"] else ""
+            rssi = f" {data['rssi']} dB" if data["rssi"] is not None else ""
+            logs["ism"].write(f"{_mhz(data['freq_hz'])}{rssi} {data['model']}{dev}{ch} | {data['text']}")
         elif kind == "cwtext" and log_on("cw"):
             f = cw.dial + (cw.tone or 0.0)
             logs["cw"].add(data["t"], f"{_mhz(f)} {round(1200 / cw.dot_ms)} WPM")
@@ -222,6 +236,7 @@ def dab_tune(hz):
 
 
 dab = DabDecoder(on_tune=dab_tune, on_state=lambda i: hub.event("dabstate", i))
+ism = IsmDecoder(on_event=decoder_event, on_state=lambda i: hub.event("ismstate", i))
 _saved_logged.update(wefax=getattr(wefax, "saved", None), sstv=getattr(sstv, "saved", None))
 
 
@@ -232,11 +247,17 @@ def tx_capable():
     return cfg.get("driver") == "lime" or hasattr(receiver.sdr, "tx_start")
 
 
+def audio_muted():
+    """These decoders work on the raw samples or the baseband; the audio of their VFO would only be noise."""
+    return acars.enabled or vdl2.enabled or ism.enabled
+
+
 def state():
     capable = tx_capable()
     return dict(receiver.state(), ft8=ft8.enabled, ft8_error=ft8.error, wefax=wefax.enabled, cw=cw.enabled, rtty=rtty.enabled,
-                sstv=sstv.enabled, acars=acars.enabled, vdl2=vdl2.enabled, vdl2_error=vdl2.error, cpdlc=acars.cpdlc_on,
-                dsd=dsd.info(), dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, logs={k: log_on(k) for k in LOG_KEYS},
+                sstv=sstv.enabled, acars=acars.enabled, vdl2=vdl2.enabled, vdl2_error=vdl2.error, vdl2_region=vdl2.region, cpdlc=acars.cpdlc_on,
+                dsd=dsd.info(), dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, dab_sids=cfg.get("dab_sids") or {}, ism=ism.enabled, ism_error=ism.error, ism_hz=cfg.get("ism_hz", ISM_DEFAULT), audio_muted=audio_muted(), recording=recorder.state(), logs={k: log_on(k) for k in LOG_KEYS},
+                trsp_name=rotor_link.rig.trsp_name, trsp_sat=rotor_link.rig.trsp_sat,
                 tx_capable=capable, tx_enabled=bool(cfg.get("tx_enabled", False)),
                 can_tx=capable and bool(cfg.get("tx_enabled", False)) and hasattr(receiver.sdr, "tx_start"))
 
@@ -262,10 +283,20 @@ def on_baseband(base, fs, dial_hz):
     acars.feed(base, fs, dial_hz)
 
 
+recorder = Recorder()
+
+
+def on_audio(pcm):
+    if dab.enabled or audio_muted():      # DAB: the audio is welle-cli's MP3
+        return
+    hub.audio_chunk(pcm)
+    recorder.feed(pcm, receiver.fs / DECIM, cfg["tune_hz"], cfg["mode"])
+
+
 receiver = Receiver(
     cfg,
     on_row=lambda row, center, span: hub.event("wf", {"c": center, "span": span, "row": base64.b64encode(row).decode()}),
-    on_audio=lambda pcm: None if dab.enabled else hub.audio_chunk(pcm),   # DAB: the audio is welle-cli's MP3
+    on_audio=on_audio,
     on_status=lambda: hub.event("status", state()),
     on_baseband=on_baseband,
     on_demod=sstv.feed,
@@ -289,13 +320,20 @@ acars.set_enabled(cfg.get("acars", False) and not cfg.get("vdl2", False))
 def on_raw(raw, fs, center_hz):
     vdl2.feed_raw(raw, fs, center_hz)
     dab.feed_raw(raw, fs, center_hz, receiver.lo)
+    ism.feed_raw(raw, fs, center_hz)
 
 
 receiver.on_raw = on_raw
+receiver.on_spurs = save_config_later
+vdl2.set_region(cfg.get("vdl2_region", "eu"))
 vdl2.set_enabled(cfg.get("vdl2", False))
 acars.set_vdl2(vdl2.enabled)
+if cfg.get("dab_channel") in CHANNEL_HZ:
+    dab.channel = cfg["dab_channel"]          # the page shows the saved channel also while DAB is off
 if cfg.get("dab") and cfg.get("driver") != "lime" and not OWNER:
     dab.set_enabled(True, cfg.get("dab_channel", DAB_DEFAULT))
+if cfg.get("ism") and cfg.get("driver") != "lime" and not OWNER:
+    ism.set_enabled(True)
 
 
 def sync_cpdlc():
@@ -306,6 +344,7 @@ def sync_cpdlc():
 sync_cpdlc()
 
 app = Flask(__name__, static_folder="static")
+app.register_blueprint(gpredict_bp)
 
 
 @app.after_request
@@ -326,8 +365,8 @@ def index():
 @app.route("/api/state")
 def api_state():
     return jsonify(dict(state(), sample_rates=SAMPLE_RATES, modes=MODES, ft8_freqs=FT8_FREQS, acars_freqs=ACARS_FREQS,
-                        vdl2_freqs=VDL2_FREQS, vdl2_center=VDL2_CENTER, vdl2_rate=VDL2_RATE, tx_bands=TX_BANDS,
-                        dab_channels=DAB_CHANNELS))
+                        vdl2_freqs=region_freqs(vdl2.region), vdl2_region_freqs={r: region_freqs(r) for r in VDL2_REGIONS}, vdl2_center=VDL2_CENTER, vdl2_rate=VDL2_RATE, tx_bands=TX_BANDS,
+                        dab_channels=DAB_CHANNELS, ism_freqs=ISM_FREQS))
 
 
 # ---------- transmitting (PTT) ----------
@@ -603,7 +642,7 @@ def api_vdl2():
 
 
 def set_vdl2(on, changes):
-    """VDL2 on: the VFO goes to 2.1 MS/s around 136.85 MHz (all European VDL2 channels), classic ACARS off.
+    """VDL2 on: the VFO goes to 2.1 MS/s around 136.500 MHz (all VDL2 channels of the region), classic ACARS off.
     VDL2 off: the previous sample rate comes back. Not on LimeSDR (RTL-SDR only)."""
     if on and (cfg.get("driver") == "lime" or OWNER):
         on = False
@@ -611,7 +650,7 @@ def set_vdl2(on, changes):
         return
     cfg["vdl2"] = on
     if on:
-        cfg["vdl2_prev_rate"] = cfg["sample_rate"]
+        cfg["vdl2_prev_rate"] = changes.get("sample_rate", cfg["sample_rate"])   # ISM off may have just given it back
         if cfg.get("acars"):
             cfg["acars"] = False
             acars.set_enabled(False)
@@ -637,8 +676,7 @@ def set_dab(on, changes, channel=None):
             cfg["acars"] = False
             acars.set_enabled(False)
         set_vdl2(False, changes)
-        changes.pop("sample_rate", None)
-        cfg["dab_prev_rate"] = cfg["sample_rate"]
+        cfg["dab_prev_rate"] = changes.pop("sample_rate", cfg["sample_rate"])    # VDL2 or ISM off may have just given it back
         ch = channel if channel in CHANNEL_HZ else cfg.get("dab_channel", DAB_DEFAULT)
         f = float(CHANNEL_HZ.get(ch, CHANNEL_HZ[DAB_DEFAULT]))
         changes.update(sample_rate=DAB_RATE, center_hz=f, tune_hz=f)
@@ -647,6 +685,41 @@ def set_dab(on, changes, channel=None):
         dab.set_enabled(False)
         if cfg.get("dab_prev_rate") in SAMPLE_RATES and cfg["dab_prev_rate"] != DAB_RATE:
             changes["sample_rate"] = cfg.pop("dab_prev_rate")
+
+
+def set_ism(on, changes):
+    """ISM on: rtl_433 starts, the audio is muted and the VFO goes to the last ISM frequency at 2.048 MS/s (ACARS, VDL2 and DAB off).
+    ISM off: the previous sample rate comes back. RTL-SDR only, not on a chained VFO."""
+    if on and (cfg.get("driver") == "lime" or OWNER):
+        on = False
+    if on == ism.enabled:
+        return
+    cfg["ism"] = on
+    if on:
+        if cfg.get("acars"):
+            cfg["acars"] = False
+            acars.set_enabled(False)
+        set_vdl2(False, changes)
+        set_dab(False, changes)
+        sync_cpdlc()
+        cfg["ism_prev_rate"] = changes.pop("sample_rate", cfg["sample_rate"])
+        f = float(cfg.get("ism_hz", ISM_DEFAULT))
+        changes.update(sample_rate=ISM_RATE, center_hz=f, tune_hz=f, mode="AM")
+    elif cfg.get("ism_prev_rate") in SAMPLE_RATES and cfg["ism_prev_rate"] != ISM_RATE:
+        changes["sample_rate"] = cfg.pop("ism_prev_rate")
+    ism.set_enabled(on)
+
+
+@app.route("/api/ism", methods=["GET"])
+def api_ism():
+    return jsonify(dict(ism.info(), messages=ism.messages()))
+
+
+@app.route("/api/ism", methods=["POST"])
+def api_ism_cmd():
+    if request.get_json(force=True).get("action") == "clear":
+        ism.clear()
+    return jsonify(ism.info())
 
 
 @app.route("/api/dab")
@@ -688,7 +761,12 @@ def api_memories():
 def api_memory_add():
     b = request.get_json(force=True)
     try:
-        m = memories.make(b.get("name", ""), b.get("group", ""), b["freq_hz"], b["mode"], b.get("bw", 3000))
+        ch = b.get("dab_channel")
+        if ch is not None and ch not in CHANNEL_HZ:
+            raise ValueError("unknown DAB channel")
+        m = memories.make(b.get("name", ""), b.get("group", ""), CHANNEL_HZ[ch] if ch else b["freq_hz"], b["mode"], b.get("bw", 3000))
+        if ch:
+            m["dab_channel"] = ch                # a recall turns DAB on with this channel
     except (KeyError, TypeError, ValueError) as e:
         return jsonify({"error": str(e) or "invalid entry"}), 400
     return jsonify(memories.add(m))
@@ -714,6 +792,16 @@ def api_memory_import():
     if not done:
         return jsonify({"error": "; ".join(errors)}), 400
     return jsonify({"added": added, "skipped": skipped, "files": done, "errors": errors})
+
+
+@app.route("/api/memories/import_json", methods=["POST"])
+def api_memory_import_json():
+    """Imports memories from a JSON list (the format of the MEM export)."""
+    try:
+        added, skipped = memories.import_json(request.get_json(force=True, silent=True), CHANNEL_HZ)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"added": added, "skipped": skipped})
 
 
 @app.route("/api/memories/<mid>", methods=["PATCH"])
@@ -814,6 +902,43 @@ def api_set():
                 changes[key + "_hz"] = hz
         if "rtl_agc" in body:
             changes["rtl_agc"] = bool(body["rtl_agc"])
+        if "dc_remove" in body:
+            changes["dc_remove"] = bool(body["dc_remove"])
+        if "dc_hz" in body:
+            hz = int(body["dc_hz"])
+            if not 0 <= hz <= 1000:
+                raise ValueError("DC peak width must be 0 to 1000 Hz")
+            changes["dc_hz"] = hz
+        if "dc_db" in body:
+            db = int(body["dc_db"])
+            if not 0 <= db <= 60:
+                raise ValueError("DC peak suppression must be 0 to 60 dB")
+            changes["dc_db"] = db
+        if "spur_on" in body:
+            changes["spur_on"] = bool(body["spur_on"])
+        if "spur_hz" in body:
+            hz = int(body["spur_hz"])
+            if not 100 <= hz <= 10000:
+                raise ValueError("Spur width must be 100 to 10000 Hz")
+            changes["spur_hz"] = hz
+        if "spur_edge" in body:
+            hz = int(body["spur_edge"])
+            if not 0 <= hz <= 3000:
+                raise ValueError("Spur edge must be 0 to 3000 Hz")
+            changes["spur_edge"] = hz
+        if "spur_shift" in body:
+            hz = int(body["spur_shift"])
+            if not -1000 <= hz <= 1000:
+                raise ValueError("Spur shift must be -1000 to 1000 Hz")
+            changes["spur_shift"] = hz
+        if "spur_db" in body:
+            db = int(body["spur_db"])
+            if not 0 <= db <= 60:
+                raise ValueError("Spur suppression must be 0 to 60 dB")
+            changes["spur_db"] = db
+        for key in ("spur_learn", "spur_clear"):
+            if body.get(key):
+                changes[key] = True
         if "ppm" in body:
             changes["ppm"] = int(body["ppm"])
         if "zoom" in body:
@@ -887,6 +1012,7 @@ def api_set():
         hub.event("status", state())
     if body.get("acars") or body.get("vdl2"):
         set_dab(False, changes)                # the dongle cannot be at 131/136 MHz and in Band III at once
+        set_ism(False, changes)                # nor at 433 / 868 MHz
     if "acars" in body:
         cfg["acars"] = bool(body["acars"])
         if cfg["acars"]:
@@ -900,6 +1026,22 @@ def api_set():
         sync_cpdlc()
         save_config_later()
         hub.event("status", state())
+    if "vdl2_region" in body:
+        if body["vdl2_region"] not in VDL2_REGIONS:
+            return jsonify({"error": "vdl2_region must be one of " + ", ".join(VDL2_REGIONS)}), 400
+        vdl2.set_region(body["vdl2_region"])
+        cfg["vdl2_region"] = vdl2.region
+        save_config_later()
+        hub.event("status", state())
+    if "dab_sid" in body:
+        sid = body["dab_sid"]
+        if sid is not None and not re.fullmatch(r"0x[0-9a-fA-F]{1,8}", str(sid)):
+            return jsonify({"error": "unknown DAB station"}), 400
+        cfg["dab_sids"] = dict(cfg.get("dab_sids") or {}, **{dab.channel: sid})    # last station of each channel, None = stopped
+        save_config_later()
+        hub.event("status", state())
+    if body.get("dab"):
+        set_ism(False, changes)
     if "dab" in body or "dab_channel" in body:
         ch = body.get("dab_channel")
         if ch is not None and ch not in CHANNEL_HZ:
@@ -908,6 +1050,26 @@ def api_set():
         if ch:
             cfg["dab_channel"] = ch
         save_config_later()
+        hub.event("status", state())
+    if "ism_hz" in body:
+        if body["ism_hz"] not in ISM_FREQS:
+            return jsonify({"error": "unknown ISM frequency"}), 400
+        cfg["ism_hz"] = body["ism_hz"]
+        if ism.enabled:
+            changes.update(center_hz=float(body["ism_hz"]), tune_hz=float(body["ism_hz"]))
+    if "ism" in body:
+        set_ism(bool(body["ism"]), changes)
+    if "ism" in body or "ism_hz" in body:
+        save_config_later()
+        hub.event("status", state())
+    try:
+        if "rec" in body:
+            recorder.set("cont", bool(body["rec"]))
+        if "rec_sq" in body:
+            recorder.set("squelch", bool(body["rec_sq"]))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    if "rec" in body or "rec_sq" in body:
         hub.event("status", state())
     if "tune_hz" in changes and changes["tune_hz"] != cfg.get("tune_hz"):
         with tx_lock:
@@ -929,6 +1091,76 @@ def api_set():
     if set(changes) - {"reset"}:
         save_config_later()
     return jsonify({"ok": True})
+
+
+# ---------- antenna rotor and Gpredict link (rotor.py) ----------
+
+def rotor_set_freq(hz):
+    """Frequency from Gpredict: goes the same way as tuning on the page. None = OK, else the error."""
+    with app.test_client() as c:
+        res = c.post("/api/set", json={"tune_hz": hz})
+    return None if res.status_code == 200 else (res.get_json() or {}).get("error", "refused")
+
+
+rotor_link = rotor_module.RotorLink(rotor_set_freq, lambda: cfg["tune_hz"])
+
+
+def start_rotor():
+    r = cfg.get("rotor") or {}
+    return rotor_link.start(r.get("port", ""), r.get("usb_serial", ""), int(r.get("rot_port", rotor_module.ROTCTL_PORT)),
+                            int(r.get("rig_port", rotor_module.RIGCTL_PORT)))
+
+
+@app.route("/api/rotor", methods=["GET"])
+def api_rotor():
+    info = rotor_link.info()
+    if request.args.get("ports"):
+        try:
+            info["ports"] = rotor_module.list_ports()
+        except ImportError:
+            info["error"] = "pyserial is not installed: run upgrade.bat"
+    return jsonify(info)
+
+
+@app.route("/api/rotor", methods=["POST"])
+def api_rotor_cmd():
+    if not same_host(request):
+        return jsonify({"error": "rotor commands are accepted only from this RADIMCOM page"}), 403
+    body = request.get_json(force=True)
+    rotor = rotor_link.rotor
+    if body.get("stop"):
+        rotor.stop_control()
+    if body.get("reset"):
+        rotor.reset_fault()
+    if body.get("start") and not rotor.running:
+        body["enabled"] = True     # rotor control also turns the link on, with the port saved in SET
+    if "enabled" in body:
+        saved = dict(cfg.get("rotor") or {}, enabled=bool(body["enabled"]))
+        for k in ("port", "usb_serial"):
+            if k in body:
+                saved[k] = str(body[k])
+        if saved["enabled"] and not (saved.get("port") or saved.get("usb_serial")):
+            return jsonify({"error": "choose the serial port in SET, ROTOR tab"}), 409
+        cfg["rotor"] = saved
+        save_config_later()
+        err = start_rotor() if saved["enabled"] else rotor_link.stop()
+        if err:
+            return jsonify({"error": err}), 409
+    if body.get("start"):
+        err = rotor.start_control()
+        if err:
+            return jsonify({"error": err}), 409
+    if "goto" in body:
+        try:
+            az, el = (float(v) for v in body["goto"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "azimuth and elevation must be numbers"}), 400
+        if not (0 <= az <= 360 and 0 <= el <= rotor_module.MAX_EL_DEG):
+            return jsonify({"error": "azimuth must be 0 to 360, elevation 0 to 180"}), 400
+        err = rotor.goto(az, el)
+        if err:
+            return jsonify({"error": err}), 409
+    return jsonify(rotor_link.info())
 
 
 @app.route("/api/mpx")
@@ -982,6 +1214,8 @@ def api_audio():
 def exit_with_parent():
     """The VFO process ends when the launcher ends (its input is closed)."""
     sys.stdin.read()
+    recorder.stop_all()
+    rotor_link.stop()
     os._exit(0)
 
 
@@ -993,9 +1227,15 @@ if __name__ == "__main__":
         receiver.iq_server = iqshare.IqServer(iqshare.iq_port(VFO))
         print(f"VFO {VFO['name']}: shares its dongle with VFO {', '.join(CHAINED)} (port {iqshare.iq_port(VFO)})")
     receiver.start()
+    if (cfg.get("rotor") or {}).get("enabled"):
+        err = start_rotor()
+        if err:
+            print(f"Rotor: {err}")
     try:
         port = int(cfg.get("port", 8434))
         print(f"RADIMCOM: http://localhost:{port}")
         app.run(host=cfg.get("host", "0.0.0.0"), port=port, threaded=True, use_reloader=False)
     finally:
+        recorder.stop_all()
+        rotor_link.stop()
         receiver.stop()

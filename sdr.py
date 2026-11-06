@@ -421,6 +421,142 @@ class AutoNotch:
         return allout[:len(x)]
 
 
+SPUR_WIDTH_DEFAULT = 3000 # Hz, stopband of each line
+SPUR_EDGE_DEFAULT = 1000  # Hz, side of the band-stop from full depth to none
+SPUR_DB_DEFAULT = 40
+SPUR_LEARN_S = 5.0        # LEARN: seconds of averaged spectrum
+SPUR_MIN_DB = 4.0         # a line stands at least this much above its surroundings; the chain rule stops the rest
+SPUR_MIN_SPACING = 12000  # Hz; below this a broadcast grid (5, 9, 10 kHz) would look like a comb
+SPUR_MAX_SPACING = 250000
+SPUR_TRACK_BLOCKS = 16    # how often the lines are measured again (~1 s)
+SPUR_EMA = 0.97           # averaging of that measurement per block (~2 s)
+SPUR_MIN_CHAIN = 4        # lines at the same spacing that make a comb; a single line is a station
+
+
+def find_spurs(power, lo_edge, bin_hz, center_hz):
+    """Spurs in an averaged spectrum: lines repeating at a regular spacing (a switching supply and its harmonics).
+    Other peaks are stations and stay. Returns [[Hz, dB above the surroundings], ...]."""
+    from scipy.ndimage import percentile_filter, uniform_filter1d
+    from scipy.signal import find_peaks
+    def coarse(step_hz):
+        k = max(1, int(step_hz / bin_hz))
+        p = power[:len(power) // k * k].reshape(-1, k).mean(axis=1)
+        return lo_edge + (np.arange(len(p)) + 0.5) * bin_hz * k - bin_hz / 2, uniform_filter1d(10 * np.log10(p + 1e-20), 3), bin_hz * k
+
+    fine_hz, fine_db, _ = coarse(250)
+    hz, db, res = coarse(1000)                      # weak lines wander and split into several peaks at finer resolution
+    excess = db - percentile_filter(db, 15, size=int(60000 / res) | 1)    # low and wide: under the skirts of the lines
+    pk = find_peaks(excess, height=SPUR_MIN_DB, prominence=SPUR_MIN_DB, distance=max(1, int(1000 / res)))[0]
+    pk = pk[np.abs(hz[pk] - center_hz) > 3000]      # the DC peak has its own filter
+    tol = max(300.0, 1.5 * res)
+    left, found = [(float(hz[i]), float(excess[i])) for i in pk], []
+    for _ in range(3):                              # up to three different spacings
+        f = np.array([p[0] for p in left])
+        if len(f) < SPUR_MIN_CHAIN:
+            break
+        all_diffs = np.sort((f[None, :] - f[:, None])[np.triu_indices(len(f), 1)])
+        diffs = all_diffs[(all_diffs >= SPUR_MIN_SPACING) & (all_diffs <= SPUR_MAX_SPACING)]
+        if not len(diffs):
+            break
+        counts = np.searchsorted(diffs, diffs + tol) - np.searchsorted(diffs, diffs - tol)
+        best = diffs[int(np.argmax(counts))]
+        d = float(diffs[np.abs(diffs - best) <= tol].mean())
+        n_d = np.count_nonzero(np.abs(all_diffs - d) <= tol)
+        if any(d / m < SPUR_MIN_SPACING and np.count_nonzero(np.abs(all_diffs - d / m) <= tol) >= n_d / 2 for m in (2, 3, 4)):
+            break                                   # really a finer grid (18 kHz here = 9 kHz stations)
+        # Chains of lines d apart; one missing line does not break a chain.
+        chain = list(range(len(f)))
+
+        def root(a):
+            while chain[a] != a:
+                a = chain[a]
+            return a
+
+        for a in range(len(f)):
+            for step in (d, 2 * d):
+                b = int(np.argmin(np.abs(f - (f[a] + step))))
+                if abs(f[b] - f[a] - step) <= tol:
+                    chain[root(b)] = root(a)
+        groups = {}
+        for a in range(len(f)):
+            groups.setdefault(root(a), []).append(a)
+        members = {a for g in groups.values() if len(g) >= SPUR_MIN_CHAIN for a in g}
+        if not members:
+            break
+        found += [left[a] for a in members]
+        left = [p for a, p in enumerate(left) if a not in members]
+    placed = []
+    for h, e in found:
+        near = np.abs(fine_hz - h) <= 1000
+        placed.append([round(float(fine_hz[near][np.argmax(fine_db[near])]), 1), round(e, 1)])
+    return sorted(placed)
+
+
+def spur_profile(ema, lo_edge, bin_hz, lines, width, edge, db, shift):
+    """Depth in dB over the spectrum ema: a band-stop on each line, flat over width, with sides edge Hz wide.
+    Inside it each point goes down to the noise around the band-stop and no further (at most db): a line is tall in the
+    middle and low at the sides, so one depth for all of them would leave its tip standing in a hole dug into the noise."""
+    from scipy.ndimage import uniform_filter1d
+    level = 10 * np.log10(uniform_filter1d(ema, max(1, int(125 / bin_hz))) + 1e-30)
+    depth = np.zeros(len(ema), np.float32)
+    reach = width / 2 + edge
+    inner = int(max(reach, 1000) / bin_hz)
+    outer = inner + int(2000 / bin_hz)
+    r = int(reach / bin_hz) + 1
+    for hz, _ in lines:
+        hz += shift
+        i = int(round((hz - lo_edge) / bin_hz))
+        if not outer <= i < len(ema) - outer:
+            continue
+        noise = 10 * np.log10(np.median(np.concatenate((ema[i - outer:i - inner], ema[i + inner:i + outer]))) + 1e-30)
+        band = np.arange(i - r, i + r + 1)
+        d = np.abs(lo_edge + band * bin_hz - hz) - width / 2    # below 0 = in the stopband
+        side = np.where(d < edge, np.cos(np.pi / 2 * np.clip(d / max(edge, 1e-9), 0, 1)) ** 2, 0.0)
+        depth[band] = np.maximum(depth[band], side * np.clip(level[band] - noise, 0, db))
+    return depth
+
+
+class SpurFilter:
+    """Learned spurs in the narrow channel: gain per FFT bin (STFT, 75 % overlap). Delay N samples."""
+
+    N, H = 1024, 256
+
+    def __init__(self, fs):
+        self.freqs = np.fft.fftfreq(self.N, 1 / fs)
+        self.win = np.hanning(self.N + 1)[:-1].astype(np.float32)
+        self.key = None
+        self.gain = None
+        self.reset()
+
+    def reset(self):
+        self.inp = np.zeros(self.N - self.H, np.complex64)
+        self.ola = np.zeros(self.N, np.complex64)
+        self.pending = np.zeros(self.H, np.complex64)
+        self.active = False
+
+    def process(self, x, tune_hz, depth, lo_edge, bin_hz, version):
+        """x = channel with the tuned frequency at 0 Hz; depth = spur_profile over the band; version changes with it."""
+        self.active = True
+        key = (tune_hz, version)
+        if key != self.key:
+            self.key = key
+            db = np.interp(self.freqs + tune_hz, lo_edge + np.arange(len(depth)) * bin_hz, depth, left=0, right=0)
+            self.gain = (10 ** (-db / 20)).astype(np.float32)
+        N, H, w = self.N, self.H, self.win
+        buf = np.concatenate((self.inp, x))
+        nf = (len(buf) - N) // H + 1
+        out = np.empty(nf * H, np.complex64)
+        for k in range(nf):
+            y = np.fft.ifft(np.fft.fft(buf[k * H:k * H + N] * w) * self.gain).astype(np.complex64) * w / 1.5   # Hann² at 75 % = 1.5
+            self.ola += y
+            out[k * H:(k + 1) * H] = self.ola[:H]
+            self.ola = np.concatenate((self.ola[H:], np.zeros(H, np.complex64)))
+        self.inp = buf[nf * H:]
+        allout = np.concatenate((self.pending, out))
+        self.pending = allout[len(x):]
+        return allout[:len(x)]
+
+
 AFI_DEFAULT_HZ = 1750.0  # Hz, mirror point of the audio frequency inversion (f -> 2*AFI - f)
 AFI_MIN_HZ, AFI_MAX_HZ = 500.0, 4000.0
 
@@ -627,6 +763,10 @@ class Receiver:
         self.on_demod = on_demod
         self.on_dsd = on_dsd      # DSD mode: gets the discriminator, returns the voice
         self.on_raw = None        # raw dongle samples (VDL2), set by app.py
+        self.on_spurs = None      # LEARN finished: the settings have to be saved, set by app.py
+        self.spur_learning = False
+        self.spur_found = None    # lines found by the last LEARN
+        self.spur_version = 0     # changes with the learned lines: the filters are rebuilt
         self.on_status = on_status
         self.on_meter = on_meter   # S-meter level of every block; the status goes out only every 0.2 s
         self.lock = threading.Lock()
@@ -779,6 +919,10 @@ class Receiver:
         # ±10 kHz, so that the 18 kHz filter (AM/FM) also passes; less at a low sample rate (alias).
         self.dec = Decimator(self.fs, cutoff=min(10000.0, self.fs / DECIM / 3))
         self.chan = Channel(self.fs / DECIM)
+        self.spur = SpurFilter(self.fs / DECIM)
+        self.spur_mask, self.spur_depth, self.spur_grid, self.spur_settings = None, None, None, None
+        self.spur_acc, self.spur_n, self.spur_acc_key = None, 0, None
+        self.spur_ema, self.spur_ema_key, self.spur_ema_n = None, None, 0
         self.afi = FreqInverter()
         self.lpf = PassFilter("lowpass")
         self.hpf = PassFilter("highpass")
@@ -787,6 +931,7 @@ class Receiver:
         self.win = np.hanning(WF_FFT).astype(np.float32)
         self.wf_norm = 1.0 / (self.win.sum() ** 2)
         self.view_start = None
+        self.dc_zi = None
         self.view_key = None
         self.view_req = None
 
@@ -839,6 +984,14 @@ class Receiver:
         for k in ("lpf", "lpf_hz", "hpf", "hpf_hz"):
             if k in changes:
                 c[k] = changes[k]
+        for k in ("dc_remove", "dc_hz", "dc_db", "spur_on", "spur_hz", "spur_edge", "spur_db", "spur_shift"):
+            if k in changes:
+                c[k] = changes[k]
+        if changes.get("spur_learn"):
+            self.spur_learning, self.spur_acc_key = True, None
+        if changes.get("spur_clear"):
+            c["spur_lines"], self.spur_found, self.spur_ema_key = [], None, None
+            self.spur_version += 1
         if "rtl_agc" in changes:
             c["rtl_agc"] = changes["rtl_agc"]
             sdr.set_rtl_agc(c["rtl_agc"])
@@ -884,6 +1037,70 @@ class Receiver:
         if abs(view_hz - c["center_hz"]) + span / 2 > self.fs / 2 * 0.98:
             c["center_hz"] = max(view_hz, self.fs / 2)
 
+    def _learn_spurs(self, power, lo_edge, bin_hz):
+        """LEARN: averages the spectrum (retuning the dongle starts it again), then replaces the lines of this band."""
+        c = self.cfg
+        key = (lo_edge, bin_hz)
+        if self.spur_acc_key != key:
+            self.spur_acc, self.spur_n, self.spur_acc_key = np.zeros(len(power)), 0, key
+        self.spur_acc += power
+        self.spur_n += 1
+        if self.spur_n * READ_SAMPLES / self.fs < SPUR_LEARN_S:
+            return
+        found = find_spurs(self.spur_acc / self.spur_n, lo_edge, bin_hz, c["center_hz"])
+        if found:                                   # nothing found: the lines learned before stay
+            hi_edge = lo_edge + len(power) * bin_hz
+            c["spur_lines"] = sorted([ln for ln in c.get("spur_lines", []) if not lo_edge <= ln[0] < hi_edge] + found)
+            self.spur_ema_key = None
+            self.spur_version += 1
+        self.spur_found, self.spur_learning, self.spur_acc = len(found), False, None
+        if self.on_spurs:
+            self.on_spurs()
+        self.on_status()
+
+    def _track_spurs(self, power, lo_edge, bin_hz, lines):
+        """Measures the learned lines in the spectrum of now: they change with the gain, and the filter follows their shape.
+        Averaged over ~2 s, so that speech on a line is not followed. The filter of the channel is rebuilt from it."""
+        c = self.cfg
+        key = (lo_edge, bin_hz, c.get("gain"))
+        if self.spur_ema_key != key:
+            self.spur_ema, self.spur_ema_key, self.spur_ema_n = power.copy(), key, SPUR_TRACK_BLOCKS
+        else:
+            self.spur_ema = SPUR_EMA * self.spur_ema + (1 - SPUR_EMA) * power
+            self.spur_ema_n += 1
+        settings = (c.get("spur_hz", SPUR_WIDTH_DEFAULT), c.get("spur_edge", SPUR_EDGE_DEFAULT),
+                    c.get("spur_db", SPUR_DB_DEFAULT), c.get("spur_shift", 0))
+        if self.spur_ema_n < SPUR_TRACK_BLOCKS and settings == self.spur_settings:
+            return
+        self.spur_ema_n, self.spur_settings = 0, settings
+        width, edge, db, shift = settings
+        self.spur_depth = spur_profile(self.spur_ema, lo_edge, bin_hz, lines, width, edge, db, shift)
+        self.spur_mask = 10 ** (-self.spur_depth / 10)
+        self.spur_grid = (lo_edge, bin_hz)
+        self.spur_version += 1
+
+    def _remove_dc(self, iq):
+        """DC peak in the centre of the band. Returns new samples: raw is shared, so not in place.
+
+        Width 0 removes only the block mean. A wider peak (LimeSDR has wide skirts) needs a high-pass, width = its cutoff.
+        Suppression (dB) sets how much of what they take out is really subtracted.
+        """
+        if not self.cfg.get("dc_remove", True):
+            self.dc_zi = None
+            return iq
+        k = np.float32(1 - 10 ** (-self.cfg.get("dc_db", 60) / 20))
+        hz = self.cfg.get("dc_hz", 0)
+        if not hz:
+            self.dc_zi = None
+            return iq - k * iq.mean()
+        from scipy.signal import lfilter
+        p = np.exp(-2 * np.pi * hz / self.fs)               # one-pole high-pass; keeps its state between blocks
+        g = (1 + p) / 2
+        if self.dc_zi is None:
+            self.dc_zi = np.array([-g * iq[0]], np.complex64)   # start as if DC had always been there: no click
+        out, self.dc_zi = lfilter(np.array([g, -g], np.float32), np.array([1, -p], np.float32), iq, zi=self.dc_zi)
+        return (1 - k) * iq + k * out
+
     def _waterfall(self, iq):
         """Waterfall line: fine FFT of the whole band, from which a section is taken by zoom (WF_BINS points).
 
@@ -892,8 +1109,9 @@ class Receiver:
         """
         segs = iq[:WF_SEGMENTS * WF_FFT].reshape(WF_SEGMENTS, WF_FFT) * self.win
         power = np.fft.fftshift(np.mean(np.abs(np.fft.fft(segs, axis=1)) ** 2, axis=0)) * self.wf_norm
-        mid = WF_FFT // 2
-        power[mid] = (power[mid - 1] + power[mid + 1]) / 2  # RTL-SDR DC spike
+        if self.cfg.get("dc_remove", True):
+            mid = WF_FFT // 2
+            power[mid] = (power[mid - 1] + power[mid + 1]) / 2  # what is left of the DC spike after _loop removed the mean
 
         c = self.cfg
         zoom = int(c.get("zoom", 1))
@@ -916,6 +1134,14 @@ class Receiver:
         start = max(0, min(WF_FFT - span_bins, start))
         self.view_start, self.view_key = start, (zoom, c["center_hz"])
 
+        if self.spur_learning:
+            self._learn_spurs(power, lo_edge, bin_hz)   # from the spectrum before the filter
+        lines = c.get("spur_lines")
+        if c.get("spur_on") and lines:
+            self._track_spurs(power, lo_edge, bin_hz, lines)
+            power = power * self.spur_mask
+        else:
+            self.spur_ema_key = None                # measured afresh when switched on again
         view = power[start:start + span_bins].reshape(WF_BINS, -1).mean(axis=1)
         db = 10 * np.log10(view + 1e-20)
         row = np.clip((db - WF_DB_MIN) / WF_DB_STEP, 0, 255).astype(np.uint8)
@@ -945,6 +1171,7 @@ class Receiver:
                 iq = raw.astype(np.float32).view(np.complex64)
                 iq -= np.complex64(127.5 + 127.5j)
                 iq *= np.float32(1 / 127.5)
+            iq = self._remove_dc(iq)
 
             self._waterfall(iq)
 
@@ -967,6 +1194,10 @@ class Receiver:
             self.phase = (self.phase + step * n) % (2 * np.pi)
             shifted = iq * mixer
             base = self.dec.process(shifted)
+            if c.get("spur_on") and c.get("spur_lines"):
+                base = self.spur.process(base, c["tune_hz"], self.spur_depth, *self.spur_grid, self.spur_version)
+            elif self.spur.active:
+                self.spur.reset()
             if self.on_baseband:
                 self.on_baseband(base, self.fs / DECIM, c["tune_hz"])
             mode = c["mode"]
@@ -1147,6 +1378,17 @@ class Receiver:
             "gains": self.gains,
             "rtl_agc": bool(c.get("rtl_agc", False)),
             "ppm": c.get("ppm", 0),
+            "dc_remove": bool(c.get("dc_remove", True)),
+            "dc_hz": c.get("dc_hz", 0),
+            "dc_db": c.get("dc_db", 60),
+            "spur_on": bool(c.get("spur_on", False)),
+            "spur_hz": c.get("spur_hz", SPUR_WIDTH_DEFAULT),
+            "spur_edge": c.get("spur_edge", SPUR_EDGE_DEFAULT),
+            "spur_shift": c.get("spur_shift", 0),
+            "spur_db": c.get("spur_db", SPUR_DB_DEFAULT),
+            "spur_count": len(c.get("spur_lines", [])),
+            "spur_learning": self.spur_learning,
+            "spur_found": self.spur_found,
             "bias_tee": bool(c.get("bias_tee", False)),
             "smeter": round(self.smeter, 1),
             "dropped": self.dropped,
