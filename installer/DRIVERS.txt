@@ -26,6 +26,13 @@ LimeSuite.dll is included in lib\ (from PothosSDR, Apache 2.0). If it does not w
           https://downloads.myriadrf.org/builds/PothosSDR/
 LimeSuite: https://github.com/myriadrf/LimeSuite
 
+Airspy R2
+---------
+Driver: WinUSB. Connect the Airspy and run setup.bat; if it does not find the Airspy, install the driver
+with drivers\zadig.exe as for an RTL-SDR dongle (Options -> List All Devices, select the Airspy, WinUSB).
+airspy.dll and pthreadVC2.dll are included in lib\ (from PothosSDR).
+libairspy: https://github.com/airspy/airspyone_host
+
 Python
 ------
 Python 3.9 or newer: https://www.python.org/downloads/windows/

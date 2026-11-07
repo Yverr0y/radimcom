@@ -3,3 +3,4 @@ numpy>=1.26
 scipy>=1.11
 pyserial>=3.5
 lameenc>=1.7
+sgp4>=2.23

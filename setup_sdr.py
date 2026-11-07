@@ -1,4 +1,4 @@
-"""Initial dongle setup: finds the connected RTL-SDRs and LimeSDRs, assigns them to VFO A, B, C…
+"""Initial dongle setup: finds the connected RTL-SDRs, LimeSDRs and Airspys, assigns them to VFO A, B, C…
 and writes vfos.json. Dongles are then opened by serial number, so the USB order does not matter.
 
 VFO chaining: one dongle can serve several VFOs (e.g. one dongle for VFO A–D, or two dongles with two VFOs
@@ -68,15 +68,27 @@ def lime_devices():
         return []
 
 
-def show(rtl, limes):
+def airspy_devices():
+    """[{serial, name}] of connected Airspys; empty if airspy.dll is missing."""
+    try:
+        import airspy
+        return airspy.list_devices()
+    except Exception as e:  # DLL missing
+        print(f"  (Airspy not checked: {e})")
+        return []
+
+
+def show(rtl, limes, airspys):
     print()
-    if not rtl and not limes:
+    if not rtl and not limes and not airspys:
         print("  No SDR found. Check the USB connection and the driver (see DRIVERS.txt).")
     for d in rtl:
         print(f"  RTL-SDR #{d['index']}: {d.get('vendor', '')} {d.get('product', '')}  serial '{d['serial']}'")
     for d in limes:
         print(f"  LimeSDR: {d['name']}  serial '{d['serial']}'")
-    if (rtl or limes) and not any(d["serial"] for d in rtl + limes):
+    for d in airspys:
+        print(f"  Airspy: serial '{d['serial']}'")
+    if (rtl or limes or airspys) and not any(d["serial"] for d in rtl + limes + airspys):
         print("\n  No serial numbers could be read: the receiver is probably still running. Close it and try again.")
     print()
 
@@ -136,13 +148,17 @@ def fix_serials(rtl):
     return True
 
 
+DEVICE_NAMES = {"rtl": "RTL-SDR", "lime": "LimeSDR", "airspy": "Airspy"}
+
+
 def label(d):
-    return f"{'LimeSDR' if d['driver'] == 'lime' else 'RTL-SDR'} '{d['serial']}'"
+    return f"{DEVICE_NAMES[d['driver']]} '{d['serial']}'"
 
 
 def present():
     """Keys (driver, serial) of the devices connected right now, with a count for duplicate numbers."""
     keys = [("rtl", d["serial"]) for d in rtl_devices()] + [("lime", d["serial"]) for d in lime_devices()]
+    keys += [("airspy", d["serial"]) for d in airspy_devices()]
     return {k: keys.count(k) for k in keys}
 
 
@@ -240,11 +256,11 @@ def configure_chained(owner, name, port):
 
 def configure(dev, name, port):
     """Questions about one device -> vfos.json entry."""
-    lime = dev["driver"] == "lime"
-    print(f"\nVFO {name}: {'LimeSDR' if lime else 'RTL-SDR'} serial '{dev['serial']}'")
+    driver = dev["driver"]
+    print(f"\nVFO {name}: {DEVICE_NAMES[driver]} serial '{dev['serial']}'")
     entry = {"name": name, "serial": dev["serial"], "port": port, "config": f"config_{name}.json"}
-    if lime:
-        entry["driver"] = "lime"
+    if driver != "rtl":
+        entry["driver"] = driver
     init = {"ppm": ask_num("  Frequency correction ppm (0 if unknown)", 0, int)}
     if yes("  Is it connected through an HF upconverter (e.g. Ham It Up)?", False):
         while True:
@@ -260,10 +276,12 @@ def configure(dev, name, port):
         entry["note"] = "HF via upconverter"
     else:
         init.update(upconv="off", lo_offset_hz=0, tune_hz=145500000, mode="FM")
-        entry["note"] = ("LimeSDR, " if lime else "") + "VHF/UHF direct"
+        entry["note"] = ("" if driver == "rtl" else f"{DEVICE_NAMES[driver]}, ") + "VHF/UHF direct"
     init["center_hz"] = init["tune_hz"] + 409600   # tuned frequency off-centre (the centre has a DC spike)
-    if lime:
+    if driver == "lime":
         init.update(gain=35, bias_tee=False, rtl_agc=False)
+    elif driver == "airspy":
+        init.update(gain=12, bias_tee=False, rtl_agc=False)
     note = ask("  Description shown on the VFO button", entry["note"])
     entry["note"] = note
     entry["init"] = init
@@ -273,14 +291,15 @@ def configure(dev, name, port):
 def main():
     print("=== RADIMCOM - SDR setup ===")
     print("The receiver must not be running now (close start.bat).")
-    rtl, limes = rtl_devices(), lime_devices()
-    show(rtl, limes)
+    rtl, limes, airspys = rtl_devices(), lime_devices(), airspy_devices()
+    show(rtl, limes, airspys)
     if "--list" in sys.argv:
         return
     if rtl and fix_serials(rtl):
-        rtl, limes = rtl_devices(), lime_devices()
-        show(rtl, limes)
+        rtl, limes, airspys = rtl_devices(), lime_devices(), airspy_devices()
+        show(rtl, limes, airspys)
     devs = [dict(d, driver="rtl") for d in rtl] + [dict(d, driver="lime") for d in limes]
+    devs += [dict(d, driver="airspy") for d in airspys]
     if not devs:
         input("Nothing to configure. Press Enter to exit.")
         return

@@ -26,6 +26,8 @@ SOURCES = [
     ("rtl-sdr 2.0.2 (linked into rtl_433.exe)", "GPL v2+", "rtl-sdr-2.0.2.tar.gz", GITHUB.format("osmocom/rtl-sdr", "v2.0.2")),
     ("Zadig 2.4.721 (libwdi)", "GPL v3", "libwdi-b721.tar.gz", GITHUB.format("pbatard/libwdi", "b721")),
     ("libusb 1.0.29 (also linked into rtl_433.exe)", "LGPL v2.1+", "libusb-1.0.29.tar.gz", GITHUB.format("libusb/libusb", "v1.0.29")),
+    ("pthreads-win32 2.9.1 (lib\\pthreadVC2.dll from PothosSDR, for airspy.dll)", "LGPL v2.1+", "pthreads-w32-2-9-1-release.tar.gz",
+     "https://sourceware.org/pub/pthreads-win32/pthreads-w32-2-9-1-release.tar.gz"),
     ("MSYS2 runtime 3.6.12", "LGPL v3", "msys2-runtime-3.6.12-1.src.tar.zst", MSYS.format("msys2-runtime-3.6.12-1")),
     ("GLib 2.90.1", "LGPL v2.1+", "glib2-2.90.1-1.src.tar.zst", MSYS.format("glib2-2.90.1-1")),
     ("libiconv 1.19", "LGPL", "libiconv-1.19-1.src.tar.zst", MSYS.format("libiconv-1.19-1")),
@@ -34,32 +36,13 @@ SOURCES = [
     ("FFTW 3.3.11", "GPL v2+", "mingw-w64-fftw-3.3.11-2.src.tar.zst", MINGW.format("mingw-w64-fftw-3.3.11-2")),
     ("mpg123 1.33.7", "LGPL v2.1", "mingw-w64-mpg123-1.33.7-1.src.tar.zst", MINGW.format("mingw-w64-mpg123-1.33.7-1")),
     ("LAME 4.0", "LGPL v2", "mingw-w64-lame-4.0-1.src.tar.zst", MINGW.format("mingw-w64-lame-4.0-1")),
-    ("Gpredict 2.7 (before our patch, gpredict_radimcom.patch is in the build folder)", "GPL v2+", "gpredict-2.7.tar.bz2",
-     "https://github.com/csete/gpredict/releases/download/v2.7/gpredict-2.7.tar.bz2"),
-    ("GTK 3.24.52", "LGPL v2.1+", "mingw-w64-gtk3-3.24.52-1.src.tar.zst", MINGW.format("mingw-w64-gtk3-3.24.52-1")),
-    ("GLib 2.90.1 (UCRT64)", "LGPL v2.1+", "mingw-w64-glib2-2.90.1-1.src.tar.zst", MINGW.format("mingw-w64-glib2-2.90.1-1")),
-    ("GDK-PixBuf 2.44.8", "LGPL v2.1+", "mingw-w64-gdk-pixbuf2-2.44.8-1.src.tar.zst", MINGW.format("mingw-w64-gdk-pixbuf2-2.44.8-1")),
-    ("Pango 1.58.2", "LGPL v2.1", "mingw-w64-pango-1.58.2-1.src.tar.zst", MINGW.format("mingw-w64-pango-1.58.2-1")),
-    ("Cairo 1.18.6", "LGPL v2.1+ or MPL 1.1", "mingw-w64-cairo-1.18.6-2.src.tar.zst", MINGW.format("mingw-w64-cairo-1.18.6-2")),
-    ("ATK 2.62.0.1 (at-spi2-core)", "LGPL v2.1+", "mingw-w64-at-spi2-core-2.62.0.1-1.src.tar.zst", MINGW.format("mingw-w64-at-spi2-core-2.62.0.1-1")),
-    ("FriBidi 1.0.18", "LGPL v2.1+", "mingw-w64-fribidi-1.0.18-1.src.tar.zst", MINGW.format("mingw-w64-fribidi-1.0.18-1")),
-    ("Graphite2 1.3.15", "LGPL v2.1+", "mingw-w64-graphite2-1.3.15-1.src.tar.zst", MINGW.format("mingw-w64-graphite2-1.3.15-1")),
-    ("libdatrie 0.2.14", "LGPL", "mingw-w64-libdatrie-0.2.14-1.src.tar.zst", MINGW.format("mingw-w64-libdatrie-0.2.14-1")),
-    ("libthai 0.1.30", "LGPL v2.1+", "mingw-w64-libthai-0.1.30-1.src.tar.zst", MINGW.format("mingw-w64-libthai-0.1.30-1")),
-    ("librsvg 2.63.4", "LGPL v2.1+", "mingw-w64-librsvg-2.63.4-1.src.tar.zst", MINGW.format("mingw-w64-librsvg-2.63.4-1")),
-    ("libiconv 1.19 (UCRT64)", "LGPL v2.1+", "mingw-w64-libiconv-1.19-1.src.tar.zst", MINGW.format("mingw-w64-libiconv-1.19-1")),
-    ("gettext 1.0 (libintl, UCRT64)", "LGPL v2.1+", "mingw-w64-gettext-1.0-1.src.tar.zst", MINGW.format("mingw-w64-gettext-1.0-1")),
-    ("xz 5.8.4", "LGPL v2.1+, GPL v2+", "mingw-w64-xz-5.8.4-1.src.tar.zst", MINGW.format("mingw-w64-xz-5.8.4-1")),
-    ("jbigkit 2.1", "GPL v2", "mingw-w64-jbigkit-2.1-6.src.tar.zst", MINGW.format("mingw-w64-jbigkit-2.1-6")),
-    ("Adwaita icons 51.0", "LGPL v3+ or CC BY-SA 3.0", "mingw-w64-adwaita-icon-theme-51.0-1.src.tar.zst", MINGW.format("mingw-w64-adwaita-icon-theme-51.0-1")),
 ]
-BUILD_FILES = ["VDL2.txt", "DAB.txt", "ISM.txt", "build_dab.sh", "welle_radimcom.patch", "GPREDICT.txt", "build_gpredict.sh", "gpredict_radimcom.patch"]
+BUILD_FILES = ["VDL2.txt", "DAB.txt", "ISM.txt", "build_dab.sh", "welle_radimcom.patch"]
 NOT_INCLUDED = """Not in this zip:
 - librtlsdr (GPL v2+): the exact source of lib\\librtlsdr.dll is still being confirmed. Ask at radim.mutina@gmail.com.
 - GCC runtime libraries: covered by the GCC Runtime Library Exception. Sources: https://github.com/msys2/MSYS2-packages
   and https://github.com/msys2/MINGW-packages (gcc 16.2.0).
-- libxml2, PCRE2, zlib, winpthreads, LimeSuite and the other libraries of Gpredict not listed above: permissive licences.
-  See NOTICE.md and apps\\gpredict\\README.txt in the package.
+- libxml2, PCRE2, zlib, winpthreads, LimeSuite, libairspy: permissive licences. See NOTICE.md in the package.
 """
 
 

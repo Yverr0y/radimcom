@@ -23,8 +23,6 @@ does not contain the binaries; the release packages do, except where noted.
 | rtl_433 25.12 (release build of its author, not changed) | ISM decoder, 433 / 868 MHz (separate program) | GPL v2 or later | <https://github.com/merbanan/rtl_433> |
 | rtl-sdr 2.0.2, libusb 1.0.29 | linked into `rtl_433.exe` | GPL v2 or later; LGPL v2.1 or later | <https://github.com/osmocom/rtl-sdr>, <https://github.com/libusb/libusb> |
 | FFTW, FAAD2 | used by welle-cli | GPL v2 or later | MSYS2 packages |
-| Gpredict 2.7, **modified** (`installer/gpredict_radimcom.patch`) | satellite tracking (separate program, `apps/gpredict`) | GPL v2 or later | <https://github.com/csete/gpredict> |
-| GTK 3, GLib, GDK-PixBuf, Pango, Cairo, ATK, FriBidi, librsvg and others | used by Gpredict; full list in `apps/gpredict/README.txt` | LGPL; jbigkit GPL v2; others permissive | MSYS2 packages |
 | mpg123, LAME | used by welle-cli | LGPL | MSYS2 packages |
 | MSYS2 runtime | runs dumpvdl2 | LGPL v3 | <https://github.com/msys2/msys2-runtime> |
 | GLib, libiconv, gettext (libintl) | used by dumpvdl2 | LGPL | MSYS2 packages |
@@ -34,9 +32,14 @@ does not contain the binaries; the release packages do, except where noted.
 | libusb 1.0.29 | USB access for librtlsdr | LGPL v2.1 or later | <https://github.com/libusb/libusb> |
 | Zadig 2.4 | installs the WinUSB driver | GPL v3 | <https://github.com/pbatard/libwdi> (tag `b721`) |
 | LimeSuite | LimeSDR access | Apache 2.0 | <https://github.com/myriadrf/LimeSuite> |
+| libairspy | Airspy access | BSD 3-Clause | <https://github.com/airspy/airspyone_host> |
+| pthreads-win32 | used by airspy.dll | LGPL v2.1 or later | <https://sourceware.org/pthreads-win32/> |
 | FTDI D3XX driver | LimeSDR USB driver | FTDI driver licence | <https://ftdichip.com/drivers/d3xx-drivers/> |
 | PyFT8 | FT8 decoder; `install.bat` installs it from PyPI, not in the package | GPL v3 or later | <https://github.com/G1OJS/PyFT8m> |
 | Flask, NumPy, SciPy, pyserial | Python packages; `install.bat` installs them from PyPI, not in the package | BSD | PyPI |
+| Leaflet 1.9.4 | map for choosing the station place (SATELLITES tab, SETUP); in `static/leaflet` | BSD 2-Clause (`static/leaflet/LICENSE`) | <https://leafletjs.com> |
+| Natural Earth 1:50m land and country borders | world map (SATELLITES tab, MAP); simplified in `static/world.js` by `installer/make_world.py` | public domain | <https://www.naturalearthdata.com/> |
+| sgp4 | satellite positions (SATELLITES tab, PASSES); `install.bat` installs it from PyPI, not in the package | MIT | <https://github.com/brandon-rhodes/python-sgp4> |
 | lameenc (with the LAME MP3 encoder) | MP3 recording; `install.bat` installs it from PyPI, not in the package | LGPL v3 or later (LAME: LGPL) | <https://github.com/chrisstaite/lameenc> |
 
 ### Not in the package: DSD-FME
@@ -51,7 +54,7 @@ may infringe patent rights in your jurisdiction and/or require a licence. Check 
 
 Each release from Ver. 0.108 has `RADIMCOM_sources_v<version>.zip` with the source code of the GPL and LGPL components
 in that release, in the exact versions used, and the build instructions (`installer/VDL2.txt`, `installer/DAB.txt`,
-`installer/build_dab.sh`, `installer/welle_radimcom.patch`, `installer/GPREDICT.txt`, `installer/build_gpredict.sh`). The list of its contents is `SOURCES.txt` in that zip. It is built by
+`installer/build_dab.sh`, `installer/welle_radimcom.patch`). The list of its contents is `SOURCES.txt` in that zip. It is built by
 `installer/make_sources.py`.
 
 **librtlsdr:** the exact source of the `librtlsdr.dll` in the packages is still being confirmed, so it is not in that
@@ -62,3 +65,7 @@ zip yet. To ask for it, or for any other source code, write to radim.mutina@gmai
 - The VDL2 ground station list (`VDL2_Ground_Stations.txt`) comes from <https://acars-vdl2.groups.io/>, redistributed
   with approval.
 - The airport tables in `airports.py` come from OurAirports (public domain).
+- The SATELLITES tab shows pages of AMSAT (<https://www.amsat.org/>), downloaded by the running program. They belong to AMSAT and are not in the repository or the release packages.
+- The orbital elements for pass prediction (TLE, amateur group) come from CelesTrak (<https://celestrak.org/>), downloaded by the running program once a day into `data\sat_tle.txt`; they are not in the repository or the release packages.
+- The list of satellite transmitters (SATELLITES tab, TRACK) comes from SatNOGS DB (<https://db.satnogs.org/>, Libre Space Foundation; data under CC BY-SA 4.0), downloaded by the running program once a week into `data\sat_transmitters.json`; it is not in the repository or the release packages.
+- The map for choosing the station place (SATELLITES tab, SETUP, CHOOSE ON MAP) shows tiles of OpenStreetMap (<https://www.openstreetmap.org/copyright>), © OpenStreetMap contributors, loaded by the browser from tile.openstreetmap.org only while that map is open; nothing of it is in the package.

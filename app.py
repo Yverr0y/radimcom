@@ -28,13 +28,19 @@ if __name__ == "__main__" and "--vfo" not in sys.argv and os.path.exists(VFOS_PA
     sys.exit(0)
 
 import memories
+import satellites
+import update_check
+try:
+    import sattrack       # needs the sgp4 package (upgrade.bat installs it)
+    import satplan
+except ImportError:
+    sattrack = None
 from ft8 import FT8_FREQS, Ft8Decoder
 from cw import CwDecoder
 from rtty import RttyDecoder
 from daylog import DayLog, TextLog
 from recorder import Recorder
 import rotor as rotor_module
-from gpredict import bp as gpredict_bp, same_host
 from wefax import WefaxDecoder
 from sstv import SstvDecoder
 from acars import ACARS_FREQS, AcarsDecoder
@@ -64,6 +70,8 @@ CHAINED = [v["name"] for v in ALL_VFOS if VFO and v.get("chain") == VFO["name"]]
 DONGLE_KEYS = ("gain", "rtl_agc", "bias_tee", "ppm", "sample_rate")
 CONFIG_PATH = data(VFO["config"] if VFO else "config.json")
 SAMPLE_RATES = (1024000, 1536000, 2048000, 2100000, 2400000)   # 2.1 MS/s = VDL2 (105 kS/s × 20)
+# The Airspy R2 has fixed rates; its 10 MS/s is not offered, the DSP is not made for it (audio = rate / DECIM).
+DRIVER_SAMPLE_RATES = {"airspy": (2500000,)}
 UPCONV_MODES = ("auto", "on", "off")
 
 
@@ -130,6 +138,13 @@ if VFO:
         cfg["ism"] = False           # ISM too
     else:
         cfg.pop("chain", None)
+RTL_DONGLE = cfg.get("driver", "rtl") == "rtl"   # VDL2, DAB and ISM need the rates and raw samples of an RTL dongle
+if not RTL_DONGLE:
+    cfg["vdl2"] = cfg["dab"] = cfg["ism"] = False
+if cfg.get("driver") in DRIVER_SAMPLE_RATES:
+    SAMPLE_RATES = DRIVER_SAMPLE_RATES[cfg["driver"]]
+    if cfg["sample_rate"] not in SAMPLE_RATES:
+        cfg["sample_rate"] = SAMPLE_RATES[0]
 if cfg.get("vdl2") and cfg.get("center_hz") == 136850000:
     cfg["center_hz"] = float(VDL2_CENTER)     # VDL2 left on with the centre of older versions: now a channel, on the DC spike
     cfg["tune_hz"] = float(VDL2_CENTER)
@@ -257,9 +272,16 @@ def state():
     return dict(receiver.state(), ft8=ft8.enabled, ft8_error=ft8.error, wefax=wefax.enabled, cw=cw.enabled, rtty=rtty.enabled,
                 sstv=sstv.enabled, acars=acars.enabled, vdl2=vdl2.enabled, vdl2_error=vdl2.error, vdl2_region=vdl2.region, cpdlc=acars.cpdlc_on,
                 dsd=dsd.info(), dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, dab_sids=cfg.get("dab_sids") or {}, ism=ism.enabled, ism_error=ism.error, ism_hz=cfg.get("ism_hz", ISM_DEFAULT), audio_muted=audio_muted(), recording=recorder.state(), logs={k: log_on(k) for k in LOG_KEYS},
-                trsp_name=rotor_link.rig.trsp_name, trsp_sat=rotor_link.rig.trsp_sat,
+                **doppler_trsp(),
                 tx_capable=capable, tx_enabled=bool(cfg.get("tx_enabled", False)),
                 can_tx=capable and bool(cfg.get("tx_enabled", False)) and hasattr(receiver.sdr, "tx_start"))
+
+
+def doppler_trsp():
+    """Satellite and transponder shown in blue in the name frame of the VFO while the Doppler correction tunes it."""
+    if doppler is not None and doppler.on:
+        return {"trsp_sat": doppler.name, "trsp_name": doppler.label or "Doppler"}
+    return {"trsp_name": "", "trsp_sat": ""}
 
 
 def cw_band():
@@ -330,9 +352,9 @@ vdl2.set_enabled(cfg.get("vdl2", False))
 acars.set_vdl2(vdl2.enabled)
 if cfg.get("dab_channel") in CHANNEL_HZ:
     dab.channel = cfg["dab_channel"]          # the page shows the saved channel also while DAB is off
-if cfg.get("dab") and cfg.get("driver") != "lime" and not OWNER:
+if cfg.get("dab") and RTL_DONGLE and not OWNER:
     dab.set_enabled(True, cfg.get("dab_channel", DAB_DEFAULT))
-if cfg.get("ism") and cfg.get("driver") != "lime" and not OWNER:
+if cfg.get("ism") and RTL_DONGLE and not OWNER:
     ism.set_enabled(True)
 
 
@@ -344,7 +366,13 @@ def sync_cpdlc():
 sync_cpdlc()
 
 app = Flask(__name__, static_folder="static")
-app.register_blueprint(gpredict_bp)
+
+
+def same_host(req):
+    """Only pages of this RADIMCOM may give rotor commands (any port, the VFOs have their own)."""
+    from urllib.parse import urlsplit
+    origin = req.headers.get("Origin")
+    return not origin or urlsplit(origin).hostname == urlsplit(req.host_url).hostname
 
 
 @app.after_request
@@ -360,6 +388,22 @@ def cors(resp):
 @app.route("/")
 def index():
     return send_from_directory(app.static_folder, "index.html")
+
+
+@app.route("/api/update", methods=["GET", "POST"])
+def api_update():
+    """Newer version on GitHub Releases (update_check.py); POST {"upgrade": true} installs it.
+    With the launcher the page asks the launcher instead."""
+    if request.method == "POST":
+        if VFO:
+            return jsonify({"error": "the launcher does the upgrade"}), 409
+        if not update_check.same_host(request):
+            return jsonify({"error": "the upgrade is accepted only from this RADIMCOM page"}), 403
+        if (request.get_json(force=True, silent=True) or {}).get("upgrade"):
+            err = update_check.upgrade(shutdown_for_upgrade)
+            if err:
+                return jsonify({"error": err}), 409
+    return jsonify(update_check.info())
 
 
 @app.route("/api/state")
@@ -643,8 +687,8 @@ def api_vdl2():
 
 def set_vdl2(on, changes):
     """VDL2 on: the VFO goes to 2.1 MS/s around 136.500 MHz (all VDL2 channels of the region), classic ACARS off.
-    VDL2 off: the previous sample rate comes back. Not on LimeSDR (RTL-SDR only)."""
-    if on and (cfg.get("driver") == "lime" or OWNER):
+    VDL2 off: the previous sample rate comes back. RTL-SDR only, not on a chained VFO."""
+    if on and (not RTL_DONGLE or OWNER):
         on = False
     if on == vdl2.enabled:
         return
@@ -664,7 +708,7 @@ def set_vdl2(on, changes):
 def set_dab(on, changes, channel=None):
     """DAB on: welle-cli starts and the VFO goes to the ensemble at 2.048 MS/s (ACARS and VDL2 off).
     DAB off: the previous sample rate comes back. RTL-SDR only, not on a chained VFO."""
-    if on and (cfg.get("driver") == "lime" or OWNER):
+    if on and (not RTL_DONGLE or OWNER):
         on = False
     if on == dab.enabled:
         if on and channel and channel != dab.channel:
@@ -690,7 +734,7 @@ def set_dab(on, changes, channel=None):
 def set_ism(on, changes):
     """ISM on: rtl_433 starts, the audio is muted and the VFO goes to the last ISM frequency at 2.048 MS/s (ACARS, VDL2 and DAB off).
     ISM off: the previous sample rate comes back. RTL-SDR only, not on a chained VFO."""
-    if on and (cfg.get("driver") == "lime" or OWNER):
+    if on and (not RTL_DONGLE or OWNER):
         on = False
     if on == ism.enabled:
         return
@@ -750,6 +794,142 @@ def api_devices():
         return jsonify(list_devices())
     except OSError as e:  # librtlsdr.dll missing etc.
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/satellites", methods=["GET", "POST"])
+def api_satellites():
+    """SATELLITES tab: the lists from amsat.org; POST downloads them again."""
+    return jsonify(satellites.load(refresh=request.method == "POST"))
+
+
+SGP4_MISSING = {"error": "the sgp4 package is not installed: run upgrade.bat"}
+
+
+@app.route("/api/sat/passes")
+def api_sat_passes():
+    """Timeline: passes of the chosen satellites over the next hours (default 48)."""
+    if sattrack is None:
+        return jsonify(SGP4_MISSING), 503
+    try:
+        hours = float(request.args.get("hours", 48))
+    except ValueError:
+        return jsonify({"error": "hours must be a number"}), 400
+    return jsonify(sattrack.passes(hours))
+
+
+@app.route("/api/sat/pass")
+def api_sat_pass():
+    """One pass in detail: samples every 5 s (azimuth, elevation, range, range rate, Doppler shift per MHz)."""
+    if sattrack is None:
+        return jsonify(SGP4_MISSING), 503
+    try:
+        return jsonify(sattrack.pass_detail(request.args["norad"], request.args["aos"], request.args["los"]))
+    except KeyError as e:
+        return jsonify({"error": f"missing or unknown: {e}"}), 404
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/sat/map")
+def api_sat_map():
+    """World map: ground tracks of the satellites chosen for the map, half an orbit back to one orbit ahead."""
+    if sattrack is None:
+        return jsonify(SGP4_MISSING), 503
+    return jsonify(sattrack.world_map())
+
+
+@app.route("/api/sat/transmitters")
+def api_sat_transmitters():
+    """Active transmitters of one satellite with a downlink (SatNOGS DB, kept for 7 days); ?refresh=1 downloads again."""
+    if sattrack is None:
+        return jsonify(SGP4_MISSING), 503
+    try:
+        norad = int(request.args["norad"])
+    except (KeyError, ValueError):
+        return jsonify({"error": "norad must be a number"}), 400
+    return jsonify(sattrack.transmitters(norad, refresh=bool(request.args.get("refresh"))))
+
+
+@app.route("/api/sat/doppler", methods=["GET", "POST"])
+def api_sat_doppler():
+    """Doppler correction of this VFO: GET the state; POST {"stop": true} or
+    {"start": {"norad", "uuid"} or {"norad", "f_hz"}, "set_mode": true/false}."""
+    if sattrack is None:
+        return jsonify(SGP4_MISSING), 503
+    if request.method == "POST":
+        body = request.get_json(force=True) or {}
+        if body.get("stop"):
+            doppler.stop("stopped by hand")
+        start = body.get("start")
+        if start:
+            try:
+                norad = int(start["norad"])
+                name = next((r["name"] for r in sattrack.catalog()["sats"] if r["norad"] == norad), "")
+                if start.get("uuid"):
+                    t = sattrack.transmitter(norad, start["uuid"])
+                    if not t:
+                        return jsonify({"error": "unknown transmitter"}), 404
+                    lo, hi = float(t["downlink_low"]), float(t["downlink_high"] or 0) or None
+                    f, span, label, mode = (lo + hi) / 2 if hi else lo, (lo, hi), t["description"], t["rx_mode"]
+                else:
+                    f = float(start["f_hz"])
+                    span, label, mode = (None, None), f"{f / 1e6:.4f} MHz", None
+                    if not 1e6 <= f <= 6e9:
+                        raise ValueError("frequency 1 MHz to 6 GHz")
+            except (KeyError, TypeError, ValueError) as e:
+                return jsonify({"error": f"wrong start: {e}"}), 400
+            err = doppler.start(norad, f, name, label, start.get("uuid", ""), span, mode if body.get("set_mode", True) else None)
+            if err:
+                return jsonify({"error": err}), 409
+            hub.event("status", state())
+        elif body.get("stop"):
+            hub.event("status", state())
+    return jsonify(doppler.info())
+
+
+@app.route("/api/sat/rotor", methods=["GET", "POST"])
+def api_sat_rotor():
+    """Own satellite tracking with the rotor on this VFO: GET the state and the plan of the pass;
+    POST {"start": {"norad", "force": true/false}} or {"stop": true}."""
+    if sattrack is None:
+        return jsonify(SGP4_MISSING), 503
+    if request.method == "POST":
+        if not same_host(request):
+            return jsonify({"error": "rotor commands are accepted only from this RADIMCOM page"}), 403
+        body = request.get_json(force=True) or {}
+        if body.get("stop"):
+            sat_tracker.stop("stopped by hand")
+        start = body.get("start")
+        if start:
+            try:
+                norad = int(start["norad"])
+            except (KeyError, TypeError, ValueError):
+                return jsonify({"error": "start: norad must be a number"}), 400
+            err = sat_tracker.start(norad, force=bool(start.get("force")))
+            if err:
+                return jsonify({"error": err}), 409
+    return jsonify(sat_tracker.info())
+
+
+@app.route("/api/sat/setup", methods=["GET", "POST"])
+def api_sat_setup():
+    """Station location, minimum elevation and the satellites on the timeline (shared by all VFOs);
+    GET also lists all satellites of the orbital elements. POST {"refresh_tle": true} downloads the elements again."""
+    if sattrack is None:
+        return jsonify(SGP4_MISSING), 503
+    if request.method == "POST":
+        body = request.get_json(force=True) or {}
+        if body.get("refresh_tle"):
+            state = sattrack.tle_state(refresh=True)
+            if state["error"]:
+                return jsonify({"error": f"download failed: {state['error']}"}), 502
+        changes = {k: body[k] for k in ("locator", "lat", "lon", "alt_m", "min_el", "sats", "map_sats") if k in body}
+        if changes:
+            try:
+                sattrack.save_setup(changes)
+            except (TypeError, ValueError) as e:
+                return jsonify({"error": str(e)}), 400
+    return jsonify(dict(sattrack.catalog(), setup=sattrack.load_setup()))
 
 
 @app.route("/api/memories", methods=["GET"])
@@ -852,8 +1032,8 @@ def api_set():
             if changes["tune_hz"] < 0:
                 raise ValueError("frequency out of range")
         elif "tune_hz" in changes or "upconv" in changes:
-            # HF below the tuner's lower limit (R820T 24 MHz, LimeSDR Mini 10 MHz) can only be received through
-            # an upconverter; upper limit R820T 1766 MHz, LimeSDR Mini 3500 MHz.
+            # HF below the tuner's lower limit (R820T 24 MHz, LimeSDR Mini 10 MHz, Airspy R2 24 MHz) can only be received
+            # through an upconverter; upper limit R820T 1766 MHz, LimeSDR Mini 3500 MHz, Airspy R2 1750 MHz.
             tune = changes.get("tune_hz", cfg["tune_hz"])
             mode = changes.get("upconv", cfg.get("upconv", "auto"))
             lo = 0.0 if mode == "off" or (mode == "auto" and tune >= UPCONV_MAX_HZ) else cfg.get("lo_offset_hz", 0)
@@ -1093,27 +1273,64 @@ def api_set():
     return jsonify({"ok": True})
 
 
-# ---------- antenna rotor and Gpredict link (rotor.py) ----------
+# ---------- antenna rotor (rotor.py), satellite tracking (satplan.py) and Doppler correction (sattrack.py) ----------
 
 def rotor_set_freq(hz):
-    """Frequency from Gpredict: goes the same way as tuning on the page. None = OK, else the error."""
+    """Frequency from the Doppler correction: goes the same way as tuning on the page. None = OK, else the error."""
     with app.test_client() as c:
         res = c.post("/api/set", json={"tune_hz": hz})
     return None if res.status_code == 200 else (res.get_json() or {}).get("error", "refused")
 
 
-rotor_link = rotor_module.RotorLink(rotor_set_freq, lambda: cfg["tune_hz"])
+def rotor_set_mode(mode):
+    with app.test_client() as c:
+        res = c.post("/api/set", json={"mode": mode})
+    return None if res.status_code == 200 else (res.get_json() or {}).get("error", "refused")
+
+
+rotor_link = rotor_module.RotorLink()
+doppler = sattrack.Doppler(rotor_set_freq, lambda: cfg["tune_hz"], lambda: cfg["mode"], rotor_set_mode) if sattrack else None
+sat_tracker = satplan.Tracker(rotor_link.rotor) if sattrack else None
+
+
+def rotor_raw_moved(raw):
+    """Saves the K3NG azimuth (0-450): after a restart it tells 0-90 from 360-450."""
+    cfg["rotor"] = dict(cfg.get("rotor") or {}, k3ng_az=raw)
+    save_config_later()
+
+
+rotor_link.rotor.on_raw = rotor_raw_moved
 
 
 def start_rotor():
     r = cfg.get("rotor") or {}
-    return rotor_link.start(r.get("port", ""), r.get("usb_serial", ""), int(r.get("rot_port", rotor_module.ROTCTL_PORT)),
-                            int(r.get("rig_port", rotor_module.RIGCTL_PORT)))
+    cal = r.get("az_cal") or [0.0, rotor_module.K3NG_SPAN]
+    rotor_link.rotor.set_cal(*cal)
+    if rotor_link.rotor.raw is None and r.get("k3ng_az") is not None:
+        rotor_link.rotor.raw_hint = float(r["k3ng_az"])
+    return rotor_link.start(r.get("port", ""), r.get("usb_serial", ""))
+
+
+def rotor_info():
+    """Rotor state with what the SAT window shows of the satellite tracking: where the satellite is (aim)
+    and the time to its next AOS or LOS (next_pass)."""
+    info = rotor_link.info()
+    info["aim"], info["next_pass"] = None, None
+    if sat_tracker is not None and sat_tracker.on:
+        t = sat_tracker.info()
+        now, p = time.time(), t["pass"]
+        if t["now"].get("sat_az") is not None and t["now"].get("sat_el", -1) >= 0:
+            info["aim"] = [t["now"]["sat_az"], t["now"]["sat_el"]]
+        if p:
+            event, at = ("AOS", p["aos"]) if now < p["aos"] else ("LOS", p["los"])
+            if at > now:
+                info["next_pass"] = {"sat": t["name"], "event": event, "seconds": round(at - now)}
+    return info
 
 
 @app.route("/api/rotor", methods=["GET"])
 def api_rotor():
-    info = rotor_link.info()
+    info = rotor_info()
     if request.args.get("ports"):
         try:
             info["ports"] = rotor_module.list_ports()
@@ -1132,6 +1349,16 @@ def api_rotor_cmd():
         rotor.stop_control()
     if body.get("reset"):
         rotor.reset_fault()
+    if "az_cal" in body:
+        try:
+            az0, az450 = (float(v) for v in body["az_cal"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "calibration: two numbers, true azimuth at K3NG 0 and at K3NG 450"}), 400
+        if not rotor_module.cal_ok(az0, az450):
+            return jsonify({"error": "calibration: azimuth at K3NG 0 from -180 to 360, at 450 between 400 and 500 more"}), 400
+        cfg["rotor"] = dict(cfg.get("rotor") or {}, az_cal=[az0, az450])
+        save_config_later()
+        rotor.set_cal(az0, az450)
     if body.get("start") and not rotor.running:
         body["enabled"] = True     # rotor control also turns the link on, with the port saved in SET
     if "enabled" in body:
@@ -1160,7 +1387,7 @@ def api_rotor_cmd():
         err = rotor.goto(az, el)
         if err:
             return jsonify({"error": err}), 409
-    return jsonify(rotor_link.info())
+    return jsonify(rotor_info())
 
 
 @app.route("/api/mpx")
@@ -1211,11 +1438,25 @@ def api_audio():
                              "X-Channels": "2"})
 
 
+def shutdown_for_upgrade():
+    """A receiver started without vfos.json ends itself for the upgrade."""
+    for stop in (recorder.stop_all, rotor_link.stop, receiver.stop):
+        try:
+            stop()
+        except Exception as e:
+            print(f"Upgrade: {e}")
+    os._exit(0)
+
+
 def exit_with_parent():
     """The VFO process ends when the launcher ends (its input is closed)."""
     sys.stdin.read()
     recorder.stop_all()
     rotor_link.stop()
+    if doppler is not None:
+        doppler.stop()
+    if sat_tracker is not None:
+        sat_tracker.stop()
     os._exit(0)
 
 
@@ -1227,6 +1468,8 @@ if __name__ == "__main__":
         receiver.iq_server = iqshare.IqServer(iqshare.iq_port(VFO))
         print(f"VFO {VFO['name']}: shares its dongle with VFO {', '.join(CHAINED)} (port {iqshare.iq_port(VFO)})")
     receiver.start()
+    if not VFO:
+        update_check.start(cfg.get("update_check", True))     # without vfos.json: no launcher to do it
     if (cfg.get("rotor") or {}).get("enabled"):
         err = start_rotor()
         if err:

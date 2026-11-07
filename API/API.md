@@ -1,4 +1,4 @@
-# RADIMCOM HTTP API – Ver. 0.110
+# RADIMCOM HTTP API – Ver. 0.111
 
 The web page talks to the receivers through this HTTP API, and you can use it too (scripts, curl, other programs).
 Requests and responses are JSON unless stated otherwise. Errors return `{"error": "..."}` with HTTP 400 (bad input),
@@ -32,6 +32,8 @@ Memories (`data\memories.json`) are shared by all VFOs, so `/api/memories` gives
 |---|---|---|
 | GET | `/` | web page |
 | GET | `/api/vfos` | list of VFOs: `[{"name", "port", "serial", "note", "chain"}]`; `chain` = name of the VFO whose dongle a chained VFO uses, otherwise `null` |
+| GET | `/api/update` | newer version on GitHub Releases, checked once after start: `{"state": "checking" / "done" / "failed" / "off" / "downloading" / "installing", "current", "latest", "newer", "name", "url", "published", "can_upgrade", "why_not", "zip_url", "zip_size", "got", "upgrade_error"}`. Off with `"update_check": false` in `vfos.json`. A receiver started without `vfos.json` answers it itself (`"update_check"` in its config) |
+| POST | `/api/update` | `{"upgrade": true}`: downloads the upgrade zip of the newer release to `data\update\`, checks it, starts `upgrade_helper.py` and closes RADIMCOM; the helper unzips the program, runs `upgrade.bat` and starts `start.bat`. Only from a page of this RADIMCOM (Origin); 409 when no upgrade is possible (`why_not`) |
 
 ## Receiver: state and control
 
@@ -45,6 +47,18 @@ Memories (`data\memories.json`) are shared by all VFOs, so `/api/memories` gives
 | GET | `/api/audio` | endless audio stream (raw PCM) |
 | GET | `/api/mpx` | WFM: spectrum of the demodulated MPX signal, 0–20 kHz |
 | POST | `/api/tx` | transmitter PTT (LimeSDR only) |
+| GET | `/api/satellites` | SATELLITES tab: lists from amsat.org, `{"pages": [{"key", "title", "url", "html", "fetched", "error"}]}`; `html` is cleaned content, `fetched` is Unix time, `error` is set if the last download of that page failed. Downloads pages older than 12 hours first |
+| POST | `/api/satellites` | the same, but downloads pages older than 60 s first |
+| GET | `/api/sat/passes` | passes of the satellites chosen in SETUP: `?hours=` (1–72, default 48). `{"now", "hours", "setup", "tle": {"fetched", "error"}, "sats": [{"norad", "name", "tle_age_days", "tle_old"} or {"norad", "missing": true}], "passes": [{"norad", "name", "aos", "los", "max_t", "max_el", "aos_az", "los_az", "max_az", "aos_open", "los_open"}]}`; times are Unix time, angles in degrees; a pass counts when its highest elevation reaches `min_el`; `aos_open` / `los_open`: the pass is already on at the start / still on at the end. Downloads the orbital elements first when they are older than 24 hours. 503 if the sgp4 package is missing |
+| GET | `/api/sat/pass` | one pass: `?norad=&aos=&los=` -> `{"norad", "name", "setup", "tle_epoch", "samples": [{"t", "az", "el", "range" (km), "rate" (km/s, + = going away), "doppler_hz_per_mhz"}]}`, a sample every 5 s |
+| GET | `/api/sat/map` | world map: `{"now", "setup", "tle", "names": {norad: name}, "fields": ["t", "lat", "lon", "alt", "az", "el", "range", "rate"], "sats": [{"norad", "name", "period_min", "tle_age_days", "samples": [[...fields]]}]}` for the satellites in `map_sats`: the point below the satellite (latitude, longitude in degrees, altitude in km) and its look from the station, from half an orbit back to one orbit ahead, 240 samples each |
+| GET | `/api/sat/transmitters?norad=` | active transmitters of the satellite with a downlink, from SatNOGS DB (kept in `data\sat_transmitters.json`, downloaded again after 7 days; `&refresh=1` now): `{"transmitters": [{"uuid", "description", "type", "downlink_low", "downlink_high", "uplink_low", "uplink_high", "mode", "rx_mode", "invert", "baud"}], "fetched", "error"}`, transponders first; `rx_mode` is the RADIMCOM mode used to receive it |
+| GET | `/api/sat/doppler` | Doppler correction of this VFO: `{"on", "step" (Hz: the VFO is retuned when it is off by more than this, by the mode), "norad", "name", "label", "uuid", "f_nominal", "f_sat", "span", "last_set", "error", "stopped", "rate", "factor", "az", "el", "f_rx", "shift"}`; `f_sat` is the frequency sent by the satellite (moved by tuning the VFO by hand), `f_rx` the one received now, `shift` = `f_rx − f_sat` (Hz), `rate` the range rate (km/s), `stopped` why it stopped |
+| POST | `/api/sat/doppler` | `{"start": {"norad", "uuid"}}` (a transmitter of `/api/sat/transmitters`; the middle of a transponder) or `{"start": {"norad", "f_hz"}}`, with `"set_mode": false` to keep the mode; `{"stop": true}` stops it. Answers like GET; 409 when the VFO refuses, 400 for a wrong start. |
+| GET | `/api/sat/rotor` | satellite tracking with the rotor on this VFO: `{"on", "norad", "name", "state" (waiting for the pass, moving to the start, tracking), "pass": {"aos", "los", "max_el", ...}, "plan": {"mode" (normal, overlap, flipped, over top), "max_err", "mean_err" (simulated pointing error, degrees), "raw0", "raw1", "raw_min", "raw_max" (K3NG azimuth 0–450), "el_max", "options": [{"mode", "max_err", "raw0", "raw1", "move_s"}], "path": [[t, k3ng_az, el]] every 5 s}, "prep_at" (when the move to the start begins), "now": {"sat_az", "sat_el", "cmd_az", "cmd_el", "cmd_raw", "err"}, "note", "stopped", "control", "rotor_on"}` |
+| POST | `/api/sat/rotor` | `{"start": {"norad", "force": false}}` (`force`: orbital elements older than 14 days) or `{"stop": true}`; only from this RADIMCOM page. 409 when the elements are too old. The rotor moves only while CTRL is on (otherwise it only calculates, as without the rotor link); while tracking, `goto` in `/api/rotor` is refused |
+| GET | `/api/sat/setup` | station and choice, shared by all VFOs: `{"setup": {"locator", "lat", "lon", "alt_m", "min_el", "sats": [norad], "map_sats": [norad]}, "tle": {"fetched", "error"}, "groups": [{"key", "title"}] (CelesTrak groups downloaded), "sats": [{"norad", "name", "tle_age_days", "groups": [key]}]}` (all satellites of the orbital elements) |
+| POST | `/api/sat/setup` | any of `{"locator"}` or `{"lat", "lon"}`, `{"alt_m"}`, `{"min_el"}` (0–60), `{"sats": [norad]}`, `{"map_sats": [norad]}` (up to 20), `{"refresh_tle": true}` (download the orbital elements now); answers like GET, 400 with `error` for a wrong value, 502 if the download fails |
 
 ### GET /api/state
 
@@ -62,7 +76,7 @@ Main fields:
 | `zoom`, `zooms` | spectrum zoom, allowed zooms |
 | `upconv`, `lo_offset_hz`, `lo_hz` | upconverter mode (`auto`/`on`/`off`), its LO, LO in use now (0 = direct) |
 | `range` | tuning range of this VFO |
-| `vfo`, `serial`, `driver`, `device` | VFO name, dongle serial, `rtl` or `lime`, device index |
+| `vfo`, `serial`, `driver`, `device` | VFO name, dongle serial, `rtl`, `lime` or `airspy`, device index |
 | `chain_owner`, `out_of_band`, `chained_vfos` | chained VFO: VFO that owns the dongle (`null` otherwise), tuned outside the owner's band (silent, OOR); owner VFO: number of chained VFOs connected |
 | `ppm`, `rtl_agc`, `dc_remove`, `dc_hz`, `dc_db`, `spur_on`, `spur_hz`, `spur_edge`, `spur_shift`, `spur_db`, `spur_count`, `spur_learning`, `spur_found`, `audio_agc`, `notch`, `notch_active`, `bias_tee`, `stereo_on`, `stereo`, `rds` | receiver options and WFM stereo / RDS |
 | `afi`, `afi_hz` | audio frequency inversion (voice scrambler / descrambler) on/off and its inversion frequency in Hz |
@@ -75,7 +89,7 @@ Main fields:
 | `recording` | `{"cont": {...}, "squelch": {...}, "dropped": n}`: REC and REC SQ, each with `on`, `open` (a file is being written), `file` (current or last file in `data\recordings`), `secs` (length of the current file), `saved` (files finished since switched on), `error`; `dropped` = audio blocks lost because the disk did not keep up |
 | `dab`, `dab_channel`, `dab_sids`, `dab_error` | DAB on/off, Band III channel (e.g. `12C`), last station of each channel (`{"12C": "0x5464"}`, `null` = stopped), welle-cli error |
 | `logs` | daily logs on/off: `{"ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism"}` (`acars` covers both the ACARS and the VDL2 log) |
-| `trsp_name`, `trsp_sat` | transponder and satellite selected in Gpredict (our build sends them), empty otherwise |
+| `trsp_name`, `trsp_sat` | transmitter and satellite of the Doppler correction (`/api/sat/doppler`) while it is on, empty otherwise |
 | `tx_capable`, `tx_enabled`, `can_tx`, `tx`, `tx_info` | transmitter (LimeSDR) |
 | `wf` | waterfall format: `bins`, `db_min`, `db_step`, `rows_per_s` |
 
@@ -105,7 +119,7 @@ Send any combination of these keys:
 | `lpf_hz` | LPF cutoff, 100 – 15000 Hz (default 3000) |
 | `hpf_hz` | HPF cutoff, 20 – 5000 Hz (default 300). With both filters on, `hpf_hz` above `lpf_hz` gives silence (the web UI keeps them in order, the API does not) |
 | `squelch` | dBFS, -120 (off) to 0; optional `squelch_mode` = the mode it applies to |
-| `sample_rate` | 1024000, 1536000, 2048000, 2100000, 2400000 |
+| `sample_rate` | 1024000, 1536000, 2048000, 2100000, 2400000; on an Airspy VFO 2500000 |
 | `zoom` | 1, 2, 4, 8, 16, 32 |
 | `ppm` | frequency correction (integer) |
 | `upconv` | `auto`, `on`, `off` |
@@ -192,10 +206,8 @@ A memory: `{"id", "name", "group", "freq_hz", "mode", "bw", "fav"}`, and `"dab_c
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/rotor` | antenna rotor and Gpredict link: `on`, `connected`, `device`, `az`, `el`, `target`, `aim`, `source`, `control`, `fault`, `link_error`, `gpredict_rotor`, `gpredict_radio`, `rot_port`, `rig_port`, `next_pass`; `?ports=1` adds the serial `ports` |
-| POST | `/api/rotor` | any of `{"enabled": true/false, "port", "usb_serial"}` (link on / off, saved), `{"start": true}` (CTRL on), `{"stop": true}` (stop the rotor, CTRL off), `{"reset": true}` (clear a fault), `{"goto": [az, el]}` (azimuth 0–360, elevation 0–180). **Moves the antenna.** Refused with 403 from a page of another host |
-| GET | `/api/gpredict` | `running`, `available` (one program for the whole PC) |
-| POST | `/api/gpredict` | `{"on": true/false}` starts or closes Gpredict. Refused with 403 from a page of another host |
+| GET | `/api/rotor` | antenna rotor: `on`, `connected`, `device`, `az`, `el`, `target`, `target_raw` (K3NG azimuth 0–450 given by the satellite tracking, else null), `tracker` (the satellite tracking moves the rotor), `aim` ([az, el] of the tracked satellite while it is above the horizon), `source` (`manual` or `tracker`), `control`, `fault`, `error`, `next_pass` (`{"sat", "event": "AOS" or "LOS", "seconds"}` of the tracked satellite); `k3ng_az` (the K3NG azimuth 0–450 from its left stop, followed by RADIMCOM), `k3ng_guess` (true while it is not yet known whether K3NG is at 0–90 or 360–450), `az_cal` ([true azimuth at K3NG 0, at K3NG 450]); `az`, `target` and `aim` are true azimuths; `?ports=1` adds the serial `ports` |
+| POST | `/api/rotor` | any of `{"enabled": true/false, "port", "usb_serial"}` (link on / off, saved), `{"start": true}` (CTRL on), `{"stop": true}` (stop the rotor, CTRL off), `{"reset": true}` (clear a fault), `{"goto": [az, el]}` (true azimuth 0–360, elevation 0–180; refused while the satellite tracking moves the rotor), `{"az_cal": [az0, az450]}` (true azimuth at K3NG 0 and at K3NG 450, saved; `[0, 450]` = no correction). **Moves the antenna.** Refused with 403 from a page of another host |
 | GET | `/api/memories` | all memories |
 | POST | `/api/memories` | add: `{"name", "group", "freq_hz", "mode", "bw"}`; returns the new memory with its `id`. Name up to 80 characters, group up to 40, frequency 0–1766 MHz, `bw` clamped to the mode's range. With `dab_channel` the frequency is the centre of that channel |
 | PATCH | `/api/memories/<id>` | change `{"fav": true/false}` and/or `{"name": "..."}` |

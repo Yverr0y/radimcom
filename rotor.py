@@ -1,19 +1,23 @@
-"""Antenna rotor (K3NG Arduino controller, GS-232 commands over USB serial) and the link to Gpredict.
+"""Antenna rotor (K3NG Arduino controller, GS-232 commands over USB serial).
 
-Gpredict does the satellite tracking and talks to RADIMCOM as if it were a rotor and a radio:
-    rotctld protocol, TCP 4533: azimuth / elevation -> Rotor -> K3NG
-    rigctld protocol, TCP 4532: Doppler corrected frequency -> tuner of this VFO (receive only)
+The satellite tracking of the SATELLITES tab (satplan.py) and the page (GO, clicks on the dials of the SAT window) give
+the targets; this module sends them to K3NG and watches the rotor.
 
 Rotor safety: position readings are noisy, K3NG does not acknowledge commands, so the position is checked here.
 A reading that jumps faster than the rotor can move, or a move without progress, stops the rotor and latches a fault
-that has to be reset by hand. A lost serial connection or a disconnected Gpredict also stops it.
+that has to be reset by hand. A lost serial connection also stops it.
 
-The rotor follows Gpredict only with rotor control on (CTRL key in the SAT window of the page); until then the position
-is read and Gpredict's moves are ignored. A fault, a lost connection and STOP all turn it off, and only CTRL turns it on.
+The rotor follows the satellite tracking only with rotor control on (CTRL key in the SAT window or on the TRACK page);
+until then the position is read and the tracking's moves are ignored. A fault, a lost connection and STOP all turn it
+off, and only CTRL turns it on.
+
+Azimuth calibration: K3NG counts 0-450 degrees from its left stop, which need not be north. The true azimuth at
+K3NG 0 and at K3NG 450 is set in SET (ROTOR tab); everything outside this class (page, tracking, HTTP API) uses true
+azimuths, except the K3NG azimuth the tracking may give with a target. K3NG reports its azimuth modulo 360, so the
+raw 0-450 value is followed here reading by reading.
 """
 import collections
 import re
-import socket
 import statistics
 import threading
 import time
@@ -25,25 +29,29 @@ NO_REPLY_S = 5.0         # no position for this long: the connection is treated 
 FILTER_LEN = 5           # median of this many readings removes single spikes
 DEADBAND_DEG = 5.0       # sensor noise is 1-5 degrees, so smaller errors do not move the rotor
 COMMAND_GAP_S = 1.0      # at most one move command per second
+RESEND_S = 30.0          # an unchanged target is sent again: K3NG stops any move after its OPERATION_TIMEOUT (60 s here)
 MAX_RATE_DEG_S = 10.0    # faster than the rotor can move (measured about 6 deg/s)
 JUMP_DEG = 15.0          # allowed change between two filtered readings, on top of MAX_RATE_DEG_S
 STALL_S = 10.0           # a move without STALL_DEG of progress for this long is a fault
 STALL_DEG = 3.0
 MAX_EL_DEG = 180.0       # above 90 the antenna goes over the top and looks backwards
-ROTCTL_PORT = 4533
-RIGCTL_PORT = 4532
-RIG_READBACK_S = 1.0     # a retune takes effect a little later; until then the frequency Gpredict set is reported
+K3NG_SPAN = 450.0        # K3NG azimuth range from its left stop (rotation capability)
+RAW_HINT_DEG = 20.0      # a saved raw azimuth within this of a reading decides between K3NG 0-90 and 360-450
+RAW_SLACK_DEG = 8.0      # sensor noise allowed beyond the stops before the raw azimuth is put on the other side
 
 _REPLY_AZ = re.compile(rb"AZ=\s*(-?\d+(?:\.\d+)?)\s")
 _REPLY_EL = re.compile(rb"EL=\s*(-?\d+(?:\.\d+)?)\s")
 
-# Hamlib error codes in the "RPRT x" replies
-RPRT_OK, RPRT_INVALID, RPRT_NOT_IMPLEMENTED, RPRT_NO_POSITION, RPRT_REJECTED = 0, -1, -4, -5, -9
 
 
 def angle_diff(a, b):
     """Shortest signed difference a - b in degrees, -180 to 180."""
     return (a - b + 180.0) % 360.0 - 180.0
+
+
+def cal_ok(az0, az450):
+    """True azimuths at K3NG 0 and 450 must be numbers that keep the scale near one."""
+    return -180.0 <= az0 <= 360.0 and 400.0 <= az450 - az0 <= 500.0
 
 
 def median_angle(values):
@@ -97,9 +105,10 @@ class Rotor:
         self.fault = ""
         self.az = self.el = None
         self.target = None         # (az, el) the rotor should point at
-        self.target_source = ""    # "gpredict" or "manual"
-        self.aim = None            # (az, el) where Gpredict wants the antenna; it sends a move only beyond its threshold
-        self.control = False       # rotor control on: Gpredict may move the rotor
+        self.target_source = ""    # "manual" or "tracker"
+        self.target_raw = None     # K3NG azimuth 0-450 of the target, given by the satellite tracker (it chooses the side)
+        self.tracker = False       # satellite tracking moves the rotor: GO and the dials are refused
+        self.control = False       # rotor control on: the satellite tracking may move the rotor
         self.sent = None           # (az, el) last sent to K3NG
         self.sent_at = 0.0
         self._filter_az = collections.deque(maxlen=FILTER_LEN)
@@ -107,8 +116,30 @@ class Rotor:
         self._read_at = None
         self._stall_ref = None     # (az, el, time) of the last progress
         self._last_reply = 0.0
+        self.az_cal = (0.0, K3NG_SPAN)   # true azimuth at K3NG 0 and at K3NG 450
+        self.raw = None            # K3NG azimuth 0-450, followed from the readings (K3NG itself reports it modulo 360)
+        self.raw_hint = None       # last known raw azimuth, saved: decides 0-90 against 360-450 at the first reading
+        self.raw_guess = False     # the first reading was ambiguous and nothing decided it
+        self.on_raw = None         # called with the raw azimuth when it changes, for saving it
+        self._raw_reported = None
+        self._plan = None          # (target, (az, el) sent to K3NG, true azimuth K3NG will end at)
 
     # ---------- control ----------
+
+    def set_cal(self, az0, az450):
+        with self.lock:
+            self.az_cal = (float(az0), float(az450))
+            self._plan = None
+            if self.raw is not None:
+                self.az = self.to_true(self.raw) % 360.0
+
+    def to_true(self, raw):
+        az0, az450 = self.az_cal
+        return az0 + raw * (az450 - az0) / K3NG_SPAN
+
+    def to_raw(self, true_az):
+        az0, az450 = self.az_cal
+        return (true_az - az0) * K3NG_SPAN / (az450 - az0)
 
     def start(self, device, usb_serial=""):
         self.close()
@@ -131,19 +162,24 @@ class Rotor:
             self.control = False
             self._stop_motion()
             self._close_port()
+            self._clear_readings()
             self.az = self.el = None
 
-    def goto(self, az, el, source="manual"):
-        """New target. None = OK, else the reason it was refused."""
+    def goto(self, az, el, source="manual", raw=None):
+        """New target. None = OK, else the reason it was refused.
+        raw: the K3NG azimuth (0-450) to get there, from the satellite tracker; az is then only for showing."""
         with self.lock:
             if self.fault:
                 return self.fault
             if self.port is None:
                 return self.error or "rotor not connected"
-            if source == "gpredict" and not self.control:
-                return None     # accepted and ignored: an error would make Gpredict drop the rotor
+            if self.tracker and source == "manual":
+                return "satellite tracking moves the rotor (SATELLITES tab, TRACK): switch it off first"
+            if source == "tracker" and not self.control:
+                return None     # accepted and ignored: the tracking goes on calculating, the rotor stays
             # 360 stays 360: on a rotor with its stop at north, 0 and 360 are the two opposite ends.
             self.target = (360.0 if az == 360 else az % 360.0, min(max(el, 0.0), MAX_EL_DEG))
+            self.target_raw = None if raw is None else min(max(float(raw), 0.0), K3NG_SPAN)
             self.target_source = source
         return None
 
@@ -152,7 +188,7 @@ class Rotor:
             self._stop_motion()
 
     def start_control(self):
-        """Rotor control on: from now on Gpredict moves the rotor. None = OK, else the reason it was refused."""
+        """Rotor control on: from now on the satellite tracking moves the rotor. None = OK, else the reason it was refused."""
         with self.lock:
             if self.fault:
                 return self.fault
@@ -164,17 +200,10 @@ class Rotor:
         return None
 
     def stop_control(self):
-        """Rotor control off: both motors stop and Gpredict is ignored; the position is still read."""
+        """Rotor control off: both motors stop and the tracking is ignored; the position is still read."""
         with self.lock:
             self.control = False
             self._stop_motion()
-
-    def client_gone(self):
-        """Gpredict disconnected: its move must not continue unattended."""
-        with self.lock:
-            self.aim = None
-            if self.target_source == "gpredict":
-                self._stop_motion()
 
     def reset_fault(self):
         with self.lock:
@@ -184,8 +213,8 @@ class Rotor:
     def info(self):
         with self.lock:
             return {"on": self.running, "connected": self.port is not None, "device": self.device, "usb_serial": self.usb_serial,
-                    "az": self.az, "el": self.el, "target": list(self.target) if self.target else None,
-                    "aim": list(self.aim) if self.aim else None, "source": self.target_source, "control": self.control, "fault": self.fault, "error": self.error}
+                    "az": self.az, "el": self.el, "k3ng_az": self.raw, "k3ng_guess": self.raw_guess, "az_cal": list(self.az_cal), "target": list(self.target) if self.target else None, "target_raw": self.target_raw, "tracker": self.tracker,
+                    "source": self.target_source, "control": self.control, "fault": self.fault, "error": self.error}
 
     # ---------- inside (lock held) ----------
 
@@ -193,7 +222,8 @@ class Rotor:
         self.port.write(text.encode("ascii") + b"\r")
 
     def _stop_motion(self):
-        self.target, self.sent, self.target_source, self._stall_ref = None, None, "", None
+        self.target, self.sent, self.target_source, self._stall_ref, self._plan = None, None, "", None, None
+        self.target_raw = None
         if self.port is not None:
             try:
                 self._write("S")
@@ -209,6 +239,9 @@ class Rotor:
             self.port = None
 
     def _clear_readings(self):
+        if self.raw is not None:
+            self.raw_hint = self.raw     # the rotor may be turned by hand while disconnected: decided again
+        self.raw = None
         self._filter_az.clear()
         self._filter_el.clear()
         self._read_at = None
@@ -229,7 +262,8 @@ class Rotor:
             self._filter_el.append(el)
         if not self._filter_az:
             return
-        new_az = median_angle(self._filter_az)
+        self._follow_raw(median_angle(self._filter_az))
+        new_az = self.to_true(self.raw) % 360.0
         new_el = statistics.median(self._filter_el) if self._filter_el else self.el
         if self._read_at is not None and not self.fault:
             limit = JUMP_DEG + MAX_RATE_DEG_S * (now - self._read_at)
@@ -239,8 +273,79 @@ class Rotor:
                                 f"to AZ {new_az:.0f} EL {new_el if new_el is None else round(new_el)}")
         self.az, self.el, self._read_at = new_az, new_el, now
 
+    def _follow_raw(self, k3ng_az):
+        """K3NG azimuth (modulo 360) -> self.raw, 0-450."""
+        if self.raw is None:
+            high = k3ng_az + 360.0
+            near = lambda v: self.raw_hint is not None and abs(self.raw_hint - v) < RAW_HINT_DEG
+            if high > K3NG_SPAN + 2.0 or near(k3ng_az):
+                self.raw, self.raw_guess = k3ng_az, False
+            elif near(high):
+                self.raw, self.raw_guess = high, False
+            else:
+                self.raw, self.raw_guess = k3ng_az, True       # the usual side; shown as a guess on the page
+        else:
+            self.raw += angle_diff(k3ng_az, self.raw % 360.0)
+            # Below the left stop or beyond the right one is impossible: the first reading was on the other side.
+            if self.raw < -RAW_SLACK_DEG:
+                self.raw, self.raw_guess = self.raw + 360.0, False
+            elif self.raw > K3NG_SPAN + RAW_SLACK_DEG:
+                self.raw, self.raw_guess = self.raw - 360.0, False
+        if self.on_raw and (self._raw_reported is None or abs(self.raw - self._raw_reported) >= 1.0):
+            self._raw_reported = self.raw
+            self.on_raw(round(self.raw, 1))
+
+    @staticmethod
+    def k3ng_pick(command, raw):
+        """Raw azimuth K3NG turns to for "W command": of command and command + 360 the nearer one, as K3NG does."""
+        c = command % 360.0
+        return c + 360.0 if c + 360.0 < K3NG_SPAN and abs(c + 360.0 - raw) <= abs(raw - c) else c
+
+    def _plan_for(self, target):
+        """Target (true az, el) -> (command az, el) and the true azimuth K3NG will end at. K3NG takes 0-360 and chooses
+        between the start and the overlap itself, so of the possible commands the one ending nearest the target is used."""
+        best = None
+        for turn in (0.0, 360.0):
+            k = self.to_raw(target[0] % 360.0 + turn)
+            if not -5.0 <= k <= K3NG_SPAN + 5.0:
+                continue
+            command = int(round(min(max(k, 0.0), K3NG_SPAN)))
+            if command > 360:
+                command -= 360
+            end = self.to_true(self.k3ng_pick(command, self.raw)) % 360.0
+            miss = abs(angle_diff(end, target[0]))
+            if best is None or miss < best[0] - 0.5:
+                best = (miss, command, end)
+        if best is None:      # outside the calibrated range: the nearer end of it
+            k = min((0.0, K3NG_SPAN), key=lambda v: abs(angle_diff(self.to_true(v), target[0])))
+            best = (0.0, int(k) - 360 if k > 360 else int(k), self.to_true(k) % 360.0)
+        if self.az_cal == (0.0, K3NG_SPAN):
+            best = (0.0, round(target[0]), best[2])      # no calibration: the azimuth as before (360 stays 360)
+        return (best[1], round(target[1])), best[2]
+
+    @staticmethod
+    def raw_command(raw_target, raw_now):
+        """K3NG azimuth wanted -> (command 0-360, K3NG azimuth the command leads to). K3NG takes the nearer of command and
+        command + 360, so a target on the far side of that choice goes through a point 90 degrees short of it first."""
+        want = int(round(min(max(raw_target, 0.0), K3NG_SPAN)))
+        command = want - 360 if want > 360 else want
+        if raw_now is None or abs(Rotor.k3ng_pick(command, raw_now) - want) <= 2:
+            return command, float(want)
+        way = want - 90 if want >= 180 else want + 90       # 270-360 or 90-180: only one K3NG azimuth for it
+        return way, float(way)
+
     def _error_to(self, target):
-        return max(abs(angle_diff(target[0], self.az)), abs(target[1] - self.el) if self.el is not None else 0)
+        """Distance to where the rotor can get for this target: with a calibration a true azimuth may be reachable
+        only a little off (K3NG chooses the side itself), then that point counts as reached."""
+        if self.target_raw is not None:       # the tracker gives the K3NG azimuth: planned again each time (waypoint)
+            command, _ = self.raw_command(self.target_raw, self.raw)
+            self._plan = (target, (command, round(target[1])), self.to_true(self.target_raw) % 360.0)
+            scale = abs(self.az_cal[1] - self.az_cal[0]) / K3NG_SPAN
+            return max(abs(self.raw - self.target_raw) * scale, abs(target[1] - self.el) if self.el is not None else 0)
+        if self._plan is None or self._plan[0] != target:
+            self._plan = (target,) + self._plan_for(target)
+        az = self._plan[2]
+        return max(abs(angle_diff(az, self.az)), abs(target[1] - self.el) if self.el is not None else 0)
 
     def _track(self):
         """Sends the target to K3NG (which drives the motors) and watches that the rotor gets there."""
@@ -250,8 +355,8 @@ class Rotor:
         if self._error_to(self.target) <= DEADBAND_DEG:
             self._stall_ref = None
             return
-        command = (round(self.target[0]), round(self.target[1]))
-        if command != self.sent and now - self.sent_at >= COMMAND_GAP_S:
+        command = self._plan[1]
+        if (command != self.sent or now - self.sent_at >= RESEND_S) and now - self.sent_at >= COMMAND_GAP_S:
             self._write(f"W{command[0]:03d} {command[1]:03d}")
             self.sent, self.sent_at = command, now
         if self.sent is None:
@@ -298,6 +403,7 @@ class Rotor:
                     self.control = False
                     self.target, self.sent, self.target_source = None, None, ""     # nothing resumes by itself later
                     self._close_port()
+                    self._clear_readings()
                     self.az = self.el = None
                 self._sleep_while_running(2.0)
 
@@ -307,276 +413,18 @@ class Rotor:
             time.sleep(0.05)
 
 
-# ---------- rotctld / rigctld text protocols ----------
-
-def rprt(code):
-    return f"RPRT {code}\n"
-
-
-def _floats(args, count):
-    if len(args) < count:
-        raise ValueError
-    return [float(a) for a in args[:count]]
-
-
-def rotctl_reply(rotor, line):
-    """One line of the rotctld protocol (what Gpredict sends as a rotor) -> reply, None for an unknown command."""
-    cmd, *args = line.split()
-    if cmd in ("P", "\\set_pos"):
-        try:
-            az, el = _floats(args, 2)
-        except ValueError:
-            return rprt(RPRT_INVALID)
-        return rprt(RPRT_REJECTED if rotor.goto(az, el, "gpredict") else RPRT_OK)
-    if cmd == "\\set_aim":     # only our build of Gpredict sends this; shown in the SAT window, never moves the rotor
-        try:
-            az, el = _floats(args, 2)
-        except ValueError:
-            return rprt(RPRT_INVALID)
-        rotor.aim = (az % 360.0, el)
-        return rprt(RPRT_OK)
-    if cmd in ("p", "\\get_pos"):
-        info = rotor.info()
-        if info["az"] is None:
-            return rprt(RPRT_NO_POSITION)
-        return f"{info['az']:.2f}\n{info['el'] or 0.0:.2f}\n"
-    if cmd in ("S", "\\stop"):
-        rotor.stop()
-        return rprt(RPRT_OK)
-    if cmd in ("_", "\\get_info"):
-        return "RADIMCOM K3NG\n"
-    return None
-
-
-class PassCountdown:
-    """Time to the next AOS or LOS of the target in Gpredict. Only our build of Gpredict sends it, about once a second:
-    "\\set_pass satellite|AOS|seconds", no argument = no such event. It counts on by itself between the updates."""
-
-    COMMAND = "\\set_pass"
-    OVERDUE_S = 5.0      # no new time this long after zero: Gpredict has stopped updating it
-
-    def __init__(self, clock=time.monotonic):
-        self.clock = clock
-        self.value = None     # (satellite, event, seconds, time received)
-
-    def clear(self):
-        self.value = None
-
-    def command(self, line):
-        """The whole command line -> reply in the rigctld style."""
-        text = line[len(self.COMMAND):].strip()
-        if not text:
-            self.clear()
-            return rprt(RPRT_OK)
-        try:
-            sat, event, seconds = text.rsplit("|", 2)
-            self.value = (sat, event, float(seconds), self.clock())
-        except ValueError:
-            return rprt(RPRT_INVALID)
-        return rprt(RPRT_OK)
-
-    def filter(self, reply):
-        """A reply function that also takes this command."""
-        return lambda line: self.command(line) if line.split()[0] == self.COMMAND else reply(line)
-
-    def info(self):
-        value = self.value
-        if value is None:
-            return None
-        sat, event, seconds, at = value
-        left = seconds - (self.clock() - at)
-        if left < -self.OVERDUE_S:
-            return None
-        return {"sat": sat, "event": event, "seconds": max(round(left), 0)}
-
-
-class RigLink:
-    """The tuner of this VFO as Gpredict's radio. Receive only: PTT on is refused."""
-
-    def __init__(self, set_freq, get_freq, clock=time.monotonic):
-        self.set_freq = set_freq   # hz -> None, or the reason it was refused
-        self.get_freq = get_freq
-        self.clock = clock
-        self.last_hz = None
-        self.last_at = 0.0
-        self.trsp_sat = ""     # selected in Gpredict (our build sends them), empty otherwise
-        self.trsp_name = ""
-
-    def client_gone(self):
-        self.trsp_sat = self.trsp_name = ""
-
-    def frequency(self):
-        if self.last_hz is not None and self.clock() - self.last_at < RIG_READBACK_S:
-            return self.last_hz
-        return self.get_freq()
-
-    def reply(self, line):
-        """One line of the rigctld protocol -> reply, None for an unknown command."""
-        cmd, *args = line.split()
-        if cmd == "\\set_trsp":     # only our build of Gpredict sends this: "satellite|transponder", nothing = none
-            self.trsp_sat, _, self.trsp_name = line[len(cmd):].strip().partition("|")
-            return rprt(RPRT_OK)
-        if cmd in ("F", "\\set_freq"):
-            try:
-                hz = _floats(args, 1)[0]
-            except ValueError:
-                return rprt(RPRT_INVALID)
-            if self.set_freq(hz):
-                return rprt(RPRT_REJECTED)
-            self.last_hz, self.last_at = hz, self.clock()
-            return rprt(RPRT_OK)
-        if cmd in ("f", "\\get_freq"):
-            return f"{self.frequency():.0f}\n"
-        if cmd in ("t", "\\get_ptt"):
-            return "0\n"
-        if cmd in ("T", "\\set_ptt"):
-            return rprt(RPRT_OK if args[:1] == ["0"] else RPRT_REJECTED)
-        if cmd in ("v", "\\get_vfo"):
-            return "VFOA\n"
-        if cmd in ("V", "\\set_vfo", "M", "\\set_mode"):
-            return rprt(RPRT_OK)     # one VFO here; the mode is chosen in RADIMCOM
-        if cmd in ("_", "\\get_info"):
-            return "RADIMCOM\n"
-        return None
-
-
-_HTTP_LINE = re.compile(r"^(GET|POST|PUT|HEAD|OPTIONS|DELETE|PATCH|CONNECT) ")
-
-
-class LineServer:
-    """A small TCP server for the text protocols, on this PC only: a web page must not be able to move the rotor,
-    so a connection that starts like an HTTP request is closed."""
-
-    def __init__(self, name, port, reply, on_disconnect=None, on_unknown=None, host="127.0.0.1"):
-        self.name, self.port, self.reply = name, port, reply
-        self.on_disconnect, self.on_unknown, self.host = on_disconnect, on_unknown, host
-        self.sock = None
-        self.conns = set()
-        self.lock = threading.Lock()
-
-    @property
-    def clients(self):
-        with self.lock:
-            return len(self.conns)
-
-    def start(self):
-        """Raises OSError when the port is taken (for example by another VFO)."""
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        try:
-            self.sock.bind((self.host, self.port))
-            self.sock.listen(4)
-        except OSError:
-            self.sock.close()
-            self.sock = None
-            raise
-        threading.Thread(target=self._accept, args=(self.sock,), name=f"{self.name}-server", daemon=True).start()
-
-    def close(self):
-        """Also drops connected clients: Gpredict must not keep tuning or moving anything after the link is off."""
-        if self.sock:
-            self.sock.close()
-            self.sock = None
-        with self.lock:
-            conns = list(self.conns)
-        for conn in conns:
-            try:
-                conn.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-
-    def _accept(self, sock):
-        while True:
-            try:
-                conn, _ = sock.accept()
-            except OSError:
-                return
-            threading.Thread(target=self._serve, args=(conn,), name=f"{self.name}-client", daemon=True).start()
-
-    def _serve(self, conn):
-        with self.lock:
-            self.conns.add(conn)
-        buf = b""
-        try:
-            with conn:
-                while self.sock:
-                    chunk = conn.recv(1024)
-                    if not chunk:
-                        return
-                    buf += chunk
-                    if len(buf) > 4096:
-                        return
-                    while b"\n" in buf:
-                        raw, buf = buf.split(b"\n", 1)
-                        line = raw.decode("utf-8", "replace").strip()
-                        if _HTTP_LINE.match(line):
-                            return
-                        if not line:
-                            continue
-                        if line.split()[0] in ("q", "Q", "\\quit"):
-                            return
-                        reply = self.reply(line)
-                        if reply is None:
-                            # Commands Gpredict sends that are not handled yet show up here.
-                            print(f"{self.name}: unknown command {line!r}")
-                            if self.on_unknown:
-                                self.on_unknown(line)
-                            reply = rprt(RPRT_NOT_IMPLEMENTED)
-                        conn.sendall(reply.encode("ascii"))
-        except OSError:
-            pass
-        finally:
-            with self.lock:
-                self.conns.discard(conn)
-            if self.on_disconnect:
-                self.on_disconnect()
-
-
 class RotorLink:
-    """The rotor and both Gpredict servers, turned on and off together."""
+    """The rotor of this VFO, turned on and off from SET (ROTOR tab)."""
 
-    def __init__(self, set_freq, get_freq, opener=open_serial):
+    def __init__(self, opener=open_serial):
         self.rotor = Rotor(opener)
-        self.rig = RigLink(set_freq, get_freq)
-        self.rot_pass, self.rig_pass = PassCountdown(), PassCountdown()
-        self.rot_server = self.rig_server = None
-        self.link_error = ""
-        self.unknown = collections.deque(maxlen=10)
 
-    def start(self, device, usb_serial="", rot_port=ROTCTL_PORT, rig_port=RIGCTL_PORT):
-        self.stop()
-        self.rot_server = LineServer("rotctl", rot_port, self.rot_pass.filter(lambda line: rotctl_reply(self.rotor, line)),
-                                     on_disconnect=self._rot_gone, on_unknown=self.unknown.append)
-        self.rig_server = LineServer("rigctl", rig_port, self.rig_pass.filter(self.rig.reply),
-                                     on_disconnect=self._rig_gone, on_unknown=self.unknown.append)
-        try:
-            self.rot_server.start()
-            self.rig_server.start()
-        except OSError as e:
-            self.stop()
-            self.link_error = f"TCP ports {rot_port}/{rig_port} are busy (rotor already on in another VFO?): {e}"
-            return self.link_error
+    def start(self, device, usb_serial=""):
         self.rotor.start(device, usb_serial)
         return None
 
-    def _rot_gone(self):
-        self.rotor.client_gone()
-        self.rot_pass.clear()
-
-    def _rig_gone(self):
-        self.rig.client_gone()
-        self.rig_pass.clear()
-
     def stop(self):
         self.rotor.close()
-        for server in (self.rot_server, self.rig_server):
-            if server:
-                server.close()
-        self.rot_server = self.rig_server = None
-        self.link_error = ""
 
     def info(self):
-        rot, rig = self.rot_server, self.rig_server
-        return dict(self.rotor.info(), link_error=self.link_error, gpredict_rotor=bool(rot and rot.clients),
-                    gpredict_radio=bool(rig and rig.clients), rot_port=rot.port if rot else ROTCTL_PORT,
-                    rig_port=rig.port if rig else RIGCTL_PORT, unknown=list(self.unknown),
-                    next_pass=self.rot_pass.info() or self.rig_pass.info())     # the rotator's target comes first
+        return self.rotor.info()

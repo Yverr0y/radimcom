@@ -12,9 +12,9 @@ import subprocess
 import sys
 import time
 
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 
-import gpredict
+import update_check
 from paths import BASE, data
 
 VFOS_PATH = data("vfos.json")
@@ -52,7 +52,6 @@ def main():
         time.sleep(0.5 if v.get("chain") else 1.5)
 
     app = Flask(__name__, static_folder="static")
-    app.register_blueprint(gpredict.bp)
 
     @app.route("/")
     def index():
@@ -61,6 +60,34 @@ def main():
     @app.route("/api/vfos")
     def api_vfos():
         return jsonify([{k: v.get(k) for k in ("name", "port", "serial", "note", "chain")} for v in vfos])
+
+    def shutdown():
+        """For the upgrade: the VFO receivers end as with the launcher closed (their input closes), then the launcher."""
+        for p in procs:
+            try:
+                p.stdin.close()
+            except OSError:
+                pass
+        for p in procs:
+            try:
+                p.wait(10)
+            except subprocess.TimeoutExpired:
+                p.terminate()
+        os._exit(0)
+
+    @app.route("/api/update", methods=["GET", "POST"])
+    def api_update():
+        """GET: newer version on GitHub; POST {"upgrade": true}: download it, close RADIMCOM and install it."""
+        if request.method == "POST":
+            if not update_check.same_host(request):
+                return jsonify({"error": "the upgrade is accepted only from this RADIMCOM page"}), 403
+            if (request.get_json(force=True, silent=True) or {}).get("upgrade"):
+                err = update_check.upgrade(shutdown)
+                if err:
+                    return jsonify({"error": err}), 409
+        return jsonify(update_check.info())
+
+    update_check.start(setup.get("update_check", True))
 
     port = int(setup.get("port", 8434))
     print(f"RADIMCOM (VFO {', '.join(v['name'] for v in vfos)}): http://localhost:{port}")

@@ -134,6 +134,9 @@ body {
 .r-info-text .r-brandline { order: -1; align-self: center; display: flex; align-items: flex-end; gap: 6px; }
 .r-info-text .r-logo { margin: 2px 0 0; }
 .r-ver { font: 600 10px system-ui, sans-serif; color: var(--muted); white-space: nowrap; margin-bottom: 1px; }
+.r-upd { font: 700 10px system-ui, sans-serif; color: #ffc94d; white-space: nowrap; margin-bottom: 1px; text-decoration: none; }
+.r-upd:hover { text-decoration: underline; }
+.r-upd[hidden] { display: none; }
 /* author directly under the logo (same order as the brandline, follows it in the source) */
 .r-credit { order: -1; align-self: center; margin-top: -2px; font: 10px system-ui, sans-serif; letter-spacing: .03em;
   color: var(--dim); white-space: nowrap; }
@@ -203,7 +206,7 @@ body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vfo-row.active .vfo-memname { border-color: #2c3642; color: #7ee0a8; }
 .vfo-row.active .vfo-memname.band { color: var(--muted); }
-/* transponder selected in Gpredict */
+/* satellite and transponder of the Doppler correction */
 .vfo-row .vfo-memname.trsp, .vfo-row.active .vfo-memname.trsp { color: #6db3ff; }
 /* frequency display in a frame like the clock */
 .vfo-disp { position: relative; display: flex; justify-content: center; max-width: 100%; padding: 3px 8px; border: 1px solid var(--line);
@@ -349,7 +352,7 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid rgba(255, 2
 /* SAT key: the icon is taller than a line of key text; the negative margin keeps the key as high as the others */
 .sat-icon { width: 22px; height: 18px; margin-block: calc((1.1em - 18px) / 2); fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 /* lit like the other keys (.key.on), in blue: --blue itself is too dark on the lit key */
-#satKey.on, #gpredictKey.on { color: #6db3ff; box-shadow: inset 0 -2px 0 #6db3ff, inset 0 1px 0 rgba(255, 255, 255, .12); }
+#satKey.on { color: #6db3ff; box-shadow: inset 0 -2px 0 #6db3ff, inset 0 1px 0 rgba(255, 255, 255, .12); }
 .pass-icon { width: 19px; height: 12px; fill: none; stroke: currentColor; stroke-width: 56; stroke-linecap: round; stroke-linejoin: round; }
 .pass-val { font-size: 9px; font-weight: 600; letter-spacing: 0; opacity: .85; }
 .key.toggle input { display: none; }
@@ -497,6 +500,111 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 }
 .body-tabs button.on { background: #050506; color: var(--yellow); border-color: #44474d; }
 .dec-count { color: var(--muted); font-weight: 600; }
+/* SATELLITES tab: covers the spectrum and waterfall like the decoders; only the list scrolls */
+.amsat-pane { position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: #07090c; }
+.amsat-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.amsat-pages { display: flex; gap: 4px; }
+.amsat-info { flex: 1 1 0; min-width: 120px; color: var(--muted); font-size: 12px; }
+.amsat-info.error { color: var(--red); }
+.amsat-body { flex: 1 1 0; min-height: 0; overflow: auto; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: #000; color: var(--text); font: 13px/1.4 system-ui, sans-serif; }
+.amsat-body p { margin: 0 0 8px; }
+.amsat-body h4 { margin: 14px 0 6px; color: var(--yellow); font-size: 15px; }
+.amsat-body a { color: #6db3ff; }
+.amsat-body a:visited { color: #b49cff; }
+.amsat-body table { width: 100%; margin-bottom: 8px; border-collapse: collapse; }
+.amsat-body th { position: sticky; top: -8px; background: #151a21; color: var(--yellow); text-align: left; }
+.amsat-body th, .amsat-body td { padding: 5px 8px; border: 1px solid var(--line); vertical-align: top; }
+.amsat-body tbody tr:nth-child(even) { background: #0b0e12; }
+.amsat-source { margin-top: 10px; color: var(--muted); font-size: 12px; }
+.amsat-pages .gap { margin-left: 10px; }
+/* own pass prediction (PASSES, SETUP); pass colour by the highest elevation, one hue: brighter = higher */
+.amsat-body.satp-on { --pass-lo: #33669e; --pass-mid: #5d9bff; --pass-hi: #b8d8ff; padding: 8px; }
+.amsat-body .small, .amsat-body p.small { font-size: 12px; }
+.amsat-body.satp-on table { width: auto; margin: 0; }
+.amsat-body.satp-on th, .amsat-body.satp-on td { border: 0; vertical-align: top; }
+.amsat-body.satp-on tbody tr:nth-child(even) { background: none; }
+.amsat-body .error { color: var(--red); }
+.satp { display: flex; flex-direction: column; gap: 8px; min-height: 100%; }
+.satp-hours { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.satp-legend { color: var(--muted); font-size: 12px; }
+.satp-legend .dot, .satp-list .dot { display: inline-block; width: 8px; height: 8px; margin: 0 4px 0 8px; border-radius: 2px; }
+.satp-legend .dot.lo { background: var(--pass-lo); }
+.satp-legend .dot.mid { background: var(--pass-mid); }
+.satp-legend .dot.hi { background: var(--pass-hi); }
+.satp-tl { overflow-x: hidden; }
+.satp-svg { display: block; }
+.satp-svg text, .satp-elsvg text, .satp-polar text { font: 11px system-ui, sans-serif; }
+.tl-grid { stroke: #1a2029; }
+.tl-day { stroke: var(--line2); }
+.tl-row { stroke: #10141a; }
+.tl-now { stroke: var(--yellow); stroke-width: 1.5; }
+.tl-hour { fill: var(--muted); text-anchor: middle; }
+.tl-hour.now { fill: var(--yellow); text-anchor: start; }
+.tl-name { fill: var(--text); }
+.tl-name.old { fill: var(--amber); }
+.tl-pass { cursor: pointer; stroke: #000; stroke-width: 1; }
+.tl-pass.lo, .satp-list .dot.lo { fill: var(--pass-lo); background: var(--pass-lo); }
+.tl-pass.mid, .satp-list .dot.mid { fill: var(--pass-mid); background: var(--pass-mid); }
+.tl-pass.hi, .satp-list .dot.hi { fill: var(--pass-hi); background: var(--pass-hi); }
+.tl-pass:hover { stroke: var(--text); }
+.tl-pass.sel { stroke: var(--yellow); stroke-width: 2; }
+.satp-lower { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start; }
+.satp-list-wrap { flex: 1 1 380px; max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.amsat-body.satp-on .satp-list { width: 100%; border-collapse: collapse; font-size: 12px; }
+.amsat-body.satp-on .satp-list th { position: sticky; top: 0; background: #151a21; color: var(--yellow); text-align: left; }
+.amsat-body.satp-on .satp-list th, .amsat-body.satp-on .satp-list td { padding: 4px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.satp-list tbody tr { cursor: pointer; }
+.satp-list tbody tr:hover { background: #10151c; }
+.satp-list tr.sel { background: #1b2433; }
+.satp-list tr.on td:first-child { color: var(--yellow); }
+.satp-list .dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 2px; }
+.satp-detail { flex: 1 1 420px; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+.satp-dh { margin-bottom: 6px; display: flex; align-items: center; gap: 8px; }
+.satp-dh #satDetailTrack { margin-left: auto; }
+.satp-dbody { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start; }
+.satp-polar { width: 220px; height: 220px; flex: 0 0 auto; }
+.pg-ring { fill: none; stroke: var(--line2); }
+.pg-lbl { fill: var(--muted); text-anchor: middle; }
+.pg-el { fill: var(--dim); }
+.pg-track { fill: none; stroke: var(--pass-mid); stroke-width: 2; stroke-linejoin: round; }
+.pg-end { fill: var(--text); stroke: #000; stroke-width: 2; }
+.pg-top { fill: var(--pass-hi); stroke: #000; stroke-width: 2; }
+.pg-now { fill: var(--yellow); stroke: #000; stroke-width: 2; }
+.pg-tag { fill: var(--text); text-anchor: middle; }
+.satp-facts { border-collapse: collapse; font-size: 12px; }
+.amsat-body.satp-on .satp-facts th { position: static; background: none; color: var(--muted); font-weight: normal; text-align: left; padding: 2px 10px 2px 0; }
+.satp-facts td { padding: 2px 8px 2px 0; }
+.satp-elchart { position: relative; margin-top: 8px; }
+.el-base { stroke: var(--line2); }
+.el-ax { fill: var(--muted); text-anchor: end; }
+.el-ax.t { text-anchor: middle; }
+.el-line { fill: none; stroke: var(--pass-mid); stroke-width: 2; stroke-linejoin: round; }
+.el-now { stroke: var(--yellow); stroke-width: 1.5; }
+.el-hover { stroke: var(--muted); stroke-dasharray: 3 3; }
+.el-hit { fill: transparent; }
+.satp-tip { position: absolute; top: -2px; padding: 3px 6px; border: 1px solid var(--line2); border-radius: 4px; background: #11161d; font-size: 12px; white-space: nowrap; pointer-events: none; }
+.satm { display: flex; flex-direction: column; gap: 8px; }
+.satm-chips { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+.satm-chips .muted { margin-right: 4px; }
+.satm-chips .key.sel { outline: 2px solid var(--pass-hi); outline-offset: 1px; }
+.satm-wrap { position: relative; width: 100%; }
+.satm-wrap canvas { display: block; border: 1px solid var(--line); border-radius: 4px; cursor: crosshair; }
+.satm-main { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; }
+.satm-wrap { flex: none; }
+.satm-side { flex: 1 1 300px; min-width: 0; font-size: 12px; }
+.satm-info { font-size: 12px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.satm-name { margin-bottom: 4px; }
+.amsat-body.satp-on .satm-facts td, .amsat-body.satp-on .satm-facts th { white-space: nowrap; }
+.satm-info .key { margin-top: 6px; }
+.satm-up { color: var(--yellow); }
+.sats-pick { height: 380px; margin: 6px 0; border: 1px solid var(--line); border-radius: 6px; }
+.sats-pick.leaflet-container { background: #10151c; font: 12px system-ui, sans-serif; }
+.sats-setup section { margin-bottom: 14px; }
+.sats-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
+.sats-setup input[type="number"] { width: 90px; }
+.sats-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 2px 12px; max-height: 360px; overflow: auto; margin-top: 6px; }
+.sats-list label { display: flex; gap: 6px; align-items: baseline; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sats-list label.old b { color: var(--amber); }
 .dec-new { color: var(--green); margin-left: 4px; }   /* new decoder message while the SPECTRUM tab is open */
 /* the decoders cover the spectrum and waterfall; those keep running underneath (canvases keep their size) */
 .dec-pane {
@@ -798,6 +906,13 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 /* SET: tabs, related settings as cards in columns. The virtual stage is never narrow (see fitStage), so the
    fixed width always fits; the window is only as tall as the open tab needs. */
 .set-win { left: calc(50% - 620px); width: 1240px; }
+/* new version on GitHub: the upgrade offer after start */
+.upd-win { left: calc(50% - 230px); top: 18%; width: 460px; z-index: 30; }
+.upd-win .drawer-head { cursor: default; }
+.upd-win p { margin: 0; line-height: 1.45; }
+.upd-win a:not(.key) { color: var(--yellow); }
+.upd-keys { display: flex; gap: 8px; flex-wrap: wrap; }
+.upd-keys a.key { text-decoration: none; display: inline-flex; align-items: center; }
 .set-tabs { padding-top: 6px; }
 .set-tabs button { min-width: 96px; padding: 5px 14px; font-size: 12px; }
 .set-error { padding: 8px 14px 0; }
@@ -817,41 +932,16 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .set-panel .setting .row > label { flex: 1 1 0; min-width: 0; }
 .set-panel .setting.two { align-content: start; }
 .set-panel .setting.two label { font-size: inherit; color: inherit; }
-/* ROTOR: the Gpredict note goes under the other three cards at their full width, so the window stays low */
+/* ROTOR: the satellite tracking note goes under the other three cards at their full width, so the window stays low */
 .set-panel[data-set-panel="rotor"] .setting:last-child { grid-column: 1 / -1; }
 
 /* SAT: the antenna in 3D and the dials. It does not close SET or MEM, the port is chosen in SET. */
-.sat-win { left: 1%; top: 38%; width: 370px; max-height: 60%; }     /* over the waterfall, not over the keys */
-.sat-win .drawer-body { padding: 10px; gap: 8px; }
-.sat-pass { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; color: #6db3ff; font-size: 13px; }
-.sat-pass[hidden] { display: none; }
-.sat-pass span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sat-pass b { flex: none; font: 700 20px ui-monospace, Consolas, monospace; }
-.sat-view { display: grid; grid-template-columns: minmax(0, 1fr) 112px; gap: 8px; align-items: center; }
-.sat-3d { display: block; width: 100%; }
-.sat-3d text { fill: var(--muted); font: 700 11px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; }
-.sat3d-ground { fill: rgba(255, 255, 255, .04); stroke: var(--line2); stroke-width: 1; }
-.sat3d-cross { stroke: var(--line2); stroke-width: .7; }
-.sat3d-shadow { stroke: rgba(0, 0, 0, .6); stroke-linecap: round; }
-.sat3d-part { stroke: #d5dbe3; stroke-linecap: round; }
-.sat3d-mast { stroke: var(--muted); }
-.sat3d-driven { stroke: var(--orange); }
-.sat3d-front { stroke: var(--yellow); }
-.sat-gauges { display: flex; flex-direction: column; gap: 6px; }
-.sat-gauges figure { margin: 0; text-align: center; color: var(--muted); font-size: 11px; }
-.sat-gauges figcaption b { color: var(--yellow); font: 600 15px ui-monospace, Consolas, monospace; }
-.sat-dial { display: block; width: 100%; }
-.sat-dial text { fill: var(--muted); font: 700 20px system-ui, sans-serif; text-anchor: middle; dominant-baseline: central; }
-.sat-rim { fill: rgba(255, 255, 255, .03); stroke: var(--line2); stroke-width: 2; }
-.sat-ticks line { stroke: var(--muted); stroke-width: 1.5; }
-.sat-needle { fill: var(--yellow); }
-.sat-target { fill: #6db3ff; }
-.sat-ctrl { display: flex; align-items: center; gap: 10px; }
+.sat-panel { display: inline-flex; flex-direction: column; gap: 4px; }
+.sat-panel[hidden] { display: none; }
+.sat-ctrl { display: flex; align-items: center; gap: 6px; }
 .sat-ctrl .key { flex: none; }
-.sat-win .note { margin: 0; font-size: 12px; }
-.sat-win .note:empty { display: none; }
-.sat-flag { align-self: flex-start; }
-.sat-flag.lost { background: var(--red); color: #fff; box-shadow: 0 0 14px rgba(255, 75, 62, .7); }
+.sat-panel .note { margin: 0; font-size: 12px; }
+.sat-panel .note:empty { display: none; }
 
 /* MEM: narrow and tall, the list scrolls inside it */
 .mem-win { right: 1%; width: 440px; height: 85%; }
@@ -905,3 +995,30 @@ html.compact .r-keys .keys button.pass-key { width: 32px; padding-left: 1px; pad
 html.compact .r-keys .keys:has(.pass-key) { gap: 2px; }
 html.compact .r-keys .keys { padding: 2px; }
 html.compact .r-bands .bands button { min-width: 36px; padding-left: 5px; padding-right: 5px; }
+/* SATELLITES → TRACK (Doppler correction) */
+.satt-left { flex: 1 1 520px; min-width: 0; }
+.satt-live { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; min-height: 76px; }
+.satt-live p { margin: 4px 0; }
+.satt-sat { color: #5d9bff; }
+.satt-tx-wrap { max-height: 300px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.amsat-body.satp-on .satt-tx td.satt-desc { white-space: normal; min-width: 180px; }
+.satt-tx tr[data-uuid] { cursor: pointer; }
+.satt-start { margin: 8px 0 4px; }
+.satt-start input[type="number"] { width: 110px; }
+.satt-right { flex: 1 1 440px; min-width: 0; display: flex; flex-direction: column; }
+.satt-right .satp-detail { flex: none; }
+.satt h4 { margin: 2px 0 6px; color: var(--yellow); font-size: 12px; letter-spacing: 0.05em; }
+.satt-gap { flex: 1; }
+#satRotStart.on { color: var(--yellow); }
+.satp-h { margin: 10px 0 4px; color: var(--yellow); font-size: 12px; letter-spacing: 0.05em; }
+.amsat-body.satp-on .satp-txs { border-collapse: collapse; font-size: 12px; }
+.amsat-body.satp-on .satp-txs th { position: static; background: none; color: var(--muted); font-weight: normal; text-align: left; padding: 1px 10px 1px 0; }
+.amsat-body.satp-on .satp-txs td { padding: 1px 10px 1px 0; font-variant-numeric: tabular-nums; }
+.amsat-body.satp-on .satp-txs td:first-child { white-space: nowrap; }
+.pg-rot line { stroke: #ff4d4d; stroke-width: 2.5; }
+.pg-aim line { stroke: #c070ff; stroke-width: 2; }
+.pg-hit { fill: transparent; }
+.satt-live { font-variant-numeric: tabular-nums; }
+.sats-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 8px; }
+.sats-tabs .key .muted { margin-left: 4px; }
+.el-rot { fill: #ff4d4d; font: 700 11px system-ui, sans-serif; }

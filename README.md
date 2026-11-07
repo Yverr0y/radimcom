@@ -1,6 +1,6 @@
 # RADIMCOM
 
-A receiver for RTL-SDR dongles and LimeSDR Mini controlled from a web browser: HF through an upconverter, VHF/UHF directly.
+A receiver for RTL-SDR dongles, LimeSDR Mini and Airspy R2 controlled from a web browser: HF through an upconverter, VHF/UHF directly.
 The screen looks like a transceiver: S-meter, 7-segment displays, spectrum, waterfall and function keys.
 Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
 
@@ -14,7 +14,7 @@ Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
 
 ## Features
 
-- **Up to four VFOs, A–D.** Each VFO has its own SDR (RTL-SDR or LimeSDR Mini, selected by serial number)
+- **Up to four VFOs, A–D.** Each VFO has its own SDR (RTL-SDR, LimeSDR Mini or Airspy R2, selected by serial number)
   and its own settings. All frequencies are shown side by side: the active VFO is lit, inactive ones are grey
   but show the actual tuned frequency. The waterfall of every VFO keeps running, so its history is visible
   right after switching. With fewer than four SDRs the remaining VFO windows stay in place, greyed out ("NO SDR").
@@ -35,7 +35,8 @@ Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
 - **Digital voice (first test version):** the **DSD** key in MODE: DMR, P25, D-Star, YSF, NXDN, dPMR, M17 and more, with a list of calls, via DSD-FME
   (**separate download: run `install_dsd.bat`**). See [DSD: digital voice](#dsd-digital-voice).
 - **ISM decoder:** the **ISM** key in DECODE: devices on 433 and 868 MHz, such as weather sensors, remote controls and tyre sensors, via rtl_433.
-- **Satellite tracking:** a K3NG antenna rotor over USB and Gpredict, which is in the package, with Doppler frequency tuning of the VFO. See [Satellite tracking](#satellite-tracking-antenna-rotor-and-gpredict).
+- **Satellite tracking:** pass prediction, world map, Doppler correction of the VFO and a K3NG antenna rotor over USB, planned for passes across the north; no other program needed. See [Satellite tracking](#satellite-tracking).
+- **Satellite lists:** the **SATELLITES** tab (also the **SAT** key) shows the active linear, FM, image and other satellites from AMSAT, with clickable links.
 - **Remove DC peak** and **remove spurs** from local sources, in the waterfall and in the received signal.
 - **Daily logs:** the LOG checkbox in each decoder card writes to `data\logs\<decoder>_YYYY-MM-DD.txt` (UTC, one line per message; WEFAX/SSTV log the names of saved images), classic ACARS to `data\acars\acars_YYYY-MM-DD.txt` and VDL2 to `data\acars\vdl2_YYYY-MM-DD.txt`.
 - **Frequency memories** (MEM) with favourites and import from SDR# (`frequencies.xml`).
@@ -59,10 +60,11 @@ Up to four SDRs work as four VFOs (A, B, C, D), switched with a single button.
   pip install --no-deps PyFT8
   ```
 
-  (`flask`, `numpy`, `scipy`, `pyserial`, `lameenc`; `PyFT8` is needed only for the FT8 decoder, `pyserial` only for the antenna rotor, `lameenc` only for recording.)
+  (`flask`, `numpy`, `scipy`, `pyserial`, `lameenc`, `sgp4`; `PyFT8` is needed only for the FT8 decoder, `pyserial` only for the antenna rotor, `lameenc` only for recording, `sgp4` only for the pass prediction.)
 
 - RTL-SDR dongles with the WinUSB driver (installed with Zadig).
 - LimeSDR Mini with the FTDI D3XX driver.
+- Airspy R2 with the WinUSB driver, receive only: 2.5 MS/s, gain as the presets 0–21 (not dB), bias-tee. VDL2, DAB and ISM are not available on it; the 10 MS/s rate is not offered yet.
 
 Third-party binaries are **not in this git repository** (folders `lib\` and `drivers\` are in `.gitignore`).
 The installer package (`RADIMCOM_install_v<version>.zip`, download it from
@@ -73,11 +75,12 @@ put them there yourself:
 |---|---|---|
 | `lib\librtlsdr.dll`, `lib\libusb-1.0.dll` | required for RTL-SDR | Windows release of the RTL-SDR Blog driver (`rtl-sdr-blog`, supports the V4) |
 | `lib\LimeSuite.dll` | only for LimeSDR | PothosSDR (`C:\Program Files\PothosSDR\bin`); if it is not in `lib\`, it is loaded from the PothosSDR installation |
+| `lib\airspy.dll`, `lib\pthreadVC2.dll` | only for Airspy | PothosSDR (`C:\Program Files\PothosSDR\bin`); if they are not in `lib\`, they are loaded from the PothosSDR installation |
 | `drivers\zadig.exe` | WinUSB driver for RTL-SDR | zadig.akeo.ie |
 | `drivers\FTD3XXDriver_WHQLCertified_v1.3.0.4_Installer.exe` | D3XX driver for LimeSDR | FTDI (ftdichip.com, D3XX drivers) |
 | `lib\dsd-fme\` | only for the DSD mode; **not in the installer package either** | run `install_dsd.bat`, see [DSD: digital voice](#dsd-digital-voice) |
 
-`installer\make_installer.py` takes the RTL-SDR DLLs from `lib\`, `LimeSuite.dll` from PothosSDR and the drivers
+`installer\make_installer.py` takes the RTL-SDR DLLs from `lib\`, `LimeSuite.dll` and the Airspy DLLs from PothosSDR and the drivers
 from `Downloads` on this PC.
 - For FT8 the PC clock must be accurate (±1 s).
 
@@ -131,7 +134,7 @@ Airliners exchange data with the ground over two VHF links, and RADIMCOM receive
   channel; US is 136.100, 136.300, 136.650, 136.800 and 136.975 MHz. Spectrum and waterfall keep working. Decoding is done by
   [dumpvdl2](https://github.com/szpajder/dumpvdl2) (`lib\vdl2\dumpvdl2.exe`), which runs as a separate program;
   `vdl2.py` feeds it the raw samples and reads the decoded messages. Turning VDL2 off restores the sample rate.
-  VDL2 works with RTL-SDR dongles only; it is not supported on LimeSDR.
+  VDL2 works with RTL-SDR dongles only; it is not supported on LimeSDR or Airspy.
 - Every message shows its type tag, time, frequency, country flag (from the aircraft's ICAO address), flight, callsign
   (registration; click for the live map), ICAO address, aircraft type, model, flight level and ground speed (from ADS-B,
   in blue), label, description and text. On VDL2 the **Ground Station** column shows the airport of the ground station (from `VDL2_Ground_Stations.txt` by its address, the tooltip has the details) and the pull-down at the top filters by it. The **tag** in the first column says what it is (click a tag at the top to filter):
@@ -200,7 +203,7 @@ DAB and DAB+ are broadcast in Band III (174–240 MHz). One channel (e.g. 12C = 
 - The middle of the card shows the station: slideshow picture, programme type, DAB / DAB+, bitrate, language, error protection, codec, the DLS text ("now on air") and the decoding errors.
 - The right side shows **SIGNAL** (SNR with a quality mark, frequency correction and FIC errors), **ENSEMBLE** (name, country, ID, stations, local time and UTC) and **MULTIPLEX CAPACITY** (the share of each station; the one playing is yellow).
 - **DAB** again, **OFF** in the card or any other band button ends DAB and restores the previous sample rate. DAB turns ACARS and
-  VDL2 off (one dongle cannot be in two bands). RTL-SDR only; not on LimeSDR or on a chained VFO.
+  VDL2 off (one dongle cannot be in two bands). RTL-SDR only; not on LimeSDR, Airspy or a chained VFO.
 - No stations: the channel has no ensemble at your place, or the signal is weak. Use a vertical antenna for Band III,
   a manual RF gain (too much gain overloads the dongle) and check the SNR (DAB+ needs roughly 8 dB or more).
 
@@ -251,26 +254,77 @@ The script always installs the one version tested with this RADIMCOM; if a new R
 - Squelch, AFI, notch and ALC do not apply in this mode; LPF and HPF work on the decoded voice. Transmitting is blocked.
 - Bad decoding: check the tuning (the channel centre) and the RF gain; too much gain distorts digital signals earlier than it is heard in FM.
 
-## Satellite tracking: antenna rotor and Gpredict
+## Satellite tracking
 
-[Gpredict](https://github.com/csete/gpredict) does the satellite tracking and Doppler correction, and it is in the package
-(`apps\gpredict`, version 2.7 with our changes, see `installer\GPREDICT.txt`). It talks to RADIMCOM over TCP on this PC, as if
-RADIMCOM were a rotor and a radio:
+RADIMCOM predicts the passes, shows them on a timeline and a world map, keeps the VFO on the downlink (Doppler correction, receive
+only) and moves a K3NG antenna rotor, all in the **SATELLITES** tab, with no other program. The **SAT** key switches to this tab and back. Positions are calculated with
+SGP4 (Python package `sgp4`). The station, the satellites and the downloaded data are shared by all VFOs; the Doppler correction
+and the rotor work on one VFO each and go on with the page closed.
 
-| Gpredict sees | Protocol, port | RADIMCOM does |
+### Pages of the SATELLITES tab
+
+| Page | What it does |
+|---|---|
+| **PASSES** | Timeline of the passes of the chosen satellites over the next 12, 24 or 48 hours, and a list of them. A click on a pass shows its track on a polar plot, the elevation over time, the nearest distance, the Doppler shift at 145.9 and 435 MHz, the position now while it is on, and the transmitters of the satellite. |
+| **MAP** | World map (Natural Earth, works offline) with the satellites switched on by the keys above it (up to 20): each with its footprint (yellow while it is above our horizon), the night side and the station. A click on a key or a dot chooses the satellite whose ground track is drawn (half an orbit behind, one ahead); beside the map are its position, altitude, azimuth and elevation from here, distance, Doppler shift, the next pass and its transmitters, and **TRACK** opens it on the TRACK page. Moves every second. |
+| **TRACK** | Doppler correction and the rotor for one satellite of the timeline, below. |
+| **SETUP** | The station by Maidenhead locator or latitude and longitude (or **CHOOSE ON MAP**: an OpenStreetMap map, the tiles need internet), the altitude, the lowest highest-elevation of a pass shown, and the satellites on the timeline, chosen in tabs by CelesTrak group: Amateur Radio, Weather, CubeSats, Space & Earth Science, Galileo, GLONASS operational, GPS operational, Iridium NEXT (and Chosen). **SELECT ACTIVE** ticks the satellites of the AMSAT lists LINEAR, FM, IMAGE and MISC (matched by name; it lists those not in the orbital elements), **CLEAR** unticks all. |
+| **LINEAR**, **FM**, **IMAGE**, **MISC** | Lists of active satellites from [AMSAT](https://www.amsat.org/), kept for 12 hours in `data\satellites.json`. |
+
+![PASSES page: timeline of five satellites over 12 hours with bars shaded by the highest elevation, the list of passes, and the details of an FO-29 pass with its polar plot, AOS, LOS, nearest distance and Doppler shift](docs/images/sat_passes.png)
+
+![MAP page: world map with the footprints of six satellites, the night side and the station, the ground track of FO-29, and beside it its position, distance, Doppler shift, next pass and transmitters](docs/images/sat_map.png)
+
+![SETUP page: station by locator JN88WQ, latitude and longitude, orbital elements from CelesTrak, and the satellites on the timeline with SELECT ACTIVE, CLEAR and the CelesTrak group tabs](docs/images/sat_setup.png)
+
+![LINEAR page: the AMSAT list of active linear satellites with uplink and downlink frequencies and comments](docs/images/sat_info.png)
+
+Downloaded data (internet needed only for the download; the last copy is used offline):
+
+| File in `data\` | Source | Downloaded |
 |---|---|---|
-| Rotator | rotctld, TCP 4533 | sends azimuth and elevation to a K3NG rotor controller (GS-232 commands over USB serial, 9600 baud) |
-| Radio (RX only) | rigctld, TCP 4532 | tunes this VFO to the Doppler corrected frequency. The radio mode (FM, USB...) is chosen in RADIMCOM |
+| `sat_tle.txt`, `sat_groups.json` | orbital elements of the 8 CelesTrak groups above | once a day; elements older than 7 days are marked, older than 14 need a confirmation for tracking |
+| `sat_transmitters.json` | [SatNOGS DB](https://db.satnogs.org/): downlinks, modes, transponders | once a week |
+| `sat_setup.json` | the station and the choice of satellites | saved by SETUP |
 
-1. In **SET → ROTOR** choose the serial port and turn on **Rotor and Gpredict link**, for one VFO. The tab also has the position, **GO** to an azimuth and elevation, and **STOP**.
-2. The **GP** key (under SAT) opens and closes Gpredict. On its first start it creates the radio `RADIMCOM.rig` and the rotator `RADIMCOM.rot`.
-3. The **SAT** key opens a floating window with the azimuth and elevation of the antenna on two dials, and a 3D view from the south and from 45 degrees above. It also has the time to the next AOS or LOS.
-4. **CTRL** in the SAT window turns rotor control on. **The rotor follows Gpredict only with CTRL on**; until then the position is read and the moves of Gpredict are ignored.
+### Doppler correction (TRACK)
+
+![TRACK page with FO-29: the Doppler correction on its linear transponder (VFO tuned to 435.855 MHz, +5.4 kHz), the transmitters from SatNOGS DB, and the rotor waiting for the pass with an overlap plan, TRACK, CTRL and STOP and the polar plot of the pass](docs/images/sat_track.png)
+
+A click on a transmitter of the list tunes the VFO to its downlink (the middle of a transponder), sets its mode (FM, USB, CW...) and keeps
+the VFO corrected as the satellite comes and goes; **OFF** stops it. The received frequency is the sent one × (1 − range rate / c),
+calculated every 0.25 s, half a second ahead; the VFO is retuned when it is off by more than 20 Hz (SSB, CW), 500 Hz (AM) or 1 kHz (FM),
+at most once a second. The page shows the frequency the satellite sends, the one the VFO is tuned to and the exact one now. Tuning
+the VFO by hand moves the frequency within the transponder and the correction keeps it; tuning more than 50 kHz outside the
+transponder stops it. The name frame of the VFO shows the satellite and transponder in blue while the correction is on.
+
+### Rotor
+
+1. In **SET → ROTOR** choose the serial port of the K3NG controller (GS-232 commands, 9600 baud) and turn on **Rotor link**, for one VFO. The tab also has the position, **GO** to an azimuth and elevation, the azimuth calibration and **STOP**.
+2. On the **TRACK** page, the **Rotor** part: **TRACK** follows the passes of the chosen satellite, a second press ends it. With CTRL off or without the rotor link it only calculates (the plan and the commands are shown, the rotor does not move). Beside it **CTRL** and **STOP**: **the rotor moves only with CTRL on.** The **TRACK** key on the MAP page and in the pass details of PASSES opens that satellite here (one not on the timeline is added to it).
+3. The polar plot shows the antenna as a red cross, the elevation chart (0 to 180 degrees on this page) its real elevation, over 90 when it looks back. A click on the polar plot turns the antenna there, a click on the elevation chart sets only the elevation.
+
+Each pass is planned ahead from 1 s samples. K3NG takes the shorter way for every command and would unwind about 360° in the middle
+of a pass across the north, so every way of following the pass is simulated with the measured speeds of the rotor (azimuth 5.5°/s,
+elevation 2.3°/s) and the one with the smallest pointing error is used:
+
+| Mode | Antenna | When |
+|---|---|---|
+| normal | azimuth K3NG 0–360°, elevation 0–90° | the track does not cross the north |
+| overlap | azimuth through the north past 360° (K3NG up to 450°) | a track across the north that fits into 0–450° |
+| flipped | azimuth + 180°, elevation 180° − el: the antenna looks back over the top | a track across the north that does not fit |
+| over the top | azimuth stands, elevation 0 → 180° | passes near the zenith |
+
+On a tie (2° or less) the order of the table decides. The plan gives K3NG its own 0–450 azimuth, so the side of the overlap is decided
+by the plan; where K3NG would take the other side, the rotor goes through a point 90° before the target first. TRACK turns the rotor
+to the start of the next pass in time (the move plus 30 s), follows the pass 2 s ahead and after LOS waits for the next one; the
+rotor stays where it is between the passes. While TRACK moves the rotor, GO and the clicks on the plots are refused.
 
 **Rotor safety:** position readings can be noisy and K3NG does not acknowledge commands, so RADIMCOM checks the position itself. A reading that jumps faster
-than the rotor can move, or a move without progress, stops the rotor and needs **RESET FAULT** in SET. A lost serial connection, a disconnected Gpredict and STOP also stop it. All of these turn CTRL off.
+than the rotor can move, or a move without progress, stops the rotor and needs **RESET FAULT** in SET. A lost serial connection and STOP also stop it. All of these turn CTRL off.
+K3NG ends any move after its operation timeout (60 s here), so an unchanged target is sent again every 30 s.
 
-The name frame of the VFO shows the satellite and transponder selected in Gpredict in blue. This and the AOS / LOS time need our build of Gpredict.
+**Azimuth calibration:** K3NG counts 0–450 degrees from the left stop of the rotor, which need not be exactly north. In **SET → ROTOR**, enter the true azimuth of the antenna at K3NG 0 and at K3NG 450 (measure it, for example, with the antenna parallel to the walls of a house whose orientation is known from a map; 0 and 450 = no correction). The position, the tracking and GO then use true azimuths. K3NG reports its azimuth only modulo 360, so RADIMCOM follows the whole 0–450 position itself and saves it; for GO and the clicks on the plots it picks the command that ends nearest the wanted direction. A direction just beyond a stop is reached as near as the rotor can get, without a fault.
 
 ## Running
 
@@ -355,11 +409,11 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
 
     ![ACARS card on 131.725 MHz: ADS-C position reports with route, track and speed, and plain ACARS messages, aircraft type and position from ADS-B](docs/images/decoders_acars_legacy.png)
 
-  - ISM (433 / 868 MHz devices such as weather sensors and remote controls, decoded by [rtl_433](https://github.com/merbanan/rtl_433)): buttons 433.92 and 868.30 MHz centre the VFO, which runs at 2.048 MS/s, so about ±1 MHz is decoded at once. The audio of the VFO is muted, and REC records nothing. The table shows the device, ID, channel, level and data; a message the device repeats is one row with ×N. **ISM** again, **OFF** in the card or any band button ends it and restores the sample rate. ISM turns ACARS, VDL2 and DAB off. RTL-SDR only; not on LimeSDR or on a chained VFO.
+  - ISM (433 / 868 MHz devices such as weather sensors and remote controls, decoded by [rtl_433](https://github.com/merbanan/rtl_433)): buttons 433.92 and 868.30 MHz centre the VFO, which runs at 2.048 MS/s, so about ±1 MHz is decoded at once. The audio of the VFO is muted, and REC records nothing. The table shows the device, ID, channel, level and data; a message the device repeats is one row with ×N. **ISM** again, **OFF** in the card or any band button ends it and restores the sample rate. ISM turns ACARS, VDL2 and DAB off. RTL-SDR only; not on LimeSDR, Airspy or a chained VFO.
   - VDL2 (VDL Mode 2, digital): one centre button 136.500 MHz (re-centres the VFO at 2.1 MS/s; all channels of the region
     are decoded at once), EU and US region buttons, the number of channels (list in the tooltip) and frame count, CLR. Plain ACARS, CPDLC, ADS-C
     and European ATN CPDLC in one table, see [Aircraft data link](#aircraft-data-link-acars-vdl2-cpdlc-ads-c).
-    RTL-SDR only, not supported on LimeSDR.
+    RTL-SDR only, not supported on LimeSDR or Airspy.
 
 - **AUDIO**:
   - S/M: WFM stereo / mono (mono = less noise on weak stations).
@@ -371,7 +425,7 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
   - SP: remove spurs from local sources. Learn them and set the band-stop in SET, DONGLE tab.
   - ALC: automatic audio level in AM/LSB/USB/CW; off = fixed gain.
   - CUE: keep hearing this VFO (at the CUE level) when another VFO is selected.
-- **SAT**: the satellite key opens the SAT window, **GP** opens and closes Gpredict, see [Satellite tracking](#satellite-tracking-antenna-rotor-and-gpredict).
+- **SAT**: the satellite key switches to the SATELLITES tab and back, see [Satellite tracking](#satellite-tracking).
 - **Volume** (top right): vertical MAIN (active VFO) and CUE faders, stereo L/R level meter. Below them the speaker button
   is MUTE (green = sound on, red = muted). Under it are two recording keys for the active VFO, which work independently of each other and go on with the page closed:
   - **REC** records everything until switched off, also the silence of a closed squelch. After 15 minutes it continues in a new file.
@@ -398,7 +452,7 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
     - Display width (sample rate).
     - S-meter calibration (S9 level) and layout (needle, bar graph, LED bar, VFD display, amber needle, 7-segment, peak bar), waterfall colour range / offset.
     - Touchpad wheel speed (1–10, default 4; left = slower), remembered in the browser for all VFOs. A mouse wheel notch is always one step.
-  - **ROTOR**: antenna rotor and Gpredict link, see [Satellite tracking](#satellite-tracking-antenna-rotor-and-gpredict).
+  - **ROTOR**: antenna rotor, see [Satellite tracking](#satellite-tracking).
   - **TX** (LimeSDR only): Enable TX, see below.
 - **MENU → MEM**: frequency memories with groups, search and favourites. ＋ SAVE CURRENT stores the frequency,
   mode and width under a name and group; ★ marks a favourite. With DAB on it stores the DAB channel too (shown as `DAB 12C` in the list): recalling that memory turns DAB on with the channel, and the last station of the channel plays. Recalling any other memory ends DAB.
@@ -443,7 +497,7 @@ When squelch is on for an inactive VFO and it opens, that VFO's button lights up
 }
 ```
 
-- `serial` is the dongle's serial number in EEPROM (for a LimeSDR its serial number, `driver: "lime"`).
+- `serial` is the dongle's serial number in EEPROM (for a LimeSDR its serial number, `driver: "lime"`; for an Airspy its 64-bit serial number as 16 hex digits, `driver: "airspy"`).
 - `port` is the port of that VFO's receiver. The page talks to it directly.
 - `config` is the VFO settings file. On first start it is created from `config.json` plus the values from `init`.
   After that each VFO remembers its own tuning, mode, filters, squelch, gain and ppm.
@@ -476,7 +530,7 @@ Any combination works, e.g. one dongle for VFO A–D, or two dongles with two VF
 python setup_sdr.py
 ```
 
-The wizard (`setup.bat` on Windows) finds the connected RTL-SDRs and LimeSDRs and assigns them to VFO A, B, C, D:
+The wizard (`setup.bat` on Windows) finds the connected RTL-SDRs, LimeSDRs and Airspys and assigns them to VFO A, B, C, D:
 the device for a VFO is chosen by number or by unplugging it for a moment (the wizard detects which one is
 missing). Typing the letter of an earlier VFO (e.g. `A`) chains the new VFO to that VFO's dongle, so one dongle
 can serve several VFOs. Then it asks about the upconverter and ppm and writes `vfos.json`. If the dongles share the same serial
@@ -559,8 +613,10 @@ All components and how the signals flow between them, from the hardware at the b
 | `vdl2.py` | VDL2: runs `lib\vdl2\dumpvdl2.exe`, feeds it the raw samples, turns its messages into ACARS / CPDLC records |
 | `ism.py` | ISM decoder: runs `lib\ism\rtl_433.exe`, gives it the raw samples through a local rtl_tcp server, reads its messages |
 | `recorder.py` | audio recording to MP3 files in `data\recordings` (REC, REC SQ) |
-| `rotor.py` | antenna rotor (K3NG, GS-232) and the link to Gpredict (rotctld and rigctld servers on this PC) |
-| `gpredict.py` | GP key: starts and closes `apps\gpredict\gpredict.exe` (not under `lib`: Gpredict would not find its data there) |
+| `rotor.py` | antenna rotor (K3NG, GS-232): position checks, azimuth calibration, the K3NG 0–450 azimuth |
+| `satellites.py` | SATELLITES tab: the lists of active satellites from amsat.org, cleaned and cached |
+| `sattrack.py` | SATELLITES tab: orbital elements from CelesTrak, station location and pass prediction (SGP4), transmitters from SatNOGS DB, Doppler correction |
+| `satplan.py` | SATELLITES tab, TRACK: rotor plan of a pass (normal, overlap, flipped, over the top) and the tracker that follows it |
 | `dsd.py` | DSD mode: runs `lib\dsd-fme\dsd-fme.exe`, feeds it the FM discriminator, plays its voice, follows the calls in its text output |
 | `install_dsd.bat`, `install_dsd.py` | downloads DSD-FME into `lib\dsd-fme` (not in the package, patent notice) |
 | `VDL2_Ground_Stations.txt` | VDL2 ground stations by address (airport, position and channel when known, city) for the Ground Station column. Source: [ACARS-VDL2 group](https://acars-vdl2.groups.io/), redistributed with approval. Thank you Sergi for amazing work. If you come across any new ground station that is not included in the list, please let us know. Thank you. |
@@ -575,6 +631,7 @@ All components and how the signals flow between them, from the hardware at the b
 | `setup_sdr.py` | initial dongle setup wizard (`vfos.json`) |
 | `iqshare.py` | VFO chaining: the owner VFO shares its dongle samples with chained VFOs |
 | `lime.py` | LimeSDR via LimeSuite.dll (receive and transmit) |
+| `airspy.py` | Airspy R2 via airspy.dll (receive) |
 | `static/` | web interface (`index.html`, `style.css`, `app.js`) |
 | `paths.py` | data paths (`data\`), migration of data from older versions |
 | `installer/` | building the installer package (`make_installer.py`) and the files it contains; the package is created in `dist\` |
@@ -613,6 +670,12 @@ never overwritten (a leftover copy then stays unused in the main folder).
 folder somewhere outside the RADIMCOM folder.
 
 **Reinstall / update:**
+- After each start RADIMCOM asks GitHub once whether a newer version is released. If so, a small window offers it:
+  **UPGRADE** downloads the upgrade zip, closes the receiver, installs it in its own console window (unzips the program,
+  runs `upgrade.bat`) and starts RADIMCOM again; the page reloads by itself. `data\` and the settings stay.
+  **LATER** asks again at the next start, **SKIP THIS VERSION** not before a still newer one. A yellow "→ 0.1xx available"
+  beside the version under the logo opens the window again. Without internet nothing is shown. Off with
+  `"update_check": false` in `data\vfos.json`. A development copy (a folder with `.git`) is not upgraded by itself.
 - Unzipping a new installer package over the old folder keeps `data\` (the package has no `data\`).
 - In a new, empty folder: copy the backed-up `data\` into it before the first start. For the DSD mode, run `install_dsd.bat` again.
 - In `install.bat`, answer **N** to "Run the SDR setup now" to keep the existing VFO assignment; with Y a new

@@ -48,11 +48,11 @@ def label(x,y,s,kind=None,anchor="middle",size=13,rot=None):
 
 # Title
 text(40,50,"RADIMCOM: block diagram of all components",32,weight=700)
-text(40,78,"Signal flows from the hardware at the bottom up to the browser at the top. Ver. 0.110",16,MUTE)
+text(40,78,"Signal flows from the hardware at the bottom up to the browser at the top. Ver. 0.111",16,MUTE)
 
 # ---------- top row ----------
 group(40,115,300,215,"VFO launcher",FILL["srv"])
-box(60,155,260,70,"launcher.py",["serves the page and /api/vfos on :8434,","gpredict.py: GP key"])
+box(60,155,260,70,"launcher.py",["serves the page and /api/vfos on :8434,","starts the VFO processes"])
 text(60,250,"Starts one receiver per VFO.",13.5,MUTE)
 text(60,270,"Without vfos.json: one receiver on",13.5,MUTE)
 text(60,288,":8434, settings from config.json.",13.5,MUTE)
@@ -61,7 +61,7 @@ text(60,310,"start.bat → app.py → launcher",13.5,MUTE)
 group(380,115,1090,215,"Web browser",FILL["ui"],"The page talks directly to each VFO's port; localStorage holds UI preferences")
 box(400,180,200,132,"index.html",["style.css","layout, VFO windows,","function keys"],)
 box(614,180,200,132,"app.js",["UI logic, one connection","set per VFO"])
-box(828,180,200,132,"bandplan.js",["icao_countries.js","band labels and","aircraft country flags"])
+box(828,180,200,132,"bandplan.js",["icao_countries.js, world.js,","leaflet\\ (station map);","band labels, country flags"])
 box(1042,180,200,132,"Display",["S-meter, spectrum,","waterfall, decoder cards"],mono=False)
 box(1256,180,200,132,"Web Audio",["MAIN and CUE faders,","level meter, MUTE"],mono=False)
 
@@ -70,9 +70,10 @@ text(1526,175,"Anything can drive a receiver",14,MUTE)
 text(1526,195,"through the same HTTP API.",14,MUTE)
 box(1530,225,230,60,"API/API.md",["API description"])
 
-group(1860,115,520,215,"Internet (optional)",FILL["net"],"Decoding works without it; these only add detail")
-box(1880,180,235,132,"opendata.adsb.fi",["api.adsb.lol","aircraft type, flight level,","speed, position"])
-box(2130,180,235,132,"flagcdn.com",["country flag images;","globe.adsb.fi and adsb.lol","open as map links"])
+group(1860,115,520,215,"Internet (optional)",FILL["net"],"Everything works without it")
+box(1880,180,150,132,"opendata.adsb.fi",["api.adsb.lol","aircraft type,","flight level, speed,","position"],size=13.5)
+box(2040,180,150,132,"flagcdn.com",["country flags;","globe.adsb.fi and","adsb.lol as map links"],size=13.5)
+box(2200,180,165,132,"Satellite data",["CelesTrak: orbits","SatNOGS: transmitters","AMSAT: active lists","OpenStreetMap: tiles"],mono=False,size=14)
 
 # ---------- receiver process ----------
 for d in (16,8):
@@ -87,7 +88,7 @@ box(110,Y,320,HA,"/api/set /state /tx /devices /mpx",["tuning, mode, gain, PTT, 
 box(450,Y,500,HA,"/api/ft8 /wefax /sstv /cw /rtty /acars /cpdlc",["decoder on/off, options, messages and images"],size=14)
 box(1140,Y,98,HA,"/events",["SSE"],size=14)
 box(1248,Y,98,HA,"/audio",["16-bit PCM"],size=14)
-box(1362,Y,230,HA,"/api/vdl2 /dab/* /dsd /ism",["control, DAB data, calls; /rotor"],size=13.5)
+box(1362,Y,230,HA,"/api/vdl2 /dab/* /dsd /ism",["DAB data, calls; /rotor /sat/*"],size=13.5)
 box(1612,Y,150,HA,"/api/memories",["list, edit, import"],size=14)
 text(960,533,"Flask API in app.py",13.5,MUTE)
 box(1140,590,206,46,"Hub",["broadcast to browsers"],size=14)
@@ -128,9 +129,10 @@ path([(714,1030),(714,1042)],"iq",sw=2)
 
 # Device layer
 group(70,1125,1370,110,"Device layer: same interface for all, chosen by open_device()",FILL["dev"])
-box(90,1165,235,58,"RtlSdr",["in sdr.py, via ctypes"],size=14.5)
-box(345,1165,235,58,"LimeSdr",["lime.py, RX and optional TX"],size=14.5)
-box(600,1165,235,58,"ChainedSdr",["iqshare.py, no dongle of its own"],size=14.5)
+box(90,1165,165,58,"RtlSdr",["in sdr.py, via ctypes"],size=14.5)
+box(270,1165,160,58,"LimeSdr",["lime.py, RX and TX"],size=14.5)
+box(445,1165,145,58,"AirspySdr",["airspy.py, RX only"],size=14.5)
+box(605,1165,230,58,"ChainedSdr",["iqshare.py, no dongle of its own"],size=14.5)
 box(1030,1165,190,58,"IqServer",["iqshare.py, owner VFO"],size=14.5)
 text(1236,1185,"A chained VFO's dongle",12.5,MUTE)
 text(1236,1202,"settings are forwarded to",12.5,MUTE)
@@ -156,34 +158,37 @@ box(2040,665,320,90,"welle-cli.exe (our patch)",["OFDM, Viterbi, AAC / MP2","FFT
 box(2040,765,320,100,"rtl_433.exe",["ISM devices; GPL v2 or later","the dongle stays in RADIMCOM"])
 
 # ---------- satellite tracking ----------
-group(2420,115,340,760,"Satellite tracking",FILL["ext"],"apps\\gpredict, rotor.py")
-box(2440,185,300,130,"gpredict.exe",["Gpredict 2.7, modified; GPL v2 or later","tracking, Doppler correction","own program, one for the PC","started and closed by the GP key"])
-box(2440,410,300,130,"rotor.py",["in the VFO process (dashed link):","rotctld and rigctld servers,","GS-232, position checks and stop;","SAT window, SET ROTOR tab"])
+group(2420,115,340,760,"Satellite tracking",FILL["srv"],"in the VFO process (dashed link)")
+box(2440,175,300,150,"sattrack.py, satplan.py",["TLE (CelesTrak), SGP4 passes, map;","Doppler correction of the VFO;","rotor plan of each pass","(normal, overlap, flipped, over top);","satellites.py: AMSAT lists"])
+box(2440,410,300,130,"rotor.py",["K3NG azimuth 0-450, calibration,","GS-232, position checks and stop;","SET ROTOR tab, TRACK page","in the SATELLITES tab"])
 box(2440,640,300,80,"K3NG rotor controller",["Arduino, USB serial"],mono=False)
 box(2440,775,300,70,"Antenna rotor",["azimuth and elevation"],mono=False)
 
 # ---------- data ----------
 group(1860,905,520,330,"data\\ folder: your settings and logs, never packaged",FILL["data"])
-rows=[("vfos.json","dongle to VFO assignment"),("config.json","single-receiver settings, VFO template"),("config_A…D.json","settings of each VFO"),("memories.json","frequency memories"),("logs\\  acars\\","daily decoder logs (UTC)"),("wefax\\  sstv\\","saved images (PNG)"),("recordings\\","audio recordings (MP3)"),("tx_audio\\","optional FM test message"),("config_backup\\","previous vfos.json and configs"),("eeprom_backup\\","dongle EEPROM backups")]
+rows=[("vfos.json","dongle to VFO assignment"),("config.json","single-receiver settings, VFO template"),("config_A…D.json","settings of each VFO"),("memories.json","frequency memories"),("logs\\  acars\\","daily decoder logs (UTC)"),("wefax\\  sstv\\","saved images (PNG)"),("recordings\\","audio recordings (MP3)"),("tx_audio\\","optional FM test message"),("sat_*.json  sat_tle.txt","satellites: station, orbits, transmitters"),("satellites.json","AMSAT lists (SATELLITES tab)"),("config_backup\\","previous vfos.json and configs"),("eeprom_backup\\","dongle EEPROM backups")]
 for i,(a,b) in enumerate(rows):
-    y=958+i*27
-    text(1880,y,a,14.5,weight=700,mono=True); text(2060,y,b,14,MUTE)
+    y=956+i*23
+    text(1880,y,a,14,weight=700,mono=True); text(2085,y,b,13.5,MUTE)
 
 # ---------- native + drivers + hw ----------
-group(70,1285,530,135,"Native libraries (lib\\)",FILL["dev"])
-text(312,1310,"loaded through ctypes",13,MUTE)
-box(90,1322,235,40,"librtlsdr.dll",[],size=14.5)
-box(90,1370,235,40,"libusb-1.0.dll",[],size=14.5)
-box(345,1322,235,88,"LimeSuite.dll",["from lib\\ or PothosSDR"],size=14.5)
-group(70,1432,530,75,"Windows USB drivers",FILL["dev"],tx=240)
-box(90,1448,135,46,"WinUSB",["with Zadig"],mono=False,size=14)
-box(445,1448,135,46,"FTDI D3XX",["driver"],mono=False,size=14)
-group(70,1520,530,190,"Hardware",FILL["hw"],tx=280)
-box(90,1560,235,56,"RTL-SDR dongles",["up to 4, picked by serial"],mono=False,size=14.5)
-box(345,1560,235,56,"LimeSDR Mini",["RX, optional TX on PTT"],mono=False,size=14.5)
-box(90,1638,110,58,"HF up-",["converter"],mono=False,size=14)
-box(215,1638,110,58,"VHF/UHF",["antenna"],mono=False,size=14)
-box(345,1638,235,58,"Antenna / dummy load",["filter when transmitting"],mono=False,size=14)
+group(70,1285,530,135,"",FILL["dev"])
+box(90,1322,165,40,"librtlsdr.dll",[],size=14)
+box(90,1370,165,40,"libusb-1.0.dll",[],size=14)
+box(270,1322,160,88,"LimeSuite.dll",["from lib\\ or","PothosSDR"],size=14)
+box(445,1322,145,88,"airspy.dll",["pthreadVC2.dll;","from PothosSDR"],size=14)
+group(70,1430,530,100,"",FILL["dev"])
+box(90,1470,165,46,"WinUSB",["with Zadig"],mono=False,size=14)
+box(270,1470,160,46,"FTDI D3XX",["driver"],mono=False,size=14)
+box(445,1470,145,46,"WinUSB",["with Zadig"],mono=False,size=14)
+group(70,1542,530,168,"Hardware",FILL["hw"])
+box(90,1578,165,52,"RTL-SDR dongles",["picked by serial"],mono=False,size=14)
+box(270,1578,160,52,"LimeSDR Mini",["optional TX on PTT"],mono=False,size=14)
+box(445,1578,145,52,"Airspy R2",["receive only"],mono=False,size=14)
+box(90,1648,165,52,"HF upconverter,",["VHF/UHF antenna"],mono=False,size=14)
+box(270,1648,160,52,"Antenna / dummy",["load, filter for TX"],mono=False,size=14)
+text(517,1668,"Up to 4 SDRs,",12.5,MUTE,anchor="middle")
+text(517,1686,"one per VFO",12.5,MUTE,anchor="middle")
 
 # Tools
 group(640,1285,1140,425,"Install, setup and build tools (run outside the receiver)",FILL["tool"])
@@ -202,12 +207,13 @@ path([(1235,1488),(1260,1488)],"ctl",sw=2)
 text(1525,1482,"Both open the dongles through",13,MUTE)
 text(1525,1500,"sdr.py / lime.py; receiver stopped",13,MUTE)
 text(660,1556,"Build (installer\\)",15,weight=700)
-box(660,1568,250,60,"make_installer.py",["install and upgrade zips"])
-box(935,1568,250,60,"make_sources.py",["GPL / LGPL source zip"])
-box(1210,1568,250,60,"build_dab.sh, build_gpredict.sh",["welle-cli, Gpredict (MSYS2)"],size=12.5)
-box(1485,1568,275,60,"dist\\",["zip packages for GitHub Releases"])
+box(660,1568,210,60,"make_installer.py",["install and upgrade zips"],size=14)
+box(880,1568,210,60,"make_sources.py",["GPL / LGPL source zip"],size=14)
+box(1100,1568,200,60,"make_world.py",["world.js, Natural Earth"],size=14)
+box(1310,1568,190,60,"build_dab.sh",["welle-cli (MSYS2)"],size=14)
+box(1510,1568,250,60,"dist\\",["zips for GitHub Releases"])
 text(660,1660,"Git-ignored and not in the repository: lib\\, apps\\, drivers\\, data\\, dist\\. The install zip contains lib\\, apps\\ and drivers\\, without DSD-FME.",14,MUTE)
-text(660,1684,"Docs: README, CHANGELOG, NOTICE, CONTRIBUTING, SECURITY, ROADMAP; installer\\VDL2, DAB, ISM and GPREDICT.txt give sources.",14,MUTE)
+text(660,1684,"Docs: README, CHANGELOG, NOTICE, CONTRIBUTING, SECURITY, ROADMAP; installer\\VDL2, DAB and ISM.txt give sources.",14,MUTE)
 
 # ---------- legend ----------
 group(1860,1285,520,425,"Legend",FILL["tool"])
@@ -233,7 +239,7 @@ path([(1297,500),(1297,330)],"audio"); label(1305,385,"PCM","audio",anchor="star
 path([(1440,330),(1440,500)],"ctl",start=True); label(1448,385,"HTTP, MP3","ctl",anchor="start")
 path([(1645,330),(1645,500)],"ctl",start=True); label(1653,385,"same HTTP API","ctl",anchor="start")
 # internet from browser
-path([(1400,115),(1400,98),(2247,98),(2247,180)],"net",dash="7 5"); label(1830,92,"flag images, map links","net")
+path([(1400,115),(1400,98),(2115,98),(2115,180)],"net",dash="7 5"); label(1830,92,"flag images, map links","net")
 # hub
 path([(1190,590),(1190,558)],"ev"); path([(1297,590),(1297,558)],"audio")
 # decoder events
@@ -249,7 +255,7 @@ path([(110,529),(88,529),(88,930)],"ctl"); label(82,760,"tune, mode, gain, PTT",
 path([(1323,1010),(1450,1010),(1450,1167),(1480,1167)],"audio"); label(1362,1002,"PCM","audio")
 path([(1700,558),(1700,968)],"ctl",start=True)
 # ADS-B
-path([(940,825),(970,825),(970,574),(1800,574),(1800,350),(1997,350),(1997,312)],"net",dash="7 5"); label(1880,342,"aircraft lookup (ADS-B)","net")
+path([(940,825),(970,825),(970,574),(1800,574),(1800,350),(1955,350),(1955,312)],"net",dash="7 5"); label(1880,342,"aircraft lookup (ADS-B)","net")
 # vdl2->acars
 path([(1416,733),(1350,733),(1350,892),(827,892),(827,858)],"ev"); label(940,908,"ACARS, ATN from VDL2","ev",size=12.5)
 # internal data link
@@ -275,10 +281,11 @@ path([(2040,725),(2033,725),(2033,825),(1638,825)],"audio",start=True); label(18
 path([(1638,846),(2040,846)],"iq")
 path([(2040,860),(1638,860)],"ev"); label(1875,876,"rtl_433: IQ over rtl_tcp, JSON messages","ev",size=12.5)
 # satellite tracking
-path([(2590,315),(2590,410)],"ctl",start=True); label(2598,352,"rotctld TCP 4533","ctl",anchor="start"); label(2598,372,"rigctld TCP 4532","ctl",anchor="start")
+path([(2590,315),(2590,410)],"ctl",start=True); label(2598,352,"targets with the","ctl",anchor="start"); label(2598,372,"K3NG azimuth","ctl",anchor="start")
 path([(2590,540),(2590,640)],"ctl",start=True); label(2598,582,"USB serial, 9600 baud","ctl",anchor="start"); label(2598,602,"GS-232 commands","ctl",anchor="start")
 path([(2590,720),(2590,775)],"ctl",start=True)
-path([(1720,440),(1720,420),(2440,420)],"ctl",start=True,dash="7 5"); label(2000,412,"tuning, CTRL and position: /api/rotor","ctl")
+path([(1720,440),(1720,420),(2440,420)],"ctl",start=True,dash="7 5"); label(2000,412,"CTRL, GO, position: /api/rotor, /api/sat/*","ctl")
+path([(2440,250),(2365,250)],"net",dash="7 5"); label(2402,240,"downloads","net",size=11.5)
 # DSD mode
 path([(1116,812),(1136,812),(1136,650),(1950,650),(1950,505),(2040,505)],"iq")
 path([(2040,530),(1965,530),(1965,660),(1148,660),(1148,830),(1116,830)],"audio")
@@ -289,15 +296,20 @@ label(1942,559,"calls on stderr","ev",anchor="end")
 path([(1030,866),(1030,950),(902,950),(902,972)],"audio",sw=2)
 label(1040,956,"DSD voice","audio",anchor="start",size=12.5)
 # device to native
-path([(300,1235),(300,1322)],"iq",start=True)
-path([(540,1235),(540,1322)],"iq",start=True)
-path([(207,1362),(207,1370)],"iq",end=False)
-path([(157,1410),(157,1448)],"iq",start=True)
-path([(512,1410),(512,1448)],"iq",start=True)
-path([(157,1560),(157,1494)],"iq")
-path([(512,1560),(512,1494)],"iq",start=True)
-path([(145,1638),(145,1616)],"iq"); path([(270,1638),(270,1616)],"iq")
-path([(462,1638),(462,1616)],"iq",start=True)
+path([(172,1235),(172,1322)],"iq",start=True)
+path([(350,1235),(350,1322)],"iq",start=True)
+path([(517,1235),(517,1322)],"iq",start=True)
+path([(172,1362),(172,1370)],"iq",end=False)
+path([(172,1410),(172,1470)],"iq",start=True)
+path([(350,1410),(350,1470)],"iq",start=True)
+path([(517,1410),(517,1470)],"iq",start=True)
+path([(172,1578),(172,1516)],"iq")
+path([(350,1578),(350,1516)],"iq",start=True)
+path([(517,1578),(517,1516)],"iq")
+path([(172,1648),(172,1630)],"iq"); path([(350,1648),(350,1630)],"iq",start=True)
+# titles over the arrows of the bottom left column
+text(86,1312,"Native libraries (lib\\), loaded through ctypes",17,weight=700,halo=True)
+text(86,1457,"Windows USB drivers",17,weight=700,halo=True)
 # storage to data
 path([(1760,1080),(1860,1080)],"file",start=True,dash="7 5"); label(1810,1070,"read/write","file")
 # tools to data

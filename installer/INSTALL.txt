@@ -3,7 +3,7 @@ RADIMCOM - SDR receiver in the web browser
 
 Features
 --------
-- Up to 4 VFOs (A-D) side by side, each with its own SDR: RTL-SDR dongles and LimeSDR Mini.
+- Up to 4 VFOs (A-D) side by side, each with its own SDR: RTL-SDR dongles, LimeSDR Mini and Airspy R2.
   Fewer SDRs: the remaining VFO windows stay in place, greyed out ("NO SDR").
 - VFO chaining: one dongle can serve several VFOs (e.g. one dongle for VFO A-D, or two
   dongles with two VFOs each); a chained VFO listens inside the band of its dongle.
@@ -28,8 +28,8 @@ Features
 - DAB / DAB+ digital radio (Band III): station list, DLS text, slideshow (via welle-cli).
 - VDL2 (aircraft data link, via dumpvdl2): EU or US channels, all channels of the region at once.
 - ISM decoder: devices on 433 and 868 MHz, such as weather sensors (via rtl_433).
-- Satellite tracking: K3NG antenna rotor over USB, Gpredict is in the package;
-  it steers the rotor and tunes the receiver with Doppler correction.
+- Satellite tracking in the SATELLITES tab: passes, world map, Doppler correction of the receiver
+  and a K3NG antenna rotor over USB.
 - Remove DC peak and remove spurs from local sources.
 - Band buttons (HF/VHF/UHF ham, broadcast, airband, marine, PMR446, CB) and frequency
   memories with groups and favourites (import from SDR#).
@@ -42,7 +42,7 @@ Installation on a new PC
 ------------------------
 1. Unzip RADIMCOM_install_v<version>.zip (e.g. RADIMCOM_install_v0.102.zip) - it contains
    the RADIMCOM folder; put it e.g. to C:\RADIMCOM (not into Program Files).
-2. Connect the SDR dongles (RTL-SDR, LimeSDR Mini).
+2. Connect the SDR dongles (RTL-SDR, LimeSDR Mini, Airspy R2).
 3. Run install.bat. It will:
    - check Python 3.9+ (if missing, it opens python.org; install it with "Add python.exe to PATH"),
    - install the Python packages into .venv (needs internet),
@@ -87,6 +87,32 @@ More details: README.md.
 Change log
 ----------
 (also in CHANGELOG.md)
+
+Ver. 0.111
+Main Features
+- Satellite tracking without Gpredict, all in the SATELLITES tab; Gpredict and the GP key are removed (an old apps\gpredict folder can be deleted).
+  The tab is next to SPECTRUM and DECODERS, also the SAT key; the floating SAT window is gone.
+  PASSES: timeline and list of passes, a click shows the polar plot, elevation, Doppler and transmitters; TRACK opens the satellite on the TRACK page.
+  MAP: world map with footprints and ground track, details and transmitters of the chosen satellite beside it, with a TRACK key
+  (a satellite not on the timeline yet is added).
+  TRACK: a click on a transmitter tunes the VFO with Doppler correction and its mode (OFF stops it).
+  The rotor follows each pass by a plan (overlap past 360, flipped, over the top), so it no longer unwinds across the north;
+  it turns to the start of the pass about 30 s to 2 min before AOS. It moves only with CTRL on; STOP stops it and turns CTRL off.
+  While the rotor follows another satellite, TRACK switches it to the one shown.
+  The polar plot and the elevation chart (0-180) show the antenna as a red cross; a click on the polar plot turns the antenna there,
+  a click on the elevation chart sets only the elevation (refused while TRACK moves the rotor).
+  SETUP: station by locator or map, satellites by CelesTrak group (amateur, weather, cubesats, science, GNSS, Iridium);
+  SELECT ACTIVE ticks those of the AMSAT lists, CLEAR unticks all.
+  LINEAR, FM, IMAGE, MISC: the lists of active satellites from AMSAT. Links open in a new browser tab. The lists are downloaded
+  when the tab is opened (needs internet), kept for 12 hours in data\satellites.json; REFRESH downloads them again.
+- Airspy R2 (first test version, receive only): a VFO can use an Airspy R2, setup.bat finds it. 2.5 MS/s, gain as the presets 0-21 or AGC, bias-tee, upconverter, ppm and chained VFOs work as on the other SDRs. VDL2, DAB and ISM are not available on it (RTL-SDR only); the 10 MS/s rate is not offered yet.
+Minor Fixes
+- Upgrade from the page: after each start RADIMCOM asks GitHub for a newer version and offers it in a small window.
+  UPGRADE downloads the upgrade zip, closes the receiver, installs it in its own window (upgrade.bat included)
+  and starts RADIMCOM again; data\ and the settings stay. LATER asks at the next start, SKIP THIS VERSION not again
+  for that version. Off with "update_check": false in data\vfos.json. Works from 0.111 on (this upgrade is still by hand).
+- Rotor: azimuth calibration in SET (ROTOR tab): the true azimuth at K3NG 0 and at K3NG 450, for a rotor whose left stop is not exactly north. Positions, the tracking and GO then use true azimuths.
+- Rotor: a move longer than the K3NG operation timeout (60 s here, e.g. elevation 0 to 180) no longer stops halfway; the target is sent again every 30 s.
 
 Ver. 0.110
 Main Features

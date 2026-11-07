@@ -90,7 +90,7 @@
             <path d="M275.8 -56.5A21 21 0 0 1 297.6 -66.7" stroke="#d6ffe3" stroke-width="3.5" stroke-linecap="round"/>
           </g>
         </svg>
-        <span class="r-ver">Ver. 0.110</span>
+        <span class="r-ver">Ver. 0.111</span><a class="r-upd" id="updLink" href="https://github.com/om2amr/RADIMCOM/releases" target="_blank" rel="noopener noreferrer" hidden></a>
         </div>
         <!-- RDS: compact frame under the logo, as wide as the clock -->
         <div class="rds off" id="rds">
@@ -164,8 +164,7 @@
       <button id="cueKey" class="key" title="CUE: keep hearing this VFO (at CUE level) when another VFO is selected">CUE</button>
     </div></div>
     <div class="kgroup"><span class="klabel">SAT</span><div class="keys">
-      <button id="satKey" class="key sat-key" aria-label="Satellite tracking" aria-controls="satCard" title="Satellite tracking: antenna position and rotor control"><svg class="sat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.6 7C3.2 12.6 8.4 18.8 15 17.4Z"/><path d="M9.8 12.2L13.4 8.6"/><circle cx="14.6" cy="7.4" r="1.6"/><path d="M16.6 3.1A5 5 0 0 1 19 5.5"/><path d="M17.2.6A8 8 0 0 1 21.5 4.9"/><path d="M7.6 15.4L5.8 20.6M11 17.2L12.4 20.6M3.2 21.2H15"/></svg></button>
-      <button id="gpredictKey" class="key" aria-pressed="false" disabled>GP</button>
+      <button id="satKey" class="key sat-key" aria-label="Satellite tracking" aria-controls="amsatPane" title="Satellite tracking: the SATELLITES tab (passes, map, Doppler, rotor)"><svg class="sat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.6 7C3.2 12.6 8.4 18.8 15 17.4Z"/><path d="M9.8 12.2L13.4 8.6"/><circle cx="14.6" cy="7.4" r="1.6"/><path d="M16.6 3.1A5 5 0 0 1 19 5.5"/><path d="M17.2.6A8 8 0 0 1 21.5 4.9"/><path d="M7.6 15.4L5.8 20.6M11 17.2L12.4 20.6M3.2 21.2H15"/></svg></button>
     </div></div>
     <div class="kgroup"><span class="klabel">MENU</span><div class="keys">
       <button id="setKey" class="key" aria-controls="settingsCard">SET</button>
@@ -177,12 +176,13 @@
   <div class="r-bands" id="bandGroups"></div>
 </section>
 
-<!-- spectrum and waterfall (SPECTRUM tab) and decoders (DECODERS tab) -->
+<!-- spectrum and waterfall (SPECTRUM tab), decoders (DECODERS tab) and lists of satellites (SATELLITES tab) -->
 <section class="radio radio-body">
-  <!-- tabs of the bottom part: spectrum with waterfall, or decoders -->
+  <!-- tabs of the bottom part: spectrum with waterfall, decoders, or lists of satellites -->
   <div class="body-tabs" id="bodyTabs">
     <button data-tab="scope" class="on">SPECTRUM</button>
     <button data-tab="dec">DECODERS <span id="decCount" class="dec-count"></span><span id="decNew" class="dec-new" hidden>●</span></button>
+    <button data-tab="sat" id="amsatTab">SATELLITES</button>
   </div>
   <div class="scope display">
     <canvas id="axis" class="axis"></canvas>
@@ -436,6 +436,15 @@
       </div>
     </section>
     </div>
+    <!-- SATELLITES tab: the lists of amsat.org, downloaded by the server (satellites.py) -->
+    <div class="amsat-pane" id="amsatPane" hidden>
+      <div class="amsat-head">
+        <div class="amsat-pages" id="amsatPages"></div>
+        <span class="amsat-info" id="amsatInfo"></span>
+        <button id="amsatRefresh" class="key small" title="Download the lists from amsat.org again">REFRESH</button>
+      </div>
+      <div class="amsat-body" id="amsatBody"></div>
+    </div>
   </div>
   <div class="hint">Click = tune · drag = pan waterfall · wheel or ← → = step · click the frequency = enter it manually</div>
 </section>
@@ -443,47 +452,15 @@
 </main>
 </div>
 
-<!-- ===== floating windows: satellite tracking, settings and memories ===== -->
-<aside class="drawer sat-win" id="satCard" hidden aria-label="Satellite tracking">
-  <div class="drawer-head"><b>SAT · Tracking</b><button id="satClose" class="key small">✕</button></div>
-  <div class="drawer-body">
-    <div class="sat-pass" id="satPass" hidden><span id="satPassName"></span><b id="satPassTime"></b></div>
-    <div class="sat-view">
-      <svg class="sat-3d" viewBox="-95 -104 190 180" role="img" aria-label="Antenna in 3D, seen from the south and from 45 degrees above">
-        <g id="sat3dGround"></g>
-        <g id="sat3dAnt"></g>
-      </svg>
-      <div class="sat-gauges">
-        <figure>
-          <svg class="sat-dial" viewBox="-100 -100 200 200" role="img" aria-label="Azimuth">
-            <circle class="sat-rim" r="92"/>
-            <g id="satAzTicks" class="sat-ticks"></g>
-            <text y="-60">N</text><text x="60">E</text><text y="60">S</text><text x="-60">W</text>
-            <circle id="satAzTarget" class="sat-target" cy="-84" r="8" visibility="hidden"/>
-            <path id="satAzNeedle" class="sat-needle" d="M0-80L7 0 0 9-7 0Z" visibility="hidden"/>
-          </svg>
-          <figcaption>AZ <b id="satAz">–</b></figcaption>
-        </figure>
-        <figure>
-          <svg class="sat-dial" viewBox="-110 -118 220 146" role="img" aria-label="Elevation">
-            <path class="sat-rim" d="M92 0A92 92 0 0 0-92 0Z"/>
-            <g id="satElTicks" class="sat-ticks"></g>
-            <text x="92" y="14">0</text><text y="-106">90</text><text x="-90" y="14">180</text>
-            <circle id="satElTarget" class="sat-target" cx="84" r="8" visibility="hidden"/>
-            <path id="satElNeedle" class="sat-needle" d="M80 0L0 7-9 0 0-7Z" visibility="hidden"/>
-          </svg>
-          <figcaption>EL <b id="satEl">–</b></figcaption>
-        </figure>
-      </div>
-    </div>
+<!-- ===== antenna panel (shown on TRACK) and floating windows: settings and memories ===== -->
+<!-- antenna panel: shown on the TRACK page of the SATELLITES tab (moved there by the script) -->
+<div class="sat-panel" id="satPanel" hidden aria-label="Rotor control">
     <div class="sat-ctrl">
-      <button id="satCtrl" class="key" title="Turn on/off rotor control">CTRL</button>
-      <p class="note" id="satStatus"></p>
+      <button id="satCtrl" class="key small" title="Turn on/off rotor control: the rotor moves only with CTRL on">CTRL</button>
+      <button id="satStop" class="key small" title="Stop both motors and turn CTRL off">STOP</button>
     </div>
     <p class="note error" id="satError" hidden></p>
-    <span class="flag sat-flag" id="satGpredict"></span>
-  </div>
-</aside>
+</div>
 <aside class="drawer set-win" id="settingsCard" hidden aria-label="Settings">
   <div class="drawer-head"><b>SET · Settings</b><button class="key small" data-close>✕</button></div>
   <div class="body-tabs set-tabs" id="setTabs" role="tablist">
@@ -620,16 +597,27 @@
       <div class="setting">
         <div class="row"><span>Rotor controller (K3NG, GS-232, 9600 baud)</span><button id="rotorRefresh" class="key small" title="Search for serial ports again">⟳</button></div>
         <select id="rotorPort"></select>
-        <label class="switch"><input id="rotorEnabled" type="checkbox"><span></span> Rotor and Gpredict link on, for this VFO</label>
+        <label class="switch"><input id="rotorEnabled" type="checkbox"><span></span> Rotor link on, for this VFO</label>
         <p class="note error" id="rotorError" hidden></p>
       </div>
       <div class="setting">
         <div class="row"><span>Position</span><b id="rotorPos">–</b></div>
         <p class="note" id="rotorTarget"></p>
         <div class="row">
-          <button id="rotorStop" class="key" title="Stop both motors and forget the target; the rotor no longer follows Gpredict">STOP</button>
+          <button id="rotorStop" class="key" title="Stop both motors and turn CTRL off; the rotor no longer follows the satellite tracking">STOP</button>
           <button id="rotorReset" class="key" hidden title="Clear the fault after checking the rotor">RESET FAULT</button>
         </div>
+      </div>
+      <div class="setting">
+        <div class="row"><span>Azimuth calibration</span></div>
+        <div class="row">
+          <label title="True azimuth where the antenna points when K3NG shows 0 (its left stop)">AZ at K3NG 0° <input id="rotorCal0" type="number" min="-180" max="360" step="0.1"></label>
+          <label title="True azimuth where the antenna points when K3NG shows 450 (its right stop)">at K3NG 450° <input id="rotorCal450" type="number" step="0.1"></label>
+          <button id="rotorCalSave" class="key small" title="Save the calibration">SAVE</button>
+        </div>
+        <p class="note">K3NG counts 0–450° from its left stop. If that stop is not exactly north, enter the true azimuth of
+          the antenna at both ends (0 and 450 = no correction). Positions, the dials, the satellite tracking and GO then use true azimuths.
+          <span id="rotorRaw"></span></p>
       </div>
       <div class="setting">
         <div class="row"><span>Go to</span></div>
@@ -640,11 +628,9 @@
         </div>
       </div>
       <div class="setting">
-        <div class="row"><span>Gpredict</span></div>
-        <p class="note" id="rotorGpredict"></p>
-        <p class="note">In Gpredict, add a rotator on host <code>localhost</code> port <code id="rotorRotPort">4533</code>, and a radio
-          (type RX only) on port <code id="rotorRigPort">4532</code>. The rotor follows Gpredict only with CTRL on in the SAT window. It stops if Gpredict disconnects, if the position
-          jumps or if a move makes no progress. Radio mode (FM, USB...) is chosen here in RADIMCOM.</p>
+        <div class="row"><span>Satellite tracking</span></div>
+        <p class="note">The SATELLITES tab, TRACK page, plans each pass and moves the rotor (TRACK), only with CTRL on. The rotor stops
+          if the position jumps or if a move makes no progress.</p>
       </div>
     </div>
     <div class="set-panel" data-set-panel="tx" role="tabpanel" hidden>

@@ -1260,8 +1260,8 @@ function drawPassMarks(ctx, w, ph, top) {
 }
 function drawAudioBubble() {
   if (!audioBubblePos) return;
-  // the label can move away from under a still mouse (wheel tuning) or the decoders can cover it
-  if (drag || !inPassLabel(audioBubblePos) || !$("decPane").hidden) { audioBubbleHide(); return; }
+  // the label can move away from under a still mouse (wheel tuning) or a tab can cover it
+  if (drag || !inPassLabel(audioBubblePos) || bodyTab !== "scope") { audioBubbleHide(); return; }
   const box = $("audioBubble"), wrap = $("specOverlay").parentElement, lb = passLabelBox;
   const sw = box.parentElement.clientWidth, bw = box.offsetWidth;
   box.style.left = `${Math.max(2, Math.min((lb.x0 + lb.x1) / 2 - bw / 2, sw - bw - 2))}px`;
@@ -1441,6 +1441,12 @@ function resizeWaterfall() {
 
 // ---------- nastavenia ----------
 
+const DEVICE_NAMES = { lime: "LimeSDR", airspy: "Airspy" };
+/** VDL2, DAB and ISM need the sample rates and raw samples of an RTL dongle. */
+const noRtlDongle = (s) => (s.driver || "rtl") !== "rtl";
+/** The Airspy gain is a preset 0–21, not dB. */
+const gainLabel = (s) => (s.driver === "airspy" ? `${Number(s.gain)} / 21` : `${Number(s.gain).toFixed(1)} dB`);
+
 function renderGain() {
   const auto = st.gain === "auto";
   $("gainAuto").checked = auto;
@@ -1453,7 +1459,7 @@ function renderGain() {
     st.gains.forEach((g, i) => { if (Math.abs(g - st.gain) < Math.abs(st.gains[best] - st.gain)) best = i; });
     $("gainSlider").value = best;
   }
-  $("gainText").textContent = auto ? "auto" : `${Number(st.gain).toFixed(1)} dB`;
+  $("gainText").textContent = auto ? "auto" : gainLabel(st);
   renderVfoDisplays();
 }
 
@@ -1498,7 +1504,7 @@ function renderSettings() {
   $("upconvSetting").hidden = !!st.vfo;
   $("vfoSetting").hidden = !st.vfo;
   if (st.vfo) {
-    const dongle = `${st.driver === "lime" ? "LimeSDR" : "dongle"} ${st.serial}`;
+    const dongle = `${DEVICE_NAMES[st.driver] || "dongle"} ${st.serial}`;
     $("vfoSettingText").textContent = (st.chain_owner
       ? `VFO ${st.vfo} · chained to the ${dongle} of VFO ${st.chain_owner}: tunes inside its band; ` +
         `gain, ppm and sample rate are shared with VFO ${st.chain_owner}`
@@ -1507,7 +1513,7 @@ function renderSettings() {
   } else {
     loadDevices();
   }
-  // LimeSDR has no bias-tee and no RTL2832 digital AGC.
+  // LimeSDR has no bias-tee; only the RTL dongle has the RTL2832 digital AGC.
   $("rtlAgcBox").hidden = st.has_rtl_agc === false;
   $("biasTeeSetting").hidden = st.has_bias_tee === false;
   $("biasTee").checked = st.bias_tee;
@@ -1890,7 +1896,7 @@ $("ft8Clear").addEventListener("click", () => {
   ft8Count = 0;
 });
 
-// ---------- SPECTRUM / DECODERS tabs ----------
+// ---------- SPECTRUM / DECODERS / SATELLITES tabs ----------
 // The decoders are not below the screen (scrolling to them was awkward) but in a tab that covers the spectrum and waterfall.
 
 // the open tab is remembered for each VFO separately (bodyTab_A, bodyTab_B…)
@@ -1903,9 +1909,10 @@ let bodyTabGuess = false;
 /** Tab saved for the active VFO, called after a VFO switch. */
 function restoreBodyTab() {
   $("decNew").hidden = true;
+  renderAmsatTab();
   const saved = recall(tabKey());
-  bodyTabGuess = saved !== "dec" && saved !== "scope";
-  setBodyTab(saved === "dec" ? "dec" : "scope", !bodyTabGuess);
+  bodyTabGuess = !["dec", "scope", "sat"].includes(saved);
+  setBodyTab(saved === "dec" || (saved === "sat" && amsatTabShown()) ? saved : "scope", !bodyTabGuess);
 }
 
 /** First state of a VFO without a saved tab: if a decoder runs on it, opens DECODERS. */
@@ -1921,7 +1928,10 @@ function setBodyTab(tab, save = true) {
   if (save) store(tabKey(), tab);
   for (const b of $("bodyTabs").querySelectorAll("button")) b.classList.toggle("on", b.dataset.tab === tab);
   $("decPane").hidden = tab !== "dec";
+  $("amsatPane").hidden = tab !== "sat";
   if (tab === "dec") $("decNew").hidden = true;
+  if (tab === "sat") renderSatTab();
+  renderAmsatTab();
   hoverHide();
 }
 
@@ -1950,6 +1960,1310 @@ for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vd
   });
 }
 setBodyTab(bodyTab, false);
+
+// ---------- SATELLITES tab: the lists of amsat.org ----------
+
+let amsatPages = null;   // from the server (satellites.py), loaded when the tab is first opened
+let amsatPage = recall("amsatPage") || "passes";
+let amsatBusy = false;
+
+/** The SATELLITES tab is always there; the SAT key switches to it. */
+function amsatTabShown() { return true; }
+function renderAmsatTab() { $("satKey").classList.toggle("on", bodyTab === "sat"); }
+
+function amsatInfo(text, error = false) {
+  $("amsatInfo").textContent = text;
+  $("amsatInfo").classList.toggle("error", error);
+}
+
+/** Page keys: own pages first (PASSES, SETUP), then the AMSAT lists once they are loaded. */
+function renderSatPageButtons() {
+  const pages = [...SAT_LOCAL_PAGES, ...(amsatPages || [])];
+  $("amsatPages").replaceChildren(...pages.map((p, i) => {
+    const b = document.createElement("button");
+    b.className = "key small" + (p.key === amsatPage ? " on" : "") + (i === SAT_LOCAL_PAGES.length ? " gap" : "");
+    b.dataset.page = p.key;
+    b.textContent = p.title;
+    return b;
+  }));
+  $("amsatRefresh").title = amsatPage === "passes" ? "Calculate the passes again" : amsatPage === "map" ? "Calculate the tracks again" : amsatPage === "track" ? "Download the transmitters from SatNOGS again" : amsatPage === "setup"
+    ? "Download the orbital elements from CelesTrak again" : "Download the lists from amsat.org again";
+}
+
+/** Shows the chosen page of the SATELLITES tab. */
+function renderSatTab() {
+  if (!amsatPages && !amsatBusy) amsatLoad();      // in the background, for the LINEAR… keys
+  if (!satIsLocal(amsatPage) && !(amsatPages || []).some((p) => p.key === amsatPage) && amsatPages) amsatPage = "passes";
+  renderSatPageButtons();
+  if (amsatPage === "passes") renderSatPasses();
+  else if (amsatPage === "map") renderSatMap();
+  else if (amsatPage === "track") renderSatTrack();
+  else if (amsatPage === "setup") renderSatSetup();
+  else if (amsatPages) renderAmsat();
+  else { $("amsatBody").classList.remove("satp-on"); $("amsatBody").textContent = ""; }
+}
+
+function renderAmsat() {
+  const page = amsatPages.find((p) => p.key === amsatPage) || amsatPages[0];
+  $("amsatBody").classList.remove("satp-on");
+  const time = page.fetched ? new Date(page.fetched * 1000).toLocaleString() : "";
+  if (page.error) amsatInfo(page.html ? `Download failed, this copy is from ${time}: ${page.error}` : `Download failed: ${page.error}`, true);
+  else amsatInfo(`Downloaded ${time}`);
+  // the content is cleaned by the server: only plain tags and links that open in a new tab
+  $("amsatBody").innerHTML = page.html + '<p class="amsat-source"></p>';
+  const src = $("amsatBody").lastElementChild, a = document.createElement("a");
+  a.href = a.textContent = page.url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  src.append("Source: AMSAT, ", a);
+  $("amsatBody").scrollTop = 0;
+}
+
+async function amsatLoad(refresh = false) {
+  if (amsatBusy) return;
+  amsatBusy = true;
+  const shown = () => !satIsLocal(amsatPage);
+  if (shown()) { $("amsatRefresh").disabled = true; amsatInfo("Downloading from amsat.org…"); }
+  try {
+    const r = await fetch(vbase + "/api/satellites", refresh ? { method: "POST" } : {});
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    amsatPages = (await r.json()).pages;
+    if (shown()) renderSatTab(); else renderSatPageButtons();
+  } catch (e) {
+    if (shown()) amsatInfo(`The receiver did not answer: ${e.message}`, true);
+  }
+  amsatBusy = false;
+  $("amsatRefresh").disabled = false;
+}
+
+$("amsatRefresh").addEventListener("click", async () => {
+  if (amsatPage === "passes") { satData = null; satLoad(); }
+  else if (amsatPage === "map") satMapLoad();
+  else if (amsatPage === "track") { amsatInfo("Downloading the transmitters from SatNOGS…"); satTxLoad(true).then(() => satData && satInfoLine()); }
+  else if (amsatPage === "setup") {
+    amsatInfo("Downloading the orbital elements…");
+    if (await satSetupLoad({ refresh_tle: true })) amsatInfo("Downloaded");
+  } else amsatLoad(true);
+});
+$("amsatPages").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-page]");
+  if (!b) return;
+  amsatPage = b.dataset.page;
+  satTrackPicked = false;     // back on TRACK: the satellite of a running Doppler or rotor again
+  store("amsatPage", amsatPage);
+  renderSatTab();
+});
+
+// ---------- SATELLITES tab: own pass prediction (sattrack.py), pages PASSES and SETUP ----------
+
+const SAT_LOCAL_PAGES = [{ key: "passes", title: "PASSES" }, { key: "map", title: "MAP" }, { key: "track", title: "TRACK" }, { key: "setup", title: "SETUP" }];
+const SAT_HOURS = [12, 24, 48];
+let satHours = Number(recall("satHours")) || 24;
+let satData = null;        // /api/sat/passes
+let satSetupData = null;   // /api/sat/setup
+let satGroup = recall("satGroup") || "amateur";     // tab of the satellite choice in SETUP
+let satSel = null;         // chosen pass {norad, aos, los}
+let satDetail = null;      // /api/sat/pass of the chosen pass
+let satLoadedAt = 0;
+let satBusy = false;
+
+const satIsLocal = (key) => SAT_LOCAL_PAGES.some((p) => p.key === key);
+const satTime = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const satDay = (t) => new Date(t * 1000).toLocaleDateString([], { weekday: "short", day: "numeric", month: "numeric" });
+const satDur = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
+
+/** Short label of a satellite: the OSCAR-style name in brackets when there is one ("OSCAR 7 (AO-7)" -> AO-7). */
+function satShort(name) {
+  const m = /\(([A-Z]{2,4}-\d+[A-Z]?)\)/.exec(name);
+  if (m) return m[1];
+  return name.split(" (")[0].split(" & ")[0].trim();
+}
+
+/** Bar colour by the highest elevation: one hue, brighter = higher pass. */
+function satElClass(el) {
+  return el >= 45 ? "hi" : el >= 20 ? "mid" : "lo";
+}
+
+function satUntil(t) {
+  const s = t - Date.now() / 1000;
+  if (s <= 0) return "now";
+  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+  return h ? `in ${h} h ${m} min` : `in ${m} min`;
+}
+
+async function satFetch(url, opts) {
+  const r = await fetch(vbase + url, opts);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
+  return body;
+}
+
+async function satLoad() {
+  if (satBusy) return;
+  satBusy = true;
+  amsatInfo("Calculating passes…");
+  try {
+    satData = await satFetch(`/api/sat/passes?hours=${satHours}`);
+    satLoadedAt = Date.now();
+    if (amsatPage === "passes" && bodyTab === "sat") {
+      if ($("satTl") && Number($("satHours").querySelector(".on")?.dataset.hours) === satHours) {
+        satInfoLine(); renderSatTimeline(); renderSatList();
+      } else renderSatPasses();
+    } else if (amsatPage === "track" && bodyTab === "sat") {
+      if ($("satTrackSat")) satInfoLine(); else renderSatTrack();
+    }
+  } catch (e) {
+    amsatInfo(`Passes: ${e.message}`, true);
+  }
+  satBusy = false;
+}
+
+function satInfoLine() {
+  const d = satData, s = d.setup;
+  const tle = d.tle.fetched ? `orbital elements from ${new Date(d.tle.fetched * 1000).toLocaleString()}` : "no orbital elements";
+  amsatInfo(`${s.locator} · min. elevation ${s.min_el}° · ${tle}${d.tle.error ? ` (download failed: ${d.tle.error})` : ""}`, !d.tle.fetched || !!d.tle.error);
+}
+
+function renderSatPasses() {
+  if (!satData) { satLoad(); return; }
+  satInfoLine();
+  const body = $("amsatBody");
+  body.classList.add("satp-on");
+  body.innerHTML = `<div class="satp">
+    <div class="satp-hours"><span id="satHours">${SAT_HOURS.map((h) => `<button class="key small${h === satHours ? " on" : ""}" data-hours="${h}">${h} h</button>`).join(" ")}</span>
+      <span class="satp-legend">Highest elevation: <span class="dot lo"></span>under 20° <span class="dot mid"></span>20–45° <span class="dot hi"></span>over 45°</span></div>
+    <div class="satp-tl" id="satTl"></div>
+    <div class="satp-lower">
+      <div class="satp-list-wrap"><table class="satp-list" id="satList"></table></div>
+      <div class="satp-detail" id="satDetail"><p class="muted">Click a pass in the timeline or in the list for its details.</p></div>
+    </div></div>`;
+  renderSatTimeline();
+  renderSatList();
+  if (satSel) satShowDetail(satSel, false);
+}
+
+function renderSatTimeline() {
+  const box = $("satTl");
+  if (!box) return;
+  const d = satData, rows = d.sats.filter((s) => !s.missing);
+  const W = Math.max(box.clientWidth - 2, 400), LABEL = 92, ROW = 22, TOP = 22, H = TOP + rows.length * ROW + 4;
+  const t0 = d.now, t1 = d.now + d.hours * 3600, x = (t) => LABEL + ((t - t0) / (t1 - t0)) * (W - LABEL - 6);
+  const step = d.hours <= 12 ? 1 : d.hours <= 24 ? 2 : 4;
+  let svg = `<svg class="satp-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+  // hour grid; a stronger line and the date at midnight
+  const first = new Date(t0 * 1000); first.setMinutes(0, 0, 0);
+  for (let t = first.getTime() / 1000 + 3600; t < t1; t += 3600) {
+    const hr = new Date(t * 1000).getHours();
+    if (hr % step) continue;
+    const xx = x(t).toFixed(1), midnight = hr === 0;
+    svg += `<line class="${midnight ? "tl-day" : "tl-grid"}" x1="${xx}" x2="${xx}" y1="${TOP - 4}" y2="${H}"/>`;
+    svg += `<text class="tl-hour" x="${xx}" y="${TOP - 8}">${midnight ? satDay(t) : String(hr).padStart(2, "0") + ":00"}</text>`;
+  }
+  rows.forEach((s, i) => {
+    const y = TOP + i * ROW;
+    svg += `<text class="tl-name${s.tle_old ? " old" : ""}" x="4" y="${y + ROW / 2 + 4}">${escHtml(satShort(s.name))}${s.tle_old ? " !" : ""}<title>${escHtml(s.name)} · NORAD ${s.norad} · elements ${s.tle_age_days} days old${s.tle_old ? " (old: positions may be off)" : ""}</title></text>`;
+    svg += `<line class="tl-row" x1="${LABEL}" x2="${W - 6}" y1="${y + ROW - 0.5}" y2="${y + ROW - 0.5}"/>`;
+  });
+  for (const p of d.passes) {
+    const i = rows.findIndex((s) => s.norad === p.norad);
+    if (i < 0) continue;
+    const y = TOP + i * ROW + 5, x0 = x(Math.max(p.aos, t0)), w = Math.max(x(p.los) - x0, 3);     // a pass on now starts at "now"
+    const sel = satSel && satSel.norad === p.norad && Math.abs(satSel.aos - p.aos) < 1;
+    svg += `<rect class="tl-pass ${satElClass(p.max_el)}${sel ? " sel" : ""}" x="${x0.toFixed(1)}" y="${y}" width="${w.toFixed(1)}" height="12" rx="3" data-norad="${p.norad}" data-aos="${p.aos}" data-los="${p.los}">`
+      + `<title>${escHtml(satShort(p.name))}: ${satTime(p.aos)}–${satTime(p.los)}, max. ${p.max_el}° at ${Math.round(p.max_az)}°</title></rect>`;
+  }
+  svg += `<line class="tl-now" x1="${LABEL}" x2="${LABEL}" y1="${TOP - 4}" y2="${H}"/>`;
+  svg += `<text class="tl-hour now" x="${LABEL + 2}" y="${TOP - 8}">now</text></svg>`;
+  box.innerHTML = svg + (d.sats.some((s) => s.missing)
+    ? `<p class="muted small">Not in the orbital elements: ${d.sats.filter((s) => s.missing).map((s) => s.norad).join(", ")}</p>` : "");
+}
+
+function renderSatList() {
+  const list = $("satList");
+  if (!list) return;
+  const now = Date.now() / 1000;
+  const rows = satData.passes.filter((p) => p.los > now).slice(0, 60);
+  list.innerHTML = `<thead><tr><th>Satellite</th><th>AOS</th><th>LOS</th><th>Time</th><th>Max</th><th>Azimuth</th></tr></thead><tbody>`
+    + rows.map((p) => {
+      const sel = satSel && satSel.norad === p.norad && Math.abs(satSel.aos - p.aos) < 1;
+      const on = p.aos <= now;
+      return `<tr class="${sel ? "sel" : ""}${on ? " on" : ""}" data-norad="${p.norad}" data-aos="${p.aos}" data-los="${p.los}">`
+        + `<td><span class="dot ${satElClass(p.max_el)}"></span>${escHtml(satShort(p.name))}</td>`
+        + `<td>${satDay(p.aos)} ${satTime(p.aos)}<br><span class="muted">${on ? "in progress" : satUntil(p.aos)}</span></td>`
+        + `<td>${satTime(p.los)}</td><td>${satDur(p.los - p.aos)}</td><td>${p.max_el}°</td>`
+        + `<td>${Math.round(p.aos_az)}° → ${Math.round(p.los_az)}°</td></tr>`;
+    }).join("") + "</tbody>";
+  if (!rows.length) list.innerHTML = `<tbody><tr><td class="muted">No pass above ${satData.setup.min_el}° in the next ${satData.hours} hours.</td></tr></tbody>`;
+}
+
+async function satShowDetail(sel, fetchNew = true) {
+  satSel = sel;
+  const box = $("satDetail");
+  if (!box) return;
+  for (const el of document.querySelectorAll(".tl-pass.sel, .satp-list tr.sel")) el.classList.remove("sel");
+  for (const el of document.querySelectorAll(`.tl-pass[data-norad="${sel.norad}"], .satp-list tr[data-norad="${sel.norad}"]`)) {
+    if (Math.abs(Number(el.dataset.aos) - sel.aos) < 1) el.classList.add("sel");
+  }
+  if (fetchNew || !satDetail || satDetail.norad !== sel.norad || Math.abs(satDetail.samples[0].t - sel.aos) > 1) {
+    box.innerHTML = '<p class="muted">Calculating…</p>';
+    try {
+      satDetail = await satFetch(`/api/sat/pass?norad=${sel.norad}&aos=${sel.aos}&los=${sel.los}`);
+    } catch (e) {
+      box.innerHTML = `<p class="error">${escHtml(e.message)}</p>`;
+      return;
+    }
+  }
+  renderSatDetail();
+}
+
+const satTxCache = {};      // norad -> promise of /api/sat/transmitters
+
+function satTxGet(norad) {
+  if (!satTxCache[norad]) {
+    satTxCache[norad] = satFetch(`/api/sat/transmitters?norad=${norad}`).catch((e) => { delete satTxCache[norad]; throw e; });
+  }
+  return satTxCache[norad];
+}
+
+/** Short list of the transmitters of a satellite into the element with this id (transponders first). */
+async function satTxFill(id, norad, max = 10) {
+  const box = $(id);
+  if (!box) return;
+  box.innerHTML = '<p class="muted small">Loading transmitters…</p>';
+  let d;
+  try { d = await satTxGet(norad); } catch (e) { if ($(id) === box) box.innerHTML = `<p class="error small">Transmitters: ${escHtml(e.message)}</p>`; return; }
+  if ($(id) !== box) return;
+  const rows = d.transmitters;
+  if (!rows.length) { box.innerHTML = '<p class="muted small">No active transmitter in SatNOGS DB.</p>'; return; }
+  const mhz = (v) => (v / 1e6).toFixed(3);
+  box.innerHTML = `<table class="satp-txs"><thead><tr><th>Downlink MHz</th><th>Mode</th><th>Description</th></tr></thead><tbody>`
+    + rows.slice(0, max).map((t) => `<tr><td>${t.downlink_high && t.downlink_high !== t.downlink_low ? `${mhz(t.downlink_low)}–${mhz(t.downlink_high)}` : mhz(t.downlink_low)}</td>`
+      + `<td>${escHtml(t.mode || "")}</td><td>${escHtml(t.description || "")}${t.type === "Transponder" ? ' <span class="muted">transponder</span>' : ""}</td></tr>`).join("")
+    + `</tbody></table>${rows.length > max ? `<p class="muted small">and ${rows.length - max} more (all in TRACK)</p>` : ""}`;
+}
+
+/** Polar plot: centre = zenith, edge = horizon, north up, east right. */
+function satPolarXY(az, el, R) {
+  const r = R * (90 - Math.max(el, 0)) / 90, a = (az * Math.PI) / 180;
+  return [r * Math.sin(a), -r * Math.cos(a)];
+}
+
+function renderSatDetail() {
+  const box = $("satDetail"), d = satDetail;
+  if (!box || !d) return;
+  const s = d.samples, aos = s[0], los = s[s.length - 1];
+  const top = s.reduce((a, b) => (b.el > a.el ? b : a));
+  const near = s.reduce((a, b) => (b.range < a.range ? b : a));
+  const dop = Math.max(...s.map((p) => Math.abs(p.doppler_hz_per_mhz)));
+  const R = 100;
+  const pts = s.map((p) => satPolarXY(p.az, p.el, R).map((v) => v.toFixed(1)).join(",")).join(" ");
+  const [ax, ay] = satPolarXY(aos.az, aos.el, R), [lx, ly] = satPolarXY(los.az, los.el, R), [tx, ty] = satPolarXY(top.az, top.el, R);
+  const polar = `<svg class="satp-polar" viewBox="-118 -118 236 236" role="img" aria-label="Pass on the sky, north up">
+    <circle class="pg-ring" r="${R}"/><circle class="pg-ring" r="${(R * 2) / 3}"/><circle class="pg-ring" r="${R / 3}"/>
+    <line class="pg-ring" x1="${-R}" x2="${R}"/><line class="pg-ring" y1="${-R}" y2="${R}"/>
+    <text class="pg-lbl" y="${-R - 6}">N</text><text class="pg-lbl" x="${R + 8}" y="4">E</text><text class="pg-lbl" y="${R + 14}">S</text><text class="pg-lbl" x="${-R - 8}" y="4">W</text>
+    <text class="pg-el" x="3" y="${-R / 3 * 2 + 10}">30°</text><text class="pg-el" x="3" y="${-R / 3 + 10}">60°</text>
+    <polyline class="pg-track" points="${pts}"/>
+    <circle class="pg-end" cx="${ax.toFixed(1)}" cy="${ay.toFixed(1)}" r="4"/><text class="pg-tag" x="${(ax * 0.86).toFixed(1)}" y="${(ay * 0.86 + 4).toFixed(1)}">AOS</text>
+    <circle class="pg-end" cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="4"/><text class="pg-tag" x="${(lx * 0.86).toFixed(1)}" y="${(ly * 0.86 + 4).toFixed(1)}">LOS</text>
+    <circle class="pg-top" cx="${tx.toFixed(1)}" cy="${ty.toFixed(1)}" r="3"/>
+    <circle class="pg-now" id="satNowDot" r="5" visibility="hidden"/>
+    <g class="pg-rot" id="satRotX" visibility="hidden"><line x1="-6" y1="-6" x2="6" y2="6"/><line x1="-6" y1="6" x2="6" y2="-6"/></g>
+    <g class="pg-aim" id="satAimX" visibility="hidden"><line x1="-6" y1="-6" x2="6" y2="6"/><line x1="-6" y1="6" x2="6" y2="-6"/></g>
+    ${amsatPage === "track" ? `<circle class="pg-hit" id="satPolarHit" r="${R}"/>` : ""}</svg>`;
+  box.innerHTML = `<div class="satp-dh"><b>${escHtml(d.name)}</b> <span class="muted">NORAD ${d.norad} · ${satDay(aos.t)}</span>
+    ${amsatPage === "track" ? "" : `<button class="key small" id="satDetailTrack" data-norad="${d.norad}" title="Open this satellite on the TRACK page (Doppler, rotor)">TRACK</button>`}</div>
+    <div class="satp-dbody">${polar}
+      <table class="satp-facts">
+        <tr><th>AOS</th><td>${satTime(aos.t)}</td><td>az ${Math.round(aos.az)}°</td></tr>
+        <tr><th>Max</th><td>${satTime(top.t)}</td><td>el ${top.el.toFixed(1)}°, az ${Math.round(top.az)}°</td></tr>
+        <tr><th>LOS</th><td>${satTime(los.t)}</td><td>az ${Math.round(los.az)}°</td></tr>
+        <tr><th>Length</th><td colspan="2">${satDur(los.t - aos.t)}</td></tr>
+        <tr><th>Nearest</th><td colspan="2">${Math.round(near.range)} km</td></tr>
+        <tr><th>Doppler</th><td colspan="2">±${(dop * 145.9 / 1000).toFixed(1)} kHz at 145.9 MHz, ±${(dop * 435 / 1000).toFixed(1)} kHz at 435 MHz</td></tr>
+        <tr><th>Elements</th><td colspan="2">${((aos.t - d.tle_epoch) / 86400).toFixed(1)} days old at AOS</td></tr>
+        <tr><th>Now</th><td colspan="2" id="satNowText">–</td></tr>
+      </table></div>
+    <div class="satp-elchart" id="satElChart"></div>
+    ${amsatPage === "track" ? '<p class="muted small" id="satPolarNote">Red cross: the antenna now. A click on the polar plot turns the antenna there, a click on the elevation chart sets only the elevation (not while TRACK moves the rotor).</p>'
+      : `<h4 class="satp-h">Transmitters</h4><div id="satDetailTx"></div>`}`;
+  renderSatElChart();
+  satTickNow();
+  satPolarRotor();
+  if (amsatPage !== "track") satTxFill("satDetailTx", d.norad);
+}
+
+/** Elevation over the pass, hover shows time, elevation and azimuth. */
+function renderSatElChart() {
+  const box = $("satElChart"), d = satDetail;
+  if (!box || !d) return;
+  const track = amsatPage === "track", TOP = track ? 180 : 90;     // TRACK: the rotor goes up to 180 (looking back)
+  const s = d.samples, W = Math.max(box.clientWidth, 260), H = track ? 170 : 120, L = 34, B = 18, T = 8;
+  const t0 = s[0].t, t1 = s[s.length - 1].t;
+  const x = (t) => L + ((t - t0) / (t1 - t0)) * (W - L - 8), y = (el) => T + (1 - Math.min(Math.max(el, 0), TOP) / TOP) * (H - T - B);
+  let svg = `<svg width="${W}" height="${H}" class="satp-elsvg">`;
+  for (const g of track ? [0, 30, 60, 90, 120, 150, 180] : [0, 30, 60, 90]) svg += `<line class="${g ? "tl-grid" : "el-base"}" x1="${L}" x2="${W - 8}" y1="${y(g)}" y2="${y(g)}"/><text class="el-ax" x="${L - 4}" y="${y(g) + 4}">${g}°</text>`;
+  const n = Math.min(6, Math.max(2, Math.floor((W - L) / 70)));
+  for (let i = 0; i <= n; i++) {
+    const t = t0 + ((t1 - t0) * i) / n;
+    svg += `<text class="el-ax t" x="${x(t)}" y="${H - 4}">${satTime(t)}</text>`;
+  }
+  svg += `<polyline class="el-line" points="${s.map((p) => `${x(p.t).toFixed(1)},${y(p.el).toFixed(1)}`).join(" ")}"/>`;
+  svg += `<line class="el-now" id="satElNow" y1="${T}" y2="${H - B}" visibility="hidden"/>`;
+  svg += `<line class="el-hover" id="satElHover" y1="${T}" y2="${H - B}" visibility="hidden"/>`;
+  if (track) svg += `<text class="el-rot" id="satElRotT" visibility="hidden"></text><g class="pg-rot" id="satElRotX" visibility="hidden"><line x1="-5" y1="-5" x2="5" y2="5"/><line x1="-5" y1="5" x2="5" y2="-5"/></g><g class="pg-aim" id="satElAimX" visibility="hidden"><line x1="-5" y1="-5" x2="5" y2="5"/><line x1="-5" y1="5" x2="5" y2="-5"/></g>`;
+  svg += `<rect class="el-hit" x="${L}" y="0" width="${W - L - 8}" height="${H}"/></svg>`;
+  box.innerHTML = svg + '<div class="satp-tip" id="satElTip" hidden></div>';
+  box._x = x; box._t = (px) => t0 + ((px - L) / (W - L - 8)) * (t1 - t0);
+  box._y = y; box._el = (py) => Math.round(Math.min(Math.max((1 - (py - T) / (H - T - B)) * TOP, 0), TOP));
+  box._t0 = t0; box._t1 = t1;
+  satPolarRotor();
+}
+
+$("amsatBody").addEventListener("mousemove", (e) => {
+  const box = $("satElChart");
+  if (!box || !satDetail || !e.target.classList.contains("el-hit")) return;
+  const rect = box.getBoundingClientRect(), px = e.clientX - rect.left, t = box._t(px);
+  const p = satDetail.samples.reduce((a, b) => (Math.abs(b.t - t) < Math.abs(a.t - t) ? b : a));
+  const line = $("satElHover"), tip = $("satElTip");
+  line.setAttribute("x1", box._x(p.t)); line.setAttribute("x2", box._x(p.t)); line.setAttribute("visibility", "visible");
+  tip.hidden = false;
+  tip.textContent = `${satTime(p.t)}  el ${p.el.toFixed(1)}°  az ${Math.round(p.az)}°  ${Math.round(p.range)} km`;
+  tip.style.left = `${Math.min(Math.max(box._x(p.t) - 80, 0), rect.width - 200)}px`;
+  const aim = $("satElAimX");
+  if (aim) {     // TRACK: the elevation a click would set
+    const py = e.clientY - rect.top, el = box._el(py), refusal = satDialRefusal(satInfo);
+    aim.setAttribute("visibility", refusal ? "hidden" : "visible");
+    aim.setAttribute("transform", `translate(${px.toFixed(1)},${box._y(el).toFixed(1)})`);
+    tip.textContent += refusal ? `  ·  ${refusal}` : `  ·  click: antenna EL ${el}°`;
+    e.target.style.cursor = refusal ? "not-allowed" : "crosshair";
+  }
+});
+$("amsatBody").addEventListener("click", (e) => {
+  const box = $("satElChart");
+  if (!box || !$("satElAimX") || !e.target.classList.contains("el-hit")) return;
+  const el = box._el(e.clientY - box.getBoundingClientRect().top), refusal = satDialRefusal(satInfo);
+  if (refusal) { amsatInfo(refusal, true); return; }
+  const az = satInfo.target ? satInfo.target[0] : satInfo.az;     // the azimuth stays, as before
+  rotorPost({ goto: [Math.round(az), el] });
+  amsatInfo(`Antenna to EL ${el}° (AZ stays ${Math.round(az)}°)`);
+});
+$("amsatBody").addEventListener("mouseout", (e) => {
+  if (!e.target.classList || !e.target.classList.contains("el-hit")) return;
+  const line = $("satElHover"), tip = $("satElTip");
+  if (line) line.setAttribute("visibility", "hidden");
+  if (tip) tip.hidden = true;
+  if ($("satElAimX")) $("satElAimX").setAttribute("visibility", "hidden");
+});
+
+/** The antenna on the polar plot (red cross); above 90 degrees of elevation it looks back over the top. */
+function satPolarRotor() {
+  const x = $("satRotX"), info = satInfo;
+  if (!x) return;
+  if (!info || info.az == null || info.el == null) {
+    x.setAttribute("visibility", "hidden");
+    for (const id of ["satElRotX", "satElRotT"]) if ($(id)) $(id).setAttribute("visibility", "hidden");
+    return;
+  }
+  const back = info.el > 90, [px, py] = satPolarXY(back ? (info.az + 180) % 360 : info.az, back ? 180 - info.el : info.el, 100);
+  x.setAttribute("transform", `translate(${px.toFixed(1)},${py.toFixed(1)})`);
+  x.setAttribute("visibility", "visible");
+  const ex = $("satElRotX"), box = $("satElChart");
+  if (ex && box && box._x) {     // the elevation of the antenna now (above the horizon; over 90 = looking back), at the time now
+    const now = Math.min(Math.max(Date.now() / 1000, box._t0), box._t1), X = box._x(now), Y = box._y(info.el);
+    ex.setAttribute("transform", `translate(${X.toFixed(1)},${Y.toFixed(1)})`);
+    ex.setAttribute("visibility", "visible");
+    const t = $("satElRotT");      // the real elevation of the rotor
+    if (t) {
+      t.textContent = `EL ${Math.round(info.el)}°`;
+      t.setAttribute("x", (X + 9).toFixed(1)); t.setAttribute("y", (Y - 7).toFixed(1));
+      t.setAttribute("visibility", "visible");
+    }
+  }
+}
+
+/** Polar plot point -> [az, el] in whole degrees, null outside the horizon. */
+function satPolarAt(e) {
+  const svg = e.target.ownerSVGElement;
+  const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
+  const r = Math.hypot(p.x, p.y);
+  if (r > 100) return null;
+  return [Math.round((Math.atan2(p.x, -p.y) * 180 / Math.PI + 360) % 360), Math.round(90 * (1 - r / 100))];
+}
+
+$("amsatBody").addEventListener("pointermove", (e) => {
+  if (e.target.id !== "satPolarHit") return;
+  const at = satPolarAt(e), x = $("satAimX"), refusal = satDialRefusal(satInfo);
+  if (!at || refusal) { x.setAttribute("visibility", "hidden"); e.target.style.cursor = refusal ? "not-allowed" : ""; if (refusal) $("satPolarNote").textContent = refusal; return; }
+  const [px, py] = satPolarXY(at[0], at[1], 100);
+  x.setAttribute("transform", `translate(${px.toFixed(1)},${py.toFixed(1)})`);
+  x.setAttribute("visibility", "visible");
+  e.target.style.cursor = "crosshair";
+  $("satPolarNote").textContent = `Click: turn the antenna to AZ ${at[0]}° EL ${at[1]}°.`;
+});
+$("amsatBody").addEventListener("pointerout", (e) => {
+  if (e.target.id === "satPolarHit") $("satAimX").setAttribute("visibility", "hidden");
+});
+$("amsatBody").addEventListener("click", (e) => {
+  if (e.target.id !== "satPolarHit") return;
+  const at = satPolarAt(e), refusal = satDialRefusal(satInfo);
+  if (!at) return;
+  if (refusal) { amsatInfo(refusal, true); return; }
+  rotorPost({ goto: at });
+  amsatInfo(`Antenna to AZ ${at[0]}° EL ${at[1]}°`);
+});
+
+/** Position now, when the chosen pass is on: interpolated between the samples. */
+function satTickNow() {
+  const d = satDetail, dot = $("satNowDot");
+  if (!d || !dot) return;
+  const now = Date.now() / 1000, s = d.samples;
+  const on = now >= s[0].t && now <= s[s.length - 1].t;
+  dot.setAttribute("visibility", on ? "visible" : "hidden");
+  const line = $("satElNow"), box = $("satElChart");
+  if (line) line.setAttribute("visibility", on ? "visible" : "hidden");
+  if (!on) {
+    $("satNowText").textContent = now < s[0].t ? `AOS ${satUntil(s[0].t)}` : "the pass is over";
+    return;
+  }
+  const i = Math.min(s.findIndex((p) => p.t > now), s.length - 1), a = s[Math.max(i - 1, 0)], b = s[i];
+  const f = b.t > a.t ? (now - a.t) / (b.t - a.t) : 0;
+  const az = a.az + ((((b.az - a.az + 540) % 360) - 180) * f), el = a.el + (b.el - a.el) * f;
+  const [x, y] = satPolarXY(((az % 360) + 360) % 360, el, 100);
+  dot.setAttribute("cx", x.toFixed(1)); dot.setAttribute("cy", y.toFixed(1));
+  if (line && box._x) { line.setAttribute("x1", box._x(now)); line.setAttribute("x2", box._x(now)); }
+  const rate = a.rate + (b.rate - a.rate) * f;
+  $("satNowText").textContent = `az ${Math.round(((az % 360) + 360) % 360)}°, el ${el.toFixed(1)}°, ${rate < 0 ? "approaching" : "going away"}, LOS ${satUntil(s[s.length - 1].t)}`;
+}
+
+setInterval(() => {
+  if (bodyTab !== "sat" || amsatPage !== "passes" || document.hidden) return;
+  satTickNow();
+  if (satData && Date.now() - satLoadedAt > 60000) satLoad();     // the timeline starts at "now"
+}, 1000);
+
+// ---------- TRACK: Doppler correction of the receive frequency on this VFO ----------
+
+let satTrackNorad = Number(recall("satTrackNorad")) || null;
+let satTrackPicked = false;  // chosen by hand (list, MAP, PASSES): not replaced by the satellite of a running Doppler or rotor
+
+/** MAP and PASSES: this satellite on the TRACK page; one that is not on the timeline is added to it (SETUP). */
+async function satOpenTrack(norad) {
+  satTrackNorad = norad;
+  satTrackPicked = true;
+  store("satTrackNorad", norad);
+  if (satData && !satData.sats.some((s) => s.norad === norad)) {
+    try {
+      const sats = [...new Set([...satData.sats.map((s) => s.norad), norad])];
+      await satFetch("/api/sat/setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sats }) });
+      if (satSetupData) satSetupData.setup.sats = sats;
+      satData = null;     // the timeline is calculated again, with this satellite
+      amsatInfo("Added to the timeline (SETUP)");
+    } catch (err) { amsatInfo(err.message, true); }
+  }
+  amsatPage = "track";
+  store("amsatPage", amsatPage);
+  renderSatTab();
+}
+let satTx = null;            // /api/sat/transmitters of satTrackNorad
+let satDop = null;           // /api/sat/doppler
+let satDopBusy = false;
+
+const satMHz = (hz, d = 4) => (hz == null ? "–" : (hz / 1e6).toFixed(d));
+const satHz = (hz) => (hz == null ? "–" : `${hz > 0 ? "+" : hz < 0 ? "−" : ""}${Math.abs(Math.round(hz)).toLocaleString()} Hz`);
+
+async function satTrackPoll() {
+  if (satDopBusy) return;
+  satDopBusy = true;
+  try {
+    satDop = await satFetch("/api/sat/doppler");
+    renderSatTrackLive();
+  } catch (e) {
+    const box = $("satDopLive");
+    if (box) box.innerHTML = `<p class="error">${escHtml(e.message)}</p>`;
+  }
+  satDopBusy = false;
+}
+
+/** The next (or current) pass of the tracked satellite, for the sky plot. */
+function satTrackPass() {
+  const now = Date.now() / 1000;
+  return satData && satData.passes.find((p) => p.norad === satTrackNorad && p.los > now);
+}
+
+async function renderSatTrack() {
+  if (!satData) { satLoad(); return; }      // renders this page when the passes are calculated
+  satInfoLine();
+  await Promise.all([satTrackPoll(), satRotPoll()]);      // also after a VFO switch: both work per VFO
+  if (amsatPage !== "track") return;
+  if (!satTrackPicked && satRot && satRot.on) satTrackNorad = satRot.norad;
+  else if (!satTrackPicked && satDop && satDop.on) satTrackNorad = satDop.norad;
+  const sats = satData.sats.filter((s) => !s.missing);
+  if (!sats.some((s) => s.norad === satTrackNorad)) satTrackNorad = (satSel && satSel.norad) || (sats[0] && sats[0].norad) || null;
+  const body = $("amsatBody");
+  body.classList.add("satp-on");
+  body.innerHTML = `<div class="satt">
+    <div class="sats-row"><label>Satellite <select id="satTrackSat">${sats.map((s) => `<option value="${s.norad}"${s.norad === satTrackNorad ? " selected" : ""}>${escHtml(satShort(s.name))} · ${escHtml(s.name)}</option>`).join("")}</select></label>
+      <span class="muted small">The satellites of the timeline (SETUP). Doppler and rotor work on this VFO and go on when the page is closed.</span></div>
+    <div class="satp-lower">
+      <div class="satt-left">
+        <h4>Doppler (receive)</h4>
+        <div class="satt-live" id="satDopLive"></div>
+        <div class="satt-tx-wrap"><table class="satp-list satt-tx" id="satTxList"><tbody><tr><td class="muted">Loading transmitters…</td></tr></tbody></table></div>
+        <p class="muted small">A click on a transmitter tunes this VFO to it, sets its mode and keeps it corrected for the Doppler shift; OFF stops the correction.
+          Received = sent × (1 − range rate / c), calculated every 0.25 s; the VFO is retuned when it is off by more than 20 Hz (SSB, CW), 500 Hz (AM) or 1 kHz (FM), at most once a second.
+          Tuning the VFO by hand moves the frequency within the transponder and the correction keeps it; tuning more than 50 kHz outside the transponder stops it.
+          Transmitters: <a href="https://db.satnogs.org/" target="_blank" rel="noopener noreferrer">SatNOGS DB</a>, downloaded again after 7 days.</p>
+      </div>
+      <div class="satt-right">
+        <h4>Rotor</h4>
+        <div class="satt-live" id="satRotBox"></div>
+        <div class="sats-row satt-start">
+          <button class="key small" id="satRotStart" title="On: plan the next pass, turn the rotor to its start in time and follow it; the rotor moves only while CTRL is on (with CTRL off it only calculates). Off: tracking ends, the rotor stays">TRACK</button>
+          <span id="satPanelSlot"></span></div>
+        <div class="satp-detail" id="satDetail"><p class="muted">No pass of this satellite in the next ${satData.hours} hours.</p></div>
+      </div>
+    </div></div>`;
+  renderSatTrackLive();
+  renderSatRot();
+  $("satPanelSlot").append(satPanel);
+  satPanel.hidden = false;
+  pollRotor();
+  satTxLoad();
+  const p = satTrackPass();
+  if (p) satShowDetail({ norad: p.norad, aos: p.aos, los: p.los }, false);
+}
+
+async function satTxLoad(refresh = false) {
+  const norad = satTrackNorad;
+  if (!norad) return;
+  if (!satTx || satTx.norad !== norad || refresh) {
+    try {
+      satTx = { norad, ...(await satFetch(`/api/sat/transmitters?norad=${norad}${refresh ? "&refresh=1" : ""}`)) };
+    } catch (e) {
+      const list = $("satTxList");
+      if (list) list.innerHTML = `<tbody><tr><td class="error">${escHtml(e.message)}</td></tr></tbody>`;
+      return;
+    }
+  }
+  renderSatTxList();
+}
+
+function renderSatTxList() {
+  const list = $("satTxList");
+  if (!list || !satTx || satTx.norad !== satTrackNorad) return;
+  const rows = satTx.transmitters;
+  const pick = satDop && satDop.on && satDop.norad === satTrackNorad ? satDop.uuid : "";     // the one the correction follows
+  const range = (t) => (t.downlink_high && t.downlink_high !== t.downlink_low
+    ? `${satMHz(t.downlink_low, 3)}–${satMHz(t.downlink_high, 3)}` : satMHz(t.downlink_low, 4));
+  list.innerHTML = `<thead><tr><th></th><th>Downlink MHz</th><th>Mode</th><th>Type</th><th>Description</th></tr></thead><tbody>
+    <tr data-uuid=""${pick ? "" : ' class="sel"'}><td><input type="radio" name="satTx" value=""${pick ? "" : " checked"}></td><td colspan="4"><b>OFF</b> <span class="muted">no Doppler correction</span></td></tr>`
+    + rows.map((t) => `<tr data-uuid="${escHtml(t.uuid)}"${t.uuid === pick ? ' class="sel"' : ""}>
+      <td><input type="radio" name="satTx" value="${escHtml(t.uuid)}"${t.uuid === pick ? " checked" : ""}></td>
+      <td>${range(t)}</td><td>${escHtml(t.mode || "")}${t.rx_mode !== t.mode ? ` <span class="muted">→ ${t.rx_mode}</span>` : ""}</td>
+      <td>${escHtml(t.type || "")}${t.invert ? " <span class=\"muted\">inv.</span>" : ""}</td><td class="satt-desc">${escHtml(t.description || "")}</td></tr>`).join("")
+    + "</tbody>";
+  if (!rows.length) {
+    list.innerHTML = `<tbody><tr><td class="muted">SatNOGS has no active transmitter of this satellite${satTx.error ? ` (download failed: ${escHtml(satTx.error)})` : ""}.</td></tr></tbody>`;
+  }
+  satTxShown = pick;
+}
+let satTxShown = "";     // the transmitter checked in the list, to redraw it only when the correction changes
+
+function renderSatTrackLive() {
+  const box = $("satDopLive");
+  if (!box) return;
+  const d = satDop;
+  const pick = d && d.on && d.norad === satTrackNorad ? d.uuid : "";
+  if (pick !== satTxShown && satTx && satTx.norad === satTrackNorad) renderSatTxList();
+  if (!d) { box.innerHTML = '<p class="muted">Loading…</p>'; return; }
+  if (!d.on) {
+    box.innerHTML = `<p><b>Doppler correction is off.</b>${d.stopped ? ` <span class="${d.stopped === "stopped by hand" ? "muted" : "error"}">Stopped: ${escHtml(d.stopped)}</span>` : ""}</p>`;
+    return;
+  }
+  const off = d.f_sat - d.f_nominal, up = d.el != null && d.el > 0;
+  const lag = d.last_set != null && d.f_rx != null ? d.f_rx - d.last_set : null;
+  box.innerHTML = `<table class="satp-facts">
+    <tr><th>Tracking</th><td><b class="satt-sat">${escHtml(satShort(d.name))}</b> ${escHtml(d.label || "")}</td></tr>
+    <tr><th>Satellite sends</th><td><b>${satMHz(d.f_sat, 6)} MHz</b>${Math.abs(off) >= 1 ? ` <span class="muted">(${satHz(off)} from ${satMHz(d.f_nominal, 6)}, tuned by hand)</span>` : ""}</td></tr>
+    <tr><th>VFO tuned to</th><td><b>${satMHz(d.last_set, 6)} MHz</b> · Doppler ${satHz(d.shift)}</td></tr>
+    <tr><th>Exact now</th><td>${satMHz(d.f_rx, 6)} MHz${lag != null ? ` <span class="muted">(${satHz(lag)} from the VFO; retuned beyond ±${d.step >= 1000 ? `${d.step / 1000} kHz` : `${d.step} Hz`})</span>` : ""}</td></tr>
+    <tr><th>Now</th><td>${d.az != null ? `az ${Math.round(d.az)}°, el ${d.el.toFixed(1)}°` : "–"}${up ? "" : " <span class=\"muted\">(below the horizon)</span>"}
+      · ${d.rate != null ? `${d.rate < 0 ? "approaching" : "going away"} ${Math.abs(d.rate).toFixed(2)} km/s` : ""}</td></tr>
+    ${d.error ? `<tr><th>Error</th><td class="error">${escHtml(d.error)}</td></tr>` : ""}</table>`;
+}
+
+let satRot = null;           // /api/sat/rotor
+let satRotBusy = false;
+const SAT_ROT_MODES = {
+  normal: "normal: azimuth within K3NG 0–360°",
+  overlap: "overlap: azimuth through north past 360° (K3NG up to 450°)",
+  flipped: "flipped: azimuth + 180°, elevation 180° − el, the antenna looks back over the top",
+  "over top": "over the top: azimuth stands, elevation 0 → 180°",
+};
+const satClock = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+async function satRotPoll() {
+  if (satRotBusy) return;
+  satRotBusy = true;
+  try {
+    satRot = await satFetch("/api/sat/rotor");
+    renderSatRot();
+  } catch (e) {
+    const box = $("satRotBox");
+    if (box) box.innerHTML = `<p class="error">${escHtml(e.message)}</p>`;
+  }
+  satRotBusy = false;
+}
+
+function renderSatRot() {
+  const box = $("satRotBox"), d = satRot;
+  if (!box) return;
+  const other = !!(d && d.on && d.norad !== satTrackNorad);     // the rotor follows another satellite than the one shown
+  if ($("satRotStart")) $("satRotStart").classList.toggle("on", !!(d && d.on) && !other);
+  if (!d) { box.innerHTML = '<p class="muted">Loading…</p>'; return; }
+  if (other) {
+    const shown = satData && satData.sats.find((s) => s.norad === satTrackNorad);
+    box.innerHTML = `<p><b>The rotor follows ${escHtml(satShort(d.name))}</b> (${escHtml(d.state)}).
+      <span class="muted">TRACK switches it to ${escHtml(shown ? satShort(shown.name) : String(satTrackNorad))}.</span></p>`;
+    return;
+  }
+  if (!d.on) {
+    box.innerHTML = `<p><b>Tracking with the rotor is off.</b>${d.rotor_on ? "" : ' <span class="muted">(rotor link off: SET, ROTOR tab; TRACK then only calculates)</span>'}
+      ${d.stopped ? `<span class="${d.stopped === "stopped by hand" ? "muted" : "error"}">Stopped: ${escHtml(d.stopped)}</span>` : ""}</p>`;
+    return;
+  }
+  const p = d.pass, pl = d.plan, n = d.now || {};
+  let html = `<table class="satp-facts"><tr><th>Tracking</th><td><b class="satt-sat">${escHtml(satShort(d.name))}</b> · ${escHtml(d.state)}</td></tr>`;
+  if (p && pl) {
+    html += `<tr><th>Pass</th><td>${satDay(p.aos)} ${satClock(p.aos)} – ${satClock(p.los)}, max. ${p.max_el}°${d.state === "waiting for the pass" && d.prep_at ? ` · turns to the start at ${satClock(d.prep_at)}` : ""}</td></tr>
+      <tr><th>Plan</th><td>${escHtml(SAT_ROT_MODES[pl.mode] || pl.mode)}</td></tr>
+      <tr><th></th><td>K3NG ${Math.round(pl.raw0)}° → ${Math.round(pl.raw1)}° (range ${Math.round(pl.raw_min)}–${Math.round(pl.raw_max)}°), elevation up to ${Math.round(pl.el_max)}°;
+        simulated pointing error up to ${pl.max_err}° (mean ${pl.mean_err}°)</td></tr>`;
+    const others = pl.options.filter((o, i, a) => o.mode !== pl.mode && a.findIndex((x) => x.mode === o.mode) === i);
+    if (others.length) html += `<tr><th></th><td class="muted">Other ways: ${others.map((o) => `${o.mode} ${o.max_err}°`).join(", ")}</td></tr>`;
+  }
+  if (n.cmd_az != null) html += `<tr><th>Command</th><td>az ${Math.round(n.cmd_az)}° (K3NG ${Math.round(n.cmd_raw)}°), el ${Math.round(n.cmd_el)}°</td></tr>`;
+  if (n.sat_az != null) html += `<tr><th>Satellite</th><td>az ${Math.round(n.sat_az)}°, el ${n.sat_el.toFixed(1)}°${n.err != null ? ` · the antenna is ${n.err}° off` : ""}</td></tr>`;
+  if (d.note) html += `<tr><th>Rotor</th><td class="${d.control && d.rotor_on ? "error" : "muted"}">${escHtml(d.note)}</td></tr>`;
+  box.innerHTML = html + "</table>";
+}
+
+async function satRotSend(body) {
+  try {
+    satRot = await satFetch("/api/sat/rotor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    amsatInfo(satRot.on ? `Rotor tracking: ${satShort(satRot.name)}` : "Rotor tracking off");
+  } catch (e) {
+    if (body.start && !body.start.force && /days old/.test(e.message) && confirm(`${e.message}\n\nTrack anyway?`)) {
+      return satRotSend({ start: { ...body.start, force: true } });
+    }
+    amsatInfo(e.message, true);
+  }
+  renderSatRot();
+}
+
+async function satDopSend(body) {
+  try {
+    satDop = await satFetch("/api/sat/doppler", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    amsatInfo(satDop.on ? `Doppler correction on: ${satShort(satDop.name)} ${satDop.label || ""}` : "Doppler correction off");
+  } catch (e) {
+    amsatInfo(e.message, true);
+  }
+  renderSatTrackLive();
+}
+
+$("amsatBody").addEventListener("change", (e) => {
+  if (e.target.id === "satTrackSat") {
+    satTrackNorad = Number(e.target.value);
+    satTrackPicked = true;
+    store("satTrackNorad", satTrackNorad);
+    renderSatTrack();
+  } else if (e.target.name === "satTx") {
+    for (const tr of document.querySelectorAll(".satt-tx tr.sel")) tr.classList.remove("sel");
+    const tr = e.target.closest("tr");
+    if (tr) tr.classList.add("sel");
+    satDopSend(e.target.value ? { start: { norad: satTrackNorad, uuid: e.target.value }, set_mode: true } : { stop: true });
+  }
+});
+
+$("amsatBody").addEventListener("click", (e) => {
+  const tr = e.target.closest(".satt-tx tr[data-uuid]");
+  if (tr && e.target.type !== "radio") {
+    const r = tr.querySelector('input[name="satTx"]');
+    if (!r.checked) {
+      r.checked = true;
+      r.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  }
+  // on: off; off, or on with another satellite: tracks the shown one (the server ends the old tracking first)
+  if (e.target.id === "satRotStart") satRotSend(satRot && satRot.on && satRot.norad === satTrackNorad ? { stop: true } : { start: { norad: satTrackNorad } });
+});
+
+setInterval(() => {
+  if (bodyTab !== "sat" || amsatPage !== "track" || document.hidden) return;
+  satTrackPoll();
+  satRotPoll();
+  satTickNow();
+  if (satData && Date.now() - satLoadedAt > 300000) satLoad();
+}, 1000);
+
+// ---------- SETUP ----------
+
+async function satSetupLoad(body) {
+  try {
+    satSetupData = await satFetch("/api/sat/setup", body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+    satData = satMapData = null;      // passes and the map depend on the setup
+    if (amsatPage === "setup") renderSatSetup();
+    return true;
+  } catch (e) {
+    amsatInfo(e.message, true);
+    return false;
+  }
+}
+
+function renderSatSetup() {
+  if (!satSetupData) { amsatInfo("Loading…"); satSetupLoad(); return; }
+  const d = satSetupData, s = d.setup;
+  amsatInfo(d.tle.fetched ? `${d.sats.length} satellites in the orbital elements from ${new Date(d.tle.fetched * 1000).toLocaleString()}` : "No orbital elements yet", !d.tle.fetched || !!d.tle.error);
+  const body = $("amsatBody");
+  body.classList.add("satp-on");
+  if (satPick) { satPick.remove(); satPick = null; }
+  satQthMode = "latlon";
+  const chosen = new Set(s.sats);
+  body.innerHTML = `<div class="sats-setup">
+    <section><h4>Station</h4>
+      <div class="sats-row"><label>Locator <input id="satLoc" value="${escHtml(s.locator)}" maxlength="8" size="8"></label>
+        <span class="muted">or</span>
+        <label>Latitude <input id="satLat" type="number" step="0.0001" value="${s.lat}"></label>
+        <label>Longitude <input id="satLon" type="number" step="0.0001" value="${s.lon}"></label>
+        <button class="key small" id="satPickBtn" title="Choose the place on an OpenStreetMap map (needs internet)">CHOOSE ON MAP</button></div>
+      <div class="sats-pick" id="satPickMap" hidden></div>
+      <p class="muted small" id="satPickNote" hidden>Click the place of the antenna, then SAVE. Map tiles: OpenStreetMap, need internet.</p>
+      <div class="sats-row"><label>Altitude <input id="satAlt" type="number" step="1" value="${s.alt_m}"> m</label>
+        <label>Passes from <input id="satMinEl" type="number" min="0" max="60" step="1" value="${s.min_el}">° of elevation</label>
+        <button class="key small" id="satSaveQth">SAVE</button></div>
+      <p class="muted small">A locator gives the centre of its square (JN88WQ: about 2 km from any point in it; enough for tracking). Latitude and longitude
+        give an exact point. The same station is used on all VFOs.</p></section>
+    <section><h4>Orbital elements</h4>
+      <p>CelesTrak, ${(d.groups || []).length} groups (tabs below): ${d.sats.length} satellites${d.tle.fetched ? `, downloaded ${new Date(d.tle.fetched * 1000).toLocaleString()}` : ""}. Downloaded again after 24 hours.
+        ${d.tle.error ? `<span class="error">Last download failed: ${escHtml(d.tle.error)}</span>` : ""}</p>
+      <button class="key small" id="satTleNow">DOWNLOAD NOW</button></section>
+    <section><h4>Satellites on the timeline <span class="muted small" id="satChosenCount">(${chosen.size} chosen)</span></h4>
+      <div class="sats-row"><button class="key small" id="satSelActive" title="Tick the satellites of the AMSAT lists LINEAR, FM, IMAGE and MISC (matched by name; the others stay ticked)">SELECT ACTIVE</button>
+        <button class="key small" id="satSelNone" title="Untick all satellites">CLEAR</button>
+        <span class="muted small" id="satSelNote"></span></div>
+      <div class="sats-tabs" id="satGroupTabs">${[{ key: "chosen", title: "Chosen" }, ...(d.groups || [])].map((g) => `<button class="key small${g.key === satGroup ? " on" : ""}" data-group="${g.key}">${escHtml(g.title)}
+        <span class="muted">${g.key === "chosen" ? chosen.size : d.sats.filter((x) => (x.groups || ["amateur"]).includes(g.key)).length}</span></button>`).join("")}</div>
+      <input id="satFilter" placeholder="Filter by name or NORAD number" size="30">
+      <div class="sats-list" id="satChoice">${[...d.sats].sort((a, b) => (chosen.has(b.norad) - chosen.has(a.norad))
+        || satShort(a.name).localeCompare(satShort(b.name), undefined, { numeric: true })).map((x) => `<label class="${x.tle_age_days > 7 ? "old" : ""}" data-groups="${(x.groups || ["amateur"]).join(" ")}"><input type="checkbox" value="${x.norad}"${chosen.has(x.norad) ? " checked" : ""}>
+        <b>${escHtml(satShort(x.name))}</b> <span class="muted">${escHtml(x.name)} · ${x.norad} · ${x.tle_age_days} d</span></label>`).join("")}</div></section></div>`;
+  satChoiceFilter();
+}
+
+/** Name -> keys for matching the AMSAT lists with the orbital elements: "AO-7 Mode A" and "OSCAR 7 (AO-7)" both give
+ *  AO7, "AO-91 / (RadFxSat / Fox-1B)" gives AO91, RADFXSAT and FOX1B. Leading zeros go (AO-07 = AO-7). */
+function satNameKeys(text) {
+  const keys = new Set();
+  for (const part of text.toUpperCase().replace(/\u2013/g, "-").split(/[()/,&]|\bAND\b|\bOR\b/)) {
+    const k = part.replace(/\bMODE\b.*$/, "").replace(/([A-Z])-?0+(\d)/g, "$1$2").replace(/[^A-Z0-9]+/g, "");
+    if (k.length >= 3) keys.add(k);
+  }
+  return keys;
+}
+
+/** The satellites of the AMSAT lists (first column of their tables), as names; "TEVEL2-1 thru TEVEL2-9" is expanded. */
+function amsatActiveNames() {
+  const names = new Set();
+  for (const page of amsatPages || []) {
+    const doc = new DOMParser().parseFromString(page.html || "", "text/html");
+    for (const td of doc.querySelectorAll("tbody tr > td:first-child")) {
+      for (const br of td.querySelectorAll("br")) br.replaceWith(" / ");
+      const text = td.textContent.replace(/\s+/g, " ").trim();
+      const thru = text.match(/^(.*?)(\d+)\s+thru\s+\1(\d+)$/i);
+      if (thru) for (let i = Number(thru[2]); i <= Number(thru[3]); i++) names.add(thru[1] + i);
+      else if (text) names.add(text);
+    }
+  }
+  return [...names];
+}
+
+/** SELECT ACTIVE: ticks the satellites of the AMSAT lists that are in the orbital elements. */
+async function satSelectActive() {
+  if (!amsatPages) { $("satSelNote").textContent = "Loading the AMSAT lists…"; await amsatLoad(); }
+  const names = amsatActiveNames();
+  if (!names.length) { $("satSelNote").textContent = "The AMSAT lists are not available (LINEAR, FM, IMAGE, MISC need internet once)."; return; }
+  const byKey = new Map();
+  for (const x of satSetupData.sats) for (const k of satNameKeys(x.name)) byKey.set(k, [...(byKey.get(k) || []), x.norad]);
+  const found = new Set(), missing = [];
+  for (const n of names) {
+    const hits = [...satNameKeys(n)].flatMap((k) => byKey.get(k) || []);
+    if (hits.length) hits.forEach((h) => found.add(h)); else missing.push(n.split(" / ")[0]);
+  }
+  let added = 0;
+  for (const i of document.querySelectorAll("#satChoice input")) {
+    if (found.has(Number(i.value)) && !i.checked) { i.checked = true; added++; }
+  }
+  satChoiceSave();
+  satChoiceFilter();
+  $("satSelNote").textContent = `${found.size} active satellites found, ${added} newly ticked.`
+    + (missing.length ? ` Not in the orbital elements: ${missing.join(", ")}.` : "");
+}
+
+/** Shows the satellites of the chosen tab that match the filter; the others stay in the list, hidden (their ticks count). */
+function satChoiceFilter() {
+  const q = ($("satFilter")?.value || "").trim().toLowerCase();
+  for (const l of document.querySelectorAll("#satChoice label")) {
+    const inTab = satGroup === "chosen" ? l.querySelector("input").checked : l.dataset.groups.split(" ").includes(satGroup);
+    l.hidden = !inTab || (!!q && !l.textContent.toLowerCase().includes(q));
+  }
+}
+
+$("amsatBody").addEventListener("click", async (e) => {
+  const hb = e.target.closest("#satHours button[data-hours]");
+  if (hb) {
+    satHours = Number(hb.dataset.hours);
+    store("satHours", satHours);
+    satData = null;
+    satLoad();
+    return;
+  }
+  const pass = e.target.closest(".tl-pass, .satp-list tr[data-norad]");
+  if (pass) {
+    satShowDetail({ norad: Number(pass.dataset.norad), aos: Number(pass.dataset.aos), los: Number(pass.dataset.los) });
+    return;
+  }
+  if (e.target.id === "satSaveQth") {
+    const loc = $("satLoc").value.trim().toUpperCase(), body = { alt_m: Number($("satAlt").value), min_el: Number($("satMinEl").value) };
+    if (satQthMode === "loc" && loc) body.locator = loc;
+    else { body.lat = Number($("satLat").value); body.lon = Number($("satLon").value); }
+    if (await satSetupLoad(body)) amsatInfo("Saved");
+    return;
+  }
+  if (e.target.id === "satPickBtn") {
+    satPickOpen();
+    return;
+  }
+  if (e.target.id === "satSelActive") { satSelectActive(); return; }
+  if (e.target.id === "satSelNone") {
+    for (const i of document.querySelectorAll("#satChoice input")) i.checked = false;
+    $("satSelNote").textContent = "";
+    satChoiceSave();
+    satChoiceFilter();
+    return;
+  }
+  if (e.target.id === "satTleNow") {
+    amsatInfo("Downloading the orbital elements…");
+    if (await satSetupLoad({ refresh_tle: true })) amsatInfo("Downloaded");
+  }
+});
+
+$("amsatBody").addEventListener("change", (e) => {
+  if (e.target.closest("#satChoice")) satChoiceSave();
+});
+
+/** Saves the ticked satellites of SETUP as the timeline. */
+function satChoiceSave() {
+  const sats = [...document.querySelectorAll("#satChoice input:checked")].map((i) => Number(i.value));
+  satSetupData.setup.sats = sats;
+  $("satChosenCount").textContent = `(${sats.length} chosen)`;
+  const chosenTab = document.querySelector('#satGroupTabs [data-group="chosen"] .muted');
+  if (chosenTab) chosenTab.textContent = sats.length;
+  satFetch("/api/sat/setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sats }) })
+    .then(() => { satData = null; amsatInfo(`${sats.length} satellites on the timeline`); })
+    .catch((err) => amsatInfo(err.message, true));
+}
+
+$("amsatBody").addEventListener("click", (e) => {
+  const b = e.target.closest("#satGroupTabs button[data-group]");
+  if (!b) return;
+  satGroup = b.dataset.group;
+  store("satGroup", satGroup);
+  for (const x of document.querySelectorAll("#satGroupTabs button")) x.classList.toggle("on", x === b);
+  satChoiceFilter();
+});
+
+$("amsatBody").addEventListener("input", (e) => {
+  if (e.target.id === "satLoc") satQthMode = "loc";
+  if (e.target.id === "satLat" || e.target.id === "satLon") satQthMode = "latlon";
+  if (e.target.id !== "satFilter") return;
+  satChoiceFilter();
+});
+
+window.addEventListener("resize", () => {
+  if (bodyTab === "sat" && amsatPage === "passes" && satData) { renderSatTimeline(); renderSatElChart(); satTickNow(); }
+});
+
+// ---------- SATELLITES tab: MAP page (world map, footprints, ground track) and the station on an OpenStreetMap map ----------
+
+let satMapData = null;       // /api/sat/map
+let satMapAt = 0;
+let satMapSel = Number(recall("satMapSel")) || null;   // NORAD of the satellite with the ground track and the info
+let satMapBusy = false;
+let satMapBase = null;       // land, borders and grid drawn once per size: {canvas, w, h}
+const SAT_EARTH_KM = 6371;
+
+/** Loads a script or stylesheet of static/ once (world map data, Leaflet). */
+const satAssets = {};
+function satAsset(url) {
+  if (!satAssets[url]) {
+    satAssets[url] = new Promise((ok, fail) => {
+      const el = url.endsWith(".css") ? Object.assign(document.createElement("link"), { rel: "stylesheet", href: url })
+        : Object.assign(document.createElement("script"), { src: url });
+      el.onload = ok;
+      el.onerror = () => { delete satAssets[url]; fail(new Error(`${url} did not load`)); };
+      document.head.append(el);
+    });
+  }
+  return satAssets[url];
+}
+
+function satLocator(lat, lon) {
+  lon += 180; lat += 90;
+  const A = (n) => String.fromCharCode(65 + n);
+  return A(Math.floor(lon / 20)) + A(Math.floor(lat / 10)) + Math.floor((lon % 20) / 2) + Math.floor(lat % 10)
+    + A(Math.floor((lon % 2) * 12)) + A(Math.floor((lat % 1) * 24));
+}
+
+async function satMapLoad() {
+  if (satMapBusy) return;
+  satMapBusy = true;
+  try {
+    const [data] = await Promise.all([satFetch("/api/sat/map"), satAsset("/static/world.js")]);
+    satMapData = data;
+    satMapAt = Date.now();
+    if (!satMapData.sats.some((s) => s.norad === satMapSel)) satMapSel = satMapData.sats[0] ? satMapData.sats[0].norad : null;
+    if (amsatPage === "map" && bodyTab === "sat") {
+      if ($("satMapCanvas")) { renderSatMapChips(); satMapDraw(); } else renderSatMap();
+    }
+  } catch (e) {
+    amsatInfo(`Map: ${e.message}`, true);
+  }
+  satMapBusy = false;
+}
+
+function renderSatMap() {
+  if (!satMapData || typeof WORLD_LAND === "undefined") { amsatInfo("Loading the map…"); satMapLoad(); return; }
+  const s = satMapData.setup;
+  amsatInfo(`${s.locator} · ${satMapData.tle.fetched ? `orbital elements from ${new Date(satMapData.tle.fetched * 1000).toLocaleString()}` : "no orbital elements"}`, !satMapData.tle.fetched);
+  const body = $("amsatBody");
+  body.classList.add("satp-on");
+  body.innerHTML = `<div class="satm">
+      <div class="satm-chips" id="satMapChips"></div>
+      <div class="satm-main">
+        <div class="satm-wrap" id="satMapWrap"><canvas id="satMapCanvas"></canvas><div class="satp-tip" id="satMapTip" hidden></div></div>
+        <div class="satm-side"><div class="satm-info" id="satMapInfo"></div><h4 class="satp-h">Transmitters</h4><div id="satMapTx"></div></div>
+      </div>
+      <p class="muted small">Footprint: where the satellite is above the horizon. Shaded: night. Ground track of the chosen satellite:
+        dashed behind, solid ahead (one orbit). Map: Natural Earth.</p></div>`;
+  satMapBase = null;
+  if (!satData && !satBusy) {      // for the next pass of the chosen satellite, quietly
+    satFetch(`/api/sat/passes?hours=${satHours}`).then((d) => { satData = d; satLoadedAt = Date.now(); }).catch(() => {});
+  }
+  renderSatMapChips();
+  satMapDraw();
+}
+
+/** Keys of the satellites on the timeline: on = shown on the map; the name chooses the one with the ground track. */
+function renderSatMapChips() {
+  const box = $("satMapChips");
+  if (!box || !satSetupLike()) return;
+  const setup = satMapData.setup, on = new Set(setup.map_sats), names = satMapNames();
+  const list = [...new Set([...setup.sats, ...setup.map_sats])];
+  box.innerHTML = '<span class="muted small">On the map:</span>' + list.map((n) => {
+    const name = names[n] || String(n);
+    return `<button class="key small${on.has(n) ? " on" : ""}${n === satMapSel ? " sel" : ""}" data-map-norad="${n}" title="${escHtml(name)}: show or hide on the map; on: also shows its ground track">${escHtml(satShort(name))}</button>`;
+  }).join("");
+}
+
+function satSetupLike() { return satMapData && satMapData.setup; }
+
+/** NORAD -> name from what the page knows (map data, timeline, SETUP catalogue). */
+function satMapNames() {
+  const out = {};
+  for (const src of [satSetupData && satSetupData.sats, satData && satData.sats, satMapData && satMapData.sats]) {
+    for (const s of src || []) if (s.name) out[s.norad] = s.name;
+  }
+  return Object.assign(out, satMapData && satMapData.names);
+}
+
+/** Position of a satellite at time t, interpolated between the samples (longitude across the date line). */
+function satMapAtTime(sat, t) {
+  const s = sat.samples;
+  if (!s.length || t < s[0][0] || t > s[s.length - 1][0]) return null;
+  let i = 1;
+  while (i < s.length - 1 && s[i][0] < t) i++;
+  const a = s[i - 1], b = s[i], f = b[0] > a[0] ? (t - a[0]) / (b[0] - a[0]) : 0, mix = (k) => a[k] + (b[k] - a[k]) * f;
+  const dlon = ((b[2] - a[2] + 540) % 360) - 180, daz = ((b[4] - a[4] + 540) % 360) - 180;
+  return { lat: mix(1), lon: ((a[2] + dlon * f + 540) % 360) - 180, alt: mix(3), az: (a[4] + daz * f + 360) % 360, el: mix(5), range: mix(6), rate: mix(7) };
+}
+
+/** Sun position (low precision, ~0.1 degree): the point below the sun, for the night shading. */
+function satSubsolar(t) {
+  const n = t / 86400 - 10957.5, rad = Math.PI / 180;
+  const L = 280.46 + 0.9856474 * n, g = (357.528 + 0.9856003 * n) * rad;
+  const lam = (L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * rad, eps = (23.439 - 0.0000004 * n) * rad;
+  const dec = Math.asin(Math.sin(eps) * Math.sin(lam)), ra = Math.atan2(Math.cos(eps) * Math.sin(lam), Math.cos(lam));
+  const gmst = (280.46061837 + 360.98564736629 * n) % 360;
+  return { lat: dec / rad, lon: ((((ra / rad - gmst) % 360) + 540) % 360) - 180 };
+}
+
+/** Circle on the Earth around (lat, lon) with an angular radius -> [lon, lat] points, unwrapped in longitude.
+ *  When it contains a pole, two more points close it along the map edge (filled, not outlined). */
+function satCircle(lat, lon, radiusDeg, n = 90) {
+  const rad = Math.PI / 180, la = lat * rad, d = radiusDeg * rad, pts = [];
+  let prev = null, shift = 0;
+  for (let i = 0; i <= n; i++) {
+    const b = (i / n) * 2 * Math.PI;
+    const la2 = Math.asin(Math.sin(la) * Math.cos(d) + Math.cos(la) * Math.sin(d) * Math.cos(b));
+    let lo2 = lon + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(la), Math.cos(d) - Math.sin(la) * Math.sin(la2)) / rad;
+    if (prev !== null) {
+      while (lo2 + shift - prev > 180) shift -= 360;
+      while (lo2 + shift - prev < -180) shift += 360;
+    }
+    prev = lo2 + shift;
+    pts.push([prev, la2 / rad]);
+  }
+  const span = pts[pts.length - 1][0] - pts[0][0];
+  if (Math.abs(span) > 180) {        // around a pole: close along the map edge
+    const pole = lat > 0 ? 90 : -90, last = pts[pts.length - 1][0];
+    return { pts, fill: [...pts, [last, pole], [pts[0][0], pole]] };
+  }
+  return { pts, fill: pts };
+}
+
+function satMapSize() {
+  const wrap = $("satMapWrap"), room = $("amsatBody").clientHeight - 110;     // the keys above and the note below stay visible
+  const full = wrap.parentElement.clientWidth, side = full >= 900 ? 370 : 0;     // the details go beside the map when there is room
+  const w = Math.max(Math.min(full - side, 2 * room), 320), h = Math.round(w / 2);
+  wrap.style.width = `${w}px`;
+  return { w, h, x: (lon) => ((lon + 180) / 360) * w, y: (lat) => ((90 - lat) / 180) * h };
+}
+
+/** Land, borders and the grid: drawn once per size. */
+function satMapDrawBase(m) {
+  const c = document.createElement("canvas"), dpr = window.devicePixelRatio || 1;
+  c.width = m.w * dpr; c.height = m.h * dpr;
+  const g = c.getContext("2d");
+  g.scale(dpr, dpr);
+  g.fillStyle = "#06101c"; g.fillRect(0, 0, m.w, m.h);
+  g.fillStyle = "#1a2a1f"; g.strokeStyle = "#3b5a44"; g.lineWidth = 0.6;
+  for (const ring of WORLD_LAND) {
+    g.beginPath();
+    for (let i = 0; i < ring.length; i += 2) {
+      const X = m.x(ring[i] / 10), Y = m.y(ring[i + 1] / 10);
+      if (i) g.lineTo(X, Y); else g.moveTo(X, Y);
+    }
+    g.closePath(); g.fill(); g.stroke();
+  }
+  g.strokeStyle = "#2c4234"; g.lineWidth = 0.5;
+  for (const line of WORLD_BORDERS) {
+    g.beginPath();
+    for (let i = 0; i < line.length; i += 2) {
+      const X = m.x(line[i] / 10), Y = m.y(line[i + 1] / 10);
+      if (i) g.lineTo(X, Y); else g.moveTo(X, Y);
+    }
+    g.stroke();
+  }
+  g.strokeStyle = "rgba(141,151,165,0.18)"; g.lineWidth = 1;
+  g.font = "10px system-ui, sans-serif"; g.fillStyle = "rgba(141,151,165,0.7)";
+  for (let lon = -150; lon <= 150; lon += 30) { g.beginPath(); g.moveTo(m.x(lon), 0); g.lineTo(m.x(lon), m.h); g.stroke(); g.fillText(`${lon}°`, m.x(lon) + 2, m.h - 3); }
+  for (let lat = -60; lat <= 60; lat += 30) { g.beginPath(); g.moveTo(0, m.y(lat)); g.lineTo(m.w, m.y(lat)); g.stroke(); g.fillText(`${lat}°`, 2, m.y(lat) - 2); }
+  return { canvas: c, w: m.w, h: m.h };
+}
+
+/** Polygon (filled and outlined) or line in [lon, lat], drawn three times shifted by 360 degrees,
+ *  so the parts across the date line show. */
+function satMapPoly(g, m, pts, close = true) {
+  for (const off of [-360, 0, 360]) {
+    g.beginPath();
+    pts.forEach(([lon, lat], i) => (i ? g.lineTo(m.x(lon + off), m.y(lat)) : g.moveTo(m.x(lon + off), m.y(lat))));
+    if (close) { g.closePath(); g.fill(); }
+    g.stroke();
+  }
+}
+
+function satMapDraw() {
+  const cv = $("satMapCanvas");
+  if (!cv || !satMapData) return;
+  const m = satMapSize(), dpr = window.devicePixelRatio || 1;
+  if (!satMapBase || satMapBase.w !== m.w) satMapBase = satMapDrawBase(m);
+  if (cv.width !== m.w * dpr) { cv.width = m.w * dpr; cv.height = m.h * dpr; cv.style.width = `${m.w}px`; cv.style.height = `${m.h}px`; }
+  const g = cv.getContext("2d"), now = Date.now() / 1000;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.drawImage(satMapBase.canvas, 0, 0, m.w, m.h);
+  g.save();
+  g.beginPath(); g.rect(0, 0, m.w, m.h); g.clip();
+  // night: the side away from the sun, bounded by the terminator
+  const sun = satSubsolar(now), dec = Math.abs(sun.lat) < 0.01 ? 0.01 : sun.lat, rad = Math.PI / 180;
+  const term = [];
+  for (let lon = -180; lon <= 180; lon += 2) term.push([lon, Math.atan(-Math.cos((lon - sun.lon) * rad) / Math.tan(dec * rad)) / rad]);
+  const pole = dec > 0 ? -90 : 90;
+  g.fillStyle = "rgba(0,0,0,0.38)"; g.strokeStyle = "rgba(0,0,0,0)";
+  satMapPoly(g, m, [...term, [180, pole], [-180, pole]]);
+  // station
+  const st = satMapData.setup;
+  g.fillStyle = "#ffd84a"; g.strokeStyle = "#000"; g.lineWidth = 2;
+  g.beginPath(); g.arc(m.x(st.lon), m.y(st.lat), 4, 0, 2 * Math.PI); g.stroke(); g.fill();
+  // ground track of the chosen satellite
+  const sel = satMapData.sats.find((s) => s.norad === satMapSel);
+  if (sel) {
+    const past = [], ahead = [];
+    let shift = 0, prev = null;
+    for (const p of sel.samples) {
+      let lon = p[2] + shift;
+      if (prev !== null) { while (lon - prev > 180) { shift -= 360; lon -= 360; } while (lon - prev < -180) { shift += 360; lon += 360; } }
+      prev = lon;
+      (p[0] <= now ? past : ahead).push([lon, p[1]]);
+    }
+    if (past.length && ahead.length) ahead.unshift(past[past.length - 1]);
+    g.lineWidth = 1.5; g.strokeStyle = "rgba(184,216,255,0.55)"; g.setLineDash([4, 4]);
+    satMapPoly(g, m, past, false);
+    g.setLineDash([]); g.lineWidth = 2; g.strokeStyle = "#5d9bff";
+    satMapPoly(g, m, ahead, false);
+  }
+  // footprints and the satellites
+  g.font = "600 11px system-ui, sans-serif";
+  const marks = [];
+  for (const sat of satMapData.sats) {
+    const p = satMapAtTime(sat, now);
+    if (!p) continue;
+    const radius = Math.acos(SAT_EARTH_KM / (SAT_EARTH_KM + Math.max(p.alt, 1))) / rad, chosen = sat.norad === satMapSel, seen = p.el > 0;
+    g.lineWidth = chosen ? 2 : 1;
+    g.strokeStyle = chosen ? "#b8d8ff" : seen ? "rgba(255,216,74,0.8)" : "rgba(141,151,165,0.65)";
+    g.fillStyle = chosen ? "rgba(93,155,255,0.12)" : seen ? "rgba(255,216,74,0.08)" : "rgba(141,151,165,0.05)";
+    const fp = satCircle(p.lat, p.lon, radius), line = g.strokeStyle;
+    g.strokeStyle = "rgba(0,0,0,0)";
+    satMapPoly(g, m, fp.fill);
+    g.strokeStyle = line;
+    satMapPoly(g, m, fp.pts, false);
+    marks.push({ sat, p, chosen, seen });
+  }
+  for (const { sat, p, chosen, seen } of marks) {
+    const X = m.x(p.lon), Y = m.y(p.lat), label = satShort(sat.name);
+    g.fillStyle = chosen ? "#b8d8ff" : seen ? "#ffd84a" : "#e9edf2"; g.strokeStyle = "#000"; g.lineWidth = 2;
+    g.beginPath(); g.arc(X, Y, chosen ? 5 : 4, 0, 2 * Math.PI); g.stroke(); g.fill();
+    g.lineWidth = 3; g.strokeText(label, X + 7, Y + 4); g.fillText(label, X + 7, Y + 4);
+    sat._xy = [X, Y];
+  }
+  g.restore();
+  satMapInfo(sel, sel && satMapAtTime(sel, now), now);
+}
+
+function satMapInfo(sel, p, now) {
+  const box = $("satMapInfo");
+  if (!box) return;
+  if (!sel) { box.innerHTML = '<span class="muted">No satellite on the map: switch one on above.</span>'; $("satMapTx").textContent = ""; box._norad = null; return; }
+  if (box._norad !== sel.norad) { box._norad = sel.norad; satTxFill("satMapTx", sel.norad, 12); }
+  if (!p) { box.innerHTML = `<b>${escHtml(sel.name)}</b> <span class="muted">no position now (orbital elements?)</span>`; return; }
+  let event = "";
+  if (p.el > 0) {
+    const end = sel.samples.find((s) => s[0] > now && s[5] <= 0);
+    event = `<span class="satm-up">above the horizon</span>${end ? `, LOS about ${satUntil(end[0])}` : ""}`;
+  } else {
+    const next = sel.samples.find((s) => s[0] > now && s[5] > 0);
+    event = next ? `next AOS about ${satUntil(next[0])}` : "no AOS within the next orbit";
+  }
+  const dop = (-p.rate / 299792.458) * 1e6;
+  const pass = satData && satData.passes.find((q) => q.norad === sel.norad && q.los > now);
+  const next = pass ? `${satDay(pass.aos)} ${satTime(pass.aos)}–${satTime(pass.los)}, max. ${pass.max_el}° ${pass.aos <= now ? "(now)" : satUntil(pass.aos)}` : "";
+  box.innerHTML = `<div class="satm-name"><b>${escHtml(sel.name)}</b></div>
+    <table class="satp-facts satm-facts">
+      <tr><th>NORAD</th><td>${sel.norad} · orbit ${Math.round(sel.period_min)} min · elements ${sel.tle_age_days} d</td></tr>
+      <tr><th>Position</th><td>${Math.abs(p.lat).toFixed(2)}° ${p.lat >= 0 ? "N" : "S"}, ${Math.abs(p.lon).toFixed(2)}° ${p.lon >= 0 ? "E" : "W"}</td></tr>
+      <tr><th>Locator</th><td>${satLocator(p.lat, p.lon)}</td></tr>
+      <tr><th>Altitude</th><td>${Math.round(p.alt)} km</td></tr>
+      <tr><th>From here</th><td>az ${Math.round(p.az)}°, el ${p.el.toFixed(1)}°</td></tr>
+      <tr><th>Distance</th><td>${Math.round(p.range)} km</td></tr>
+      <tr><th>Doppler</th><td>${(dop * 145.9 / 1000).toFixed(1)} kHz at 145.9 MHz, ${(dop * 435 / 1000).toFixed(1)} kHz at 435 MHz</td></tr>
+      <tr><th>Now</th><td>${event}</td></tr>
+      ${next ? `<tr><th>Next pass</th><td>${next}</td></tr>` : ""}
+    </table>
+    <button class="key small" id="satMapTrack" data-norad="${sel.norad}" title="Open this satellite on the TRACK page (Doppler, rotor)">TRACK</button>`;
+}
+
+$("amsatBody").addEventListener("mousemove", (e) => {
+  if (e.target.id !== "satMapCanvas" || !satMapData) return;
+  const r = e.target.getBoundingClientRect(), m = satMapSize(), x = e.clientX - r.left, y = e.clientY - r.top;
+  const lon = (x / m.w) * 360 - 180, lat = 90 - (y / m.h) * 180, tip = $("satMapTip");
+  const near = satMapData.sats.find((s) => s._xy && Math.hypot(s._xy[0] - x, s._xy[1] - y) < 9);
+  tip.hidden = false;
+  tip.textContent = near ? `${near.name} (click: ground track)` : `${lat.toFixed(1)}°, ${lon.toFixed(1)}° · ${satLocator(lat, lon).slice(0, 4)}`;
+  tip.style.left = `${Math.min(x + 12, r.width - 220)}px`;
+  tip.style.top = `${y + 14}px`;
+  e.target.style.cursor = near ? "pointer" : "crosshair";
+});
+$("amsatBody").addEventListener("mouseout", (e) => {
+  if (e.target.id === "satMapCanvas") $("satMapTip").hidden = true;
+});
+
+$("amsatBody").addEventListener("click", (e) => {
+  if (e.target.id === "satMapTrack" || e.target.id === "satDetailTrack") {
+    satOpenTrack(Number(e.target.dataset.norad));
+    return;
+  }
+  if (e.target.id === "satMapCanvas" && satMapData) {
+    const r = e.target.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    const near = satMapData.sats.find((s) => s._xy && Math.hypot(s._xy[0] - x, s._xy[1] - y) < 9);
+    if (near) { satMapSel = near.norad; store("satMapSel", satMapSel); renderSatMapChips(); satMapDraw(); }
+    return;
+  }
+  const chip = e.target.closest("button[data-map-norad]");
+  if (!chip || !satMapData) return;
+  const n = Number(chip.dataset.mapNorad), on = new Set(satMapData.setup.map_sats);
+  if (on.has(n) && n !== satMapSel) { satMapSel = n; store("satMapSel", n); renderSatMapChips(); satMapDraw(); return; }   // on: first click chooses it
+  if (on.has(n)) on.delete(n); else { on.add(n); satMapSel = n; store("satMapSel", n); }
+  satMapData.setup.map_sats = [...on];
+  renderSatMapChips();
+  satFetch("/api/sat/setup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ map_sats: [...on] }) })
+    .then(() => satMapLoad())
+    .catch((err) => amsatInfo(err.message, true));
+});
+
+setInterval(() => {
+  if (bodyTab !== "sat" || amsatPage !== "map" || document.hidden) return;
+  satMapDraw();
+  if (satMapData && Date.now() - satMapAt > 300000) satMapLoad();      // the tracks reach one orbit ahead
+}, 1000);
+
+window.addEventListener("resize", () => {
+  if (bodyTab === "sat" && amsatPage === "map" && satMapData) satMapDraw();
+});
+
+// ---------- station on an OpenStreetMap map (SETUP) ----------
+
+let satPick = null;     // Leaflet map
+let satQthMode = "latlon";   // which fields SAVE uses: "loc" after typing a locator, else latitude and longitude
+
+async function satPickOpen() {
+  const box = $("satPickMap");
+  if (!box) return;
+  box.hidden = false;
+  $("satPickNote").hidden = false;
+  try {
+    await Promise.all([satAsset("/static/leaflet/leaflet.css"), satAsset("/static/leaflet/leaflet.js")]);
+  } catch (e) {
+    $("satPickNote").textContent = e.message;
+    return;
+  }
+  const lat = Number($("satLat").value), lon = Number($("satLon").value);
+  if (satPick) satPick.remove();
+  satPick = L.map(box, { worldCopyJump: true }).setView([lat, lon], 13);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+  }).addTo(satPick);
+  const mark = L.circleMarker([lat, lon], { radius: 7, color: "#000", weight: 2, fillColor: "#ffd84a", fillOpacity: 1 }).addTo(satPick);
+  satPick.on("click", (ev) => {
+    const p = ev.latlng.wrap();
+    mark.setLatLng(p);
+    $("satLat").value = p.lat.toFixed(5);
+    $("satLon").value = p.lng.toFixed(5);
+    $("satLoc").value = satLocator(p.lat, p.lng);
+    satQthMode = "latlon";
+    amsatInfo(`Chosen ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)} (${satLocator(p.lat, p.lng)}): SAVE keeps it`);
+  });
+}
 
 // ---------- ACARS ----------
 
@@ -2326,7 +3640,7 @@ $("acarsOn").addEventListener("change", () => {
 
 // ---------- VDL2 (VDL Mode 2 through dumpvdl2; messages go to the ACARS card) ----------
 
-const VDL2_TITLE = $("vdl2On").parentElement.title;   // tooltip from index.html (replaced on LimeSDR)
+const VDL2_TITLE = $("vdl2On").parentElement.title;   // tooltip from index.html (replaced on a device without VDL2)
 let vdl2Last = {};   // the status sends only on/off and the error; channels and counts come from vdl2state
 
 function renderVdl2Info(d) {
@@ -2362,10 +3676,10 @@ const dabEsc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": 
 
 /** DAB key in DECODE: DAB on (the server tunes the VFO to the saved channel at 2.048 MS/s). */
 function dabOn() {
-  if (st.driver === "lime" || st.chain_owner) {
+  if (noRtlDongle(st) || st.chain_owner) {
     errorUntil = Date.now() + 5000;
     renderStatusPill(st.chain_owner ? `DAB needs its own dongle (this VFO shares the dongle of VFO ${st.chain_owner})`
-      : "DAB is not supported on LimeSDR (RTL-SDR only)");
+      : `DAB is not supported on ${DEVICE_NAMES[st.driver]} (RTL-SDR only)`);
     return;
   }
   if (!st.dab) {
@@ -2587,7 +3901,7 @@ function dabSetChannel(ch) {
 $("dabChannel").addEventListener("change", () => dabSetChannel($("dabChannel").value));
 /** A DAB memory: DAB on, on its channel. Where DAB cannot run, dabOn says why. */
 function dabRecall(ch) {
-  if (st.driver !== "lime" && !st.chain_owner) dabSetChannel(ch);
+  if (!noRtlDongle(st) && !st.chain_owner) dabSetChannel(ch);
   dabOn();
 }
 /** DAB off (DAB key again, another band button, or OFF in the card): the previous sample rate comes back. */
@@ -2925,7 +4239,7 @@ $("cwTune").addEventListener("click", () => {
 // ---------- ISM: 433 / 868 MHz devices (rtl_433; the VFO feeds it through rtl_tcp) ----------
 
 const ISM_MAX_ROWS = 300;
-const ISM_TITLE = $("ismKey").title;   // tooltip from index.html (replaced on LimeSDR and a chained VFO)
+const ISM_TITLE = $("ismKey").title;   // tooltip from index.html (replaced on a device without ISM and a chained VFO)
 let ismLast = {};   // the status sends only on/off and the error; the counts come from ismstate
 
 function ismRow(tr, m) {
@@ -2982,10 +4296,10 @@ function renderIsm(s) {
   const on = !!s.ism;
   $("ismCard").hidden = !on;
   $("ismKey").classList.toggle("on", on);
-  const no = s.driver === "lime" || !!s.chain_owner;   // needs the raw samples of its own RTL dongle
+  const no = noRtlDongle(s) || !!s.chain_owner;   // needs the raw samples of its own RTL dongle
   $("ismKey").disabled = no;
   $("ismKey").title = s.chain_owner ? `ISM needs its own dongle (this VFO shares the dongle of VFO ${s.chain_owner})`
-    : s.driver === "lime" ? "ISM is not supported on LimeSDR (RTL-SDR only)" : ISM_TITLE;
+    : noRtlDongle(s) ? `ISM is not supported on ${DEVICE_NAMES[s.driver]} (RTL-SDR only)` : ISM_TITLE;
   for (const b of $("ismBands").children) b.classList.toggle("active", Number(b.dataset.f) === s.center_hz);
   renderIsmInfo({ enabled: on, error: s.ism_error });
 }
@@ -3170,11 +4484,10 @@ for (const [key, d] of Object.entries(DRAWERS)) {
 }
 for (const b of document.querySelectorAll("[data-close]")) b.addEventListener("click", () => openDrawer(null));
 document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || [...Object.values(DRAWERS), "satCard"].every((d) => $(d).hidden)) return;
+  if (e.key !== "Escape" || Object.values(DRAWERS).every((d) => $(d).hidden)) return;
   // the radio stays usable behind the window: Esc in its fields (frequency entry) must not close the window
   if (e.target.closest("input, select, textarea") && !e.target.closest(".drawer")) return;
   openDrawer(null);
-  showSat(false);
 });
 
 // A floating window is moved by its title bar; the place is remembered in the browser. It is inside the scaled
@@ -3238,7 +4551,7 @@ for (const b of document.querySelectorAll("[data-set-tab]")) {
 // TX is left out here: its key is hidden until the state says the dongle can transmit.
 if (["audio", "display", "rotor"].includes(recall("setTab"))) showSetTab(recall("setTab"));
 
-// ---------- ROTOR tab of SET: K3NG rotor and the Gpredict link (rotor.py) ----------
+// ---------- ROTOR tab of SET: K3NG rotor (rotor.py) ----------
 
 let rotorPortsFor = null;     // the address of the VFO the port list belongs to
 let rotorHoldUntil = 0;       // a message from a click stays this long, the regular update does not clear it
@@ -3247,8 +4560,10 @@ function rotorShowError(text, hold) {
   if (hold) rotorHoldUntil = Date.now() + 5000;
   else if (Date.now() < rotorHoldUntil) return;
   for (const id of ["rotorError", "satError"]) {
-    $(id).textContent = text || "";
-    $(id).hidden = !text;
+    const el = document.getElementById(id) || (id === "satError" && satPanel.querySelector("#satError"));
+    if (!el) continue;
+    el.textContent = text || "";
+    el.hidden = !text;
   }
 }
 
@@ -3283,147 +4598,51 @@ function renderRotor(info) {
   $("rotorPos").textContent = info.az == null ? "–" : `AZ ${Math.round(info.az)}°  EL ${Math.round(info.el ?? 0)}°`;
   $("rotorTarget").textContent = info.target
     ? `Moving to AZ ${Math.round(info.target[0])}° EL ${Math.round(info.target[1])}° (${info.source})` : "No target";
-  rotorShowError(info.fault ? `Fault: ${info.fault}` : info.link_error || info.error);
+  rotorShowError(info.fault ? `Fault: ${info.fault}` : info.error);
   $("rotorReset").hidden = !info.fault;
-  $("rotorRotPort").textContent = info.rot_port;
-  $("rotorRigPort").textContent = info.rig_port;
-  $("rotorGpredict").textContent = !info.on ? "Link is off"
-    : `Rotator: ${info.gpredict_rotor ? "connected" : "not connected"}, radio: ${info.gpredict_radio ? "connected" : "not connected"}`
-      + (info.unknown.length ? `. Commands not handled: ${info.unknown.join(", ")}` : "");
+  $("rotorRaw").textContent = info.k3ng_az == null ? ""
+    : `K3NG now: ${Math.round(info.k3ng_az)}°${info.k3ng_guess ? " (0–90 or 360–450 not known yet: decided at the first move)" : ""}.`;
+  if (info.az_cal) {
+    for (const [id, v] of [["rotorCal0", info.az_cal[0]], ["rotorCal450", info.az_cal[1]]]) {
+      if (document.activeElement !== $(id)) $(id).value = v;
+    }
+  }
   renderSat(info);
 }
 
-// ---------- SAT window: antenna position on two dials and in 3D, rotor control on and off ----------
-$("satAzTicks").innerHTML = Array.from({ length: 36 }, (_, i) => i * 10)
-  .map((a) => `<line y1="-92" y2="${a % 30 ? -87 : -81}" transform="rotate(${a})"/>`).join("");
-$("satElTicks").innerHTML = Array.from({ length: 19 }, (_, i) => i * 10)
-  .map((a) => `<line x1="92" x2="${a % 30 ? 87 : 81}" transform="rotate(${-a})"/>`).join("");
-
-// Turns a dial mark to an angle; null hides it.
-function satMark(id, angle) {
-  $(id).setAttribute("visibility", angle == null ? "hidden" : "visible");
-  if (angle != null) $(id).setAttribute("transform", `rotate(${angle})`);
-}
-const satElAngle = (el) => (el == null ? null : -Math.min(Math.max(el, 0), 180));     // the elevation dial turns against the clock
-
-// The antenna in 3D: a 5 element Yagi seen from the south and from 45 degrees above, so north is away from the viewer
-// and east to the right. World coordinates: x east, y north, z up.
-const SAT3D_DIST = 500, SAT3D_MAST = 56, SAT3D_GROUND = 72;
-const SAT3D_ELEMENTS = [[-50, 25], [-25, 23], [-3, 21], [20, 20], [47, 19]];     // place on the boom, half length; reflector first
-
-// -> [screen x, screen y, scale, depth (more = nearer to the viewer)]
-function sat3dProject([x, y, z]) {
-  const depth = (z - y) * Math.SQRT1_2, scale = SAT3D_DIST / (SAT3D_DIST - depth);
-  return [x * scale, -(y + z) * Math.SQRT1_2 * scale, scale, depth];
-}
-
-function sat3dLine(a, b, cls, width, opacity = 1) {
-  const p = sat3dProject(a), q = sat3dProject(b);
-  return `<line class="${cls}" x1="${p[0].toFixed(1)}" y1="${p[1].toFixed(1)}" x2="${q[0].toFixed(1)}" y2="${q[1].toFixed(1)}"`
-    + ` stroke-width="${(width * (p[2] + q[2]) / 2).toFixed(2)}" opacity="${opacity.toFixed(2)}"/>`;
-}
-
-// The ground with the compass does not move, so it is drawn once.
-{
-  const ring = Array.from({ length: 72 }, (_, i) => {
-    const a = i * 5 * Math.PI / 180, p = sat3dProject([SAT3D_GROUND * Math.sin(a), SAT3D_GROUND * Math.cos(a), 0]);
-    return `${p[0].toFixed(1)},${p[1].toFixed(1)}`;
-  }).join(" ");
-  const r = SAT3D_GROUND, label = r + 9;
-  const text = [["N", 0, label], ["E", label, 0], ["S", 0, -label], ["W", -label, 0]].map(([t, x, y]) => {
-    const p = sat3dProject([x, y, 0]);
-    return `<text x="${p[0].toFixed(1)}" y="${p[1].toFixed(1)}">${t}</text>`;
-  }).join("");
-  $("sat3dGround").innerHTML = `<polygon class="sat3d-ground" points="${ring}"/>`
-    + sat3dLine([0, -r, 0], [0, r, 0], "sat3d-cross", 0.7) + sat3dLine([-r, 0, 0], [r, 0, 0], "sat3d-cross", 0.7) + text;
-}
-
-function renderSat3d(az, el) {
-  if (az == null) { $("sat3dAnt").innerHTML = ""; return; }
-  const a = az * Math.PI / 180, e = (el ?? 0) * Math.PI / 180;
-  const boom = [Math.sin(a) * Math.cos(e), Math.cos(a) * Math.cos(e), Math.sin(e)];     // above 90 degrees it looks backwards
-  const side = [Math.cos(a), -Math.sin(a), 0];     // the elevation axis: the elements stay level
-  const at = (t, h = 0) => [boom[0] * t + side[0] * h, boom[1] * t + side[1] * h, SAT3D_MAST + boom[2] * t];
-  const onGround = ([x, y]) => [x, y, 0];
-  const parts = [{ from: at(-58), to: at(58), cls: "", width: 2.2 }, { from: at(58), to: at(60), cls: "sat3d-front", width: 7 },
-    { from: [0, 0, 0], to: at(0), cls: "sat3d-mast", width: 2.5 },
-    ...SAT3D_ELEMENTS.map(([t, h], i) => ({ from: at(t, -h), to: at(t, h), cls: i === 1 ? "sat3d-driven" : "", width: 1.8 }))];
-  const shadow = parts.filter((p) => p.cls !== "sat3d-mast" && p.cls !== "sat3d-front")
-    .map((p) => sat3dLine(onGround(p.from), onGround(p.to), "sat3d-shadow", p.width));
-  const depth = (p) => sat3dProject(p.from)[3] + sat3dProject(p.to)[3];
-  // Far parts first and dimmer, so the near ones cover them.
-  const lines = parts.sort((p, q) => depth(p) - depth(q)).map((p) => {
-    const fade = Math.min(Math.max(0.75 + depth(p) / 300, 0.5), 1);
-    return sat3dLine(p.from, p.to, `sat3d-part ${p.cls}`, p.width, fade);
-  });
-  $("sat3dAnt").innerHTML = shadow.join("") + lines.join("");
-}
-
-// Time to the next pass event from Gpredict, written the way Gpredict writes it.
-function fmtPassTime(seconds) {
-  const h = Math.floor(seconds / 3600), m = Math.floor(seconds / 60) % 60, s = seconds % 60;
-  const pad = (n) => String(n).padStart(2, "0");
-  return h ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
-}
+// ---------- rotor control on the TRACK page: CTRL, STOP and the error line ----------
+const satPanel = $("satPanel");      // CTRL, STOP, error: moved into the TRACK page when it is shown
+const $p = (id) => satPanel.querySelector("#" + id);
 
 function renderSat(info) {
-  const pass = info.next_pass;
-  $("satPass").hidden = !pass;
-  if (pass) {
-    $("satPassName").textContent = pass.sat;
-    $("satPassTime").textContent = `${pass.event} in ${fmtPassTime(pass.seconds)}`;
-  }
-  $("satAz").textContent = info.az == null ? "–" : `${Math.round(info.az)}°`;
-  $("satEl").textContent = info.el == null ? "–" : `${Math.round(info.el)}°`;
-  satMark("satAzNeedle", info.az);
-  satMark("satElNeedle", satElAngle(info.el));
-  // The blue marks: the move in progress, otherwise where Gpredict wants the antenna.
-  const aim = info.target || info.aim;
-  satMark("satAzTarget", aim ? aim[0] : null);
-  satMark("satElTarget", aim ? satElAngle(aim[1]) : null);
-  renderSat3d(info.az, info.el);
-  $("satCtrl").classList.toggle("on", info.control);
-  const target = aim ? ` Target (blue) AZ ${Math.round(aim[0])}° EL ${Math.round(aim[1])}°.` : "";
-  $("satStatus").textContent = info.fault ? "Reset the fault in SET, ROTOR tab."
-    : !info.on ? "Rotor link is off. CTRL turns it on."
-    : info.control ? `Following Gpredict.${target}`
-    : info.target ? `Manual move.${target}` : "Stopped. Gpredict does not move the rotor.";
-  $("satGpredict").textContent = `Gpredict rotator: ${info.gpredict_rotor ? "engaged" : "not engaged"}`;
-  $("satGpredict").classList.toggle("lost", !info.gpredict_rotor);
+  satInfo = info;
+  satPolarRotor();
+  $p("satCtrl").classList.toggle("on", !!info.control);
+  $p("satCtrl").disabled = !info.on;
 }
 
-const placeSat = makeFloating($("satCard"), "satCardPos");
-let satReopen = false;     // closed by a VFO switch, not by hand
-function showSat(open) {
-  satReopen = false;
-  $("satCard").hidden = !open;
-  $("satKey").classList.toggle("on", open);
-  if (open) { placeSat(); pollRotor(); }
+let satInfo = null;     // the last rotor state, for the clicks
+
+// -> why the plots do not take a click now, "" if they do
+function satDialRefusal(info) {
+  if (!info || !info.connected) return "Rotor is not connected";
+  if (info.fault) return "Reset the fault in SET, ROTOR tab";
+  if (info.tracker) return "Satellite tracking moves the rotor (SATELLITES tab, TRACK): stop it to set the position by hand";
+  if (info.az == null) return "Rotor position is not known yet";
+  return "";
 }
-// The rotor belongs to one VFO: switching to a VFO without it closes the window, and back to one with it opens it again.
-async function syncSatWithVfo() {
-  if ($("satCard").hidden && !satReopen) return;
-  const base = vbase;
-  try {
-    const info = await fetch(base + "/api/rotor").then((r) => r.json());
-    if (base !== vbase) return;
-    if ($("satCard").hidden) {
-      if (satReopen && info.on) showSat(true);
-    } else if (!info.on) {
-      showSat(false);
-      satReopen = true;
-    }
-  } catch (e) { /* the receiver is away: the window stays and says so */ }
-}
-$("satKey").addEventListener("click", () => showSat($("satCard").hidden));
-$("satClose").addEventListener("click", () => showSat(false));
+
+// SAT key: the SATELLITES tab, on the TRACK page when the rotor is to be seen at once.
+$("satKey").addEventListener("click", () => setBodyTab(bodyTab === "sat" ? "scope" : "sat"));
 $("satCtrl").addEventListener("click", (e) => rotorPost(e.currentTarget.classList.contains("on") ? { stop: true } : { start: true }));
+$("satStop").addEventListener("click", () => rotorPost({ stop: true }));
 
 async function pollRotor() {
   const panel = document.querySelector('[data-set-panel="rotor"]');
   const setOpen = !panel.hidden && !$("settingsCard").hidden;
   if (!setOpen) rotorPortsFor = null;
-  if (!setOpen && $("satCard").hidden) return;
+  const trackOpen = bodyTab === "sat" && amsatPage === "track" && !document.hidden;     // the antenna on the polar plot
+  if (!setOpen && !trackOpen) return;
   const needPorts = setOpen && rotorPortsFor !== vbase;
   try {
     const info = await fetch(vbase + `/api/rotor${needPorts ? "?ports=1" : ""}`).then((r) => r.json());
@@ -3446,46 +4665,15 @@ $("rotorEnabled").addEventListener("change", (e) => {
 });
 $("rotorStop").addEventListener("click", () => rotorPost({ stop: true }));
 $("rotorReset").addEventListener("click", () => rotorPost({ reset: true }));
+$("rotorCalSave").addEventListener("click", () => {
+  if ($("rotorCal0").value === "" || $("rotorCal450").value === "") { rotorShowError("Enter both azimuths", true); return; }
+  rotorPost({ az_cal: [Number($("rotorCal0").value), Number($("rotorCal450").value)] });
+});
 $("rotorGo").addEventListener("click", () => {
   if ($("rotorAz").value === "" || $("rotorEl").value === "") { rotorShowError("Enter azimuth and elevation", true); return; }
   rotorPost({ goto: [Number($("rotorAz").value), Number($("rotorEl").value)] });
 });
 setInterval(pollRotor, 500);
-
-// ---------- GP key: starts and closes Gpredict (gpredict.py); one program for the PC, so the launcher port and not vbase ----------
-let gpredictBusy = false;
-
-function renderGpredict(info) {
-  const key = $("gpredictKey");
-  key.classList.toggle("on", info.running);
-  key.setAttribute("aria-pressed", String(info.running));
-  key.disabled = !info.running && !info.available;
-  key.title = info.running ? "Gpredict is open (click to close it)"
-    : info.available ? "Open Gpredict (satellite tracking)" : "Gpredict is not installed (apps\\gpredict)";
-}
-
-async function pollGpredict() {
-  if (gpredictBusy) return;
-  try {
-    renderGpredict(await fetch("/api/gpredict").then((r) => r.json()));
-  } catch (e) { /* the server is away: the key keeps its state */ }
-}
-
-$("gpredictKey").addEventListener("click", async () => {
-  const key = $("gpredictKey");
-  gpredictBusy = key.disabled = true;     // starting and closing take a moment
-  let error = null;
-  try {
-    const res = await fetch("/api/gpredict", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ on: !key.classList.contains("on") }) });
-    if (!res.ok) error = (await res.json()).error || "Gpredict: error";
-  } catch (e) { error = "Gpredict: server is not reachable"; }
-  gpredictBusy = false;
-  if (error) { errorUntil = Date.now() + 5000; renderStatusPill(error); }
-  await pollGpredict();
-});
-pollGpredict();
-setInterval(pollGpredict, 2000);
 
 // A click on the clock switches UTC / local time (LOC); the choice is remembered.
 let clockLocal = recall("clockLocal") === "1";
@@ -3756,13 +4944,12 @@ function onStatus(s) {
   $("sstvCard").hidden = !s.sstv;
   $("acarsOn").checked = !!s.acars;
   $("vdl2On").checked = !!s.vdl2;
-  // VDL2 runs on RTL-SDR only: greyed out on a LimeSDR VFO
-  const lime = s.driver === "lime";
-  const noVdl2 = lime || !!s.chain_owner;   // a chained VFO cannot set its own centre and sample rate
+  // VDL2 runs on RTL-SDR only: greyed out on a LimeSDR or Airspy VFO
+  const noVdl2 = noRtlDongle(s) || !!s.chain_owner;   // a chained VFO cannot set its own centre and sample rate
   $("vdl2On").disabled = noVdl2;
   $("vdl2On").parentElement.classList.toggle("disabled", noVdl2);
   $("vdl2On").parentElement.title = s.chain_owner ? `VDL2 needs its own dongle (this VFO shares the dongle of VFO ${s.chain_owner})`
-    : lime ? "VDL2 is not supported on LimeSDR (RTL-SDR only)" : VDL2_TITLE;
+    : noRtlDongle(s) ? `VDL2 is not supported on ${DEVICE_NAMES[s.driver]} (RTL-SDR only)` : VDL2_TITLE;
   $("acarsCard").hidden = !(s.acars || s.vdl2);
   renderVdl2Info({ enabled: s.vdl2, error: s.vdl2_error });
   renderVdl2Region();
@@ -3929,7 +5116,7 @@ function renderVfoDisplays() {
       recTag.classList.toggle("on", recs.some((r) => r?.on) && (!v.name || v.online));
       recTag.classList.toggle("writing", recs.some((r) => r?.on && r.open));
     }
-    // Frame on top of the VFO: satellite and transponder selected in Gpredict, otherwise the memory on this frequency, otherwise the band plan (narrowest band).
+    // Frame on top of the VFO: satellite and transponder of the Doppler correction, otherwise the memory on this frequency, otherwise the band plan (narrowest band).
     const trsp = s && s.trsp_name ? [s.trsp_sat, s.trsp_name].filter(Boolean).join(" · ") : "";
     const mem = s ? memAt(s.tune_hz, s.mode) : null;
     const bands = s && !mem ? bandsAt(s.tune_hz) : [];
@@ -3938,7 +5125,7 @@ function renderVfoDisplays() {
     if (memEl.textContent !== memText) memEl.textContent = memText;
     memEl.classList.toggle("band", !mem && !trsp);
     memEl.classList.toggle("trsp", !!trsp);
-    memEl.title = trsp ? `Gpredict: ${trsp}` : mem ? `${mem.name} · ${mem.group} · ${mem.mode} · ${fmtBw(mem.bw)}`
+    memEl.title = trsp ? `Doppler correction: ${trsp}` : mem ? `${mem.name} · ${mem.group} · ${mem.mode} · ${fmtBw(mem.bw)}`
       : bands.map(([, , label, , desc]) => `${label}: ${desc}`).join("\n");
     if (!v.name) continue;
     // VFO receiver state: RUNNING = dongle open and delivering samples.
@@ -3963,7 +5150,7 @@ function renderVfoDisplays() {
     mode.style.visibility = gain.style.visibility = sql.style.visibility = s ? "" : "hidden";
     if (s) {
       mode.textContent = s.mode;
-      gain.textContent = s.gain === "auto" ? "AGC" : `${Number(s.gain).toFixed(1)} dB`;
+      gain.textContent = s.gain === "auto" ? "AGC" : gainLabel(s);
       // slider: disabled with AGC (as in SET); while dragging, the state from the server does not overwrite it
       const rf = row.querySelector(".vfo-rf input");
       const gains = s.gains || [];
@@ -4082,7 +5269,6 @@ async function selectVfo(v) {
   }
   renderVfoDisplays();
   renderCueKey();
-  syncSatWithVfo();
   startAudio();
   await loadDecoders();
 }
@@ -4384,7 +5570,105 @@ $("muteBtn").addEventListener("click", () => {
 });
 renderVolume();
 
+/** After start: a newer version on GitHub Releases (update_check.py on the server) shown beside the own one,
+ *  and a small window offering the upgrade. LATER hides it until RADIMCOM is started again, SKIP until a still newer one. */
+let updInfo = null;
+async function updFetch(opts) {
+  const r = await fetch("/api/update", opts);
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
+}
+
+async function checkUpdate(tries = 0) {
+  let u;
+  try { u = await updFetch(); } catch (e) { return; }
+  if (u.state === "checking" && tries < 20) { setTimeout(() => checkUpdate(tries + 1), 3000); return; }
+  const a = $("updLink");
+  if (!u.newer || !a) return;
+  updInfo = u;
+  a.textContent = `→ ${u.latest} available`;
+  a.href = u.url;
+  a.title = `${u.name}${u.published ? `, released ${u.published.slice(0, 10)}` : ""}: click for the upgrade`;
+  a.hidden = false;
+  if (recall("updSkip") !== u.latest && recall("updLater") !== String(u.checked)) showUpdate();
+}
+
+$("updLink").addEventListener("click", (e) => {
+  if (!updInfo) return;
+  e.preventDefault();
+  showUpdate();
+});
+
+function showUpdate() {
+  const u = updInfo;
+  let w = $("updWin");
+  if (!w) {
+    w = document.createElement("aside");
+    w.className = "drawer upd-win";
+    w.id = "updWin";
+    w.setAttribute("aria-label", "New version");
+    document.querySelector(".stage").append(w);
+  }
+  const mb = u.zip_size ? ` (${(u.zip_size / 1e6).toFixed(1)} MB)` : "";
+  w.innerHTML = `<div class="drawer-head"><b>New version ${escHtml(u.latest)}</b><button class="key small" id="updX">✕</button></div>
+    <div class="drawer-body">
+      <p>RADIMCOM <b>${escHtml(u.latest)}</b> is out${u.published ? ` (${u.published.slice(0, 10)})` : ""}; this one is ${escHtml(u.current)}.
+        <a href="${escHtml(u.url)}" target="_blank" rel="noopener noreferrer">What is new</a></p>
+      ${u.can_upgrade
+        ? `<p class="muted small">UPGRADE downloads the upgrade zip${mb}, closes the receiver, installs it in its own window
+            (with upgrade.bat) and starts RADIMCOM again; this page then reloads. The data folder and the settings stay.
+            It takes about a minute.</p>`
+        : `<p class="note warn">No automatic upgrade here: ${escHtml(u.why_not || "")}.</p>`}
+      <p class="note error" id="updErr" hidden></p>
+      <div class="upd-keys">
+        ${u.can_upgrade ? '<button class="key" id="updGo">UPGRADE</button>' : `<a class="key" href="${escHtml(u.url)}" target="_blank" rel="noopener noreferrer">RELEASE PAGE</a>`}
+        <button class="key" id="updLater" title="Ask again at the next start of RADIMCOM">LATER</button>
+        <button class="key" id="updSkip" title="Do not ask again for ${escHtml(u.latest)}; the note beside the version stays">SKIP THIS VERSION</button>
+      </div>
+    </div>`;
+  w.hidden = false;
+  const close = () => { w.hidden = true; };
+  $("updX").onclick = close;
+  $("updLater").onclick = () => { store("updLater", String(u.checked)); close(); };
+  $("updSkip").onclick = () => { store("updSkip", u.latest); close(); };
+  if ($("updGo")) $("updGo").onclick = () => updStart(u);
+}
+
+async function updStart(u) {
+  const body = $("updWin").querySelector(".drawer-body");
+  const say = (html) => { body.innerHTML = `<p>${html}</p>`; };
+  try {
+    await updFetch({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ upgrade: true }) });
+  } catch (e) {
+    $("updErr").textContent = e.message;
+    $("updErr").hidden = false;
+    return;
+  }
+  say("Downloading…");
+  const t0 = Date.now();
+  let down = false;
+  const poll = async () => {
+    let s = null;
+    try { s = await updFetch(); } catch (e) { down = true; }
+    if (s && s.current && s.current !== u.current) { location.reload(); return; }     // the new version answers
+    if (s && s.upgrade_error) { say(`<span class="error">Upgrade failed: ${escHtml(s.upgrade_error)}</span>`); return; }
+    if (s && s.state === "downloading") {
+      say(`Downloading… ${s.got ? (s.got / 1e6).toFixed(1) : 0}${u.zip_size ? ` of ${(u.zip_size / 1e6).toFixed(1)}` : ""} MB`);
+    } else if (down || (s && s.state === "installing")) {
+      say(`Installing ${escHtml(u.latest)} in the window "RADIMCOM upgrade"… This page reloads when RADIMCOM runs again.`);
+    }
+    if (Date.now() - t0 > 600000) {
+      say("RADIMCOM did not come back within 10 minutes: look at the window \"RADIMCOM upgrade\", then start RADIMCOM by hand.");
+      return;
+    }
+    setTimeout(poll, down ? 3000 : 1000);
+  };
+  setTimeout(poll, 1000);
+}
+
 async function init() {
+  checkUpdate();
   // With the VFO launcher the page gets the VFO list; a standalone receiver has no list (one VFO without the bar).
   let list = null;
   try {
