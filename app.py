@@ -1032,7 +1032,8 @@ def api_memory_add():
         ch = b.get("dab_channel")
         if ch is not None and ch not in CHANNEL_HZ:
             raise ValueError("unknown DAB channel")
-        m = memories.make(b.get("name", ""), b.get("group", ""), CHANNEL_HZ[ch] if ch else b["freq_hz"], b["mode"], b.get("bw", 3000))
+        m = memories.make(b.get("name", ""), b.get("group", ""), CHANNEL_HZ[ch] if ch else b["freq_hz"], b["mode"], b.get("bw", 3000),
+                          b.get("fav", False))
         if ch:
             m["dab_channel"] = ch                # a recall turns DAB on with this channel
     except (KeyError, TypeError, ValueError) as e:
@@ -1072,9 +1073,28 @@ def api_memory_import_json():
     return jsonify({"added": added, "skipped": skipped})
 
 
+@app.route("/api/memories/bulk", methods=["POST"])
+def api_memory_bulk():
+    """Several memories at once: {"ids": [...], "delete": true} or {"ids": [...], "changes": {"group": ..., "fav": ...}}."""
+    b = request.get_json(force=True, silent=True) or {}
+    ids = b.get("ids")
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "ids missing"}), 400
+    if b.get("delete"):
+        return jsonify({"deleted": memories.delete_many(ids)})
+    try:
+        changed = memories.update_many(ids, b.get("changes"), CHANNEL_HZ)
+    except (KeyError, TypeError, ValueError, OverflowError) as e:
+        return jsonify({"error": str(e) or "invalid entry"}), 400
+    return jsonify({"changed": changed})
+
+
 @app.route("/api/memories/<mid>", methods=["PATCH"])
 def api_memory_update(mid):
-    m = memories.update(mid, request.get_json(force=True))
+    try:
+        m = memories.update(mid, request.get_json(force=True), CHANNEL_HZ)
+    except (KeyError, TypeError, ValueError, OverflowError) as e:
+        return jsonify({"error": str(e) or "invalid entry"}), 400
     return (jsonify(m), 200) if m else (jsonify({"error": "not found"}), 404)
 
 

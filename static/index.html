@@ -765,12 +765,28 @@
       <input id="memGroupNew" placeholder="Group" maxlength="40" list="memGroups" autocomplete="off">
       <datalist id="memGroups"></datalist>
       <button id="memSave" class="key accent" title="Saves the tuned frequency, mode and bandwidth">＋ SAVE CURRENT</button>
+      <button id="memNew" class="key" title="New memory with a frequency, mode and bandwidth you enter (filled in from the tuner)">＋ NEW…</button>
       <p id="memError" class="note error" hidden></p>
     </div>
     <div class="mem-filter">
       <input id="memSearch" type="search" placeholder="Search name or kHz…" autocomplete="off">
       <select id="memGroup" aria-label="Group"></select>
+      <button id="memGroupRename" class="key small" title="Renames the selected group (all its memories)" hidden>✎</button>
+      <select id="memSort" aria-label="Sort" title="Sort the list">
+        <option value="freq">by frequency</option><option value="name">by name</option><option value="group">by group</option>
+      </select>
       <label class="switch small"><input id="memFav" type="checkbox"><span></span> ★</label>
+      <button id="memSelect" class="key small" title="Select several memories to move, star or delete them together">☑ SELECT</button>
+    </div>
+    <div class="mem-bulk" id="memBulk" hidden>
+      <span id="memBulkCount" class="muted">0 selected</span>
+      <button id="memBulkAll" class="key small" title="Selects every memory in the list (filter applies)">ALL</button>
+      <button id="memBulkNone" class="key small" title="Clears the selection">NONE</button>
+      <input id="memBulkGroup" placeholder="Group" maxlength="40" list="memGroups" autocomplete="off">
+      <button id="memBulkMove" class="key small" title="Moves the selected memories to this group">MOVE</button>
+      <button id="memBulkFav" class="key small" title="Stars the selected memories">★</button>
+      <button id="memBulkUnfav" class="key small" title="Removes the star from the selected memories">☆</button>
+      <button id="memBulkDel" class="key small danger" title="Deletes the selected memories">DELETE</button>
     </div>
     <div class="mem-list" id="memList"></div>
     <details class="mem-io" id="memIo">

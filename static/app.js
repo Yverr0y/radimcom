@@ -5636,35 +5636,162 @@ function renderMemGroups() {
   updateExportLabel();
 }
 
-function renderMems() {
-  drawOverlays();   // memory tags in the spectrum
-  renderVfoDisplays();   // memory name above each VFO
+// Editing in the MEM window: one memory edited in its row (✎), a new one entered by hand (＋ NEW…), several selected
+// together (☑ SELECT) to move, star or delete them.
+const MEM_MODES = ["AM", "FM", "WFM", "LSB", "USB", "CW", "DSD"];
+let memEditId = null;        // id of the memory edited in its row, "new" for ＋ NEW…, null = none
+let memDraft = null;         // values in the open edit form (text as typed), kept when the list is drawn again
+let memFocus = false;        // focus the name when the form is drawn next
+let memSelecting = false;    // ☑ SELECT on
+const memSelected = new Set();
+let dabChannelList = [];     // [[channel, centre Hz]] from /api/state
+
+function memFiltered() {
   const q = $("memSearch").value.trim().toLowerCase();
   const group = $("memGroup").value;
   const favOnly = $("memFav").checked;
-  const list = mems.filter((m) => (!group || m.group === group) && (!favOnly || m.fav) &&
-    (!q || m.name.toLowerCase().includes(q) || fmtKHz(m.freq_hz, 3).replace(/\s/g, "").includes(q.replace(/\s/g, ""))))
-    .sort((a, b) => a.freq_hz - b.freq_hz);
+  const sort = $("memSort").value;
+  const byFreq = (a, b) => a.freq_hz - b.freq_hz;
+  const byName = (a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || byFreq(a, b);
+  const cmp = sort === "name" ? byName : sort === "group" ? (a, b) => a.group.localeCompare(b.group, "en") || byFreq(a, b) : byFreq;
+  return mems.filter((m) => (!group || m.group === group) && (!favOnly || m.fav) &&
+    (!q || m.name.toLowerCase().includes(q) || m.group.toLowerCase().includes(q) ||
+      fmtKHz(m.freq_hz, 3).replace(/\s/g, "").includes(q.replace(/\s/g, ""))))
+    .sort(cmp);
+}
+
+/** id -> names of the other memories on the same frequency (within 50 Hz) and mode, or the same DAB channel. */
+function memDuplicates() {
+  const dups = new Map();
+  const sorted = [...mems].sort((a, b) => a.freq_hz - b.freq_hz);
+  for (let i = 0; i < sorted.length; i++) {
+    for (let j = i + 1; j < sorted.length && sorted[j].freq_hz - sorted[i].freq_hz < 50; j++) {
+      const a = sorted[i], b = sorted[j];
+      if (a.mode !== b.mode || (a.dab_channel || "") !== (b.dab_channel || "")) continue;
+      for (const [x, y] of [[a, b], [b, a]]) dups.set(x.id, [...(dups.get(x.id) || []), y.name]);
+    }
+  }
+  return dups;
+}
+
+/** Opens the edit form for a memory (or a new one: m without id). */
+function memOpenEdit(m) {
+  const open = $("memList").querySelector(".mem-edit");
+  if (open) open.remove();   // another open form is dropped, not read into this one
+  memEditId = m.id || "new";
+  memDraft = { name: m.name, group: m.group, freq: fmtMHz(m.freq_hz, 6), mode: m.mode,
+    bw: (m.bw / 1000).toLocaleString(LOCALE, { maximumFractionDigits: 3, useGrouping: false }), dab: m.dab_channel || "" };
+  memFocus = true;
+  renderMems();
+}
+
+function memCloseEdit() {
+  memEditId = memDraft = null;
+  renderMems();
+}
+
+/** Reads the open form into memDraft (before the list is drawn again or saved). */
+function memReadForm() {
+  const form = $("memList").querySelector(".mem-edit");
+  if (!form || !memDraft) return;
+  for (const el of form.querySelectorAll("[data-f]")) memDraft[el.dataset.f] = el.value;
+}
+
+function memEditHtml() {
+  const d = memDraft;
+  const isNew = memEditId === "new";
+  return `<div class="mem-edit${isNew ? " new" : ""}" data-id="${memEditId}">` +
+    `<input data-f="name" value="${escHtml(d.name)}" placeholder="Memory name" maxlength="80" autocomplete="off" title="Name">` +
+    `<input data-f="group" value="${escHtml(d.group)}" placeholder="Group" maxlength="40" list="memGroups" autocomplete="off" title="Group (pick one or type a new one)">` +
+    `<input data-f="freq" value="${escHtml(d.freq)}" placeholder="MHz" autocomplete="off" spellcheck="false" ${d.dab ? "disabled" : ""} ` +
+    `title="Frequency: MHz, or with a unit: 7100k, 145.5M, 7100000Hz">` +
+    `<select data-f="mode" title="Mode">${MEM_MODES.map((x) => `<option${x === d.mode ? " selected" : ""}>${x}</option>`).join("")}</select>` +
+    `<label class="mem-edit-bw" title="Bandwidth in kHz (clamped to the range of the mode)"><input data-f="bw" value="${escHtml(d.bw)}" autocomplete="off"> kHz</label>` +
+    `<select data-f="dab" title="DAB channel: recalling the memory turns DAB on with this channel">` +
+    `<option value="">no DAB</option>${dabChannelList.map(([n, f]) => `<option value="${escHtml(n)}"${n === d.dab ? " selected" : ""}>DAB ${escHtml(n)} · ${fmtMHz(f, 3)}</option>`).join("")}</select>` +
+    `<button class="key small accent" data-save>${isNew ? "＋ ADD" : "SAVE"}</button><button class="key small" data-cancel>CANCEL</button>` +
+    `<p class="note error" data-err${d.err ? "" : " hidden"}>${escHtml(d.err || "")}</p></div>`;
+}
+
+/** Saves the open form: PATCH for an existing memory, POST for a new one. */
+async function memSaveEdit() {
+  memReadForm();
+  const d = memDraft;
+  d.err = "";
+  const fail = (text) => {
+    d.err = text;
+    if (!(document.activeElement && document.activeElement.closest(".mem-edit [data-f]"))) memFocus = true;   // e.g. after a click on SAVE
+    renderMems();
+  };
+  const freq = d.dab ? null : parseFreq(d.freq);
+  const bw = parseFloat(String(d.bw).replace(",", ".")) * 1000;
+  if (!d.name.trim()) return fail("Enter a name.");
+  if (!d.dab && !freq) return fail("Enter a frequency, e.g. 145.5 or 7100k.");
+  if (!(bw > 0)) return fail("Enter the bandwidth in kHz.");
+  const body = { name: d.name.trim(), group: d.group.trim() || "My", mode: d.mode, bw: Math.round(bw),
+    ...(d.dab ? { dab_channel: d.dab } : { freq_hz: Math.round(freq), ...(memEditId === "new" ? {} : { dab_channel: null }) }) };
+  const isNew = memEditId === "new";
+  try {
+    const res = await fetch(isNew ? vbase + "/api/memories" : `${vbase}/api/memories/${memEditId}`,
+      { method: isNew ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return fail(data.error || `Error (HTTP ${res.status}${res.status === 400 && !isNew ? " – restart RADIMCOM to load the new version" : ""})`);
+    if (isNew) mems.push(data);
+    else mems = mems.map((x) => (x.id === data.id ? data : x));
+  } catch (e) {
+    return fail("Error: " + e.message);
+  }
+  memEditId = memDraft = null;
+  renderMemGroups();
+  renderMems();
+}
+
+function renderMems() {
+  drawOverlays();   // memory tags in the spectrum
+  renderVfoDisplays();   // memory name above each VFO
+  const group = $("memGroup").value;
+  const sort = $("memSort").value;
+  const list = memFiltered();
+  for (const id of [...memSelected]) if (!mems.some((m) => m.id === id)) memSelected.delete(id);
   $("memCount").textContent = `${list.length} / ${mems.length}`;
+  $("memGroupRename").hidden = !group;
+  $("memSelect").classList.toggle("on", memSelecting);
+  $("memBulk").hidden = !memSelecting;
+  $("memBulkCount").textContent = `${memSelected.size} selected`;
+  for (const id of ["memBulkMove", "memBulkFav", "memBulkUnfav", "memBulkDel", "memBulkNone"]) $(id).disabled = !memSelected.size;
+  memReadForm();   // keep what is typed in the open form, and the field with the focus
+  const focused = document.activeElement && document.activeElement.closest(".mem-edit") ? document.activeElement.dataset.f : null;
+  if (memEditId && memEditId !== "new" && !mems.some((m) => m.id === memEditId)) memEditId = memDraft = null;
+  let html = memEditId === "new" ? memEditHtml() : "";
   if (!list.length) {
-    $("memList").innerHTML = `<div class="mem-empty">${mems.length ? "Nothing matches the filter." : "No memories yet."}</div>`;
+    $("memList").innerHTML = html + `<div class="mem-empty">${mems.length ? "Nothing matches the filter." : "No memories yet."}</div>`;
+    if (memFocus && html) { memFocus = false; $("memList").querySelector("[data-f=name]").focus(); }
     return;
   }
-  // When all groups are shown, group by band (MHz), otherwise the list is just sorted.
-  let html = "";
-  let lastMhz = null;
+  const dups = memDuplicates();
+  // Headings: by band (MHz) when sorted by frequency and all groups are shown, by group when sorted by group.
+  let last = null;
   for (const m of list) {
-    const mhz = Math.floor(m.freq_hz / 1e6);
-    if (!group && mhz !== lastMhz) { html += `<div class="mem-group">${mhz} MHz</div>`; lastMhz = mhz; }
-    html += `<div class="mem" data-id="${m.id}" title="${escHtml(m.name)} · ${escHtml(m.group)} · ${fmtBw(m.bw)}">` +
+    const head = sort === "group" ? m.group : sort === "freq" && !group ? `${Math.floor(m.freq_hz / 1e6)} MHz` : null;
+    if (head !== null && head !== last) { html += `<div class="mem-group">${escHtml(head)}</div>`; last = head; }
+    if (m.id === memEditId) { html += memEditHtml(); continue; }
+    const dup = dups.get(m.id);
+    html += `<div class="mem${memSelecting ? " selecting" : ""}${memSelected.has(m.id) ? " selected" : ""}" data-id="${m.id}" ` +
+      `title="${escHtml(m.name)} · ${escHtml(m.group)} · ${fmtBw(m.bw)}">` +
+      (memSelecting ? `<input type="checkbox" data-pick ${memSelected.has(m.id) ? "checked" : ""} aria-label="Select">` : "") +
       `<button class="star${m.fav ? " on" : ""}" data-star aria-label="Favourite">${m.fav ? "★" : "☆"}</button>` +
-      `<span class="name">${escHtml(m.name)}</span>` +
+      `<span class="name">${escHtml(m.name)}${dup ? `<i class="dup" title="Same frequency and mode as: ${escHtml(dup.join(", "))}">⧉</i>` : ""}</span>` +
       `<span class="meta">${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} M` : fmtKHz(m.freq_hz, 2)}<b>${m.dab_channel ? `DAB ${escHtml(m.dab_channel)}` : m.mode}</b></span>` +
+      `<button class="edit" data-edit aria-label="Edit" title="Edit">✎</button>` +
       `<button class="del" data-del aria-label="Delete">×</button></div>`;
   }
   $("memList").innerHTML = html;
+  const form = $("memList").querySelector(".mem-edit");
+  if (form && memFocus) { memFocus = false; form.querySelector("[data-f=name]").focus(); form.scrollIntoView({ block: "nearest" }); }
+  else if (form && focused) form.querySelector(`[data-f=${focused}]`)?.focus();
   markActiveMem();
 }
+
 
 /** Memory on the frequency of a VFO (same tolerance as the MEM list). More on one frequency: same mode first, then favourite. */
 function memAt(hz, mode) {
@@ -5687,8 +5814,14 @@ function markActiveMem() {
 }
 
 $("memList").addEventListener("click", async (e) => {
+  const form = e.target.closest(".mem-edit");
+  if (form) {
+    if (e.target.closest("[data-save]")) memSaveEdit();
+    else if (e.target.closest("[data-cancel]")) memCloseEdit();
+    return;
+  }
   const row = e.target.closest(".mem");
-  if (!row || !st) return;
+  if (!row) return;
   const m = mems.find((x) => x.id === row.dataset.id);
   if (!m) return;
   if (e.target.closest("[data-del]")) {
@@ -5703,8 +5836,96 @@ $("memList").addEventListener("click", async (e) => {
     fetch(`${vbase}/api/memories/${m.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fav: m.fav }) });
     return;
   }
-  recallMem(m);
+  if (e.target.closest("[data-edit]")) { memOpenEdit(m); return; }
+  if (memSelecting) {   // a click anywhere on the row selects it
+    if (memSelected.has(m.id)) memSelected.delete(m.id); else memSelected.add(m.id);
+    renderMems();
+    return;
+  }
+  if (st) recallMem(m);
 });
+$("memList").addEventListener("dblclick", (e) => {   // double click on a row: edit
+  const row = !memSelecting && e.target.closest(".mem");
+  const m = row && !e.target.closest("button") && mems.find((x) => x.id === row.dataset.id);
+  if (m) memOpenEdit(m);
+});
+$("memList").addEventListener("keydown", (e) => {
+  if (!e.target.closest(".mem-edit")) return;
+  if (e.key === "Enter") { e.preventDefault(); memSaveEdit(); }
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); memCloseEdit(); }
+});
+$("memList").addEventListener("change", (e) => {
+  const f = e.target.closest(".mem-edit") && e.target.dataset.f;
+  if (f === "dab") { memReadForm(); renderMems(); }   // the frequency field is off with a DAB channel
+  if (f === "mode" && st && st.bandwidth && st.bandwidth[e.target.value]) {   // the width used last in that mode
+    memReadForm();
+    memDraft.bw = (st.bandwidth[e.target.value] / 1000).toLocaleString(LOCALE, { maximumFractionDigits: 3, useGrouping: false });
+    renderMems();
+  }
+});
+$("memNew").addEventListener("click", () => {
+  memOpenEdit({ name: $("memName").value.trim(), group: $("memGroupNew").value.trim() || $("memGroup").value || "My",
+    freq_hz: st ? st.tune_hz : 0, mode: st && MEM_MODES.includes(st.mode) ? st.mode : "AM",
+    bw: st && st.bandwidth ? st.bandwidth[st.mode] || 3000 : 3000 });
+});
+
+// Several memories at once
+async function memBulk(body, what) {
+  const ids = [...memSelected];
+  if (!ids.length) return;
+  try {
+    const res = await fetch(vbase + "/api/memories/bulk", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids, ...body }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      memIoNote(data.error || `${what} failed (HTTP ${res.status}${res.status === 404 || res.status === 405 ? " – restart RADIMCOM to load the new version" : ""})`, true);
+      $("memIo").open = true;
+      return false;
+    }
+  } catch (e) {
+    memIoNote(`${what} failed: ${e.message}`, true);
+    $("memIo").open = true;
+    return false;
+  }
+  await loadMems();
+  return true;
+}
+$("memSelect").addEventListener("click", () => {
+  memSelecting = !memSelecting;
+  if (!memSelecting) memSelected.clear();
+  renderMems();
+});
+$("memBulkAll").addEventListener("click", () => { for (const m of memFiltered()) memSelected.add(m.id); renderMems(); });
+$("memBulkNone").addEventListener("click", () => { memSelected.clear(); renderMems(); });
+$("memBulkMove").addEventListener("click", async () => {
+  const group = $("memBulkGroup").value.trim();
+  if (!group) { $("memBulkGroup").focus(); return; }
+  if (await memBulk({ changes: { group } }, "Move")) $("memBulkGroup").value = "";
+});
+$("memBulkGroup").addEventListener("keydown", (e) => { if (e.key === "Enter") $("memBulkMove").click(); });
+$("memBulkFav").addEventListener("click", () => memBulk({ changes: { fav: true } }, "Star"));
+$("memBulkUnfav").addEventListener("click", () => memBulk({ changes: { fav: false } }, "Star"));
+$("memBulkDel").addEventListener("click", async () => {
+  const n = memSelected.size;
+  if (!n || !confirm(`Delete ${n} selected memor${n === 1 ? "y" : "ies"}?`)) return;
+  if (await memBulk({ delete: true }, "Delete")) memSelected.clear();
+  renderMems();
+});
+$("memGroupRename").addEventListener("click", async () => {
+  const old = $("memGroup").value;
+  if (!old) return;
+  const name = (prompt(`New name of the group "${old}":`, old) || "").trim().slice(0, 40);
+  if (!name || name === old) return;
+  const ids = mems.filter((m) => m.group === old).map((m) => m.id);
+  const res = await fetch(vbase + "/api/memories/bulk", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ids, changes: { group: name } }) }).catch(() => null);
+  if (!res || !res.ok) { memIoNote("Renaming the group failed" + (res ? ` (HTTP ${res.status})` : ""), true); $("memIo").open = true; return; }
+  $("memGroup").value = "";
+  store("memGroup", name);
+  await loadMems();   // renderMemGroups picks the renamed group from storage
+});
+$("memSort").value = recall("memSort") || "freq";
+$("memSort").addEventListener("change", () => { store("memSort", $("memSort").value); renderMems(); });
 
 /** Recall a memory: frequency, mode and bandwidth (on a VFO that can receive the frequency). A DAB memory: DAB on with its channel. */
 async function recallMem(m) {
@@ -6626,6 +6847,7 @@ async function init() {
   }
   sampleRates = info.sample_rates;
   renderFt8Bands(info.ft8_freqs);
+  dabChannelList = info.dab_channels || [];
   $("dabChannel").innerHTML = (info.dab_channels || []).map(([n, f]) => `<option value="${n}">${n} · ${fmtMHz(f, 3)}</option>`).join("");
   $("ismBands").innerHTML = (info.ism_freqs || []).map((f) => `<button data-f="${f}" title="Centre the VFO on ${fmtMHz(f, 2)} MHz">${fmtMHz(f, 2)}</button>`).join("");
   linkFreqs = { acars: info.acars_freqs || [], vdl2Center: info.vdl2_center || 136500000,

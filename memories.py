@@ -71,18 +71,62 @@ def add(entry):
     return entry
 
 
-def update(mid, changes):
+FIELDS = ("name", "group", "freq_hz", "mode", "bw", "fav", "dab_channel")
+
+
+def _apply(m, changes, dab_channels):
+    """Memory m with the changes applied and validated like a new entry (same id); ValueError on invalid data.
+    dab_channel: a channel name sets the frequency to its centre, None or "" removes it."""
+    unknown = set(changes) - set(FIELDS)
+    if unknown:
+        raise ValueError(f"unknown field: {', '.join(sorted(unknown))}")
+    merged = dict(m, **changes)
+    ch = merged.get("dab_channel") or None
+    if ch is not None and ch not in dab_channels:
+        raise ValueError("unknown DAB channel")
+    if "name" in changes and not str(changes["name"]).strip():
+        raise ValueError("name is missing")
+    new = make(merged["name"], merged["group"], dab_channels[ch] if ch else merged["freq_hz"],
+               merged["mode"], merged["bw"], merged.get("fav", False))
+    new["id"] = m["id"]
+    if ch:
+        new["dab_channel"] = ch
+    return new
+
+
+def update(mid, changes, dab_channels=None):
+    """Changes any of FIELDS of one memory. Returns the memory, None if not found; ValueError on invalid data."""
+    return (update_many([mid], changes, dab_channels) or [None])[0]
+
+
+def update_many(ids, changes, dab_channels=None):
+    """Applies the same changes to every memory in ids (e.g. a new group, or fav). All or nothing: ValueError if any
+    entry would be invalid. Returns the changed memories; ids that do not exist are ignored."""
+    if not isinstance(changes, dict) or not changes:
+        raise ValueError("nothing to change")
+    ids = set(ids)
     with _lock:
         items = load()
-        for m in items:
-            if m["id"] == mid:
-                if "fav" in changes:
-                    m["fav"] = bool(changes["fav"])
-                if "name" in changes and str(changes["name"]).strip():
-                    m["name"] = str(changes["name"]).strip()[:80]
-                _save(items)
-                return m
-    return None
+        changed = []
+        for i, m in enumerate(items):
+            if m["id"] in ids:
+                items[i] = _apply(m, changes, dab_channels or {})
+                changed.append(items[i])
+        if changed:
+            items.sort(key=lambda m: m["freq_hz"])
+            _save(items)
+    return changed
+
+
+def delete_many(ids):
+    """Deletes every memory in ids. Returns how many were deleted."""
+    ids = set(ids)
+    with _lock:
+        items = load()
+        keep = [m for m in items if m["id"] not in ids]
+        if len(keep) != len(items):
+            _save(keep)
+    return len(items) - len(keep)
 
 
 def delete(mid):
