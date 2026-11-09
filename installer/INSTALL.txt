@@ -96,8 +96,8 @@ Main Features
   Import from SDR#, JSON or CSV and export to JSON or CSV, both through a list to edit and choose from first.
   New file data\memory_groups.json; memories.json is copied to memories.json.bak before the first change.
 Minor Fixes
-- Editing in MEM: the pencil on a row (or a double click) edits a memory in place; NEW... adds a memory with a frequency
-  typed in by hand; SELECT moves, stars or deletes several memories at once; the pencil next to the group filter renames a group.
+- The MEM window is now only the list to recall memories from: SAVE CURRENT and NEW open the new channel in the editor,
+  import and export moved to the editor.
 
 Ver. 0.112
 Main Features

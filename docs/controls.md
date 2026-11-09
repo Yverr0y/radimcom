@@ -136,21 +136,14 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
     - Touchpad wheel speed (1–10, default 4; left = slower), remembered in the browser for all VFOs. A mouse wheel notch is always one step.
   - **ROTOR**: antenna rotor, see [Satellite tracking](satellites.md).
   - **TX** (LimeSDR only): Enable TX, see [Transmitting (LimeSDR)](configuration.md#transmitting-limesdr).
-- **MENU → MEM**: frequency memories with groups, search and favourites. ＋ SAVE CURRENT stores the frequency,
-  mode and width under a name and group; ＋ NEW… stores a frequency, mode and width typed in by hand; ★ marks a favourite.
-  **✎** on a row (or a double click) edits the memory in place: name, groups (several: `A | B`), frequency (MHz, or `7100k`, `145.5M`),
-  mode, bandwidth in kHz and DAB channel; Enter saves, Esc cancels. **☑ SELECT** adds check boxes to the rows to move
-  the selected memories to a group, star or unstar them, or delete them together (ALL selects the filtered list).
-  **✎** next to the group filter renames the group. The list sorts by frequency, name or group; the search matches
-  the name, the group or the kHz; **⧉** marks a memory on the same frequency and mode as another one.
-  **✎ EDITOR** opens the [memory editor](#memory-editor). With DAB on it stores the DAB channel too (shown as `DAB 12C` in the list): recalling that memory turns DAB on with the channel, and the last station of the channel plays. Recalling any other memory ends DAB.
-  Memories in the visible part of the spectrum show their name on a green tag at the top of the spectrum;
-  click a tag to recall the memory.
-  **Import / export** (at the bottom of the window): ⇧ IMPORT SDR# imports memories from the SDR# installation folder
-  (`frequencies.xml` there and in profile subfolders such as `Instances\Profile1`; duplicates are skipped).
-  ⇧ IMPORT JSON imports a JSON file in the format of EXPORT (duplicates and invalid entries are skipped).
-  ⇩ EXPORT ★ downloads the starred memories, ⇩ EXPORT &lt;group&gt; the selected group (All = every memory), as JSON.
-  For a list to check first, use the IMPORT and EXPORT tabs of the editor.
+- **MENU → MEM**: the list of frequency memories to recall them: a click tunes the memory (frequency, mode, width;
+  a DAB memory turns DAB on with its channel, and the decoder of a memory is switched on). Search the name, group or kHz,
+  show one group, sort by frequency, name or group, or only the starred ones (★). ⧉ marks a memory on the same frequency
+  and mode as another one. **＋ SAVE CURRENT** opens the [memory editor](#memory-editor) with the tuned frequency, mode and
+  width (and DAB channel) filled in, **＋ NEW** with an empty channel, **✎ EDITOR** the editor itself: adding, editing,
+  deleting, groups, import and export are all there.
+  Memories in the visible part of the spectrum show their name on a tag at the top of the spectrum (green, or the colour
+  chosen in the editor); click a tag to recall the memory.
 
 - **MENU → BAND**: shows or hides the row of band keys; the spectrum and waterfall take the freed space. Remembered in the browser.
 

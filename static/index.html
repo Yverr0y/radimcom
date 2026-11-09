@@ -761,51 +761,19 @@
   <div class="drawer-head"><b>MEM · Memories</b><span id="memCount" class="muted"></span><button class="key small" data-close>✕</button></div>
   <div class="drawer-body memories">
     <div class="mem-add">
-      <input id="memName" placeholder="Memory name" maxlength="80" autocomplete="off">
-      <input id="memGroupNew" placeholder="Group" maxlength="40" list="memGroups" autocomplete="off">
-      <datalist id="memGroups"></datalist>
-      <button id="memSave" class="key accent" title="Saves the tuned frequency, mode and bandwidth">＋ SAVE CURRENT</button>
-      <button id="memNew" class="key" title="New memory with a frequency, mode and bandwidth you enter (filled in from the tuner)">＋ NEW…</button>
-      <button id="memEdKey" class="key" title="Memory editor: channels, groups with notes, import and export with a list to check first">✎ EDITOR</button>
-      <p id="memError" class="note error" hidden></p>
+      <button id="memSave" class="key accent" title="Opens the editor with the tuned frequency, mode and bandwidth (and DAB channel) to save">＋ SAVE CURRENT</button>
+      <button id="memNew" class="key" title="Opens the editor with an empty channel to fill in">＋ NEW</button>
+      <button id="memEdKey" class="key" title="Memory editor: channels, groups with notes, import and export">✎ EDITOR</button>
     </div>
     <div class="mem-filter">
-      <input id="memSearch" type="search" placeholder="Search name or kHz…" autocomplete="off">
+      <input id="memSearch" type="search" placeholder="Search name, group or kHz…" autocomplete="off">
       <select id="memGroup" aria-label="Group"></select>
-      <button id="memGroupRename" class="key small" title="Renames the selected group (all its memories)" hidden>✎</button>
       <select id="memSort" aria-label="Sort" title="Sort the list">
         <option value="freq">by frequency</option><option value="name">by name</option><option value="group">by group</option>
       </select>
-      <label class="switch small"><input id="memFav" type="checkbox"><span></span> ★</label>
-      <button id="memSelect" class="key small" title="Select several memories to move, star or delete them together">☑ SELECT</button>
-    </div>
-    <div class="mem-bulk" id="memBulk" hidden>
-      <span id="memBulkCount" class="muted">0 selected</span>
-      <button id="memBulkAll" class="key small" title="Selects every memory in the list (filter applies)">ALL</button>
-      <button id="memBulkNone" class="key small" title="Clears the selection">NONE</button>
-      <input id="memBulkGroup" placeholder="Group" maxlength="40" list="memGroups" autocomplete="off">
-      <button id="memBulkMove" class="key small" title="Moves the selected memories to this group">MOVE</button>
-      <button id="memBulkFav" class="key small" title="Stars the selected memories">★</button>
-      <button id="memBulkUnfav" class="key small" title="Removes the star from the selected memories">☆</button>
-      <button id="memBulkDel" class="key small danger" title="Deletes the selected memories">DELETE</button>
+      <label class="switch small" title="Only the starred memories"><input id="memFav" type="checkbox"><span></span> ★</label>
     </div>
     <div class="mem-list" id="memList"></div>
-    <details class="mem-io" id="memIo">
-      <summary>Import / export</summary>
-      <label class="mem-io-label" for="memSdrPath">SDR# installation folder</label>
-      <div class="mem-io-row">
-        <input id="memSdrPath" placeholder="C:\sdrsharp" autocomplete="off" spellcheck="false"
-          title="SDR# folder: frequencies.xml is read from it and from profile subfolders (e.g. Instances\Profile1). Or a single profile folder / frequencies.xml">
-        <button id="memImport" class="key" title="Imports the memories from frequencies.xml; duplicates are skipped">⇧ IMPORT SDR#</button>
-        <button id="memImportJson" class="key" title="Imports memories from a JSON file (the format of EXPORT); duplicates are skipped">⇧ IMPORT JSON</button>
-        <input id="memJsonFile" type="file" accept=".json,application/json" hidden>
-      </div>
-      <div class="mem-io-row two">
-        <button id="memExportFav" class="key" title="Downloads the starred memories as a JSON file">⇩ EXPORT ★</button>
-        <button id="memExportGroup" class="key" title="Downloads the group selected above (All = every memory)">⇩ EXPORT ALL</button>
-      </div>
-      <p id="memIoNote" class="note" hidden></p>
-    </details>
   </div>
 </aside>
 

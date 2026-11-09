@@ -1045,17 +1045,11 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 /* MEM: narrow and tall, the list scrolls inside it */
 .mem-win { right: 1%; width: 480px; height: 85%; }
 .memories { gap: 10px; }
-.mem-add { display: grid; grid-template-columns: 1fr 100px; gap: 6px; }
+.mem-add { display: grid; grid-template-columns: 1fr auto auto; gap: 6px; }
 .mem-add .note { grid-column: 1 / -1; }
-#memNew { white-space: nowrap; }
-.mem-add input, .mem-filter input, .mem-filter select { width: 100%; min-width: 0; padding: 6px 9px; font-size: 13px; }
-.mem-filter { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto auto; gap: 6px; align-items: center; }
+.mem-filter { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
+.mem-filter input, .mem-filter select { width: 100%; min-width: 0; padding: 6px 9px; font-size: 13px; }
 .mem-filter select#memSort { width: auto; }
-#memGroupRename[hidden] + select { grid-column-start: 3; }
-#memSelect.on { color: #1a1400; background: linear-gradient(180deg, #ffe27a, #e8b928); border-color: #f3cf55; }
-.mem-bulk { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px; border: 1px solid var(--line2); border-radius: 6px; background: #0b0e12; }
-.mem-bulk input { flex: 1; min-width: 80px; padding: 4px 8px; font-size: 12px; }
-.mem-bulk #memBulkCount { font-size: 12px; margin-right: auto; }
 .key.danger:not(:disabled):hover { color: var(--red); border-color: var(--red); }
 .mem-filter input[type=search] { grid-column: 1 / -1; }
 .switch.small { gap: 6px; font-size: 13px; color: var(--amber); }
@@ -1063,7 +1057,7 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .mem-group { position: sticky; top: 0; z-index: 1; padding: 6px 2px 4px; font-size: 10px; text-transform: uppercase;
   letter-spacing: .08em; color: var(--dim); background: #0e1216; }
 .mem {
-  display: grid; grid-template-columns: 16px minmax(0, 1fr) auto 18px 18px; align-items: center; gap: 6px;
+  display: grid; grid-template-columns: 14px minmax(0, 1fr) auto; align-items: center; gap: 6px;
   padding: 5px 6px; border-radius: 4px; cursor: pointer;
 }
 .mem:hover { background: #1a2028; }
@@ -1073,38 +1067,8 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .mem .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .mem .meta { font: 12px ui-monospace, Consolas, monospace; color: var(--muted); text-align: right; white-space: nowrap; }
 .mem .meta b { color: var(--green); font-weight: 600; margin-left: 4px; }
-.mem.selecting { grid-template-columns: 16px 16px minmax(0, 1fr) auto 18px 18px; }
-.mem.selected { background: rgba(110, 170, 255, .12); }
-.mem input[type=checkbox] { margin: 0; accent-color: var(--yellow); }
 .mem .dup { margin-left: 6px; font-style: normal; color: var(--amber); font-size: 12px; cursor: help; }
-.mem .del, .mem .edit { border: none; background: none; padding: 0; color: var(--dim); font-size: 15px; line-height: 1; visibility: hidden; }
-.mem .edit { font-size: 13px; }
-.mem:hover .del, .mem:hover .edit { visibility: visible; }
-.mem .del:hover { color: var(--red); }
-.mem .edit:hover { color: var(--yellow); }
-@media (hover: none) { .mem .del, .mem .edit { visibility: visible; } }
-.mem-edit { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 4px 0; padding: 8px; border: 1px solid var(--yellow);
-  border-radius: 6px; background: #12161c; }
-.mem-edit.new { border-color: var(--green); }
-.mem-edit input, .mem-edit select { width: 100%; min-width: 0; padding: 5px 8px; font-size: 13px; }
-.mem-edit [data-f=name] { grid-column: 1 / -1; }
-.mem-edit [data-f=freq] { font-family: ui-monospace, Consolas, monospace; }
-.mem-edit-bw { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
-.mem-edit [data-f=dab] { grid-column: 2 / -1; }
-.mem-edit .key { width: 100%; }
-.mem-edit [data-save] { grid-column: 1 / 3; }
-.mem-edit .note { grid-column: 1 / -1; }
 .mem-empty { padding: 12px; color: var(--dim); font-size: 12px; text-align: center; }
-.mem-io { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
-.mem-io[open] { gap: 6px; }
-.mem-io summary { cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-.mem-io > * + * { margin-top: 6px; }
-.mem-io-label { display: block; font-size: 12px; color: var(--muted); }
-.mem-io-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
-#memImportJson { grid-column: 2; }
-.mem-io-row.two { grid-template-columns: 1fr 1fr; }
-.mem-io-row input { width: 100%; min-width: 0; padding: 6px 9px; font-size: 13px; }
-.mem-io-row button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- narrower virtual window ---------- */
 /* Virtual window up to 2100 px wide (e.g. Full HD, or a window taller than 16:9): narrower buttons

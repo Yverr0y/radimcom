@@ -105,7 +105,7 @@ Restores the EEPROM from a backup.
 
 ## Importing memories from SDR#
 
-Easiest from the web page: MEM → Import / export → ⇧ IMPORT SDR#. From the command line (HF upconverter entries only):
+Easiest from the web page: MEM → ✎ EDITOR → IMPORT → LOAD SDR#. From the command line (HF upconverter entries only):
 
 ```bash
 python memories.py C:\sdrsharpSW\frequencies.xml

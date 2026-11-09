@@ -14,7 +14,7 @@
 
 ### Minor Fixes
 
-- **Editing in the MEM window.** **✎** on a row (or a double click) edits the name, groups, frequency, mode, bandwidth and DAB channel in place (Enter saves, Esc cancels); **＋ NEW…** adds a memory with a frequency typed in by hand; **☑ SELECT** moves, stars or deletes several memories at once; **✎** next to the group filter renames a group. The list sorts by frequency, name or group and marks duplicates with ⧉. HTTP API: `PATCH /api/memories/<id>` takes every field, new `POST /api/memories/bulk`.
+- **The MEM window is now only the list to recall memories from.** ＋ SAVE CURRENT and ＋ NEW open the new channel in the editor (with the tuned frequency, mode, width and DAB channel, or empty), and the import / export part moved to the editor.
 
 ## Ver. 0.112
 

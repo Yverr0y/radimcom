@@ -5628,25 +5628,17 @@ async function loadMems() {
   renderMems();
 }
 
+// The MEM window is only the list to recall memories from; adding, editing, groups, import and export are in the editor.
+const MEM_MODES = ["AM", "FM", "WFM", "LSB", "USB", "CW", "DSD"];
+let dabChannelList = [];     // [[channel, centre Hz]] from /api/state
+
 function renderMemGroups() {
   const groups = memAllGroups();
   const sel = $("memGroup");
   const cur = sel.value || recall("memGroup") || "";
   sel.innerHTML = `<option value="">All</option>` + groups.map((g) => `<option>${escHtml(g)}</option>`).join("");
   sel.value = groups.includes(cur) ? cur : "";
-  $("memGroups").innerHTML = groups.map((g) => `<option value="${escHtml(g)}">`).join("");
-  updateExportLabel();
 }
-
-// Editing in the MEM window: one memory edited in its row (✎), a new one entered by hand (＋ NEW…), several selected
-// together (☑ SELECT) to move, star or delete them.
-const MEM_MODES = ["AM", "FM", "WFM", "LSB", "USB", "CW", "DSD"];
-let memEditId = null;        // id of the memory edited in its row, "new" for ＋ NEW…, null = none
-let memDraft = null;         // values in the open edit form (text as typed), kept when the list is drawn again
-let memFocus = false;        // focus the name when the form is drawn next
-let memSelecting = false;    // ☑ SELECT on
-const memSelected = new Set();
-let dabChannelList = [];     // [[channel, centre Hz]] from /api/state
 
 function memFiltered() {
   const q = $("memSearch").value.trim().toLowerCase();
@@ -5676,125 +5668,35 @@ function memDuplicates() {
   return dups;
 }
 
-/** Opens the edit form for a memory (or a new one: m without id). */
-function memOpenEdit(m) {
-  const open = $("memList").querySelector(".mem-edit");
-  if (open) open.remove();   // another open form is dropped, not read into this one
-  memEditId = m.id || "new";
-  memDraft = { name: m.name, group: memGroupsOf(m).join(" | "), freq: fmtMHz(m.freq_hz, 6), mode: m.mode,
-    bw: (m.bw / 1000).toLocaleString(LOCALE, { maximumFractionDigits: 3, useGrouping: false }), dab: m.dab_channel || "" };
-  memFocus = true;
-  renderMems();
-}
-
-function memCloseEdit() {
-  memEditId = memDraft = null;
-  renderMems();
-}
-
-/** Reads the open form into memDraft (before the list is drawn again or saved). */
-function memReadForm() {
-  const form = $("memList").querySelector(".mem-edit");
-  if (!form || !memDraft) return;
-  for (const el of form.querySelectorAll("[data-f]")) memDraft[el.dataset.f] = el.value;
-}
-
-function memEditHtml() {
-  const d = memDraft;
-  const isNew = memEditId === "new";
-  return `<div class="mem-edit${isNew ? " new" : ""}" data-id="${memEditId}">` +
-    `<input data-f="name" value="${escHtml(d.name)}" placeholder="Memory name" maxlength="80" autocomplete="off" title="Name">` +
-    `<input data-f="group" value="${escHtml(d.group)}" placeholder="Group" list="memGroups" autocomplete="off" title="Group (pick one or type a new one); several: A | B">` +
-    `<input data-f="freq" value="${escHtml(d.freq)}" placeholder="MHz" autocomplete="off" spellcheck="false" ${d.dab ? "disabled" : ""} ` +
-    `title="Frequency: MHz, or with a unit: 7100k, 145.5M, 7100000Hz">` +
-    `<select data-f="mode" title="Mode">${MEM_MODES.map((x) => `<option${x === d.mode ? " selected" : ""}>${x}</option>`).join("")}</select>` +
-    `<label class="mem-edit-bw" title="Bandwidth in kHz (clamped to the range of the mode)"><input data-f="bw" value="${escHtml(d.bw)}" autocomplete="off"> kHz</label>` +
-    `<select data-f="dab" title="DAB channel: recalling the memory turns DAB on with this channel">` +
-    `<option value="">no DAB</option>${dabChannelList.map(([n, f]) => `<option value="${escHtml(n)}"${n === d.dab ? " selected" : ""}>DAB ${escHtml(n)} · ${fmtMHz(f, 3)}</option>`).join("")}</select>` +
-    `<button class="key small accent" data-save>${isNew ? "＋ ADD" : "SAVE"}</button><button class="key small" data-cancel>CANCEL</button>` +
-    `<p class="note error" data-err${d.err ? "" : " hidden"}>${escHtml(d.err || "")}</p></div>`;
-}
-
-/** Saves the open form: PATCH for an existing memory, POST for a new one. */
-async function memSaveEdit() {
-  memReadForm();
-  const d = memDraft;
-  d.err = "";
-  const fail = (text) => {
-    d.err = text;
-    if (!(document.activeElement && document.activeElement.closest(".mem-edit [data-f]"))) memFocus = true;   // e.g. after a click on SAVE
-    renderMems();
-  };
-  const freq = d.dab ? null : parseFreq(d.freq);
-  const bw = parseFloat(String(d.bw).replace(",", ".")) * 1000;
-  if (!d.name.trim()) return fail("Enter a name.");
-  if (!d.dab && !freq) return fail("Enter a frequency, e.g. 145.5 or 7100k.");
-  if (!(bw > 0)) return fail("Enter the bandwidth in kHz.");
-  const groups = d.group.split("|").map((g) => g.trim()).filter(Boolean);
-  const body = { name: d.name.trim(), groups: groups.length ? groups : ["My"], mode: d.mode, bw: Math.round(bw),
-    ...(d.dab ? { dab_channel: d.dab } : { freq_hz: Math.round(freq), ...(memEditId === "new" ? {} : { dab_channel: null }) }) };
-  const isNew = memEditId === "new";
-  try {
-    const res = await fetch(isNew ? vbase + "/api/memories" : `${vbase}/api/memories/${memEditId}`,
-      { method: isNew ? "POST" : "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) return fail(data.error || `Error (HTTP ${res.status}${res.status === 400 && !isNew ? " – restart RADIMCOM to load the new version" : ""})`);
-    if (isNew) mems.push(data);
-    else mems = mems.map((x) => (x.id === data.id ? data : x));
-  } catch (e) {
-    return fail("Error: " + e.message);
-  }
-  memEditId = memDraft = null;
-  renderMemGroups();
-  renderMems();
-}
-
 function renderMems() {
   drawOverlays();   // memory tags in the spectrum
   renderVfoDisplays();   // memory name above each VFO
+  renderMed();
   const group = $("memGroup").value;
   const sort = $("memSort").value;
   const list = memFiltered();
-  for (const id of [...memSelected]) if (!mems.some((m) => m.id === id)) memSelected.delete(id);
   $("memCount").textContent = `${list.length} / ${mems.length}`;
-  $("memGroupRename").hidden = !group;
-  $("memSelect").classList.toggle("on", memSelecting);
-  $("memBulk").hidden = !memSelecting;
-  $("memBulkCount").textContent = `${memSelected.size} selected`;
-  for (const id of ["memBulkMove", "memBulkFav", "memBulkUnfav", "memBulkDel", "memBulkNone"]) $(id).disabled = !memSelected.size;
-  memReadForm();   // keep what is typed in the open form, and the field with the focus
-  const focused = document.activeElement && document.activeElement.closest(".mem-edit") ? document.activeElement.dataset.f : null;
-  if (memEditId && memEditId !== "new" && !mems.some((m) => m.id === memEditId)) memEditId = memDraft = null;
-  let html = memEditId === "new" ? memEditHtml() : "";
   if (!list.length) {
-    $("memList").innerHTML = html + `<div class="mem-empty">${mems.length ? "Nothing matches the filter." : "No memories yet."}</div>`;
-    if (memFocus && html) { memFocus = false; $("memList").querySelector("[data-f=name]").focus(); }
+    $("memList").innerHTML = `<div class="mem-empty">${mems.length ? "Nothing matches the filter." : "No memories yet: ＋ SAVE CURRENT or ＋ NEW."}</div>`;
     return;
   }
   const dups = memDuplicates();
   // Headings: by band (MHz) when sorted by frequency and all groups are shown, by group when sorted by group.
+  let html = "";
   let last = null;
   for (const m of list) {
     const head = sort === "group" ? m.group || "(no group)" : sort === "freq" && !group ? `${Math.floor(m.freq_hz / 1e6)} MHz` : null;
     if (head !== null && head !== last) { html += `<div class="mem-group">${escHtml(head)}</div>`; last = head; }
-    if (m.id === memEditId) { html += memEditHtml(); continue; }
     const dup = dups.get(m.id);
-    html += `<div class="mem${memSelecting ? " selecting" : ""}${memSelected.has(m.id) ? " selected" : ""}" data-id="${m.id}" ` +
-      `title="${escHtml(m.name)} · ${escHtml(memGroupsOf(m).join(", "))} · ${fmtBw(m.bw)}${m.note ? ` · ${escHtml(m.note)}` : ""}">` +
-      (memSelecting ? `<input type="checkbox" data-pick ${memSelected.has(m.id) ? "checked" : ""} aria-label="Select">` : "") +
-      `<button class="star${m.fav ? " on" : ""}" data-star aria-label="Favourite">${m.fav ? "★" : "☆"}</button>` +
+    html += `<div class="mem" data-id="${m.id}" title="${escHtml(m.name)} · ${escHtml(memGroupsOf(m).join(", "))} · ${fmtBw(m.bw)}` +
+      `${m.decoder ? ` · ${DECODER_NAMES[m.decoder] || m.decoder}` : ""}${m.note ? ` · ${escHtml(m.note)}` : ""}">` +
+      `<span class="star${m.fav ? " on" : ""}">${m.fav ? "★" : ""}</span>` +
       `<span class="name">${escHtml(m.name)}${dup ? `<i class="dup" title="Same frequency and mode as: ${escHtml(dup.join(", "))}">⧉</i>` : ""}</span>` +
-      `<span class="meta">${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} M` : fmtKHz(m.freq_hz, 2)}<b>${m.dab_channel ? `DAB ${escHtml(m.dab_channel)}` : m.mode}</b></span>` +
-      `<button class="edit" data-edit aria-label="Edit" title="Edit">✎</button>` +
-      `<button class="del" data-del aria-label="Delete">×</button></div>`;
+      `<span class="meta">${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} M` : fmtKHz(m.freq_hz, 2)}<b>${m.dab_channel ? `DAB ${escHtml(m.dab_channel)}` : m.mode}</b></span></div>`;
   }
   $("memList").innerHTML = html;
-  const form = $("memList").querySelector(".mem-edit");
-  if (form && memFocus) { memFocus = false; form.querySelector("[data-f=name]").focus(); form.scrollIntoView({ block: "nearest" }); }
-  else if (form && focused) form.querySelector(`[data-f=${focused}]`)?.focus();
   markActiveMem();
 }
-
 
 /** Memory on the frequency of a VFO (same tolerance as the MEM list). More on one frequency: same mode first, then favourite. */
 function memAt(hz, mode) {
@@ -5816,117 +5718,11 @@ function markActiveMem() {
   }
 }
 
-$("memList").addEventListener("click", async (e) => {
-  const form = e.target.closest(".mem-edit");
-  if (form) {
-    if (e.target.closest("[data-save]")) memSaveEdit();
-    else if (e.target.closest("[data-cancel]")) memCloseEdit();
-    return;
-  }
+$("memList").addEventListener("click", (e) => {   // a click recalls the memory
   const row = e.target.closest(".mem");
-  if (!row) return;
-  const m = mems.find((x) => x.id === row.dataset.id);
-  if (!m) return;
-  if (e.target.closest("[data-del]")) {
-    if (!confirm(`Delete memory "${m.name}"?`)) return;
-    const res = await fetch(`${vbase}/api/memories/${m.id}`, { method: "DELETE" });
-    if (res.ok) { mems = mems.filter((x) => x !== m); renderMemGroups(); renderMems(); }
-    return;
-  }
-  if (e.target.closest("[data-star]")) {
-    m.fav = !m.fav;
-    renderMems();
-    fetch(`${vbase}/api/memories/${m.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fav: m.fav }) });
-    return;
-  }
-  if (e.target.closest("[data-edit]")) { memOpenEdit(m); return; }
-  if (memSelecting) {   // a click anywhere on the row selects it
-    if (memSelected.has(m.id)) memSelected.delete(m.id); else memSelected.add(m.id);
-    renderMems();
-    return;
-  }
-  if (st) recallMem(m);
+  const m = row && mems.find((x) => x.id === row.dataset.id);
+  if (m && st) recallMem(m);
 });
-$("memList").addEventListener("dblclick", (e) => {   // double click on a row: edit
-  const row = !memSelecting && e.target.closest(".mem");
-  const m = row && !e.target.closest("button") && mems.find((x) => x.id === row.dataset.id);
-  if (m) memOpenEdit(m);
-});
-$("memList").addEventListener("keydown", (e) => {
-  if (!e.target.closest(".mem-edit")) return;
-  if (e.key === "Enter") { e.preventDefault(); memSaveEdit(); }
-  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); memCloseEdit(); }
-});
-$("memList").addEventListener("change", (e) => {
-  const f = e.target.closest(".mem-edit") && e.target.dataset.f;
-  if (f === "dab") { memReadForm(); renderMems(); }   // the frequency field is off with a DAB channel
-  if (f === "mode" && st && st.bandwidth && st.bandwidth[e.target.value]) {   // the width used last in that mode
-    memReadForm();
-    memDraft.bw = (st.bandwidth[e.target.value] / 1000).toLocaleString(LOCALE, { maximumFractionDigits: 3, useGrouping: false });
-    renderMems();
-  }
-});
-$("memNew").addEventListener("click", () => {
-  memOpenEdit({ name: $("memName").value.trim(), group: $("memGroupNew").value.trim() || $("memGroup").value || "My",
-    freq_hz: st ? st.tune_hz : 0, mode: st && MEM_MODES.includes(st.mode) ? st.mode : "AM",
-    bw: st && st.bandwidth ? st.bandwidth[st.mode] || 3000 : 3000 });
-});
-
-// Several memories at once
-async function memBulk(body, what) {
-  const ids = [...memSelected];
-  if (!ids.length) return;
-  try {
-    const res = await fetch(vbase + "/api/memories/bulk", { method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ids, ...body }) });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      memIoNote(data.error || `${what} failed (HTTP ${res.status}${res.status === 404 || res.status === 405 ? " – restart RADIMCOM to load the new version" : ""})`, true);
-      $("memIo").open = true;
-      return false;
-    }
-  } catch (e) {
-    memIoNote(`${what} failed: ${e.message}`, true);
-    $("memIo").open = true;
-    return false;
-  }
-  await loadMems();
-  return true;
-}
-$("memSelect").addEventListener("click", () => {
-  memSelecting = !memSelecting;
-  if (!memSelecting) memSelected.clear();
-  renderMems();
-});
-$("memBulkAll").addEventListener("click", () => { for (const m of memFiltered()) memSelected.add(m.id); renderMems(); });
-$("memBulkNone").addEventListener("click", () => { memSelected.clear(); renderMems(); });
-$("memBulkMove").addEventListener("click", async () => {
-  const group = $("memBulkGroup").value.trim();
-  if (!group) { $("memBulkGroup").focus(); return; }
-  if (await memBulk({ changes: { group } }, "Move")) $("memBulkGroup").value = "";
-});
-$("memBulkGroup").addEventListener("keydown", (e) => { if (e.key === "Enter") $("memBulkMove").click(); });
-$("memBulkFav").addEventListener("click", () => memBulk({ changes: { fav: true } }, "Star"));
-$("memBulkUnfav").addEventListener("click", () => memBulk({ changes: { fav: false } }, "Star"));
-$("memBulkDel").addEventListener("click", async () => {
-  const n = memSelected.size;
-  if (!n || !confirm(`Delete ${n} selected memor${n === 1 ? "y" : "ies"}?`)) return;
-  if (await memBulk({ delete: true }, "Delete")) memSelected.clear();
-  renderMems();
-});
-$("memGroupRename").addEventListener("click", async () => {
-  const old = $("memGroup").value;
-  if (!old) return;
-  const name = (prompt(`New name of the group "${old}":`, old) || "").trim().slice(0, 40);
-  if (!name || name === old) return;
-  const r = await memApi("/api/memory_groups", { action: "rename", name: old, new: name });
-  if (!r.ok) { memIoNote(`Renaming the group failed: ${r.error}`, true); $("memIo").open = true; return; }
-  $("memGroup").value = "";
-  store("memGroup", name);
-  await loadMems();   // renderMemGroups picks the renamed group from storage
-});
-$("memSort").value = recall("memSort") || "freq";
-$("memSort").addEventListener("change", () => { store("memSort", $("memSort").value); renderMems(); });
 
 /** Recall a memory: frequency, mode and bandwidth (on a VFO that can receive the frequency). A DAB memory: DAB on with its channel. */
 async function recallMem(m) {
@@ -5963,107 +5759,32 @@ function memStartDecoder(key) {
   setBodyTab("dec");
 }
 
-$("memSave").addEventListener("click", async () => {
+/** Opens the memory editor; template: a new channel to fill in the form (＋ SAVE CURRENT, ＋ NEW). */
+async function memOpenEditor(template) {
+  await loadMemGroups();
+  openDrawer("memEdWin");
+  showMedTab(template ? "channels" : medTab);
+  if (template) medOpenForm(null, template);
+}
+$("memEdKey").addEventListener("click", () => memOpenEditor());
+$("memSave").addEventListener("click", () => {   // the tuned frequency, mode, width (and DAB channel) in the editor form
   if (!st) return;
   const dabName = st.dab ? ["DAB", st.dab_channel, dabLastInfo.ensemble].filter(Boolean).join(" ") : "";
-  const name = $("memName").value.trim() || dabName || `${fmtKHz(st.tune_hz, 2)} kHz ${st.mode}`;
-  const body = { name, group: $("memGroupNew").value.trim() || $("memGroup").value || "My",
-    freq_hz: st.tune_hz, mode: st.mode, bw: st.bandwidth[st.mode], ...(st.dab ? { dab_channel: st.dab_channel } : {}) };
-  const res = await fetch(vbase + "/api/memories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const data = await res.json();
-  $("memError").hidden = res.ok;
-  if (!res.ok) { $("memError").textContent = data.error || "Error"; return; }
-  mems.push(data);
-  $("memName").value = "";
-  renderMemGroups();
-  renderMems();
+  const group = $("memGroup").value;
+  memOpenEditor({ name: dabName || `${fmtKHz(st.tune_hz, 2)} kHz ${st.mode}`, groups: group ? [group] : [],
+    freq_hz: st.tune_hz, mode: MEM_MODES.includes(st.mode) ? st.mode : "AM", bw: st.bandwidth[st.mode] || 3000,
+    ...(st.dab ? { dab_channel: st.dab_channel } : {}) });
 });
-$("memName").addEventListener("keydown", (e) => { if (e.key === "Enter") $("memSave").click(); });
+$("memNew").addEventListener("click", () => {   // an empty form: frequency, mode and width typed in by hand
+  const group = $("memGroup").value;
+  memOpenEditor({ name: "", groups: group ? [group] : [], freq_hz: null, mode: st && MEM_MODES.includes(st.mode) ? st.mode : "AM",
+    bw: st && st.bandwidth ? st.bandwidth[st.mode] || 3000 : 3000 });
+});
 $("memSearch").addEventListener("input", renderMems);
 $("memGroup").addEventListener("change", () => { store("memGroup", $("memGroup").value); renderMems(); });
 $("memFav").addEventListener("change", renderMems);
-
-// Import from SDR# (frequencies.xml in its installation folder) and export of memories to a JSON file.
-function memIoNote(text, error) {
-  const el = $("memIoNote");
-  el.textContent = text;
-  el.classList.toggle("error", !!error);
-  el.hidden = !text;
-}
-
-function updateExportLabel() {
-  const g = $("memGroup").value;
-  $("memExportGroup").textContent = g ? `⇩ EXPORT ${g}` : "⇩ EXPORT ALL";
-  $("memExportGroup").title = g ? `Downloads the group "${g}" as a JSON file` : "Downloads every memory as a JSON file";
-}
-
-function exportMems(list, label) {
-  if (!list.length) { memIoNote(`Nothing to export (${label}).`, true); return; }
-  const out = [...list].sort((a, b) => a.freq_hz - b.freq_hz);
-  const blob = new Blob([JSON.stringify(out, null, 1)], { type: "application/json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `radimcom-memories-${label.replace(/[^\w.-]+/g, "_")}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  memIoNote(`Exported ${out.length} memories (${label}).`);
-}
-
-$("memSdrPath").value = recall("memSdrPath") || "C:\\sdrsharp";
-$("memSdrPath").addEventListener("change", () => store("memSdrPath", $("memSdrPath").value.trim()));
-$("memSdrPath").addEventListener("keydown", (e) => { if (e.key === "Enter") $("memImport").click(); });
-$("memImport").addEventListener("click", async () => {
-  const path = $("memSdrPath").value.trim();
-  if (!path) { memIoNote("Enter the SDR# installation folder.", true); return; }
-  store("memSdrPath", path);
-  $("memImport").disabled = true;
-  try {
-    const res = await fetch(vbase + "/api/memories/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      memIoNote(data.error || `Import failed (HTTP ${res.status}${res.status === 405 || res.status === 404 ? " – restart RADIMCOM to load the new version" : ""})`, true);
-      return;
-    }
-    const n = data.files.length;
-    memIoNote(`Imported ${data.added}, skipped ${data.skipped} (duplicates / unsupported) from ${n} file${n === 1 ? "" : "s"}` +
-      (n > 1 ? ` (${data.files.map((f) => f.split(/[\\/]/).slice(-2, -1)[0]).join(", ")})` : "") +
-      (data.errors.length ? `. Failed: ${data.errors.join("; ")}` : "."), data.errors.length > 0);
-    await loadMems();
-  } catch (e) {
-    memIoNote("Import failed: " + e.message, true);
-  } finally {
-    $("memImport").disabled = false;
-  }
-});
-$("memImportJson").addEventListener("click", () => $("memJsonFile").click());
-$("memJsonFile").addEventListener("change", async () => {
-  const file = $("memJsonFile").files[0];
-  $("memJsonFile").value = "";   // the same file can be chosen again
-  if (!file) return;
-  $("memImportJson").disabled = true;
-  try {
-    const res = await fetch(vbase + "/api/memories/import_json", { method: "POST", headers: { "Content-Type": "application/json" }, body: file });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      memIoNote(data.error || `Import failed (HTTP ${res.status}${res.status === 405 || res.status === 404 ? " – restart RADIMCOM to load the new version" : ""})`, true);
-      return;
-    }
-    memIoNote(`Imported ${data.added}, skipped ${data.skipped} (duplicates / invalid) from ${file.name}.`);
-    await loadMems();
-  } catch (e) {
-    memIoNote("Import failed: " + e.message, true);
-  } finally {
-    $("memImportJson").disabled = false;
-  }
-});
-$("memExportFav").addEventListener("click", () => exportMems(mems.filter((m) => m.fav), "starred"));
-$("memExportGroup").addEventListener("click", () => {
-  const g = $("memGroup").value;
-  exportMems(g ? mems.filter((m) => memGroupsOf(m).includes(g)) : mems, g || "all");
-});
-$("memGroup").addEventListener("change", updateExportLabel);
+$("memSort").value = recall("memSort") || "freq";
+$("memSort").addEventListener("change", () => { store("memSort", $("memSort").value); renderMems(); });
 
 // ---------- memory editor (MEM → ✎ EDITOR): channels, groups with notes, import and export with a list ----------
 
@@ -6290,17 +6011,17 @@ $("medBulk").addEventListener("click", async (e) => {
 });
 
 // the form of one channel
-function medOpenForm(m) {
+function medOpenForm(m, template) {
   medEditId = m ? m.id : "new";
   const f = $("medForm");
-  const src = m || { name: "", groups: $("medGroup").value && $("medGroup").value !== NO_GROUP ? [$("medGroup").value] : [],
+  const src = m || template || { name: "", groups: $("medGroup").value && $("medGroup").value !== NO_GROUP ? [$("medGroup").value] : [],
     freq_hz: st ? st.tune_hz : 0, mode: st && MEM_MODES.includes(st.mode) ? st.mode : "AM",
     bw: st && st.bandwidth ? st.bandwidth[st.mode] || 3000 : 3000, decoder: "", note: "", color: "", tag: true, fav: false };
   f.elements.mode.innerHTML = MEM_MODES.map((x) => `<option>${x}</option>`).join("");
   f.elements.decoder.innerHTML = Object.entries(DECODER_NAMES).map(([k, v]) => `<option value="${k}">${k ? v : "none"}</option>`).join("");
   f.elements.dab.innerHTML = `<option value="">no DAB</option>` + dabChannelList.map(([n, hz]) => `<option value="${escHtml(n)}">DAB ${escHtml(n)} · ${fmtMHz(hz, 3)} MHz</option>`).join("");
   f.elements.name.value = src.name;
-  f.elements.freq.value = fmtMHz(src.freq_hz, 6);
+  f.elements.freq.value = src.freq_hz == null ? "" : fmtMHz(src.freq_hz, 6);
   f.elements.mode.value = src.mode;
   f.elements.bw.value = kHzText(src.bw);
   f.elements.decoder.value = src.decoder || "";
@@ -6836,12 +6557,6 @@ $("medExpGo").addEventListener("click", () => {
   medMsg(`Exported ${out.length} channels to ${name}.${fmt}${fmt === "csv" ? " (group notes go only into JSON)" : ""}.`);
 });
 
-// open / close
-$("memEdKey").addEventListener("click", async () => {
-  await loadMemGroups();
-  openDrawer("memEdWin");
-  showMedTab(medTab);
-});
 
 // ---------- stav zo servera ----------
 
