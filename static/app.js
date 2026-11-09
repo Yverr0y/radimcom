@@ -5690,9 +5690,10 @@ function renderMems() {
     const dup = dups.get(m.id);
     html += `<div class="mem" data-id="${m.id}" title="${escHtml(m.name)} · ${escHtml(memGroupsOf(m).join(", "))} · ${fmtBw(m.bw)}` +
       `${m.decoder ? ` · ${DECODER_NAMES[m.decoder] || m.decoder}` : ""}${m.note ? ` · ${escHtml(m.note)}` : ""}">` +
-      `<span class="star${m.fav ? " on" : ""}">${m.fav ? "★" : ""}</span>` +
+      `<button class="star${m.fav ? " on" : ""}" data-star aria-label="Favourite" title="Star">${m.fav ? "★" : "☆"}</button>` +
       `<span class="name">${escHtml(m.name)}${dup ? `<i class="dup" title="Same frequency and mode as: ${escHtml(dup.join(", "))}">⧉</i>` : ""}</span>` +
-      `<span class="meta">${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} M` : fmtKHz(m.freq_hz, 2)}<b>${m.dab_channel ? `DAB ${escHtml(m.dab_channel)}` : m.mode}</b></span></div>`;
+      `<span class="meta">${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} M` : fmtKHz(m.freq_hz, 2)}<b>${m.dab_channel ? `DAB ${escHtml(m.dab_channel)}` : m.mode}</b></span>` +
+      `<button class="edit" data-edit aria-label="Edit" title="Open in the editor">✎</button></div>`;
   }
   $("memList").innerHTML = html;
   markActiveMem();
@@ -5718,10 +5719,23 @@ function markActiveMem() {
   }
 }
 
-$("memList").addEventListener("click", (e) => {   // a click recalls the memory
+$("memList").addEventListener("click", async (e) => {   // a click recalls the memory; ☆ stars it, ✎ opens it in the editor
   const row = e.target.closest(".mem");
   const m = row && mems.find((x) => x.id === row.dataset.id);
-  if (m && st) recallMem(m);
+  if (!m) return;
+  if (e.target.closest("[data-star]")) {
+    const r = await memApi(`/api/memories/${m.id}`, { fav: !m.fav }, "PATCH");
+    if (r.ok) { mems = mems.map((x) => (x.id === m.id ? r.data : x)); renderMems(); }
+    return;
+  }
+  if (e.target.closest("[data-edit]")) {
+    await memOpenEditor();
+    showMedTab("channels");
+    medOpenForm(m);
+    $("medTable").querySelector(`tr[data-id="${m.id}"]`)?.scrollIntoView({ block: "nearest" });
+    return;
+  }
+  if (st) recallMem(m);
 });
 
 /** Recall a memory: frequency, mode and bandwidth (on a VFO that can receive the frequency). A DAB memory: DAB on with its channel. */
