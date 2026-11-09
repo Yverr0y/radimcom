@@ -23,7 +23,7 @@ TOP = "RADIMCOM"
 
 def read_version():
     html = open(os.path.join(ROOT, "static", "index.html"), encoding="utf-8").read()
-    m = re.search(r'class="r-ver">\s*Ver\.\s*([0-9.]+)\s*<', html)
+    m = re.search(r'class="r-ver">\s*Ver\.\s*([0-9.]+(?:beta\d+)?)\s*<', html)
     if not m:
         sys.exit("version not found in static/index.html (.r-ver)")
     return m.group(1)
@@ -84,8 +84,8 @@ def make_upgrade(full_zip):
     print(f"{out}: {n + 2} files, {os.path.getsize(out) / 1e6:.1f} MB")
 
 
-CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "lime.py", "airspy.py", "rds.py", "cw.py", "rtty.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py", "cpdlc.py", "cpdlc_schema.py", "adsc.py", "vdl2.py", "airports.py", "dab.py", "ism.py", "dsd.py", "recorder.py", "install_dsd.py", "install_dsd.bat",
-        "memories.py", "satellites.py", "update_check.py", "upgrade_helper.py", "sattrack.py", "satplan.py", "rotor.py", "iqshare.py", "eeprom_tool.py", "setup_sdr.py", "start.bat", "setup.bat", "README.md", "CHANGELOG.md",
+CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "autotune.py", "lime.py", "airspy.py", "rds.py", "cw.py", "rtty.py", "packet.py", "aprs.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py", "cpdlc.py", "cpdlc_schema.py", "adsc.py", "vdl2.py", "airports.py", "dab.py", "ism.py", "dsd.py", "recorder.py", "install_dsd.py", "install_dsd.bat",
+        "memories.py", "satellites.py", "update_check.py", "upgrade_helper.py", "sattrack.py", "satplan.py", "sysload.py", "rotor.py", "iqshare.py", "eeprom_tool.py", "setup_sdr.py", "start.bat", "setup.bat", "README.md", "CHANGELOG.md",
         "LICENSE", "NOTICE.md", "API/API.md"]
 LIBS = ["lib/librtlsdr.dll", "lib/libusb-1.0.dll"]
 # VDL2: dumpvdl2 built with MSYS2 (see installer/VDL2.txt), with its MSYS2 runtime DLLs
@@ -110,7 +110,8 @@ D3XX_EXE = "FTD3XXDriver_WHQLCertified_v1.3.0.4_Installer.exe"
 # no station marks may remain in the package (serial numbers, recordings…) except the author's signature on the page
 FORBIDDEN = [b"OM2AMR", b"om2amr", "OM2AMR".encode("utf-16-le")]
 # signature, public repository link, copyright line in LICENSE (wanted by the author)
-ALLOWED = [b"By Radim Mutina OM2AMR", b"github.com/om2amr/RADIMCOM", b"api.github.com/repos/om2amr/RADIMCOM", b"Copyright (c) 2026 Radim Mutina (OM2AMR)"]
+ALLOWED = [b"By Radim Mutina OM2AMR", b"github.com/om2amr/RADIMCOM", b"api.github.com/repos/om2amr/RADIMCOM", b"Copyright (c) 2026 Radim Mutina (OM2AMR)",
+           b"img.shields.io/github/v/release/om2amr/RADIMCOM", b"img.shields.io/github/license/om2amr/RADIMCOM"]   # README badges
 
 
 def copy(src, dst_rel, build):

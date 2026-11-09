@@ -141,7 +141,29 @@ class SstvDecoder:
                 self.mode_sel = m
             if b.get("action") == "stop" and self.state != "idle":
                 self._finish()
+        if "delete" in b:
+            self._delete(b["delete"])
         self._emit_state()
+
+    def _delete(self, what):
+        """Deletes a saved image (file name) or all of them ("all"). Only sstv_*.png files in the folder."""
+        try:
+            names = [n for n in os.listdir(self.save_dir) if n.startswith("sstv_") and n.endswith(".png")]
+        except OSError:
+            names = []
+        if what == "all":
+            targets = names
+        elif isinstance(what, str) and what in names:
+            targets = [what]
+        else:
+            raise ValueError("no such SSTV image")
+        for n in targets:
+            try:
+                os.remove(os.path.join(self.save_dir, n))
+            except OSError:
+                pass
+            if n == self.saved:
+                self.saved = None
 
     def files(self):
         try:

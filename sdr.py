@@ -13,6 +13,8 @@ import time
 
 import numpy as np
 
+from autotune import AutoTune
+
 BASE = os.path.dirname(os.path.abspath(__file__))
 LIB_DIR = os.path.join(BASE, "lib")
 
@@ -40,7 +42,19 @@ SQUELCH_HANG_S = 0.02  # s, how long the squelch stays open after the signal dro
 FM_NARROW_MAX = 18000.0   # FM up to this width in the narrow channel (input / DECIM), wider via WideFm (up to 50 kHz)
 SQUELCH_SUB = 8      # the squelch decides 8× per block (~8 ms) so it does not cut off the start of a transmission
 BAND_EDGE = 0.95      # chained VFO: usable part of the shared band (the edges are cut by the dongle filter)
+ASQ_WINDOW_S = 15.0   # s, auto squelch: second estimate = ASQ_PCT percentile of the channel power over this time
+ASQ_PCT = 10          # percentile, for the channel power over time and for the spectrum points
+ASQ_SPAN = 0.7        # part of the dongle band (around its centre) whose spectrum gives the noise density
+ASQ_SMOOTH = 0.2      # EMA of the spectral noise estimate per block
+ASQ_DEFAULT_DB = 6.0  # dB, auto squelch opens this much above the noise floor
+ASQ_MIN_DB, ASQ_MAX_DB = 2.0, 30.0
 SQUELCH_MODES = ("AM", "FM", "WFM")   # each mode has its own level (airband AM differs from broadcast)
+_w = np.hanning(WF_FFT)
+ASQ_WIN_K = float(_w.sum() ** 2 / (_w ** 2).sum())   # Hann: waterfall point power (sine-normalised) -> noise power per point
+# a low percentile of the spectrum points (each an average of WF_SEGMENTS FFTs) lies this many dB under the mean noise
+ASQ_PCT_BIAS_DB = float(-10 * np.log10(np.percentile(
+    np.random.default_rng(0).exponential(size=(WF_SEGMENTS, 50000)).mean(axis=0), ASQ_PCT)))
+del _w
 NOTCH_MODES = ("AM", "LSB", "USB")    # automatic notch (in CW it would cut out the signal itself)
 AGC_MODES = ("AM", "LSB", "USB", "CW")  # audio AGC (ALC); FM and WFM have a constant level from the demodulator
 AGC_TARGET = 0.3                        # target audio peak with AGC
@@ -188,6 +202,83 @@ class RtlSdr:
     def _check(rc, what):
         if rc != 0:
             raise RuntimeError(f"setting {what} failed (code {rc})")
+
+
+# AGC+ (smart AGC): tuner gain as high as possible while the A/D converter is not clipped. The tuner AGC of the
+# R820T (gain "auto") watches only its LNA and mixer and keeps the IF gain fixed, so it does not see the A/D;
+# this loop measures the raw samples of the whole band and sets the manual tuner gain from them.
+# Settings of AGC+ (SET, DONGLE tab), name: (default, min, max). Kept in the config as "sagc".
+SAGC_PARAMS = {
+    "clip_ppm": (20, 0, 1000),        # clipped samples per million in a block above which the gain goes down
+    "heavy_ppm": (1000, 1, 100000),   # above this the gain goes down by heavy_db at once
+    "down_db": (3.0, 0.5, 15),        # gain down on clipping
+    "heavy_db": (6.0, 1, 30),         # gain down on heavy clipping
+    "low_dbfs": (-8.0, -40, -1),      # A/D peak over hold_s below this -> gain up
+    "target_dbfs": (-5.0, -30, 0),    # where a gain increase aims
+    "hold_s": (0.2, 0.1, 30),         # no clipping for this long before going up
+    "up_db": (6.0, 0.5, 30),          # at most per step up
+    "settle": (2, 0, 20),             # blocks ignored after a gain change (the tuner settles), plus those already queued
+}
+SAGC_SETTLE = SAGC_PARAMS["settle"][0]
+
+
+def sagc_params(cfg):
+    """The AGC+ settings of a config, missing ones by default."""
+    own = cfg.get("sagc") or {}
+    return {k: own.get(k, d) for k, (d, _lo, _hi) in SAGC_PARAMS.items()}
+
+
+class SmartAgc:
+    """AGC+: decides a new tuner gain from the raw samples of each block (None = keep it)."""
+
+    def __init__(self):
+        self.peak, self.clip = 0.0, 0.0          # last block, for the state on the web page
+        self.reset()
+
+    def reset(self, settle=0):
+        self.win_peak, self.quiet_s, self.skip = 0.0, 0.0, settle
+
+    @staticmethod
+    def measure(raw):
+        """(share of clipped samples, peak 0..1) of the A/D: uint8 (RTL) or complex64 ±1 (Airspy, Lime)."""
+        if raw.dtype == np.uint8:
+            lo, hi = int(raw.min()), int(raw.max())
+            peak = max(hi - 127.5, 127.5 - lo) / 127.5
+            n = (np.count_nonzero(raw == 0) if lo == 0 else 0) + (np.count_nonzero(raw == 255) if hi == 255 else 0)
+        else:
+            a = np.abs(raw.view(np.float32))
+            peak = float(a.max())
+            n = np.count_nonzero(a >= 0.99) if peak >= 0.99 else 0
+        return float(n) / raw.size, float(peak)   # plain floats: the state goes to JSON
+
+    def step(self, raw, gains, gain, block_s, backlog, p, db_per_unit=1.0):
+        """p = sagc_params(): the settings from SET."""
+        self.clip, self.peak = self.measure(raw)
+        if self.skip > 0:
+            self.skip -= 1
+            return None
+        if self.clip * 1e6 > p["clip_ppm"]:
+            db = p["heavy_db"] if self.clip * 1e6 > p["heavy_ppm"] else p["down_db"]
+            lower = [g for g in gains if g <= gain - db / db_per_unit]
+            new = lower[-1] if lower else gains[0]
+        elif self.clip > 0:
+            self.quiet_s = 0.0                    # tolerated, but no reason to go up
+            return None
+        else:
+            self.win_peak = max(self.win_peak, self.peak)
+            self.quiet_s += block_s
+            if self.quiet_s < p["hold_s"]:
+                return None
+            peak, self.win_peak, self.quiet_s = self.win_peak, 0.0, 0.0
+            if 20 * np.log10(max(peak, 1e-4)) >= p["low_dbfs"]:
+                return None
+            db = min(p["up_db"], p["target_dbfs"] - 20 * np.log10(max(peak, 1e-3)))
+            up = [g for g in gains if gain < g <= gain + db / db_per_unit]
+            new = up[-1] if up else None
+        if new is None or new == gain:
+            return None
+        self.reset(backlog + int(p["settle"]))
+        return new
 
 
 def lowpass(cutoff, fs, taps):
@@ -780,7 +871,10 @@ class Receiver:
         self.has_bias_tee = cfg.get("driver", "rtl") in ("rtl", "airspy")
         self.has_rtl_agc = cfg.get("driver", "rtl") == "rtl"
         self.smeter = -150.0
+        self.sagc = SmartAgc()
         self.sq_open, self.sq_hang, self.sq_gain = True, 0, 1.0
+        self.asq_hist, self.asq_key, self.asq_floor = [], None, None   # auto squelch: (time, dB) and noise floor
+        self.asq_spec, self.wf_power = None, None   # auto squelch: noise in the channel from the spectrum (dBFS)
         self.dropped = 0
         self.opened = 0
         self.sdr = None
@@ -791,6 +885,12 @@ class Receiver:
         self.iq_server = None
         self.shared_lo = None
         self.out_of_band = False
+        self.atune = AutoTune(self._autotune_done)   # ATU: click -> exact carrier (autotune.py)
+
+    def _autotune_done(self, old_hz, new_hz):
+        """Autotune result (from its thread): retune only if nobody has tuned elsewhere meanwhile."""
+        if self.cfg["tune_hz"] == old_hz and not self.pending.get("tune_hz"):
+            self.update({"tune_hz": float(new_hz)})
 
     @property
     def chained(self):
@@ -801,6 +901,8 @@ class Receiver:
     def update(self, changes):
         with self.lock:
             self.pending.update(changes)
+            if changes.get("autotune_go"):
+                self.atune.arm()                    # "listen" at once, before the receiver thread starts the job
             # Dongle in error (e.g. wrong LO -> frequency outside the tuner range): dongle setting changes
             # are written immediately, so the next open attempt uses them and the error can be fixed in SET.
             if self.status == "error":
@@ -921,7 +1023,8 @@ class Receiver:
         sdr.set_bias_tee(c.get("bias_tee", False))
         sdr.set_center_freq(c["center_hz"] + self.lo)
         # ±10 kHz, so that the 18 kHz filter (AM/FM) also passes; less at a low sample rate (alias).
-        self.dec = Decimator(self.fs, cutoff=min(10000.0, self.fs / DECIM / 3))
+        self.dec_cutoff = min(10000.0, self.fs / DECIM / 3)
+        self.dec = Decimator(self.fs, cutoff=self.dec_cutoff)
         self.chan = Channel(self.fs / DECIM)
         self.spur = SpurFilter(self.fs / DECIM)
         self.spur_mask, self.spur_depth, self.spur_grid, self.spur_settings = None, None, None, None
@@ -972,6 +1075,21 @@ class Receiver:
             self._request_view(changes["view_hz"])
         if {"center_hz", "tune_hz", "lo_offset_hz", "view_hz", "upconv"} & changes.keys():
             sdr.set_center_freq(c["center_hz"] + self.lo)
+            self.sagc.reset(SAGC_SETTLE)            # another band: the peak window starts again
+        if "sagc" in changes:
+            c["sagc"] = changes["sagc"]
+        if "smart_agc" in changes and not self.chained:
+            c["smart_agc"] = bool(changes["smart_agc"])
+            if c["smart_agc"]:
+                if c.get("gain", "auto") == "auto" and self.gains:
+                    c["gain"] = self.gains[len(self.gains) // 2]   # AGC+ starts in the middle and finds its way
+                    sdr.set_gain(c["gain"])
+                if c.get("rtl_agc"):                # digital gain after the A/D would hide its level
+                    c["rtl_agc"] = False
+                    sdr.set_rtl_agc(False)
+                self.sagc.reset(SAGC_SETTLE)
+        elif "gain" in changes or changes.get("rtl_agc"):
+            c["smart_agc"] = False                  # a manual gain, tuner AGC or RTL AGC ends AGC+
         if "gain" in changes:
             c["gain"] = changes["gain"]
             sdr.set_gain(c["gain"])
@@ -983,8 +1101,19 @@ class Receiver:
             c["audio_agc"] = changes["audio_agc"]
         if "afi" in changes:
             c["afi"] = changes["afi"]
+        if "autotune" in changes:
+            c["autotune"] = changes["autotune"]
+            if not c["autotune"]:
+                self.atune.cancel()
+        if changes.get("autotune_go"):
+            # after the click's tune_hz above; ATU off or another mode: start() only clears the armed "listen"
+            self.atune.start(c["mode"] if c.get("autotune") else None, c["tune_hz"], c["center_hz"])
         if "afi_hz" in changes:
             c["afi_hz"] = changes["afi_hz"]
+        if "auto_sql" in changes:
+            c["auto_sql"] = changes["auto_sql"]
+        if "auto_sql_db" in changes:
+            c["auto_sql_db"] = changes["auto_sql_db"]
         for k in ("lpf", "lpf_hz", "hpf", "hpf_hz"):
             if k in changes:
                 c[k] = changes[k]
@@ -1116,6 +1245,7 @@ class Receiver:
         if self.cfg.get("dc_remove", True):
             mid = WF_FFT // 2
             power[mid] = (power[mid - 1] + power[mid + 1]) / 2  # what is left of the DC spike after _loop removed the mean
+        self.wf_power = power                       # for the auto squelch (before the spur mask)
 
         c = self.cfg
         zoom = int(c.get("zoom", 1))
@@ -1165,6 +1295,8 @@ class Receiver:
                 self._follow(meta, sdr)
             elif self.iq_server:
                 self.iq_server.publish(raw, self._share_meta())
+            if self.cfg.get("smart_agc") and not self.chained and self.gains:
+                self._smart_agc(sdr, raw, blocks.qsize())
             if self.on_raw and (raw.dtype == np.complex64 or len(raw) == READ_SAMPLES * 2):
                 self.on_raw(raw, self.fs, self.cfg["center_hz"])   # VDL2: raw samples to dumpvdl2
             if raw.dtype == np.complex64:
@@ -1204,6 +1336,8 @@ class Receiver:
                 self.spur.reset()
             if self.on_baseband:
                 self.on_baseband(base, self.fs / DECIM, c["tune_hz"])
+            if self.atune.active:
+                self.atune.feed(base, self.fs / DECIM, c["tune_hz"], c["mode"])
             mode = c["mode"]
             dsd = mode == DSD_MODE
             bw = DSD_BW if dsd else float(c.get("bandwidth", {}).get(mode, 3000))
@@ -1234,6 +1368,7 @@ class Receiver:
             if dsd and self.on_dsd:                 # from here on the audio is the decoded voice
                 audio = self.on_dsd(audio, self.fs / DECIM, c["tune_hz"])
             audio = self._audio_pass(audio)         # after the SSTV feed: LPF / HPF are for listening, not for decoders
+            self._noise_floor(mode, bw, sub_db, cal)
             audio = self._squelch(audio, mode, sub_db)
             if audio.ndim == 1:                     # the browser always gets stereo (L, R interleaved)
                 audio = np.repeat(audio[:, None], 2, axis=1)
@@ -1244,11 +1379,25 @@ class Receiver:
                 last_status = now
                 self.on_status()
 
+    def _smart_agc(self, sdr, raw, backlog):
+        """AGC+: the tuner gain from the A/D level of this block (SmartAgc)."""
+        c = self.cfg
+        gain = c.get("gain", "auto")
+        if gain == "auto":
+            return
+        new = self.sagc.step(raw, self.gains, float(gain), len(raw) / (2 if raw.dtype == np.uint8 else 1) / self.fs,
+                             backlog, sagc_params(c), getattr(sdr, "gain_db_per_unit", 1.0))
+        if new is not None:
+            c["gain"] = new
+            sdr.set_gain(new)
+            self.on_status()
+
     def _share_meta(self):
         """Dongle state sent with every block to the chained VFOs."""
         c = self.cfg
         return {"center_hz": c["center_hz"], "lo": self.lo, "fs": c["sample_rate"], "gain": c.get("gain", "auto"),
-                "gains": self.gains, "rtl_agc": bool(c.get("rtl_agc", False)), "bias_tee": bool(c.get("bias_tee", False)),
+                "gains": self.gains, "rtl_agc": bool(c.get("rtl_agc", False)), "smart_agc": bool(c.get("smart_agc", False)),
+                "sagc": sagc_params(c), "bias_tee": bool(c.get("bias_tee", False)),
                 "ppm": c.get("ppm", 0), "has_bias_tee": self.has_bias_tee, "has_rtl_agc": self.has_rtl_agc,
                 "smeter_offset": getattr(self.sdr, "smeter_offset", 0.0)}
 
@@ -1258,7 +1407,7 @@ class Receiver:
         self.shared_lo = float(meta["lo"])
         self.gains = meta.get("gains", self.gains)
         self.has_bias_tee, self.has_rtl_agc = meta.get("has_bias_tee", True), meta.get("has_rtl_agc", True)
-        for k in ("gain", "rtl_agc", "bias_tee", "ppm"):
+        for k in ("gain", "rtl_agc", "smart_agc", "sagc", "bias_tee", "ppm"):
             if k in meta:
                 c[k] = meta[k]
         c["center_hz"] = float(meta["center_hz"])
@@ -1325,10 +1474,65 @@ class Receiver:
             lo_hz, hi_hz = 0.0, tmax
         return lo_hz, min(hi_hz, float(c.get("max_hz", hi_hz)))
 
-    def squelch_level(self, mode):
+    def auto_sql_on(self, mode):
+        """Auto squelch: the ASQ key, or AGC+ with the squelch set (a fixed level would not fit a changing gain)."""
+        c = self.cfg
+        if mode not in SQUELCH_MODES:
+            return False
+        if c.get("auto_sql"):
+            return True
+        return bool(c.get("smart_agc")) and self.manual_squelch(mode) > SQUELCH_OFF
+
+    def _noise_floor(self, mode, bw, sub_db, cal=0.0):
+        """Auto squelch: noise floor of the channel, measured on the noise, not on the signal.
+        Main estimate: noise density from the spectrum of the dongle band (a low percentile of its points, so
+        signals do not count), times the channel bandwidth. A transmission in the channel does not move it.
+        It is limited by the quietest channel power over the last ASQ_WINDOW_S (crowded bands, e.g. FM broadcast,
+        where the spectrum is mostly signals). Starts again after a change of frequency, mode, bandwidth or gain."""
+        if not self.auto_sql_on(mode):
+            self.asq_hist, self.asq_key, self.asq_floor, self.asq_spec = [], None, None, None
+            return
+        c = self.cfg
+        key = (c["tune_hz"], mode, bw, c.get("gain"))
+        if key != self.asq_key:
+            self.asq_hist, self.asq_key, self.asq_spec = [], key, None
+        now = time.monotonic()
+        self.asq_hist.extend((now, float(p)) for p in sub_db)
+        while self.asq_hist and now - self.asq_hist[0][0] > ASQ_WINDOW_S:
+            self.asq_hist.pop(0)
+        floor = float(np.percentile([p for _, p in self.asq_hist], ASQ_PCT))
+        pw = self.wf_power
+        if pw is not None:
+            n = len(pw)
+            lo, hi = int(n * (1 - ASQ_SPAN) / 2), int(n * (1 + ASQ_SPAN) / 2)
+            mid = n // 2
+            pts = np.concatenate((pw[lo:mid - 4], pw[mid + 5:hi]))   # without what is left of the DC spike
+            enbw = bw if mode == "WFM" or (mode == "FM" and bw > FM_NARROW_MAX) else min(bw, 2 * self.dec_cutoff)
+            # point power -> density per Hz (Hann window) -> power in the channel bandwidth; + percentile bias
+            noise = float(np.percentile(pts, ASQ_PCT)) * ASQ_WIN_K / self.fs * enbw
+            db = 10 * np.log10(noise + 1e-20) + ASQ_PCT_BIAS_DB + cal
+            self.asq_spec = db if self.asq_spec is None else self.asq_spec + ASQ_SMOOTH * (db - self.asq_spec)
+            floor = min(floor, self.asq_spec)
+        self.asq_floor = floor
+
+    def manual_squelch(self, mode):
         if mode not in SQUELCH_MODES:
             return SQUELCH_OFF
         return float(self.cfg["squelch"].get(mode, SQUELCH_OFF))
+
+    def auto_sql_level(self):
+        """Level of the auto squelch: noise floor + margin, or None before it is known."""
+        if self.asq_floor is None:
+            return None
+        margin = float(self.cfg.get("auto_sql_db", ASQ_DEFAULT_DB))
+        return round(max(self.asq_floor + margin, SQUELCH_OFF + 1), 1)
+
+    def squelch_level(self, mode):
+        """Squelch level in use: the auto squelch level when it runs, else the level set for the mode."""
+        if self.auto_sql_on(mode):
+            lvl = self.auto_sql_level()
+            return SQUELCH_OFF if lvl is None else lvl
+        return self.manual_squelch(mode)
 
     def mpx_spectrum(self):
         """MPX spectrum of the WFM demodulator, or None when not receiving WFM."""
@@ -1347,6 +1551,8 @@ class Receiver:
             "audio_agc": bool(c.get("audio_agc", True)),
             "afi": bool(c.get("afi", False)),
             "afi_hz": float(c.get("afi_hz", AFI_DEFAULT_HZ)),
+            "autotune": bool(c.get("autotune", False)),
+            "autotune_info": self.atune.info(),
             "lpf": bool(c.get("lpf", False)),
             "lpf_hz": float(c.get("lpf_hz", LPF_DEFAULT_HZ)),
             "hpf": bool(c.get("hpf", False)),
@@ -1355,7 +1561,11 @@ class Receiver:
                                  and self.chan.notch.notched and c["mode"] in NOTCH_MODES),
             "rds": wfm.rds.info() if wfm else None,
             "squelch": self.squelch_level(c["mode"]),      # level for the current mode
-            "squelch_levels": {m: self.squelch_level(m) for m in SQUELCH_MODES},
+            "squelch_levels": {m: self.manual_squelch(m) for m in SQUELCH_MODES},   # set levels (slider)
+            "auto_sql": bool(c.get("auto_sql", False)),            # ASQ key
+            "auto_sql_on": self.auto_sql_on(c["mode"]),            # auto squelch runs (ASQ key, or AGC+ with squelch set)
+            "auto_sql_db": float(c.get("auto_sql_db", ASQ_DEFAULT_DB)),
+            "auto_sql_level": self.auto_sql_level() if self.auto_sql_on(c["mode"]) else None,
             "squelch_open": self.sq_open,
             "status": self.status,
             "error": self.error,
@@ -1381,6 +1591,11 @@ class Receiver:
             "gain": c.get("gain", "auto"),
             "gains": self.gains,
             "rtl_agc": bool(c.get("rtl_agc", False)),
+            "smart_agc": bool(c.get("smart_agc", False)),
+            "adc_peak": round(float(20 * np.log10(max(self.sagc.peak, 1e-4))), 1),   # dBFS of the last block measured by AGC+
+            "adc_clip": bool(self.sagc.clip > 0),
+            "adc_clip_ppm": round(self.sagc.clip * 1e6, 1),
+            "sagc": sagc_params(c),
             "ppm": c.get("ppm", 0),
             "dc_remove": bool(c.get("dc_remove", True)),
             "dc_hz": c.get("dc_hz", 0),

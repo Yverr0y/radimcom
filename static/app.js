@@ -57,7 +57,6 @@ let pendingSet = {};
 let setTimer = null;
 let localChangeAt = 0;
 let stepHz = 1000;
-let zoomLast = Number(recall("zoomLast")) || 0;   // last zoom above 1×, the ZOOM key returns to it
 let errorUntil = 0; // until when to show the error of the last change in the status field
 let vbase = ""; // receiver address of the active VFO ("" = server of this page, mode without VFOs)
 let vfos = []; // [{name, port, serial, note, base, st, rows, online}]
@@ -164,6 +163,48 @@ function tune(hz, snap = false) {
   send({ tune_hz: hz });
 }
 
+// ATU (autotune.py): a click tunes to the point without the step grid and asks the server to find the carrier;
+// the result comes back as a new tune_hz in the state, the passband label shows what it did for a few seconds.
+const ATU_MODES = ["AM", "USB", "LSB"];
+let atuShownId = null, atuNoteUntil = 0;   // null: the result already there when the page loads is not shown
+function autotuneAt(hz) {
+  clearTimeout(atuTimer);
+  atuTimer = null;
+  tune(Math.round(hz / 10) * 10);
+  send({ autotune_go: true });
+  if (st.autotune_info) st.autotune_info = { ...st.autotune_info, state: "listen", id: -1 };
+  renderRds();
+}
+/** Wheel, arrow keys, dragging or the VFO display digits: autotune once the tuning has rested for ATU_REST_MS.
+ *  prevHz = the frequency before this step. A move under ATU_MIN_MOVE_HZ from where the gesture began is fine tuning
+ *  by ear and is left alone. */
+const ATU_REST_MS = 700, ATU_MIN_MOVE_HZ = 250;
+let atuTimer = null, atuFrom = null;
+function atuSoon(prevHz) {
+  if (atuTimer === null) atuFrom = prevHz;   // a new gesture
+  clearTimeout(atuTimer);
+  atuTimer = null;
+  if (!st || !st.autotune || !ATU_MODES.includes(st.mode)) return;
+  atuTimer = setTimeout(() => {
+    atuTimer = null;
+    if (!st || !st.autotune || !ATU_MODES.includes(st.mode) || drag) return;
+    if (Math.abs(st.tune_hz - atuFrom) < ATU_MIN_MOVE_HZ) return;
+    send({ tune_hz: st.tune_hz, autotune_go: true });
+    if (st.autotune_info) st.autotune_info = { ...st.autotune_info, state: "listen", id: -1 };
+    renderRds();
+  }, ATU_REST_MS);
+}
+/** Text for the passband label: "ATU…" while listening, then the shift (or "no signal") for 4 s. */
+function atuNote() {
+  const i = st.autotune_info;
+  if (!st.autotune || !i || !i.state) return "";
+  if (i.state === "listen") return "ATU…";
+  if (atuShownId === null) { atuShownId = i.id; return ""; }
+  if (i.id !== atuShownId) { atuShownId = i.id; atuNoteUntil = Date.now() + 4000; setTimeout(drawOverlays, 4100); }
+  if (Date.now() > atuNoteUntil) return "";
+  return i.state === "done" ? `ATU ${i.shift_hz >= 0 ? "+" : ""}${i.shift_hz} Hz` : "ATU: no signal";
+}
+
 function renderControls() {
   if (!st) return;
   segButtons($("modes"), Object.keys(BANDWIDTHS), st.mode, (m) => m);
@@ -171,9 +212,7 @@ function renderControls() {
   const bw = st.bandwidth[st.mode];
   segButtons($("bandwidths"), BANDWIDTHS[st.mode], bw, fmtBw);
   segButtons($("steps"), STEPS, stepHz, fmtBw);
-  $("zoomKey").textContent = `${st.zoom}×`;
-  $("zoomKey").classList.toggle("active", st.zoom > 1);
-  if (st.zoom > 1 && st.zoom !== zoomLast) { zoomLast = st.zoom; store("zoomLast", zoomLast); }
+  renderZoomBar();
   $("modeBadge").textContent = st.mode;
   $("bwBadge").textContent = fmtBw(bw);
   renderSqlBadge();
@@ -295,13 +334,37 @@ function wheelStep(e) {
   wheelSum.px %= wheelPx;
   return dir;
 }
-// One key: click = off (back to 1×) / on (last value above 1×), wheel = next zoom up or down; lit above 1×.
-$("zoomKey").addEventListener("click", () => {
+// Zoom bar in the scale: one cell per zoom value above 1×, lit up to the current one; − / + step, a cell sets it.
+function renderZoomBar() {
+  const i = st.zooms.indexOf(st.zoom);
+  const cells = $("zoomCells");
+  if (cells.children.length !== st.zooms.length - 1) {
+    cells.innerHTML = st.zooms.slice(1).map((z) => `<i data-z="${z}" title="${z}×"></i>`).join("");
+  }
+  [...cells.children].forEach((c, k) => c.classList.toggle("on", k < i));
+  $("zoomVal").textContent = `${st.zoom}×`;
+  const [minus, plus] = $("zoomBar").querySelectorAll(".zb-btn");
+  minus.disabled = i <= 0;
+  plus.disabled = i >= st.zooms.length - 1;
+}
+$("zoomBar").addEventListener("click", (e) => {
+  e.stopPropagation();
   if (!st) return;
-  setZoom(st.zoom > 1 ? 1 : st.zooms.includes(zoomLast) ? zoomLast : st.zooms[1]);
+  const cell = e.target.closest("[data-z]");
+  if (cell) {
+    const z = Number(cell.dataset.z);
+    setZoom(z === st.zoom ? st.zooms[st.zooms.indexOf(z) - 1] : z);   // a click on the last lit cell steps back one
+    return;
+  }
+  const b = e.target.closest("[data-d]");
+  if (!b) return;
+  const z = st.zooms[st.zooms.indexOf(st.zoom) + Number(b.dataset.d)];
+  if (z) setZoom(z);
 });
-$("zoomKey").addEventListener("wheel", (e) => {
+$("zoomBar").addEventListener("mousedown", (e) => e.stopPropagation());
+$("zoomBar").addEventListener("wheel", (e) => {
   e.preventDefault();
+  e.stopPropagation();
   const dir = wheelStep(e);
   if (!st || !dir) return;
   const z = st.zooms[st.zooms.indexOf(st.zoom) + dir];
@@ -309,9 +372,25 @@ $("zoomKey").addEventListener("wheel", (e) => {
 }, { passive: false });
 document.addEventListener("keydown", (e) => {
   if (!st || e.target.closest("input, select, textarea")) return;
-  if (e.key === "ArrowLeft") { tune(st.tune_hz - stepHz, true); e.preventDefault(); }
-  if (e.key === "ArrowRight") { tune(st.tune_hz + stepHz, true); e.preventDefault(); }
+  const prev = st.tune_hz;
+  if (e.key === "ArrowLeft") { tune(st.tune_hz - stepHz, true); atuSoon(prev); e.preventDefault(); }
+  if (e.key === "ArrowRight") { tune(st.tune_hz + stepHz, true); atuSoon(prev); e.preventDefault(); }
+  if (e.key === "ArrowUp" || e.key === "ArrowDown") { memStep(e.key === "ArrowUp" ? 1 : -1); e.preventDefault(); }
 });
+
+/** ↑ / ↓: recall the nearest memory above / below the tuned frequency, among those in the visible spectrum (not DAB). */
+function memStep(dir) {
+  const v = viewNow();
+  const f0 = v.c - v.span / 2, f1 = v.c + v.span / 2, hz = st.tune_hz;
+  let best = null;
+  for (const m of mems) {
+    if (m.dab_channel || m.freq_hz < f0 || m.freq_hz > f1) continue;
+    const d = (m.freq_hz - hz) * dir;
+    if (d < 50) continue;   // the memory we stand on (same tolerance as memAt) or the other direction
+    if (!best || d < (best.freq_hz - hz) * dir) best = m;
+  }
+  if (best) recallMem(best);
+}
 
 // A click on the display of the active VFO opens frequency entry, a click on an inactive VFO (display
 // or the A/B/C button) switches to it.
@@ -334,7 +413,7 @@ $("vfoList").addEventListener("wheel", (e) => {
   const [lo, hi] = s.chain_owner ? [0, Infinity] : s.range || [0, Infinity];
   hz = Math.min(hi, Math.max(lo, hz));
   if (hz === s.tune_hz) return;
-  if (v === active) { tune(hz); return; }
+  if (v === active) { const prev = st.tune_hz; tune(hz); atuSoon(prev); return; }
   v.localTune = hz;
   v.localAt = Date.now();
   v.st.tune_hz = hz;
@@ -441,6 +520,42 @@ $("bandGroups").innerHTML = BAND_GROUPS.map(([title, list]) =>
   `<div class="bgroup"><span class="klabel">${title}</span><div class="bands">` +
   list.map((b) => `<button data-f="${b[1]}" data-m="${b[2]}" title="${(b[1] ? fmtBand(b[1]) : "last FM station") + " · " + b[2]}">${b[0]}</button>`).join("") +
   `</div></div>`).join("");
+// BAND key (MENU): shows / hides the row of band keys with a slide; the spectrum takes / gives back the space
+function showBands(on, animate = true) {
+  const row = $("bandGroups");
+  $("bandKey").classList.toggle("active", on);
+  $("bandKey").setAttribute("aria-pressed", on ? "true" : "false");
+  store("bandsShown", on ? "1" : "0");
+  if (!animate) {
+    row.classList.toggle("bands-off", !on);
+    row.style.height = on ? "" : "0px";
+    return;
+  }
+  if (on) {
+    row.style.transition = "none";           // measure the open row without the transition
+    row.classList.remove("bands-off");
+    row.style.height = "auto";
+    const h = row.offsetHeight;
+    row.classList.add("bands-off");
+    row.style.height = "0px";
+    row.offsetHeight;                        // closed state applied
+    row.style.transition = "";
+    row.classList.remove("bands-off");
+    row.style.height = `${h}px`;
+    row.addEventListener("transitionend", function done(e) {
+      if (e.propertyName !== "height") return;
+      row.removeEventListener("transitionend", done);
+      if (!row.classList.contains("bands-off")) row.style.height = "";   // auto again: wrapping on a resize
+    });
+  } else {
+    row.style.height = `${row.offsetHeight}px`;
+    row.offsetHeight;
+    row.classList.add("bands-off");
+    row.style.height = "0px";
+  }
+}
+showBands(recall("bandsShown") !== "0", false);
+$("bandKey").addEventListener("click", () => showBands($("bandGroups").classList.contains("bands-off")));
 $("bandGroups").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-f]");
   if (!b || !st) return;
@@ -1005,7 +1120,8 @@ function drawOverlays() {
     if (spectrum) {
       // Label above the passband: tuned frequency, then demodulator and bandwidth.
       const { txt: fTxt, unit } = freqDigits(st.tune_hz);
-      const lines = [`${fTxt.trim()} ${unit}`, `${st.mode} · ${fmtBw(bw)}`];
+      const atu = atuNote();
+      const lines = [`${fTxt.trim()} ${unit}`, `${st.mode} · ${fmtBw(bw)}${atu ? ` · ${atu}` : ""}`];
       ctx.font = "600 11px system-ui, sans-serif";
       const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 12;
       const tx = Math.min(Math.max((x0 + x1) / 2 - tw / 2, 4), w - tw - 4);
@@ -1224,9 +1340,40 @@ function inPassLabel(p) {
   const b = passLabelBox;
   return !!b && p.x >= b.x0 && p.x <= b.x1 && p.y >= b.y0 && p.y <= b.y1;
 }
+// CW in the bubble: in CW mode the text decoded while the bubble is open is shown under the spectrum and erased when it
+// closes. With the CW decoder on its text is used; otherwise the server runs a peek decoder while we renew it.
+const CW_PEEK_RENEW_MS = 2000, CW_BUBBLE_MAX = 200;
+let cwBubble = null;   // { text, peek: renewed at (ms) or 0 } while the bubble shows CW text
+const cwPeekPost = (on) => fetch(vbase + "/api/cw", { method: "POST", headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ action: "peek", on }) }).catch(() => {});
+function cwBubbleAdd(t) {
+  if (!cwBubble) return;
+  cwBubble.text = (cwBubble.text + t).slice(-CW_BUBBLE_MAX);
+  $("audioBubbleCw").textContent = cwBubble.text;
+}
+function cwBubbleStop() {
+  if (!cwBubble) return;
+  if (cwBubble.peek) cwPeekPost(false);
+  cwBubble = null;
+  const el = $("audioBubbleCw");
+  el.textContent = "";
+  el.hidden = true;
+}
+/** Each frame of the bubble: CW text on in CW mode (peek decoder renewed when the CW decoder is off), off otherwise. */
+function cwBubbleTick() {
+  if (st.mode !== "CW") { cwBubbleStop(); return; }
+  if (!cwBubble) { cwBubble = { text: "", peek: 0 }; $("audioBubbleCw").hidden = false; }
+  if (st.cw) {
+    if (cwBubble.peek) { cwPeekPost(false); cwBubble.peek = 0; }
+  } else if (Date.now() - cwBubble.peek >= CW_PEEK_RENEW_MS) {
+    cwBubble.peek = Date.now();
+    cwPeekPost(true);
+  }
+}
 function audioBubbleHide() {
   audioBubblePos = null;
   mpxSpec = null;
+  cwBubbleStop();
   cancelAnimationFrame(audioBubbleRaf);
   $("audioBubble").hidden = true;
 }
@@ -1262,6 +1409,7 @@ function drawAudioBubble() {
   if (!audioBubblePos) return;
   // the label can move away from under a still mouse (wheel tuning) or a tab can cover it
   if (drag || !inPassLabel(audioBubblePos) || bodyTab !== "scope") { audioBubbleHide(); return; }
+  cwBubbleTick();
   const box = $("audioBubble"), wrap = $("specOverlay").parentElement, lb = passLabelBox;
   const sw = box.parentElement.clientWidth, bw = box.offsetWidth;
   box.style.left = `${Math.max(2, Math.min((lb.x0 + lb.x1) / 2 - bw / 2, sw - bw - 2))}px`;
@@ -1386,9 +1534,10 @@ for (const id of ["specOverlay", "wfOverlay"]) {
       const r = cv.getBoundingClientRect();
       const m = spectrum ? memTagAt((e.clientX - r.left) / uiScale, (e.clientY - r.top) / uiScale) : null;
       if (m) recallMem(m);   // a click on a memory tag recalls it (frequency, mode, width)
+      else if (st.autotune && ATU_MODES.includes(st.mode)) autotuneAt(xToFreq(e.clientX - r.left, r.width));
       else tune(xToFreq(e.clientX - r.left, r.width), true);
     }
-    if (drag.moved && !drag.bw) viewLocalAt = Date.now();
+    if (drag.moved && !drag.bw) { viewLocalAt = Date.now(); atuSoon(drag.tune0); }
     if (drag.band && drag.moved) cv.style.cursor = "grab";
     drag = null;
     if (cv.hasPointerCapture(e.pointerId)) cv.releasePointerCapture(e.pointerId);
@@ -1409,7 +1558,7 @@ for (const id of ["specOverlay", "wfOverlay"]) {
   cv.addEventListener("wheel", (e) => {
     e.preventDefault();
     const dir = wheelStep(e);
-    if (dir) tune(st.tune_hz + dir * stepHz, true);
+    if (dir) { const prev = st.tune_hz; tune(st.tune_hz + dir * stepHz, true); atuSoon(prev); }
   }, { passive: false });
 }
 window.addEventListener("resize", () => {
@@ -1448,18 +1597,27 @@ const noRtlDongle = (s) => (s.driver || "rtl") !== "rtl";
 const gainLabel = (s) => (s.driver === "airspy" ? `${Number(s.gain)} / 21` : `${Number(s.gain).toFixed(1)} dB`);
 
 function renderGain() {
-  const auto = st.gain === "auto";
+  const auto = st.gain === "auto", smart = !!st.smart_agc && !auto;
   $("gainAuto").checked = auto;
   $("agcKey").classList.toggle("on", auto);
+  $("agcPlusKey").classList.toggle("on", smart);
+  $("agcPlusKey").classList.toggle("clip", smart && !!st.adc_clip);
+  // The browser hides a tooltip whose text changes (several times a second here): under the mouse it keeps
+  // the values from the moment the mouse came, and they are refreshed when it comes again.
+  const plusTip = "AGC+: tuner gain as high as possible without clipping the A/D converter (the R820T tuner AGC does not watch the A/D)" +
+    (smart ? `\nnow ${gainLabel(st)}, A/D peak ${st.adc_peak} dBFS${st.adc_clip ? `, clipping ${st.adc_clip_ppm} ppm` : ""}` : "");
+  if (!$("agcPlusKey").matches(":hover")) $("agcPlusKey").title = plusTip;
   $("rtlAgc").checked = !!st.rtl_agc;
-  $("gainSlider").disabled = auto;
+  $("rtlAgc").disabled = smart;
+  $("gainSlider").disabled = auto || smart;
   $("gainSlider").max = Math.max(st.gains.length - 1, 0);
   if (!auto) {
     let best = 0;
     st.gains.forEach((g, i) => { if (Math.abs(g - st.gain) < Math.abs(st.gains[best] - st.gain)) best = i; });
     $("gainSlider").value = best;
   }
-  $("gainText").textContent = auto ? "auto" : gainLabel(st);
+  $("gainText").textContent = auto ? "auto" : smart ? `AGC+ ${gainLabel(st)}` : gainLabel(st);
+  renderSagc();
   renderVfoDisplays();
 }
 
@@ -1529,6 +1687,7 @@ const SQUELCH_OFF = -120;
 
 // Squelch has its own level for AM, FM and WFM; the slider in SET sets the one for the current mode.
 function squelchLevel() {
+  if (st.auto_sql_on && st.squelch_levels && st.mode in st.squelch_levels) return st.auto_sql_level ?? SQUELCH_OFF;
   const v = st.squelch_levels ? st.squelch_levels[st.mode] : undefined;
   return v === undefined ? SQUELCH_OFF : v;
 }
@@ -1536,10 +1695,15 @@ function squelchLevel() {
 function renderSquelch() {
   const ok = st.squelch_levels && st.mode in st.squelch_levels;
   const v = squelchLevel();
-  if (document.activeElement !== $("squelch")) $("squelch").value = v;
-  $("squelch").disabled = !ok;
+  const auto = ok && !!st.auto_sql_on;
+  const set = st.squelch_levels && st.squelch_levels[st.mode] !== undefined ? st.squelch_levels[st.mode] : SQUELCH_OFF;
+  // auto squelch from the ASQ key: the slider shows the level and is locked; with AGC+ it stays free (it turns the squelch off)
+  if (document.activeElement !== $("squelch")) $("squelch").value = auto && !st.auto_sql ? set : v;
+  $("squelch").disabled = !ok || (auto && !!st.auto_sql);
   $("squelchMode").textContent = ok ? `(${st.mode})` : "";
-  $("squelchText").textContent = !ok ? `not in ${st.mode}` : v <= SQUELCH_OFF ? "OFF" : `${v} dBFS (${sReading(v)})`;
+  $("squelchText").textContent = !ok ? `not in ${st.mode}` : auto ? (v <= SQUELCH_OFF ? "AUTO …" : `AUTO ${v} dBFS (${sReading(v)})`)
+    : v <= SQUELCH_OFF ? "OFF" : `${v} dBFS (${sReading(v)})`;
+  if (st.auto_sql_db != null && document.activeElement !== $("asqDb")) $("asqDb").value = st.auto_sql_db;
   placeSqlMark();
 }
 
@@ -1569,10 +1733,19 @@ function renderRds() {
   $("alcKey").disabled = !alcMode;
   $("alcKey").classList.toggle("on", alcMode && st.audio_agc !== false);
   const afiMode = st.mode !== "WFM" && st.mode !== "DSD";
+  const atuMode = ATU_MODES.includes(st.mode);
+  $("atuKey").disabled = !atuMode;
+  $("atuKey").classList.toggle("on", atuMode && !!st.autotune);
+  $("atuKey").classList.toggle("busy", atuMode && !!st.autotune && st.autotune_info?.state === "listen");
   $("afiKey").disabled = !afiMode;
   $("afiKey").classList.toggle("on", afiMode && !!st.afi);
   $("afiKey").title = `AFI: audio frequency inversion around ${st.afi_hz ?? 1750} Hz – voice inversion scrambler / descrambler (all modes except WFM); frequency in SET`;
   if (st.afi_hz != null && document.activeElement !== $("afiHz")) $("afiHz").value = st.afi_hz;
+  const asqMode = ["AM", "FM", "WFM"].includes(st.mode);
+  $("asqKey").disabled = !asqMode;
+  $("asqKey").classList.toggle("on", asqMode && !!st.auto_sql_on);
+  $("asqKey").title = (asqMode && st.auto_sql_on && !st.auto_sql ? "ASQ: on by AGC+ with the squelch set. " : "")
+    + "ASQ: auto squelch in AM/FM/WFM – the level follows the noise floor (margin in SET, AUDIO tab). Also on by itself with AGC+ and the squelch set";
   renderPassKeys();
   // ALC flag at the S-meter: green = on, grey = off; hidden in FM/WFM (no ALC)
   $("alcBadge").hidden = !alcMode;
@@ -1603,11 +1776,58 @@ function renderWfLabels() {
 
 function setAgc(on) {
   st.gain = on ? "auto" : st.gains[Number($("gainSlider").value)] ?? 0;
+  st.smart_agc = false;                  // the server ends AGC+ on any gain it gets
   renderGain();
   send({ gain: st.gain });
 }
 $("gainAuto").addEventListener("change", () => setAgc($("gainAuto").checked));
-$("agcKey").addEventListener("click", () => { if (st) setAgc(st.gain !== "auto"); });
+$("agcKey").addEventListener("click", () => { if (st) setAgc(st.gain !== "auto" || st.smart_agc); });
+// AGC+ settings in SET: one slider per parameter, sent shortly after moving (as one "sagc" object)
+const SAGC_UI = [
+  ["clip_ppm", "Clipping above", 0, 200, 1, "ppm"],
+  ["down_db", "Down by", 0.5, 10, 0.5, "dB"],
+  ["heavy_ppm", "Heavy clipping above", 50, 10000, 50, "ppm"],
+  ["heavy_db", "Heavy: down by", 1, 20, 0.5, "dB"],
+  ["low_dbfs", "Up below", -30, -2, 1, "dBFS"],
+  ["target_dbfs", "Target", -25, -1, 1, "dBFS"],
+  ["hold_s", "Hold before up", 0.2, 10, 0.1, "s"],
+  ["up_db", "Up at most", 0.5, 15, 0.5, "dB"],
+  ["settle", "Settle", 0, 10, 1, "blocks"],
+];
+$("sagcRows").innerHTML = SAGC_UI.map(([k, label, min, max, step]) =>
+  `<div class="row"><span>${label}</span><span id="sagc_${k}_t" class="value"></span></div>` +
+  `<input id="sagc_${k}" type="range" min="${min}" max="${max}" step="${step}">`).join("");
+let sagcTimer = null, sagcLocalAt = 0;
+function renderSagc() {
+  const p = st.sagc || {};
+  for (const [k, , , , , unit] of SAGC_UI) {
+    const el = $(`sagc_${k}`);
+    if (p[k] == null) continue;
+    if (document.activeElement !== el && Date.now() - sagcLocalAt > 1500) el.value = p[k];
+    $(`sagc_${k}_t`).textContent = `${el.value} ${unit}`;
+  }
+  const smart = st.smart_agc && st.gain !== "auto";
+  $("sagcNow").textContent = smart ? `${gainLabel(st)} · A/D ${st.adc_peak} dBFS${st.adc_clip ? ` · clip ${st.adc_clip_ppm} ppm` : ""}` : "off";
+}
+for (const [k, , , , , unit] of SAGC_UI) {
+  $(`sagc_${k}`).addEventListener("input", (e) => {
+    sagcLocalAt = Date.now();
+    $(`sagc_${k}_t`).textContent = `${e.target.value} ${unit}`;
+    st.sagc = { ...(st.sagc || {}), [k]: Number(e.target.value) };
+    clearTimeout(sagcTimer);
+    sagcTimer = setTimeout(() => send({ sagc: { [k]: Number(e.target.value) } }), 150);
+  });
+}
+$("sagcDefaults").addEventListener("click", () => { sagcLocalAt = 0; send({ sagc: null }); });
+
+// AGC+: the server sets the tuner gain from the A/D level; off = the last gain stays as a manual one
+$("agcPlusKey").addEventListener("click", () => {
+  if (!st) return;
+  st.smart_agc = !(st.smart_agc && st.gain !== "auto");
+  if (st.smart_agc) st.rtl_agc = false;
+  renderGain();
+  send({ smart_agc: st.smart_agc });
+});
 $("stereoKey").addEventListener("click", () => {
   if (!st) return;
   st.stereo_on = st.stereo_on === false;
@@ -1626,12 +1846,39 @@ $("alcKey").addEventListener("click", () => {
   renderRds();
   send({ audio_agc: st.audio_agc });
 });
+$("atuKey").addEventListener("click", () => {
+  if (!st) return;
+  st.autotune = !st.autotune;
+  renderRds();
+  send({ autotune: st.autotune });
+});
 $("afiKey").addEventListener("click", () => {
   if (!st) return;
   st.afi = !st.afi;
   renderRds();
   renderVfoDisplays();
   send({ afi: st.afi });
+});
+$("asqKey").addEventListener("click", () => {
+  if (!st) return;
+  if (st.auto_sql_on && !st.auto_sql) {             // on by AGC+: off = squelch off
+    st.squelch_levels = { ...st.squelch_levels, [st.mode]: SQUELCH_OFF };
+    st.auto_sql_on = false;
+    send({ squelch: SQUELCH_OFF, squelch_mode: st.mode });
+  } else {
+    st.auto_sql = !st.auto_sql;
+    st.auto_sql_on = st.auto_sql;
+    if (!st.auto_sql_on) st.auto_sql_level = null;
+    send({ auto_sql: st.auto_sql });
+  }
+  renderRds();
+  renderSqlBadge();
+  renderVfoDisplays();
+});
+$("asqDb").addEventListener("change", () => {
+  const v = Math.min(30, Math.max(2, Math.round(Number($("asqDb").value)) || 6));
+  $("asqDb").value = v;
+  send({ auto_sql_db: v });
 });
 $("afiHz").addEventListener("change", () => {
   const v = Math.round(Number($("afiHz").value));
@@ -1909,55 +2156,149 @@ let bodyTabGuess = false;
 /** Tab saved for the active VFO, called after a VFO switch. */
 function restoreBodyTab() {
   $("decNew").hidden = true;
+  decNewPages.clear();
+  const page = recall(decPageKey());
+  decPageSaved = DEC_PAGES.some((p) => p.key === page);
+  decPage = decPageSaved ? page : "ft8";
   renderAmsatTab();
   const saved = recall(tabKey());
   bodyTabGuess = !["dec", "scope", "sat"].includes(saved);
-  setBodyTab(saved === "dec" || (saved === "sat" && amsatTabShown()) ? saved : "scope", !bodyTabGuess);
+  setBodyTab((saved === "dec" && decTabShown()) || (saved === "sat" && amsatTabShown()) ? saved : "scope", !bodyTabGuess);
 }
 
 /** First state of a VFO without a saved tab: if a decoder runs on it, opens DECODERS. */
 function guessBodyTab() {
   if (!bodyTabGuess) return;
   bodyTabGuess = false;
-  const any = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].some((id) => $(id).checked) || !!(st && (st.dab || st.ism || st.mode === "DSD"));
-  setBodyTab(any ? "dec" : "scope");
+  const run = DEC_PAGES.find((p) => decRunning(p.key));
+  if (run && !decPageSaved) setDecPage(run.key, false);
+  setBodyTab(run ? "dec" : "scope");
 }
 
 function setBodyTab(tab, save = true) {
   bodyTab = tab;
   if (save) store(tabKey(), tab);
+  if (tab === "sat" && save) store(satOnKey(), "1");   // the SATELLITES tab open → SAT on for this VFO
+  if (tab === "dec" && save) store(decOnKey(), "1");   // the DECODERS tab open → DECODE on for this VFO
   for (const b of $("bodyTabs").querySelectorAll("button")) b.classList.toggle("on", b.dataset.tab === tab);
   $("decPane").hidden = tab !== "dec";
   $("amsatPane").hidden = tab !== "sat";
-  if (tab === "dec") $("decNew").hidden = true;
+  if (tab === "dec") { $("decNew").hidden = true; decNewPages.delete(decPage); }
+  renderDecKey();
+  renderDecTab();
   if (tab === "sat") renderSatTab();
   renderAmsatTab();
   hoverHide();
 }
 
-/** Number of enabled decoders on the tab and a text when none is enabled. */
-function renderDecTab() {
-  // by the checkboxes – valid right after the click, even before the server confirms the state
-  const n = ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"].filter((id) => $(id).checked).length + (st && st.dab ? 1 : 0) + (st && st.ism ? 1 : 0) + (st && st.mode === "DSD" ? 1 : 0);
-  $("decCount").textContent = n ? `(${n})` : "";
-  $("decEmpty").hidden = n > 0;
+// ---------- DECODERS tab: a page for each decoder (like the pages of SATELLITES) ----------
+
+const DEC_PAGES = [
+  { key: "ft8", title: "FT8" }, { key: "wefax", title: "WEFAX" }, { key: "cw", title: "CW" }, { key: "rtty", title: "RTTY" },
+  { key: "sstv", title: "SSTV" }, { key: "packet", title: "PACKET" }, { key: "acars", title: "ACARS" }, { key: "vdl2", title: "VDL2" }, { key: "dab", title: "DAB" },
+  { key: "ism", title: "ISM" }, { key: "dsd", title: "DSD" },
+];
+// the open page is remembered for each VFO separately (decPage_A, decPage_B…)
+const decPageKey = () => (active ? `decPage_${active.name}` : "decPage");
+let decPage = "ft8";
+let decPageSaved = false;        // false: the first running decoder of the VFO decides (guessBodyTab)
+const decNewPages = new Set();   // pages with a message not seen yet
+
+$("decPages").replaceChildren(...DEC_PAGES.map((p) => {
+  const b = document.createElement("button");
+  b.className = "key small";
+  b.dataset.page = p.key;
+  b.textContent = p.title;
+  return b;
+}));
+
+/** Is the decoder of the page on? By the checkboxes – valid right after the click, before the server confirms the state. */
+function decRunning(key) {
+  if (key === "dab") return !!(st && st.dab);
+  if (key === "ism") return !!(st && st.ism);
+  if (key === "dsd") return !!(st && st.mode === "DSD");
+  return $(key + "On").checked;
 }
 
-/** New decoder message: green dot on the tab until you look at it. */
-function decActivity() {
+function setDecPage(key, save = true) {
+  decPage = key;
+  decPageSaved = decPageSaved || save;
+  if (save) store(decPageKey(), key);
+  if (bodyTab === "dec") decNewPages.delete(key);
+  renderDecTab();
+}
+
+
+/** Page keys (green ● = a new message not seen yet) and the card of the open page, shown also while
+ *  its decoder is off (its ON key is in the top left corner). */
+function renderDecTab() {
+  const n = DEC_PAGES.filter((p) => decRunning(p.key)).length;
+  $("decCount").textContent = n ? `(${n})` : "";
+  for (const b of $("decPages").children) {
+    const k = b.dataset.page, na = decUnavailable(k);
+    b.classList.toggle("on", k === decPage);
+    b.classList.toggle("new", decNewPages.has(k));
+    b.classList.toggle("na", !!na);
+    b.title = na ? "Unsupported on this dongle" : "";
+  }
+  for (const el of $("decPane").querySelectorAll("[data-dec-on]")) el.hidden = el.dataset.decOn !== decPage;
+  // not on the receiver of this VFO: the reason instead of the card
+  const na = decRunning(decPage) ? "" : decUnavailable(decPage);
+  // ACARS and VDL2 share one card (on both pages): it shows the link that runs, with none the link of the page
+  for (const c of $("decPane").querySelectorAll(".card[data-dec]")) c.classList.toggle("off-page", !!na || !c.dataset.dec.split(" ").includes(decPage));
+  if (st) renderLinkBands();
+  const dsdOff = decPage === "dsd" && !decRunning("dsd");
+  $("decEmpty").hidden = !na && !dsdOff;
+  $("decEmpty").classList.toggle("dec-na", !!na);
+  $("decEmpty").textContent = na || DSD_OFF_TEXT;
+}
+
+const DSD_OFF_TEXT = $("decEmpty").textContent;   // from index.html
+// decoders that need the raw samples, sample rate and centre of their own RTL-SDR dongle
+const DEC_RTL_ONLY = { vdl2: "VDL2", dab: "DAB", ism: "ISM" };
+
+/** Why the decoder of the page cannot run on the receiver of the active VFO ("" = it can). */
+function decUnavailable(key) {
+  const name = DEC_RTL_ONLY[key];
+  if (!name || !st) return "";
+  const vfo = active ? `VFO ${active.name}` : "this VFO";
+  if (st.chain_owner) return `${name} needs its own dongle: ${vfo} shares the dongle of VFO ${st.chain_owner}.`;
+  if (noRtlDongle(st)) return `${name} is not supported on ${DEVICE_NAMES[st.driver] || st.driver} (${vfo}): RTL-SDR only.`;
+  return "";
+}
+
+/** New decoder message: green dot on the tab and on the page key until you look at it. */
+function decActivity(page) {
   if (bodyTab !== "dec") $("decNew").hidden = false;
+  if (page && (bodyTab !== "dec" || page !== decPage) && !decNewPages.has(page)) { decNewPages.add(page); renderDecTab(); }
 }
 
 $("bodyTabs").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-tab]");
   if (b) setBodyTab(b.dataset.tab);
 });
-// enabling a decoder (FT8, WEFAX, SSTV, ACARS) opens the DECODERS tab so its card is visible
-for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "acarsOn", "vdl2On"]) {
-  $(id).addEventListener("change", () => {
-    if ($(id).checked) setBodyTab("dec");
-    renderDecTab();
-  });
+$("decPages").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-page]");
+  if (b) setDecPage(b.dataset.page);
+});
+/** DECODE key: switched on per VFO (decOn_A, decOn_B…); the DECODERS tab is there only while it is on (on by default).
+ *  Off only hides the tab: running decoders keep running. */
+function decOnKey() { return active ? `decOn_${active.name}` : "decOn"; }
+function decTabShown() { return recall(decOnKey()) !== "0"; }
+function setDecOn(on) {
+  store(decOnKey(), on ? "1" : "0");
+  if (on) setBodyTab("dec");
+  else if (bodyTab === "dec") setBodyTab("scope");
+  else renderDecKey();
+}
+function renderDecKey() {
+  const on = decTabShown();
+  $("decKey").classList.toggle("on", on);
+  $("decTab").hidden = !on;
+}
+$("decKey").addEventListener("click", () => setDecOn(!decTabShown()));
+for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "packetOn", "acarsOn", "vdl2On"]) {
+  $(id).addEventListener("change", () => renderDecTab());
 }
 setBodyTab(bodyTab, false);
 
@@ -1967,9 +2308,24 @@ let amsatPages = null;   // from the server (satellites.py), loaded when the tab
 let amsatPage = recall("amsatPage") || "passes";
 let amsatBusy = false;
 
-/** The SATELLITES tab is always there; the SAT key switches to it. */
-function amsatTabShown() { return true; }
-function renderAmsatTab() { $("satKey").classList.toggle("on", bodyTab === "sat"); }
+/** SAT key: switched on per VFO (satOn_A, satOn_B…); the SATELLITES tab is there only while it is on.
+ *  Older setups without the key: on when the saved tab of the VFO is SATELLITES. */
+function satOnKey() { return active ? `satOn_${active.name}` : "satOn"; }
+function amsatTabShown() {
+  const v = recall(satOnKey());
+  return v === null ? recall(tabKey()) === "sat" : v === "1";
+}
+function setSatOn(on) {
+  store(satOnKey(), on ? "1" : "0");
+  if (on) setBodyTab("sat");
+  else if (bodyTab === "sat") setBodyTab("scope");
+  else renderAmsatTab();
+}
+function renderAmsatTab() {
+  const on = amsatTabShown();
+  $("satKey").classList.toggle("on", on);
+  $("amsatTab").hidden = !on;
+}
 
 function amsatInfo(text, error = false) {
   $("amsatInfo").textContent = text;
@@ -2271,22 +2627,22 @@ function renderSatDetail() {
     <g class="pg-rot" id="satRotX" visibility="hidden"><line x1="-6" y1="-6" x2="6" y2="6"/><line x1="-6" y1="6" x2="6" y2="-6"/></g>
     <g class="pg-aim" id="satAimX" visibility="hidden"><line x1="-6" y1="-6" x2="6" y2="6"/><line x1="-6" y1="6" x2="6" y2="-6"/></g>
     ${amsatPage === "track" ? `<circle class="pg-hit" id="satPolarHit" r="${R}"/>` : ""}</svg>`;
-  box.innerHTML = `<div class="satp-dh"><b>${escHtml(d.name)}</b> <span class="muted">NORAD ${d.norad} · ${satDay(aos.t)}</span>
-    ${amsatPage === "track" ? "" : `<button class="key small" id="satDetailTrack" data-norad="${d.norad}" title="Open this satellite on the TRACK page (Doppler, rotor)">TRACK</button>`}</div>
-    <div class="satp-dbody">${polar}
-      <table class="satp-facts">
-        <tr><th>AOS</th><td>${satTime(aos.t)}</td><td>az ${Math.round(aos.az)}°</td></tr>
+  const track = amsatPage === "track";
+  const rows1 = `<tr><th>AOS</th><td>${satTime(aos.t)}</td><td>az ${Math.round(aos.az)}°</td></tr>
         <tr><th>Max</th><td>${satTime(top.t)}</td><td>el ${top.el.toFixed(1)}°, az ${Math.round(top.az)}°</td></tr>
         <tr><th>LOS</th><td>${satTime(los.t)}</td><td>az ${Math.round(los.az)}°</td></tr>
-        <tr><th>Length</th><td colspan="2">${satDur(los.t - aos.t)}</td></tr>
-        <tr><th>Nearest</th><td colspan="2">${Math.round(near.range)} km</td></tr>
+        <tr><th>Length</th><td colspan="2">${satDur(los.t - aos.t)}</td></tr>`;
+  const rows2 = `<tr><th>Nearest</th><td colspan="2">${Math.round(near.range)} km</td></tr>
         <tr><th>Doppler</th><td colspan="2">±${(dop * 145.9 / 1000).toFixed(1)} kHz at 145.9 MHz, ±${(dop * 435 / 1000).toFixed(1)} kHz at 435 MHz</td></tr>
         <tr><th>Elements</th><td colspan="2">${((aos.t - d.tle_epoch) / 86400).toFixed(1)} days old at AOS</td></tr>
-        <tr><th>Now</th><td colspan="2" id="satNowText">–</td></tr>
-      </table></div>
-    <div class="satp-elchart" id="satElChart"></div>
-    ${amsatPage === "track" ? '<p class="muted small" id="satPolarNote">Red cross: the antenna now. A click on the polar plot turns the antenna there, a click on the elevation chart sets only the elevation (not while TRACK moves the rotor).</p>'
-      : `<h4 class="satp-h">Transmitters</h4><div id="satDetailTx"></div>`}`;
+        <tr><th>Now</th><td colspan="2" id="satNowText">–</td></tr>`;
+  // polar plot and elevation chart side by side, the facts in two columns below (no scrolling to the chart), on PASSES and TRACK alike
+  box.innerHTML = `<div class="satp-dh"><b>${escHtml(d.name)}</b> <span class="muted">NORAD ${d.norad} · ${satDay(aos.t)}</span>
+    ${track ? "" : `<button class="key small" id="satDetailTrack" data-norad="${d.norad}" title="Open this satellite on the TRACK page (Doppler, rotor)">TRACK</button>`}</div>
+    <div class="satp-dbody satt-plots">${polar}<div class="satp-elchart" id="satElChart"></div></div>
+    <div class="satt-facts"><table class="satp-facts">${rows1}</table><table class="satp-facts">${rows2}</table></div>
+    ${track ? `<p class="muted small" id="satPolarNote">Red cross: the antenna now. A click on the polar plot turns the antenna there, a click on the elevation chart sets only the elevation (not while TRACK moves the rotor).</p>`
+    : `<h4 class="satp-h">Transmitters</h4><div id="satDetailTx"></div>`}`;
   renderSatElChart();
   satTickNow();
   satPolarRotor();
@@ -2298,7 +2654,7 @@ function renderSatElChart() {
   const box = $("satElChart"), d = satDetail;
   if (!box || !d) return;
   const track = amsatPage === "track", TOP = track ? 180 : 90;     // TRACK: the rotor goes up to 180 (looking back)
-  const s = d.samples, W = Math.max(box.clientWidth, 260), H = track ? 170 : 120, L = 34, B = 18, T = 8;
+  const s = d.samples, W = Math.max(box.clientWidth, 260), H = 220, L = 34, B = 18, T = 8;     // as high as the polar plot beside it
   const t0 = s[0].t, t1 = s[s.length - 1].t;
   const x = (t) => L + ((t - t0) / (t1 - t0)) * (W - L - 8), y = (el) => T + (1 - Math.min(Math.max(el, 0), TOP) / TOP) * (H - T - B);
   let svg = `<svg width="${W}" height="${H}" class="satp-elsvg">`;
@@ -2369,13 +2725,14 @@ function satPolarRotor() {
   x.setAttribute("transform", `translate(${px.toFixed(1)},${py.toFixed(1)})`);
   x.setAttribute("visibility", "visible");
   const ex = $("satElRotX"), box = $("satElChart");
-  if (ex && box && box._x) {     // the elevation of the antenna now (above the horizon; over 90 = looking back), at the time now
-    const now = Math.min(Math.max(Date.now() / 1000, box._t0), box._t1), X = box._x(now), Y = box._y(info.el);
+  if (ex && box && box._x) {     // the elevation the antenna looks at now (flipped: 180 − el, over the top), at the time now
+    const lookEl = back ? 180 - info.el : info.el;
+    const now = Math.min(Math.max(Date.now() / 1000, box._t0), box._t1), X = box._x(now), Y = box._y(lookEl);
     ex.setAttribute("transform", `translate(${X.toFixed(1)},${Y.toFixed(1)})`);
     ex.setAttribute("visibility", "visible");
-    const t = $("satElRotT");      // the real elevation of the rotor
+    const t = $("satElRotT");      // the elevation it looks at; flipped: the real elevation of the rotor in brackets
     if (t) {
-      t.textContent = `EL ${Math.round(info.el)}°`;
+      t.textContent = back ? `EL ${Math.round(lookEl)}° (flipped ${Math.round(info.el)}°)` : `EL ${Math.round(info.el)}°`;
       t.setAttribute("x", (X + 9).toFixed(1)); t.setAttribute("y", (Y - 7).toFixed(1));
       t.setAttribute("visibility", "visible");
     }
@@ -2414,11 +2771,24 @@ $("amsatBody").addEventListener("click", (e) => {
 });
 
 /** Position now, when the chosen pass is on: interpolated between the samples. */
+/** Countdown for the big AOS / LOS line on the TRACK page: "2:45" under an hour, "1 h 05 min" above. */
+function satCountdown(t) {
+  const s = Math.max(0, Math.round(t - Date.now() / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h ? `${h} h ${String(m).padStart(2, "0")} min` : `${m}:${String(sec).padStart(2, "0")}`;
+}
+
 function satTickNow() {
   const d = satDetail, dot = $("satNowDot");
   if (!d || !dot) return;
   const now = Date.now() / 1000, s = d.samples;
   const on = now >= s[0].t && now <= s[s.length - 1].t;
+  const count = $("satCount");      // TRACK page: AOS in … / LOS in … in big letters beside the rotor keys
+  if (count) {
+    count.innerHTML = now < s[0].t ? `AOS in <b>${satCountdown(s[0].t)}</b>`
+      : on ? `LOS in <b>${satCountdown(s[s.length - 1].t)}</b>` : "the pass is over";
+    count.classList.toggle("live", on);
+  }
   dot.setAttribute("visibility", on ? "visible" : "hidden");
   const line = $("satElNow"), box = $("satElChart");
   if (line) line.setAttribute("visibility", on ? "visible" : "hidden");
@@ -2511,16 +2881,15 @@ async function renderSatTrack() {
         <div class="satt-live" id="satDopLive"></div>
         <div class="satt-tx-wrap"><table class="satp-list satt-tx" id="satTxList"><tbody><tr><td class="muted">Loading transmitters…</td></tr></tbody></table></div>
         <p class="muted small">A click on a transmitter tunes this VFO to it, sets its mode and keeps it corrected for the Doppler shift; OFF stops the correction.
-          Received = sent × (1 − range rate / c), calculated every 0.25 s; the VFO is retuned when it is off by more than 20 Hz (SSB, CW), 500 Hz (AM) or 1 kHz (FM), at most once a second.
+          Received = sent × (1 − range rate / c), calculated every 0.25 s; the VFO is retuned when it is off by more than 5 Hz (all modes), at most once a second.
           Tuning the VFO by hand moves the frequency within the transponder and the correction keeps it; tuning more than 50 kHz outside the transponder stops it.
           Transmitters: <a href="https://db.satnogs.org/" target="_blank" rel="noopener noreferrer">SatNOGS DB</a>, downloaded again after 7 days.</p>
       </div>
       <div class="satt-right">
-        <h4>Rotor</h4>
-        <div class="satt-live" id="satRotBox"></div>
-        <div class="sats-row satt-start">
-          <button class="key small" id="satRotStart" title="On: plan the next pass, turn the rotor to its start in time and follow it; the rotor moves only while CTRL is on (with CTRL off it only calculates). Off: tracking ends, the rotor stays">TRACK</button>
-          <span id="satPanelSlot"></span></div>
+        <div class="satt-rhead"><h4>Rotor</h4><span class="flag dim satt-flag" id="satRotFlag">NOT TRACKING</span>
+          <button class="key small" id="satRotStart" title="On: plan the next pass of this satellite, turn the rotor to its start in time and follow it (turns the rotor link on). Off: tracking ends, the rotor stays">TRACK</button>
+          <span id="satPanelSlot"></span><span class="satt-count" id="satCount"></span></div>
+        <div class="satt-live satt-rot" id="satRotBox"></div>
         <div class="satp-detail" id="satDetail"><p class="muted">No pass of this satellite in the next ${satData.hours} hours.</p></div>
       </div>
     </div></div>`;
@@ -2620,7 +2989,16 @@ function renderSatRot() {
   const box = $("satRotBox"), d = satRot;
   if (!box) return;
   const other = !!(d && d.on && d.norad !== satTrackNorad);     // the rotor follows another satellite than the one shown
-  if ($("satRotStart")) $("satRotStart").classList.toggle("on", !!(d && d.on) && !other);
+  const mine = !!(d && d.on) && !other;
+  const moving = mine && !!(satInfo && satInfo.on && satInfo.control);     // the rotor link is on and takes the commands
+  $("satRotStart").classList.toggle("on", mine);
+  const flag = $("satRotFlag");
+  const [text, cls, tip] = moving ? ["TRACKING", "", "The rotor follows this satellite"]
+    : mine ? ["CALC ONLY", "warn", "TRACK only calculates: the rotor link is off or the rotor was stopped (STOP, a fault). TRACK off and on again moves it"]
+    : ["NOT TRACKING", "dim", other ? "The rotor follows another satellite" : "TRACK is off"];
+  if (flag.textContent !== text) flag.textContent = text;
+  flag.className = `flag satt-flag ${cls}`;
+  flag.title = tip;
   if (!d) { box.innerHTML = '<p class="muted">Loading…</p>'; return; }
   if (other) {
     const shown = satData && satData.sats.find((s) => s.norad === satTrackNorad);
@@ -2629,19 +3007,18 @@ function renderSatRot() {
     return;
   }
   if (!d.on) {
-    box.innerHTML = `<p><b>Tracking with the rotor is off.</b>${d.rotor_on ? "" : ' <span class="muted">(rotor link off: SET, ROTOR tab; TRACK then only calculates)</span>'}
+    box.innerHTML = `<p><b>Tracking with the rotor is off.</b> <span class="muted">TRACK plans the next pass and moves the rotor${d.rotor_on ? "" : " (it turns the rotor link on, with the port chosen in SET, ROTOR tab)"}.</span>
       ${d.stopped ? `<span class="${d.stopped === "stopped by hand" ? "muted" : "error"}">Stopped: ${escHtml(d.stopped)}</span>` : ""}</p>`;
     return;
   }
   const p = d.pass, pl = d.plan, n = d.now || {};
-  let html = `<table class="satp-facts"><tr><th>Tracking</th><td><b class="satt-sat">${escHtml(satShort(d.name))}</b> · ${escHtml(d.state)}</td></tr>`;
+  let html = `<table class="satp-facts"><tr><th>Tracking</th><td><b class="satt-sat">${escHtml(satShort(d.name))}</b> · ${escHtml(d.state)}${p ? `
+    · ${satDay(p.aos)} ${satClock(p.aos)} – ${satClock(p.los)}, max. ${p.max_el}°` : ""}${d.state === "waiting for the pass" && d.prep_at ? ` · turns to the start at ${satClock(d.prep_at)}` : ""}</td></tr>`;
   if (p && pl) {
-    html += `<tr><th>Pass</th><td>${satDay(p.aos)} ${satClock(p.aos)} – ${satClock(p.los)}, max. ${p.max_el}°${d.state === "waiting for the pass" && d.prep_at ? ` · turns to the start at ${satClock(d.prep_at)}` : ""}</td></tr>
-      <tr><th>Plan</th><td>${escHtml(SAT_ROT_MODES[pl.mode] || pl.mode)}</td></tr>
-      <tr><th></th><td>K3NG ${Math.round(pl.raw0)}° → ${Math.round(pl.raw1)}° (range ${Math.round(pl.raw_min)}–${Math.round(pl.raw_max)}°), elevation up to ${Math.round(pl.el_max)}°;
-        simulated pointing error up to ${pl.max_err}° (mean ${pl.mean_err}°)</td></tr>`;
     const others = pl.options.filter((o, i, a) => o.mode !== pl.mode && a.findIndex((x) => x.mode === o.mode) === i);
-    if (others.length) html += `<tr><th></th><td class="muted">Other ways: ${others.map((o) => `${o.mode} ${o.max_err}°`).join(", ")}</td></tr>`;
+    html += `<tr><th>Plan</th><td><span title="${escHtml(SAT_ROT_MODES[pl.mode] || pl.mode)}"><b>${escHtml(pl.mode)}</b></span>,
+      K3NG ${Math.round(pl.raw0)}° → ${Math.round(pl.raw1)}° (${Math.round(pl.raw_min)}–${Math.round(pl.raw_max)}°), el up to ${Math.round(pl.el_max)}°,
+      error up to ${pl.max_err}° (mean ${pl.mean_err}°)${others.length ? ` <span class="muted">· other ways: ${others.map((o) => `${o.mode} ${o.max_err}°`).join(", ")}</span>` : ""}</td></tr>`;
   }
   if (n.cmd_az != null) html += `<tr><th>Command</th><td>az ${Math.round(n.cmd_az)}° (K3NG ${Math.round(n.cmd_raw)}°), el ${Math.round(n.cmd_el)}°</td></tr>`;
   if (n.sat_az != null) html += `<tr><th>Satellite</th><td>az ${Math.round(n.sat_az)}°, el ${n.sat_el.toFixed(1)}°${n.err != null ? ` · the antenna is ${n.err}° off` : ""}</td></tr>`;
@@ -2658,6 +3035,21 @@ async function satRotSend(body) {
       return satRotSend({ start: { ...body.start, force: true } });
     }
     amsatInfo(e.message, true);
+    renderSatRot();
+    return false;
+  }
+  renderSatRot();
+  return true;
+}
+
+/** The one TRACK key: on = the tracker plans the passes and the rotor control is on (the link too),
+ *  off = the tracker ends and the rotor stops. While the rotor follows another satellite, it switches to the shown one. */
+async function satTrackToggle() {
+  if (satRot && satRot.on && satRot.norad === satTrackNorad) {
+    await satRotSend({ stop: true });
+    await rotorPost({ stop: true });
+  } else if (await satRotSend({ start: { norad: satTrackNorad } })) {
+    if (!(satInfo && satInfo.on && satInfo.control)) await rotorPost({ start: true });
   }
   renderSatRot();
 }
@@ -2696,7 +3088,7 @@ $("amsatBody").addEventListener("click", (e) => {
     }
   }
   // on: off; off, or on with another satellite: tracks the shown one (the server ends the old tracking first)
-  if (e.target.id === "satRotStart") satRotSend(satRot && satRot.on && satRot.norad === satTrackNorad ? { stop: true } : { start: { norad: satTrackNorad } });
+  if (e.target.id === "satRotStart") satTrackToggle();
 });
 
 setInterval(() => {
@@ -2892,6 +3284,7 @@ $("amsatBody").addEventListener("input", (e) => {
 
 window.addEventListener("resize", () => {
   if (bodyTab === "sat" && amsatPage === "passes" && satData) { renderSatTimeline(); renderSatElChart(); satTickNow(); }
+  if (bodyTab === "sat" && amsatPage === "track" && satData) { renderSatElChart(); satTickNow(); }     // the chart fills the space beside the polar plot
 });
 
 // ---------- SATELLITES tab: MAP page (world map, footprints, ground track) and the station on an OpenStreetMap map ----------
@@ -3275,7 +3668,7 @@ let linkShown = null;
 /** Band buttons, title and notes of the ACARS and CPDLC cards by the active link:
  *  ACARS = the classic channels, VDL2 = one centre button (all channels of the region are received at once) and the region. */
 function renderLinkBands() {
-  const vdl2 = !!(st && st.vdl2);
+  const vdl2 = !!(st && (st.vdl2 || (!st.acars && decPage === "vdl2")));
   if (vdl2 === linkShown) return;
   linkShown = vdl2;
   const f = linkFreqs;
@@ -3285,7 +3678,6 @@ function renderLinkBands() {
     : f.acars.map((x) => `<button data-f="${x}" title="${fmtMHz(x, 3)} MHz AM">${fmtMHz(x, 3)}</button>`).join("");
   $("acarsBands").innerHTML = html;
   renderVdl2Region();
-  $("acarsTitle").textContent = vdl2 ? "VDL2" : "ACARS";
   for (const el of document.querySelectorAll("#acarsCard [data-link]")) {
     el.hidden = el.dataset.link !== (vdl2 ? "vdl2" : "acars");
   }
@@ -3671,6 +4063,8 @@ let dabTimer = null;    // polling of /api/dab while the card is shown
 let dabMotTime = 0;     // slide time of the playing station (a new one -> reload the picture)
 let dabEl = null;       // <audio> playing the MP3 stream, routed into MAIN (masterGain)
 let dabLastInfo = {};
+// stations whose slides are 16:9 pictures squeezed into 320x240 (a click on the slide toggles it, remembered per station)
+const dabWide = new Set(JSON.parse(recall("dabWide") || "[]"));
 
 const dabEsc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
@@ -3689,6 +4083,7 @@ function dabOn() {
     send({ dab: true });
   }
   renderDab(st);
+  setDecPage("dab");
   setBodyTab("dec");
   renderDecTab();
 }
@@ -3843,6 +4238,7 @@ function dabPlay(sid) {
   $("dabSlide").hidden = true;
   $("dabSlide").removeAttribute("src");
   $("dabGlow").style.backgroundImage = "";
+  dabArtRatio();
   if (dabEl) { dabEl.pause(); dabEl.removeAttribute("src"); dabEl.load(); }
   for (const b of $("dabServices").querySelectorAll("button")) b.classList.toggle("on", b.dataset.sid === sid);
   if (!sid) {
@@ -3875,13 +4271,27 @@ function dabPlay(sid) {
   $("dabDlsBox").hidden = true;
 }
 
+/** Sets the ratio of the picture box: the slide's own, 16:9 for a station marked wide, 4:3 with no slide. */
+function dabArtRatio() {
+  const img = $("dabSlide");
+  let r = "4 / 3";
+  if (!img.hidden && img.naturalWidth && img.naturalHeight) r = dabWide.has(dabSid) ? "16 / 9" : `${img.naturalWidth} / ${img.naturalHeight}`;
+  document.querySelector(".dab-art").style.aspectRatio = r;
+}
+$("dabSlide").addEventListener("click", () => {
+  if (!dabSid) return;
+  if (!dabWide.delete(dabSid)) dabWide.add(dabSid);
+  store("dabWide", JSON.stringify([...dabWide]));
+  dabArtRatio();
+});
 $("dabSlide").addEventListener("load", () => {
   $("dabSlide").hidden = false;
+  dabArtRatio();
   $("dabGlow").style.backgroundImage = `url("${$("dabSlide").src}")`;
 });
 $("dabFlag").addEventListener("load", () => { $("dabFlag").hidden = false; });
 $("dabFlag").addEventListener("error", () => { $("dabFlag").hidden = true; });
-$("dabSlide").addEventListener("error", () => { $("dabSlide").hidden = true; });
+$("dabSlide").addEventListener("error", () => { $("dabSlide").hidden = true; dabArtRatio(); });
 $("dabServices").addEventListener("click", (e) => {
   const b = e.target.closest("button[data-sid]");
   if (!b || b.disabled) return;
@@ -3911,7 +4321,6 @@ function dabOff() {
   renderDab(st);
   renderDecTab();
 }
-$("dabOff").addEventListener("click", dabOff);
 $("dabKey").addEventListener("click", () => { if (st) { if (st.dab) dabOff(); else dabOn(); } });
 
 $("acarsBands").addEventListener("click", onLinkBand);
@@ -4011,17 +4420,40 @@ async function wefaxLoadImage() {
   $("wefaxEmpty").hidden = true;
 }
 
+let wefaxFiles = "";
 function renderWefaxInfo(i) {
-  const afc = i.afc ? `centre ${i.center_hz} Hz ✓` : "searching for signal";
+  const afc = (i.afc ? `centre ${i.center_hz} Hz ✓` : "searching for signal") +
+    (i.afc_vfo && i.afc && i.afc_shift != null ? ` · VFO ${i.afc_shift > 0 ? "+" : ""}${i.afc_shift} Hz` : "");
   $("wefaxInfo").textContent = `${WFX_STATES[i.state] || i.state} · ${i.lpm} LPM · IOC ${i.ioc} · ${afc}` +
     (i.rows ? ` · ${i.rows} lines` : "") + (i.saved ? ` · saved ${i.saved}` : "");
   if (document.activeElement !== $("wefaxLpm")) $("wefaxLpm").value = i.lpm_mode;
   if (document.activeElement !== $("wefaxIoc")) $("wefaxIoc").value = i.ioc_mode;
+  if (i.afc_vfo != null) $("wefaxAfc").checked = i.afc_vfo;
   if (i.slant_ppm != null) {
     wfxSlant = i.slant_ppm;
     if (document.activeElement !== $("wefaxSlant")) $("wefaxSlant").value = i.slant_ppm;
   }
+  if (!i.files) return;
+  const files = i.files.join("|");
+  if (files !== wefaxFiles) {
+    wefaxFiles = files;
+    $("wefaxGallery").innerHTML = i.files.map((n) => {
+      const u = `${vbase}/api/wefax/files/${encodeURIComponent(n)}`;
+      return `<div class="sstv-item"><a href="${u}" target="_blank" title="${n}"><img src="${u}" loading="lazy" alt=""><span>${n.slice(6, 21).replace("_", " ")}</span></a>` +
+        `<button class="sstv-del" data-del="${n}" title="Delete this image">×</button></div>`;
+    }).join("");
+  }
+  $("wefaxDelAll").disabled = !i.files.length;
 }
+$("wefaxGallery").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-del]");
+  if (!b) return;
+  e.preventDefault();
+  if (confirm(`Delete ${b.dataset.del}?`)) wefaxCmd({ delete: b.dataset.del });
+});
+$("wefaxDelAll").addEventListener("click", () => {
+  if (confirm("Delete all saved WEFAX images in data\\wefax?")) wefaxCmd({ delete: "all" });
+});
 
 function wefaxAlignMode(on) {
   wfxAlign = on ? [] : null;
@@ -4054,6 +4486,7 @@ $("wefaxBands").addEventListener("click", async (e) => {
 $("wefaxLpm").addEventListener("change", () => wefaxCmd({ lpm_mode: $("wefaxLpm").value }));
 $("wefaxIoc").addEventListener("change", () => wefaxCmd({ ioc_mode: $("wefaxIoc").value }));
 $("wefaxNew").addEventListener("click", () => wefaxCmd({ action: "new" }));
+$("wefaxAfc").addEventListener("change", () => wefaxCmd({ afc_vfo: $("wefaxAfc").checked }));
 $("wefaxSlant").addEventListener("change", () => {
   const v = Number($("wefaxSlant").value);
   if (Number.isFinite(v)) wefaxCmd({ slant_ppm: v });
@@ -4151,10 +4584,22 @@ function renderSstvInfo(i) {
     sstvFiles = files;
     $("sstvGallery").innerHTML = (i.files || []).map((n) => {
       const u = `${vbase}/api/sstv/files/${encodeURIComponent(n)}`;
-      return `<a href="${u}" target="_blank" title="${n}"><img src="${u}" loading="lazy" alt=""><span>${n.slice(5, 20).replace("_", " ")}</span></a>`;
+      return `<div class="sstv-item"><a href="${u}" target="_blank" title="${n}"><img src="${u}" loading="lazy" alt=""><span>${n.slice(5, 20).replace("_", " ")}</span></a>` +
+        `<button class="sstv-del" data-del="${n}" title="Delete this image">×</button></div>`;
     }).join("");
   }
+  $("sstvDelAll").disabled = !(i.files || []).length;
 }
+
+$("sstvGallery").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-del]");
+  if (!b) return;
+  e.preventDefault();
+  if (confirm(`Delete ${b.dataset.del}?`)) sstvCmd({ delete: b.dataset.del });
+});
+$("sstvDelAll").addEventListener("click", () => {
+  if (confirm("Delete all saved SSTV images in data\\sstv?")) sstvCmd({ delete: "all" });
+});
 
 function sstvCmd(body) {
   fetch(vbase + "/api/sstv", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
@@ -4188,6 +4633,454 @@ $("sstvSave").addEventListener("click", () => {
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   });
 });
+// ---------- PACKET: AX.25 frames, APRS stations and their map (packet.py, aprs.py) ----------
+
+const PKT_MAX_ROWS = 500;
+let pktView = ["frames", "stations", "map"].includes(recall("packetView")) ? recall("packetView") : "frames";
+const pktStations = new Map();   // callsign / object name -> newest state (from the server)
+let pktMap = null;               // Leaflet map, made when MAP is first opened
+const pktMarks = new Map();
+let pktFitted = false;
+let pktStTimer = null;
+
+const pktTime = (t) => new Date(t * 1000).toISOString().slice(11, 19);
+const pktFilterText = () => $("packetFilter").value.trim().toUpperCase();
+const pktMatch = (text) => { const f = pktFilterText(); return !f || text.toUpperCase().includes(f); };
+
+function pktDataHtml(m) {
+  const kind = m.kind === "UI" || m.kind === "I" ? "" : `<${m.kind}> `;
+  if (m.summary !== undefined) {
+    const t = m.aprs.type === "position" ? "" : `${m.aprs.type}: `;
+    return `<span class="ap">${escHtml(t + m.summary)}</span><span class="raw">${escHtml(m.info)}</span>`;
+  }
+  return escHtml(kind) + (m.text ? escHtml(m.info) : `<span class="hex">${escHtml(m.info)}</span>`);
+}
+
+function addPacket(m) {
+  const tb = $("packetRows");
+  const tr = document.createElement("tr");
+  tr.dataset.search = m.tnc2 + " " + (m.summary || "");
+  tr.innerHTML = `<td title="${escHtml(fmtMHz(m.freq_hz, 4))} MHz">${pktTime(m.time)}</td>` +
+    `<td class="${m.baud === 9600 ? "b96" : ""}">${m.baud}</td>` +
+    `<td class="call">${escHtml(m.src)}</td><td>${escHtml(m.dest)}</td>` +
+    `<td class="via" title="${escHtml(m.path.join(","))}">${escHtml(m.path.join(","))}</td>` +
+    `<td class="data" title="${escHtml(m.len + " bytes" + (m.afc_hz !== undefined ? ` · AFC ${m.afc_hz} Hz` : "") + " · " + m.tnc2)}">${pktDataHtml(m)}</td>`;
+  tr.hidden = !pktMatch(tr.dataset.search);
+  tb.prepend(tr);
+  while (tb.rows.length > PKT_MAX_ROWS) tb.lastChild.remove();
+  $("packetEmpty").hidden = true;
+  if (m.station) pktStation(m.station);
+}
+
+function pktStation(s) {
+  pktStations.set(s.call, s);
+  if (pktView === "map") pktMark(s);
+  // the table is rebuilt at most twice a second (a busy APRS channel sends several packets a second)
+  if (pktView === "stations" && !pktStTimer) pktStTimer = setTimeout(() => { pktStTimer = null; renderPktStations(); }, 500);
+}
+
+function pktReport(s) {
+  const parts = [];
+  if (s.summary) parts.push(s.summary);
+  if (s.status) parts.push(`status: ${s.status}`);
+  if (s.owner) parts.push(`object of ${s.owner}`);
+  return parts.join(" · ");
+}
+
+function renderPktStations() {
+  const rows = [...pktStations.values()].sort((a, b) => b.last - a.last)
+    .filter((s) => pktMatch(`${s.call} ${s.owner || ""} ${s.via.join(",")} ${pktReport(s)}`));
+  $("packetStRows").innerHTML = rows.map((s) => {
+    const km = s.km === undefined ? "" : `${s.km < 100 ? s.km.toFixed(1) : Math.round(s.km)} / ${s.brg}°`;
+    return `<tr><td>${pktTime(s.last)}</td>` +
+      `<td class="call${s.lat !== undefined ? " click" : ""}" data-call="${escHtml(s.call)}" title="${s.lat !== undefined ? "show on the map" : "no position"}">${escHtml(s.call)}</td>` +
+      `<td class="num">${s.count}</td><td>${km}</td>` +
+      `<td class="via" title="${escHtml(s.via.join(","))}">${escHtml(s.via.join(","))}</td>` +
+      `<td class="data">${escHtml(pktReport(s))}</td></tr>`;
+  }).join("");
+  $("packetStEmpty").hidden = pktStations.size > 0;
+}
+
+function pktMark(s) {
+  if (!pktMap || s.lat === undefined) return;
+  let mk = pktMarks.get(s.call);
+  const tip = `${s.call}${s.km !== undefined ? ` · ${s.km} km ${s.brg}°` : ""}<br>${escHtml(pktReport(s))}<br>${pktTime(s.last)} UTC`;
+  if (!mk) {
+    mk = L.circleMarker([s.lat, s.lon], { radius: 6, color: "#000", weight: 1, fillColor: s.type === "weather" ? "#6cb8ff" : "#ffd84a", fillOpacity: 1 })
+      .bindTooltip(escHtml(s.call), { permanent: true, direction: "right", offset: [6, 0], className: "pkt-label" })
+      .bindPopup("").addTo(pktMap);
+    pktMarks.set(s.call, mk);
+  }
+  mk.setLatLng([s.lat, s.lon]);
+  mk.setPopupContent(tip);
+}
+
+async function pktMapOpen() {
+  try {
+    await Promise.all([satAsset("/static/leaflet/leaflet.css"), satAsset("/static/leaflet/leaflet.js")]);
+  } catch (e) {
+    $("packetMapNote").textContent = e.message;
+    return;
+  }
+  if (!pktMap) {
+    let qth = [48.6, 17.9];   // until the station of SATELLITES › SETUP is known
+    try {
+      const s = (await satFetch("/api/sat/setup")).setup;
+      if (s && Number.isFinite(s.lat) && Number.isFinite(s.lon)) qth = [s.lat, s.lon];
+    } catch { /* no sattrack */ }
+    pktMap = L.map($("packetMap"), { worldCopyJump: true }).setView(qth, 8);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+    }).addTo(pktMap);
+    L.circleMarker(qth, { radius: 7, color: "#000", weight: 2, fillColor: "#ff5a3c", fillOpacity: 1 }).bindTooltip("QTH").addTo(pktMap);
+  }
+  pktMap.invalidateSize();
+  for (const s of pktStations.values()) pktMark(s);
+  if (!pktFitted && pktMarks.size) {
+    pktFitted = true;
+    pktMap.fitBounds(L.featureGroup([...pktMarks.values()]).getBounds().pad(0.2), { maxZoom: 11 });
+  }
+  $("packetMapNote").textContent = `${pktMarks.size} stations with a position · map © OpenStreetMap`;
+}
+
+function setPktView(v, fill = true) {
+  pktView = v;
+  store("packetView", v);
+  for (const b of $("packetViews").children) b.classList.toggle("on", b.dataset.view === v);
+  $("packetFramesBox").hidden = v !== "frames";
+  $("packetStationsBox").hidden = v !== "stations";
+  $("packetMapBox").hidden = v !== "map";
+  if (fill && v === "stations") renderPktStations();
+  if (fill && v === "map") pktMapOpen();
+}
+
+function renderPacketInfo(i) {
+  $("packetRate").value = i.opts.rate;
+  $("packetScr").value = i.opts.scrambler;
+  const el = $("packetInfo");
+  el.classList.toggle("err", !!i.error);
+  if (!i.enabled) { el.textContent = ""; el.title = ""; return; }
+  const afc = i.afc_hz === null || i.afc_hz === undefined ? "" : `  AFC ${i.afc_hz > 0 ? "+" : ""}${(i.afc_hz / 1000).toFixed(2)} kHz`;
+  el.textContent = i.error || `${i.ok} OK  ${i.bad} bad CRC${afc}`;
+  el.title = (i.error ? `${i.ok} OK · ${i.bad} bad CRC · ` : "") + `running: ${i.rates.join(" + ")} Bd` +
+    (i.last_rx ? ` · last frame ${pktTime(i.last_rx)} UTC` : "") +
+    (afc ? " · AFC = tuning error of the last 9600 Bd frame (+ = the signal is above the tuned frequency)" : "");
+}
+
+function packetPost(body) {
+  return fetch(vbase + "/api/packet", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+    .then((r) => r.json());
+}
+
+function packetReset() {
+  $("packetRows").innerHTML = "";
+  $("packetEmpty").hidden = false;
+  pktStations.clear();
+  for (const mk of pktMarks.values()) mk.remove();
+  pktMarks.clear();
+  pktFitted = false;
+  renderPktStations();
+}
+
+async function packetLoad() {
+  const v = active;
+  try {
+    const d = await fetch(vbase + "/api/packet").then((r) => r.json());
+    if (v !== active) return;
+    packetReset();
+    for (const m of d.frames) addPacket({ ...m, station: undefined });
+    for (const s of d.stations.slice().reverse()) pktStation(s);
+    renderPacketInfo(d);
+    setPktView(pktView);
+  } catch { /* an older receiver without PACKET */ }
+}
+
+$("packetOn").addEventListener("change", () => {
+  st.packet = $("packetOn").checked;
+  $("packetCard").hidden = !st.packet;
+  send({ packet: st.packet });
+});
+$("packetRate").addEventListener("change", () => packetPost({ opts: { rate: $("packetRate").value } }).then(renderPacketInfo));
+$("packetScr").addEventListener("change", () => packetPost({ opts: { scrambler: $("packetScr").value } }).then(renderPacketInfo));
+$("packetClear").addEventListener("click", () => { packetPost({ action: "clear" }).then(renderPacketInfo); packetReset(); });
+$("packetViews").addEventListener("click", (e) => { const b = e.target.closest("button[data-view]"); if (b) setPktView(b.dataset.view); });
+$("packetFilter").addEventListener("input", () => {
+  for (const tr of $("packetRows").rows) tr.hidden = !pktMatch(tr.dataset.search);
+  if (pktView === "stations") renderPktStations();
+});
+$("packetStRows").addEventListener("click", (e) => {
+  const td = e.target.closest("td.call.click");
+  if (!td) return;
+  const s = pktStations.get(td.dataset.call);
+  setPktView("map");
+  pktMapOpen().then(() => { if (pktMap && s) { pktMap.setView([s.lat, s.lon], 12); const mk = pktMarks.get(s.call); if (mk) mk.openPopup(); } });
+});
+setPktView(pktView, false);   // filled by packetLoad()
+
+// graph right of the lists, SPECTRUM or EYE: the server sends its data only while the PACKET page asks for it
+// (renewed every 2 s)
+let pktGraph = recall("packetGraph") === "eye" ? "eye" : "spec";
+let pktEyeRate = recall("packetEyeRate") === "1200" ? 1200 : 9600;
+let pktEyeAt = 0;   // time of the last graph data
+const pktEyeShown = () => bodyTab === "dec" && decPage === "packet" && !!(st && st.packet);
+
+function pktEyeAsk() {
+  if (!pktEyeShown()) return;
+  packetPost(pktGraph === "eye" ? { action: "eye", rate: pktEyeRate } : { action: "spectrum" })
+    .catch(() => { /* receiver restarting */ });
+}
+
+function pktEyeCanvas() {
+  const cv = $("packetEye"), w = cv.clientWidth, h = cv.clientHeight, dpr = window.devicePixelRatio || 1;
+  if (!w || !h) return null;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  }
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { g, w, h };
+}
+
+// persistence display: the traces are summed into a 2D histogram that fades out (EYE_DECAY per event, 4 per second),
+// the colour shows how often the signal passes through each point, so the noise does not hide the eye
+const EYE_DECAY = 0.8;
+const EYE_SPAN = 0.78;      // full scale of the data = this part of the half height (room above and below the eye)
+const EYE_PEAK_DECAY = 0.97;   // the brightness reference falls slowly (half in ~6 s): the noise after a frame stays dim
+let pktEyeHist = null, pktEyeKey = "", pktEyeOff = null, pktEyePeak = 0;
+
+function pktEyeClear(note) {
+  const c = pktEyeCanvas();
+  if (c) { c.g.fillStyle = "#000"; c.g.fillRect(0, 0, c.w, c.h); }
+  pktEyeKey = "";
+  $("packetEyeInfo").textContent = note;
+}
+
+function drawPktEye(d) {
+  if (pktGraph !== "eye" || d.rate !== pktEyeRate) return;
+  const c = pktEyeCanvas();
+  if (!c) return;
+  pktEyeAt = Date.now();
+  const { g } = c, w = Math.round(c.w), h = Math.round(c.h), n = d.n, raw = atob(d.data);
+  const cnt = Math.floor(raw.length / n), mid = h / 2, span = mid * EYE_SPAN;
+  const key = `${w}x${h}x${d.rate}`;
+  if (key !== pktEyeKey || !pktEyeHist) {
+    pktEyeKey = key;
+    pktEyeHist = new Float32Array(w * h);
+    pktEyeOff = document.createElement("canvas");
+    pktEyeOff.width = w; pktEyeOff.height = h;
+    pktEyePeak = 0;
+  }
+  const hist = pktEyeHist;
+  for (let i = 0; i < hist.length; i++) hist[i] *= EYE_DECAY;
+  const v = new Float32Array(n);
+  for (let t = 0; t < cnt; t++) {
+    for (let k = 0; k < n; k++) v[k] = ((raw.charCodeAt(t * n + k) << 24) >> 24) / 127;
+    let prev = -1;
+    for (let x = 0; x < w; x++) {
+      const u = (x / (w - 1)) * (n - 1), k = Math.min(n - 2, Math.floor(u)), f = u - k;
+      const row = Math.max(0, Math.min(h - 1, Math.round(mid - (v[k] + (v[k + 1] - v[k]) * f) * span)));
+      const lo = prev < 0 ? row : Math.min(prev, row), hi = prev < 0 ? row : Math.max(prev, row);
+      const wt = 1 / (hi - lo + 1);        // a steep edge spreads over its rows, so it is not brighter than a flat part
+      for (let y = lo; y <= hi; y++) hist[y * w + x] += wt;
+      prev = row;
+    }
+  }
+  let top = 0;
+  for (let i = 0; i < hist.length; i++) if (hist[i] > top) top = hist[i];
+  // brightness against a slowly falling peak: a clean eye concentrates the traces into bright bands, noise
+  // spreads them thin, so it is dim; gamma 0.6 keeps the rarer paths of the eye visible
+  pktEyePeak = Math.max(top, pktEyePeak * EYE_PEAK_DECAY);
+  const img = new ImageData(w, h), px = img.data, norm = pktEyePeak > 0 ? 1 / (0.7 * pktEyePeak) : 0;
+  const col = d.rate === 9600 ? [70, 230, 120] : [255, 185, 60];
+  for (let i = 0; i < hist.length; i++) {
+    const a = Math.min(1, Math.pow(hist[i] * norm, 0.6));
+    const b = Math.max(0, (a - 0.8) / 0.2);                          // the densest paths go to white
+    px[i * 4] = col[0] * a + (255 - col[0]) * b;
+    px[i * 4 + 1] = col[1] * a + (255 - col[1]) * b;
+    px[i * 4 + 2] = col[2] * a + (255 - col[2]) * b;
+    px[i * 4 + 3] = 255;
+  }
+  pktEyeOff.getContext("2d").putImageData(img, 0, 0);
+  g.drawImage(pktEyeOff, 0, 0, c.w, c.h);
+  // centre = sampling instant, horizontal = decision threshold; the edges are the neighbouring bits' instants;
+  // the faint lines are the nominal levels (1200: mark +1 / space -1, 9600: ± the measured deviation)
+  const lvl = d.rate === 9600 ? (d.dev_hz || 0) / d.full : 1 / d.full;
+  g.lineWidth = 1;
+  g.strokeStyle = "rgba(255, 255, 255, 0.28)";
+  g.setLineDash([3, 4]);
+  g.beginPath();
+  g.moveTo(c.w / 2, 0); g.lineTo(c.w / 2, c.h);
+  g.moveTo(0, mid); g.lineTo(c.w, mid);
+  g.stroke();
+  g.strokeStyle = "rgba(255, 255, 255, 0.14)";
+  g.setLineDash([1, 5]);
+  g.beginPath();
+  g.moveTo(0, mid - lvl * span); g.lineTo(c.w, mid - lvl * span);
+  g.moveTo(0, mid + lvl * span); g.lineTo(c.w, mid + lvl * span);
+  g.stroke();
+  g.setLineDash([]);
+  g.fillStyle = "rgba(170, 180, 190, 0.85)";
+  g.font = "10px ui-monospace, Consolas, monospace";
+  const up = d.rate === 9600 ? `+${((d.dev_hz || 0) / 1000).toFixed(2)} kHz` : "mark +1";
+  const dn = d.rate === 9600 ? `−${((d.dev_hz || 0) / 1000).toFixed(2)} kHz` : "space −1";
+  g.fillText(up, 4, Math.max(11, mid - lvl * span - 4));
+  g.fillText(dn, 4, Math.min(c.h - 4, mid + lvl * span + 12));
+  const pct = (x) => (x === null || x === undefined ? "–" : `${x} %`);
+  $("packetEyeInfo").innerHTML = `eye open now <b>${pct(d.open)}</b>  ·  last frame <b>${pct(d.open_frame)}</b>\n` +
+    (d.rate === 9600 ? `deviation <b>±${(d.dev_hz / 1000).toFixed(2)} kHz</b>  ·  AFC (live) <b>${d.afc_live > 0 ? "+" : ""}${d.afc_live} Hz</b>` : "");
+}
+
+// ---- spectrum: averaged power around the tuned frequency (0 = tuned), max hold, 99 % bandwidth ----
+const SPEC_AVG = 0.3;       // weight of a new spectrum (4 per second): about 1 s averaging
+let pktSpecAvg = null, pktSpecMax = null, pktSpecK = -1, pktSpecHold = false;
+let pktSpecHi = null, pktSpecLo = null, pktSpecHiN = 0, pktSpecLoN = 0;
+
+function pktSpecReset() {
+  pktSpecAvg = pktSpecMax = null;
+  pktSpecK = -1;
+  pktSpecHi = pktSpecLo = null;
+}
+
+// level range in 10 dB steps: it widens at once and narrows only after 3 s, so the picture does not jump
+function pktSpecRange(hiT, loT) {
+  if (pktSpecHi === null || hiT > pktSpecHi) { pktSpecHi = hiT; pktSpecHiN = 0; }
+  else if (hiT < pktSpecHi) { if (++pktSpecHiN > 12) { pktSpecHi = hiT; pktSpecHiN = 0; } }
+  else pktSpecHiN = 0;
+  if (pktSpecLo === null || loT < pktSpecLo) { pktSpecLo = loT; pktSpecLoN = 0; }
+  else if (loT > pktSpecLo) { if (++pktSpecLoN > 12) { pktSpecLo = loT; pktSpecLoN = 0; } }
+  else pktSpecLoN = 0;
+  return [pktSpecHi, Math.max(pktSpecHi - 70, Math.min(pktSpecLo, pktSpecHi - 40))];
+}
+
+function drawPktSpec(d) {
+  if (pktGraph !== "spec") return;
+  const c = pktEyeCanvas();
+  if (!c) return;
+  pktEyeAt = Date.now();
+  const { g, w, h } = c, k = d.k, n = d.db.length;
+  if (k !== pktSpecK || !pktSpecAvg || pktSpecAvg.length !== n) {
+    pktSpecReset();
+    pktSpecK = k;
+    pktSpecAvg = Float64Array.from(d.db, (v) => 10 ** (v / 10));
+  } else {
+    for (let i = 0; i < n; i++) pktSpecAvg[i] += SPEC_AVG * (10 ** (d.db[i] / 10) - pktSpecAvg[i]);
+  }
+  const avg = Array.from(pktSpecAvg, (v) => 10 * Math.log10(v + 1e-12));
+  if (pktSpecHold) pktSpecMax = pktSpecMax ? pktSpecMax.map((v, i) => Math.max(v, d.db[i])) : d.db.slice();
+  const sorted = avg.slice().sort((a, b) => a - b), floor = sorted[Math.floor(n * 0.2)], peak = sorted[n - 1];
+  const top = pktSpecHold && pktSpecMax ? Math.max(peak, ...pktSpecMax) : peak;
+  const hiT = Math.ceil((top + 5) / 10) * 10;
+  const [hi, lo] = pktSpecRange(hiT, Math.min(hiT - 40, Math.floor((floor - 6) / 10) * 10));
+  const L = 30, B = 14, pw = w - L - 2, ph = h - B - 4;
+  const X = (i) => L + (i / (n - 1)) * pw, Y = (db) => 4 + ((hi - Math.max(lo, Math.min(hi, db))) / (hi - lo)) * ph;
+  const fx = (hz) => L + ((hz / d.df + k) / (n - 1)) * pw;
+  const span = k * d.df;
+  g.fillStyle = "#000";
+  g.fillRect(0, 0, w, h);
+  g.font = "10px ui-monospace, Consolas, monospace";
+  g.lineWidth = 1;
+  // grid: 10 dB, 2 kHz (labels every 4 kHz); the tuned frequency brighter, the 9600 Bd AFC dashed green
+  g.strokeStyle = "rgba(255, 255, 255, 0.10)";
+  g.fillStyle = "rgba(170, 180, 190, 0.8)";
+  g.beginPath();
+  for (let db = hi; db >= lo; db -= 10) {
+    const y = Math.round(Y(db)) + 0.5;
+    g.moveTo(L, y); g.lineTo(L + pw, y);
+    if (y < 4 + ph - 6) g.fillText(String(db), 2, y + 3);
+  }
+  for (let f = -Math.floor(span / 2000) * 2000; f <= span; f += 2000) {
+    const x = Math.round(fx(f)) + 0.5;
+    g.moveTo(x, 4); g.lineTo(x, 4 + ph);
+    if (f % 4000 === 0 && x > L + 8 && x < L + pw - 8) {
+      const t = f === 0 ? "0" : `${f > 0 ? "+" : ""}${f / 1000}`;
+      g.fillText(t, x - g.measureText(t).width / 2, h - 3);
+    }
+  }
+  g.stroke();
+  g.strokeStyle = "rgba(255, 255, 255, 0.35)";
+  g.beginPath(); g.moveTo(Math.round(fx(0)) + 0.5, 4); g.lineTo(Math.round(fx(0)) + 0.5, 4 + ph); g.stroke();
+  const afc = d.afc_live !== null && d.afc_live !== undefined ? d.afc_live : null;
+  if (afc !== null && Math.abs(afc) < span) {
+    const x = Math.round(fx(afc)) + 0.5;
+    g.strokeStyle = "rgba(70, 230, 120, 0.7)";
+    g.setLineDash([4, 3]);
+    g.beginPath(); g.moveTo(x, 4); g.lineTo(x, 4 + ph); g.stroke();
+    g.setLineDash([]);
+  }
+  if (pktSpecHold && pktSpecMax) {
+    g.strokeStyle = "rgba(110, 160, 255, 0.75)";
+    g.beginPath();
+    pktSpecMax.forEach((v, i) => (i ? g.lineTo(X(i), Y(v)) : g.moveTo(X(i), Y(v))));
+    g.stroke();
+  }
+  g.beginPath();
+  avg.forEach((v, i) => (i ? g.lineTo(X(i), Y(v)) : g.moveTo(X(i), Y(v))));
+  g.strokeStyle = "rgba(255, 185, 60, 0.95)";
+  g.stroke();
+  g.lineTo(X(n - 1), 4 + ph); g.lineTo(X(0), 4 + ph); g.closePath();
+  g.fillStyle = "rgba(255, 185, 60, 0.12)";
+  g.fill();
+  // occupied bandwidth: 99 % of the power above the noise floor (only with a signal at least 15 dB above it)
+  let bw = null, centre = null;
+  if (peak - floor >= 15) {
+    const nf = 10 ** (floor / 10), p = Array.from(pktSpecAvg, (v) => Math.max(0, v - nf));
+    const tot = p.reduce((a, b) => a + b, 0);
+    let acc = 0, i0 = -1, i1 = -1;
+    for (let i = 0; i < n; i++) {
+      acc += p[i];
+      if (i0 < 0 && acc >= 0.005 * tot) i0 = i;
+      if (i1 < 0 && acc >= 0.995 * tot) i1 = i;
+    }
+    if (i0 >= 0 && i1 >= i0) { bw = (i1 - i0 + 1) * d.df; centre = ((i0 + i1) / 2 - k) * d.df; }
+  }
+  const sg = (v) => (v > 0 ? "+" : "") + v;
+  $("packetEyeInfo").innerHTML = `span <b>±${(span / 1000).toFixed(1)} kHz</b>  ·  RBW ${Math.round(d.df)} Hz  ·  ` +
+    `S/N <b>${Math.round(peak - floor)} dB</b>\n` +
+    (bw ? `bandwidth (99 %) <b>${(bw / 1000).toFixed(1)} kHz</b>  ·  centre <b>${sg(Math.round(centre))} Hz</b>` : "no signal") +
+    (afc !== null ? `\nAFC (live, 9600) <b>${sg(afc)} Hz</b> (green line)` : "");
+}
+
+function setPktGraph(v) {
+  pktGraph = v;
+  store("packetGraph", v);
+  for (const b of $("packetGraphView").children) b.classList.toggle("on", b.dataset.view === v);
+  $("packetEyeRate").hidden = v !== "eye";
+  $("packetSpecOpts").hidden = v !== "spec";
+  pktSpecReset();
+  pktEyeClear("waiting for data…");
+  pktEyeAsk();
+}
+
+$("packetGraphView").addEventListener("click", (e) => { const b = e.target.closest("button[data-view]"); if (b) setPktGraph(b.dataset.view); });
+$("packetSpecMax").addEventListener("click", () => {
+  pktSpecHold = !pktSpecHold;
+  pktSpecMax = null;
+  $("packetSpecMax").classList.toggle("on", pktSpecHold);
+});
+
+function setPktEyeRate(r) {
+  pktEyeRate = r;
+  store("packetEyeRate", String(r));
+  for (const b of $("packetEyeRate").children) b.classList.toggle("on", Number(b.dataset.rate) === r);
+  pktEyeClear("waiting for data…");
+  pktEyeAsk();
+}
+
+$("packetEyeRate").addEventListener("click", (e) => { const b = e.target.closest("button[data-rate]"); if (b) setPktEyeRate(Number(b.dataset.rate)); });
+for (const b of $("packetEyeRate").children) b.classList.toggle("on", Number(b.dataset.rate) === pktEyeRate);
+for (const b of $("packetGraphView").children) b.classList.toggle("on", b.dataset.view === pktGraph);
+$("packetEyeRate").hidden = pktGraph !== "eye";
+$("packetSpecOpts").hidden = pktGraph !== "spec";
+setInterval(() => {
+  pktEyeAsk();
+  if (pktEyeShown() && Date.now() - pktEyeAt > 3000) {
+    const running = st && st.packet;
+    pktEyeClear(!running ? "decoder off" : pktGraph === "spec" ? "no data"
+      : `no ${pktEyeRate} Bd data (is ${pktEyeRate} Bd selected in BAUD?)`);
+  }
+}, 2000);
+
 // ---------- CW ----------
 
 /** Text output of a decoder (CW, RTTY): appends text, keeps scrolled to the end if the user was there. */
@@ -4309,6 +5202,7 @@ function ismOn() {
   if (st.acars || st.vdl2 || st.dab) { st.acars = st.vdl2 = st.dab = false; $("acarsOn").checked = $("vdl2On").checked = false; }
   send({ ism: true });
   renderIsm(st);
+  setDecPage("ism");
   setBodyTab("dec");
   renderDecTab();
 }
@@ -4322,7 +5216,6 @@ function ismOff() {
 }
 
 $("ismKey").addEventListener("click", () => { if (st) { if (st.ism) ismOff(); else ismOn(); } });
-$("ismOff").addEventListener("click", ismOff);
 $("ismBands").addEventListener("click", (e) => {
   const b = e.target.closest("[data-f]");
   if (b && st) send({ ism_hz: Number(b.dataset.f) });
@@ -4379,7 +5272,7 @@ async function dsdLoad() {
 
 function renderDsd(s) {
   const on = s.mode === "DSD";
-  if (on && dsdModeWas === false) setBodyTab("dec");
+  if (on && dsdModeWas === false) { setDecPage("dsd"); setBodyTab("dec"); }
   dsdModeWas = on;
   $("dsdCard").hidden = !on;
   const i = s.dsd;
@@ -4610,15 +5503,13 @@ function renderRotor(info) {
   renderSat(info);
 }
 
-// ---------- rotor control on the TRACK page: CTRL, STOP and the error line ----------
-const satPanel = $("satPanel");      // CTRL, STOP, error: moved into the TRACK page when it is shown
-const $p = (id) => satPanel.querySelector("#" + id);
+// ---------- rotor control on the TRACK page: STOP and the error line ----------
+const satPanel = $("satPanel");      // STOP, error: moved into the TRACK page when it is shown
 
 function renderSat(info) {
   satInfo = info;
   satPolarRotor();
-  $p("satCtrl").classList.toggle("on", !!info.control);
-  $p("satCtrl").disabled = !info.on;
+  renderSatRot();      // the TRACKING flag depends on the rotor control
 }
 
 let satInfo = null;     // the last rotor state, for the clicks
@@ -4633,9 +5524,12 @@ function satDialRefusal(info) {
 }
 
 // SAT key: the SATELLITES tab, on the TRACK page when the rotor is to be seen at once.
-$("satKey").addEventListener("click", () => setBodyTab(bodyTab === "sat" ? "scope" : "sat"));
-$("satCtrl").addEventListener("click", (e) => rotorPost(e.currentTarget.classList.contains("on") ? { stop: true } : { start: true }));
-$("satStop").addEventListener("click", () => rotorPost({ stop: true }));
+$("satKey").addEventListener("click", () => setSatOn(!amsatTabShown()));
+// STOP: the motors first, then the tracking ends (the tracker would otherwise wait for the next pass)
+$("satStop").addEventListener("click", async () => {
+  await rotorPost({ stop: true });
+  if (satRot && satRot.on) await satRotSend({ stop: true });
+});
 
 async function pollRotor() {
   const panel = document.querySelector('[data-set-panel="rotor"]');
@@ -4697,6 +5591,29 @@ $("clockBox").addEventListener("click", toggleClock);
 $("clockBox").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleClock(); } });
 tickClock();
 setInterval(tickClock, 1000);
+
+// ---------- CPU and memory of the PC, under the S-meter (from the server of this page, every 3 s) ----------
+function sysBar(bar, text, pct) {
+  const v = pct == null ? 0 : Math.round(pct);
+  $(bar).style.width = `${v}%`;
+  $(bar).classList.toggle("warn", v > 70 && v <= 90);
+  $(bar).classList.toggle("high", v > 90);
+  $(text).textContent = pct == null ? "–" : `${v}%`;
+}
+async function pollSysLoad() {
+  if (document.hidden) return;
+  try {
+    const d = await fetch("/api/sysload").then((r) => (r.ok ? r.json() : null));
+    if (!d) return;
+    sysBar("sysCpuBar", "sysCpu", d.cpu);
+    sysBar("sysMemBar", "sysMem", d.mem);
+    $("sysLoad").title = `Load of this PC (the RADIMCOM server)` +
+      (d.mem_total ? `\nMemory: ${(d.mem_used / 2 ** 30).toFixed(1)} of ${(d.mem_total / 2 ** 30).toFixed(1)} GB` : "");
+    $("sysLoad").hidden = false;
+  } catch (e) { /* server not reachable: the indicator keeps its last values */ }
+}
+pollSysLoad();
+setInterval(pollSysLoad, 3000);
 
 
 // ---------- memories ----------
@@ -4918,7 +5835,7 @@ function onStatus(s) {
   const rateChanged = st && st.audio_rate !== s.audio_rate;
   // Shortly after a local change, do not let an older state from the server overwrite tuning and selection.
   if (st && Date.now() - localChangeAt < 700) {
-    for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "dc_remove", "dc_hz", "dc_db", "spur_on", "spur_hz", "spur_edge", "spur_shift", "spur_db", "spur_learning", "stereo_on", "notch", "ft8", "wefax", "cw", "rtty", "sstv", "acars", "cpdlc", "dab", "dab_channel", "dab_sids", "logs", "upconv", "device", "squelch_levels"]) s[k] = st[k];
+    for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "smart_agc", "dc_remove", "dc_hz", "dc_db", "spur_on", "spur_hz", "spur_edge", "spur_shift", "spur_db", "spur_learning", "stereo_on", "notch", "autotune", "ft8", "wefax", "cw", "rtty", "sstv", "packet", "acars", "cpdlc", "dab", "dab_channel", "dab_sids", "logs", "upconv", "device", "squelch_levels", "auto_sql", "auto_sql_on", "auto_sql_level"]) s[k] = st[k];
   }
   s.sample_rates = sampleRates;
   st = s;
@@ -4939,6 +5856,8 @@ function onStatus(s) {
   $("cwCard").hidden = !s.cw;
   $("rttyOn").checked = !!s.rtty;
   $("rttyCard").hidden = !s.rtty;
+  $("packetOn").checked = !!s.packet;
+  $("packetCard").hidden = !s.packet;
   renderLogs(s.logs);
   $("sstvOn").checked = !!s.sstv;
   $("sstvCard").hidden = !s.sstv;
@@ -5010,22 +5929,27 @@ function connectEvents(v) {
   on("sstvrow", (d) => { if (d.id === sstvImg.id) sstvAddRow(d.y, d.row); });
   on("sstvdone", (d) => { if (d.id === sstvImg.id) sstvReload(); });
   on("sstvstate", renderSstvInfo);
-  on("cwtext", (d) => cwAppend(d.t));
+  on("cwtext", (d) => { cwAppend(d.t); if (st && st.cw) cwBubbleAdd(d.t); });
+  on("cwpeek", (d) => { if (st && !st.cw) cwBubbleAdd(d.t); });
   on("cwstate", renderCwInfo);
   on("rttytext", (d) => rttyOut.add(d.t));
   on("rttystate", renderRttyInfo);
-  on("dsdcall", (c) => { addDsdCall(c); decActivity(); });
-  on("acars", (m) => { acarsReceive(m); decActivity(); });
-  on("cpdlc", (c) => { if (c.imi === "ATN") { addAtn(c, true); decActivity(); } });   // others come inside "acars"
-  on("ft8", decActivity);
-  on("cwtext", decActivity);
-  on("rttytext", decActivity);
-  on("wefaxnew", decActivity);
-  on("sstvnew", decActivity);
+  on("packet", (m) => { addPacket(m); decActivity("packet"); });
+  on("packetstate", renderPacketInfo);
+  on("packeteye", drawPktEye);
+  on("packetspec", drawPktSpec);
+  on("dsdcall", (c) => { addDsdCall(c); decActivity("dsd"); });
+  on("acars", (m) => { acarsReceive(m); decActivity(st && st.vdl2 ? "vdl2" : "acars"); });
+  on("cpdlc", (c) => { if (c.imi === "ATN") { addAtn(c, true); decActivity("vdl2"); } });   // others come inside "acars"
+  on("ft8", () => decActivity("ft8"));
+  on("cwtext", () => decActivity("cw"));
+  on("rttytext", () => decActivity("rtty"));
+  on("wefaxnew", () => decActivity("wefax"));
+  on("sstvnew", () => decActivity("sstv"));
   on("acarsstate", renderAcarsInfo);
   on("vdl2state", renderVdl2Info);
   on("dabstate", (d) => { if (st) renderDabInfo(d); });
-  on("ism", (m) => { addIsm(m); if (m.n === 1) decActivity(); });
+  on("ism", (m) => { addIsm(m); if (m.n === 1) decActivity("ism"); });
   on("ismstate", (d) => { if (st) renderIsmInfo(d); });
   on("acarsinfo", onAcarsInfo);
   on("ft8cycle", (d) => renderFt8Info(`cycle ${d.time} · decoding…`));
@@ -5150,26 +6074,30 @@ function renderVfoDisplays() {
     mode.style.visibility = gain.style.visibility = sql.style.visibility = s ? "" : "hidden";
     if (s) {
       mode.textContent = s.mode;
-      gain.textContent = s.gain === "auto" ? "AGC" : gainLabel(s);
+      const smart = s.smart_agc && s.gain !== "auto";
+      gain.textContent = s.gain === "auto" ? "AGC" : smart ? `+${gainLabel(s)}` : gainLabel(s);
+      if (!gain.matches(":hover")) gain.title = smart ? `AGC+ ${gainLabel(s)}, A/D peak ${s.adc_peak} dBFS${s.adc_clip ? ", clipping" : ""}` : "RF gain";
       // slider: disabled with AGC (as in SET); while dragging, the state from the server does not overwrite it
       const rf = row.querySelector(".vfo-rf input");
       const gains = s.gains || [];
-      rf.disabled = s.gain === "auto" || !gains.length;
+      rf.disabled = s.gain === "auto" || smart || !gains.length;
       rf.max = Math.max(gains.length - 1, 0);
-      if (document.activeElement !== rf && gains.length && s.gain !== "auto") {
+      if ((smart || document.activeElement !== rf) && gains.length && s.gain !== "auto") {
         let best = 0;
         gains.forEach((g, i) => { if (Math.abs(g - s.gain) < Math.abs(gains[best] - s.gain)) best = i; });
         rf.value = best;
       }
       // squelch only in AM/FM/WFM; in other modes it stays in place but dimmed and inactive
       const levels = s.squelch_levels || {};
-      const sqOk = s.mode in levels, lvl = sqOk ? levels[s.mode] : SQUELCH_OFF;
+      const sqOk = s.mode in levels, set = sqOk ? levels[s.mode] : SQUELCH_OFF;
+      const auto = sqOk && !!s.auto_sql_on, lvl = auto ? (s.auto_sql_level ?? SQUELCH_OFF) : set;
       const sq = row.querySelector(".vfo-sq input");
       row.querySelector(".vfo-sqrow").classList.toggle("na", !sqOk);
-      sq.disabled = !sqOk;
-      if (document.activeElement !== sq) sq.value = lvl;
-      sql.textContent = !sqOk || lvl <= SQUELCH_OFF ? "OFF" : `${lvl} dB`;
-      sql.title = !sqOk ? `squelch not available in ${s.mode}` : lvl <= SQUELCH_OFF ? "squelch off" : `squelch ${lvl} dBFS (${sReading(lvl)})`;
+      sq.disabled = !sqOk || (auto && !!s.auto_sql);
+      if (document.activeElement !== sq) sq.value = auto && !s.auto_sql ? set : lvl;
+      sql.textContent = !sqOk ? "OFF" : auto ? "AUTO" : lvl <= SQUELCH_OFF ? "OFF" : `${lvl} dB`;
+      sql.title = !sqOk ? `squelch not available in ${s.mode}` : auto ? `auto squelch ${lvl > SQUELCH_OFF ? `${lvl} dBFS (${sReading(lvl)})` : "(measuring the noise)"}`
+        : lvl <= SQUELCH_OFF ? "squelch off" : `squelch ${lvl} dBFS (${sReading(lvl)})`;
     }
     const cue = row.querySelector(".vfo-cue");
     cue.classList.toggle("on", !!v.cue);
@@ -5253,6 +6181,7 @@ async function selectVfo(v) {
   for (const id of ["modes", "bandwidths", "steps"]) $(id)._html = null;
   $("ft8Rows").innerHTML = ""; $("ft8Empty").hidden = false; ft8Cycle = null; ft8Count = 0;
   cwOut.clear(); rttyOut.clear();
+  packetReset();
   acarsResume();
   acarsDropHeld();
   $("acarsRows").innerHTML = ""; $("acarsEmpty").hidden = false; renderAcarsFilter();
@@ -5287,6 +6216,7 @@ async function loadDecoders() {
   await sstvLoad();
   await dsdLoad();
   await ismLoad();
+  await packetLoad();
   const cwi = await fetch(vbase + "/api/cw").then((r) => r.json());
   if (v !== active) return;
   renderCwInfo(cwi);
@@ -5587,18 +6517,19 @@ async function checkUpdate(tries = 0) {
   const a = $("updLink");
   if (!u.newer || !a) return;
   updInfo = u;
-  a.textContent = `→ ${u.latest} available`;
+  a.textContent = u.latest;
   a.href = u.url;
-  a.title = `${u.name}${u.published ? `, released ${u.published.slice(0, 10)}` : ""}: click for the upgrade`;
+  a.title = `${u.name}${u.published ? `, released ${u.published.slice(0, 10)}` : ""} is available: click here for the latest version`;
   a.hidden = false;
+  const logo = document.querySelector(".r-logo-link");   // red logo: this is not the newest version
+  if (logo) {
+    logo.classList.add("outdated");
+    logo.href = u.url;      // the release page, in a new tab (target=_blank)
+    logo.title = `RADIMCOM ${u.latest} is available (this is ${u.current}): click here for the latest version`;
+  }
   if (recall("updSkip") !== u.latest && recall("updLater") !== String(u.checked)) showUpdate();
 }
 
-$("updLink").addEventListener("click", (e) => {
-  if (!updInfo) return;
-  e.preventDefault();
-  showUpdate();
-});
 
 function showUpdate() {
   const u = updInfo;

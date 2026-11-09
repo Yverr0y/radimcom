@@ -1,4 +1,4 @@
-# RADIMCOM HTTP API – Ver. 0.111
+# RADIMCOM HTTP API – Ver. 0.112
 
 The web page talks to the receivers through this HTTP API, and you can use it too (scripts, curl, other programs).
 Requests and responses are JSON unless stated otherwise. Errors return `{"error": "..."}` with HTTP 400 (bad input),
@@ -43,6 +43,7 @@ Memories (`data\memories.json`) are shared by all VFOs, so `/api/memories` gives
 | GET | `/api/state` | full state of this VFO (see below) |
 | POST | `/api/set` | change settings: send only the keys to change; returns `{"ok": true}` |
 | GET | `/api/devices` | connected SDR devices |
+| GET | `/api/sysload` | CPU load and memory use of the PC: `{"cpu": %, "mem": %, "mem_used": bytes, "mem_total": bytes}` |
 | GET | `/api/events` | live event stream (Server-Sent Events) |
 | GET | `/api/audio` | endless audio stream (raw PCM) |
 | GET | `/api/mpx` | WFM: spectrum of the demodulated MPX signal, 0–20 kHz |
@@ -56,7 +57,7 @@ Memories (`data\memories.json`) are shared by all VFOs, so `/api/memories` gives
 | GET | `/api/sat/doppler` | Doppler correction of this VFO: `{"on", "step" (Hz: the VFO is retuned when it is off by more than this, by the mode), "norad", "name", "label", "uuid", "f_nominal", "f_sat", "span", "last_set", "error", "stopped", "rate", "factor", "az", "el", "f_rx", "shift"}`; `f_sat` is the frequency sent by the satellite (moved by tuning the VFO by hand), `f_rx` the one received now, `shift` = `f_rx − f_sat` (Hz), `rate` the range rate (km/s), `stopped` why it stopped |
 | POST | `/api/sat/doppler` | `{"start": {"norad", "uuid"}}` (a transmitter of `/api/sat/transmitters`; the middle of a transponder) or `{"start": {"norad", "f_hz"}}`, with `"set_mode": false` to keep the mode; `{"stop": true}` stops it. Answers like GET; 409 when the VFO refuses, 400 for a wrong start. |
 | GET | `/api/sat/rotor` | satellite tracking with the rotor on this VFO: `{"on", "norad", "name", "state" (waiting for the pass, moving to the start, tracking), "pass": {"aos", "los", "max_el", ...}, "plan": {"mode" (normal, overlap, flipped, over top), "max_err", "mean_err" (simulated pointing error, degrees), "raw0", "raw1", "raw_min", "raw_max" (K3NG azimuth 0–450), "el_max", "options": [{"mode", "max_err", "raw0", "raw1", "move_s"}], "path": [[t, k3ng_az, el]] every 5 s}, "prep_at" (when the move to the start begins), "now": {"sat_az", "sat_el", "cmd_az", "cmd_el", "cmd_raw", "err"}, "note", "stopped", "control", "rotor_on"}` |
-| POST | `/api/sat/rotor` | `{"start": {"norad", "force": false}}` (`force`: orbital elements older than 14 days) or `{"stop": true}`; only from this RADIMCOM page. 409 when the elements are too old. The rotor moves only while CTRL is on (otherwise it only calculates, as without the rotor link); while tracking, `goto` in `/api/rotor` is refused |
+| POST | `/api/sat/rotor` | `{"start": {"norad", "force": false}}` (`force`: orbital elements older than 14 days) or `{"stop": true}`; only from this RADIMCOM page. 409 when the elements are too old. The rotor moves only while the rotor control is on (`/api/rotor` `{"start": true}`; the TRACK key of the page sends both), otherwise it only calculates; while tracking, `goto` in `/api/rotor` is refused |
 | GET | `/api/sat/setup` | station and choice, shared by all VFOs: `{"setup": {"locator", "lat", "lon", "alt_m", "min_el", "sats": [norad], "map_sats": [norad]}, "tle": {"fetched", "error"}, "groups": [{"key", "title"}] (CelesTrak groups downloaded), "sats": [{"norad", "name", "tle_age_days", "groups": [key]}]}` (all satellites of the orbital elements) |
 | POST | `/api/sat/setup` | any of `{"locator"}` or `{"lat", "lon"}`, `{"alt_m"}`, `{"min_el"}` (0–60), `{"sats": [norad]}`, `{"map_sats": [norad]}` (up to 20), `{"refresh_tle": true}` (download the orbital elements now); answers like GET, 400 with `error` for a wrong value, 502 if the download fails |
 
@@ -70,8 +71,11 @@ Main fields:
 | `mode` | `AM`, `FM`, `WFM`, `LSB`, `USB`, `CW` |
 | `bandwidth` | filter width per mode, e.g. `{"USB": 2700, "FM": 12500}` |
 | `gain`, `gains` | current gain (`"auto"` or dB), available gains |
+| `smart_agc`, `adc_peak`, `adc_clip`, `adc_clip_ppm` | AGC+ on; A/D peak of the last block (dBFS), whether it clipped and how many samples per million (measured while AGC+ is on) |
+| `sagc` | AGC+ settings `{clip_ppm, heavy_ppm, down_db, heavy_db, low_dbfs, target_dbfs, hold_s, up_db, settle}` |
 | `smeter` | signal level (dBFS) |
-| `squelch`, `squelch_levels`, `squelch_open` | squelch for the current mode, per mode, open now |
+| `squelch`, `squelch_levels`, `squelch_open` | squelch level in use for the current mode (the auto level while auto squelch runs), levels set per mode, open now |
+| `auto_sql`, `auto_sql_on`, `auto_sql_db`, `auto_sql_level` | ASQ key on; auto squelch running (ASQ, or AGC+ with the squelch set); margin above the noise floor in dB; current auto level in dBFS (`null` while not running or not measured yet) |
 | `sample_rate`, `audio_rate` | dongle sample rate, audio rate (S/s) |
 | `zoom`, `zooms` | spectrum zoom, allowed zooms |
 | `upconv`, `lo_offset_hz`, `lo_hz` | upconverter mode (`auto`/`on`/`off`), its LO, LO in use now (0 = direct) |
@@ -80,15 +84,16 @@ Main fields:
 | `chain_owner`, `out_of_band`, `chained_vfos` | chained VFO: VFO that owns the dongle (`null` otherwise), tuned outside the owner's band (silent, OOR); owner VFO: number of chained VFOs connected |
 | `ppm`, `rtl_agc`, `dc_remove`, `dc_hz`, `dc_db`, `spur_on`, `spur_hz`, `spur_edge`, `spur_shift`, `spur_db`, `spur_count`, `spur_learning`, `spur_found`, `audio_agc`, `notch`, `notch_active`, `bias_tee`, `stereo_on`, `stereo`, `rds` | receiver options and WFM stereo / RDS |
 | `afi`, `afi_hz` | audio frequency inversion (voice scrambler / descrambler) on/off and its inversion frequency in Hz |
+| `autotune`, `autotune_info` | ATU on/off; last autotune job `{id, state: "listen" \| "done" \| "none" \| "", shift_hz, how: "carrier" \| "comb" \| "edge", mode}` |
 | `lpf`, `lpf_hz`, `hpf`, `hpf_hz` | audio low-pass and high-pass filter on/off and their cutoff frequencies in Hz |
 | `status`, `error`, `opened`, `dropped`, `hw` | device status, last error, open flag, dropped blocks, LimeSDR stream info |
-| `ft8`, `cw`, `rtty`, `wefax`, `sstv`, `acars`, `vdl2`, `cpdlc` | decoders on/off |
+| `ft8`, `cw`, `rtty`, `wefax`, `sstv`, `packet`, `acars`, `vdl2`, `cpdlc` | decoders on/off |
 | `ft8_error`, `vdl2_error` | decoder errors |
 | `vdl2_region` | selected VDL2 channel set, `"eu"` or `"us"` |
 | `audio_muted` | the audio of this VFO is muted because the ACARS, VDL2 or ISM decoder runs |
 | `recording` | `{"cont": {...}, "squelch": {...}, "dropped": n}`: REC and REC SQ, each with `on`, `open` (a file is being written), `file` (current or last file in `data\recordings`), `secs` (length of the current file), `saved` (files finished since switched on), `error`; `dropped` = audio blocks lost because the disk did not keep up |
 | `dab`, `dab_channel`, `dab_sids`, `dab_error` | DAB on/off, Band III channel (e.g. `12C`), last station of each channel (`{"12C": "0x5464"}`, `null` = stopped), welle-cli error |
-| `logs` | daily logs on/off: `{"ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism"}` (`acars` covers both the ACARS and the VDL2 log) |
+| `logs` | daily logs on/off: `{"ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism", "packet"}` (`acars` covers both the ACARS and the VDL2 log) |
 | `trsp_name`, `trsp_sat` | transmitter and satellite of the Doppler correction (`/api/sat/doppler`) while it is on, empty otherwise |
 | `tx_capable`, `tx_enabled`, `can_tx`, `tx`, `tx_info` | transmitter (LimeSDR) |
 | `wf` | waterfall format: `bins`, `db_min`, `db_step`, `rows_per_s` |
@@ -107,8 +112,11 @@ Send any combination of these keys:
 | `view_hz` | visible part of the spectrum (Hz) |
 | `mode` | `AM`, `FM`, `WFM`, `LSB`, `USB`, `CW` |
 | `bandwidth` | Hz, for the current (or the sent) mode: WFM 50000–250000, FM 500–50000, others 100–18000 |
-| `gain` | dB or `"auto"` |
-| `rtl_agc`, `dc_remove`, `audio_agc`, `notch`, `afi`, `lpf`, `hpf`, `stereo_on`, `bias_tee` | true / false |
+| `gain` | dB or `"auto"`; ends AGC+ |
+| `sagc` | AGC+ settings: an object with some of `clip_ppm` (0–1000), `heavy_ppm` (1–100000), `down_db` (0.5–15), `heavy_db` (1–30), `low_dbfs` (−40…−1), `target_dbfs` (−30…0), `hold_s` (0.1–30 s, default 0.2), `up_db` (0.5–30), `settle` (0–20 blocks), merged into the current ones; `null` = all by default |
+| `smart_agc` | true = AGC+: the tuner gain is set from the A/D level (no clipping, as high as possible); turns the RTL2832 digital AGC off |
+| `rtl_agc`, `dc_remove`, `audio_agc`, `notch`, `afi`, `lpf`, `hpf`, `stereo_on`, `bias_tee`, `autotune` | true / false |
+| `autotune_go` | true: find the carrier of the signal at `tune_hz` (send with it) and retune onto it; needs `autotune` on and USB / LSB / AM |
 | `dc_hz` | width of the DC peak removal, 0 – 1000 Hz (default 0 = the peak itself only; above 0 = cutoff of a high-pass that also takes out its skirts) |
 | `dc_db` | depth of the DC peak removal, 0 – 60 dB (default 60) |
 | `spur_on` | use the learned spurs, true / false (default false) |
@@ -119,6 +127,8 @@ Send any combination of these keys:
 | `lpf_hz` | LPF cutoff, 100 – 15000 Hz (default 3000) |
 | `hpf_hz` | HPF cutoff, 20 – 5000 Hz (default 300). With both filters on, `hpf_hz` above `lpf_hz` gives silence (the web UI keeps them in order, the API does not) |
 | `squelch` | dBFS, -120 (off) to 0; optional `squelch_mode` = the mode it applies to |
+| `auto_sql` | ASQ auto squelch on / off (AM, FM, WFM) |
+| `auto_sql_db` | auto squelch margin above the noise floor, 2 – 30 dB (default 6) |
 | `sample_rate` | 1024000, 1536000, 2048000, 2100000, 2400000; on an Airspy VFO 2500000 |
 | `zoom` | 1, 2, 4, 8, 16, 32 |
 | `ppm` | frequency correction (integer) |
@@ -126,7 +136,7 @@ Send any combination of these keys:
 | `lo_offset_hz` | upconverter LO, 0 to 1 000 000 000 Hz |
 | `device` | device index (single-receiver mode) |
 | `reset` | `true` = reset the dongle |
-| `ft8`, `cw`, `rtty`, `wefax`, `sstv`, `acars`, `vdl2` | decoders on / off. `vdl2: true` switches the VFO to 2.1 MS/s around 136.500 MHz and turns ACARS off (RTL-SDR only); `acars: true` turns VDL2 off |
+| `ft8`, `cw`, `rtty`, `wefax`, `sstv`, `packet`, `acars`, `vdl2` | decoders on / off. `vdl2: true` switches the VFO to 2.1 MS/s around 136.500 MHz and turns ACARS off (RTL-SDR only); `acars: true` turns VDL2 off |
 | `vdl2_region` | VDL2 channel set: `"eu"` or `"us"`. Restarts dumpvdl2 with the new channels |
 | `dab_sid` | remembers the station of the current DAB channel (`"0x5464"`, `null` = stopped) |
 | `dab`, `dab_channel` | DAB on / off and channel. `dab: true` starts welle-cli and switches the VFO to 2.048 MS/s on the channel centre (ACARS and VDL2 off, RTL-SDR only); `dab: false` restores the sample rate; `dab_channel` alone retunes a running DAB |
@@ -147,6 +157,9 @@ On connect a `status` event with the full state, then:
 | `ft8`, `ft8cycle` | FT8 decode; start of a 15 s cycle |
 | `cwtext`, `cwstate` | CW text; CW decoder state (speed, tone, …) |
 | `rttytext`, `rttystate` | RTTY text; decoder state |
+| `packet`, `packetstate` | PACKET: one valid AX.25 frame (see `/api/packet`); decoder state (counters, AFC, error) |
+| `packetspec` | PACKET spectrum, 4× per second while asked for: `db` (2·`k`+1 values, dB relative to a full-scale carrier, the tuned frequency in the middle), `df` (Hz per value), `afc_live` (9600 Bd AFC, Hz, or null) |
+| `packeteye` | PACKET eye diagram, 4× per second while asked for: `rate`, `n` points per trace, `full` (full scale: Hz at 9600, 1.2 at 1200), `data` (base64 int8 traces, value/full·127), `open` and `open_frame` (eye opening % now / in the last good frame), `dev_hz`, `afc_live` (9600 only) |
 | `wefaxrow`, `wefaxstate`, `wefaxnew`, `wefaxtrim`, `wefaxreload` | WEFAX image rows, state, new image, trimmed image, image changed (slant correction: load it again) |
 | `sstvrow`, `sstvstate`, `sstvnew`, `sstvdone` | SSTV image rows, state, new image, finished image |
 | `acars`, `acarsinfo`, `acarsstate` | ACARS / VDL2 message, later added details (ADS-B lookup), state |
@@ -184,6 +197,8 @@ is removed. 0 dB is a sine at 75 kHz deviation. Outside WFM, `db` is empty and `
 | POST | `/api/cw` | `{"action": "clear"}` |
 | GET | `/api/rtty` | RTTY decoder info and text |
 | POST | `/api/rtty` | `{"action": "clear"}` and/or `{"opts": {...}}` (decoder options, saved to the config) |
+| GET | `/api/packet` | PACKET decoder: state, the last 500 `frames` and the APRS `stations` (newest first) |
+| POST | `/api/packet` | `{"action": "clear"}` and/or `{"opts": {"rate": "both" \| "1200" \| "9600", "scrambler": "auto" \| "on" \| "off"}}` (saved to the config); `{"action": "eye", "rate": 9600 \| 1200}` sends `packeteye` events for the next 4 s, `{"action": "spectrum"}` the same for `packetspec` (the page renews it every 2 s) |
 | GET | `/api/acars` | ACARS / VDL2 messages; VDL2 ones have `vdl2.gs` (ground station address) and `vdl2.gs_loc` (`BTS/LZIB`, `-` if not known), `vdl2.gs_city` (`Bratislava`, empty if not known) and `vdl2.gs_info` (entry in the ground station list, `LHBP Budapest Hungary 136.825`, empty if not there). A message with `lookup: true` gets an `acarsinfo` event with the ADS-B data; the web page shows its row after that |
 | POST | `/api/acars` | `{"action": "clear"}` |
 | GET | `/api/cpdlc` | CPDLC messages |
@@ -193,10 +208,11 @@ is removed. 0 dB is a sine at 75 kHz deviation. Outside WFM, `db` is empty and `
 | GET | `/api/dab/audio/<sid>` | MP3 audio stream of a service (welle-cli decodes it while somebody listens) |
 | GET | `/api/dab/slide/<sid>` | last slideshow picture (JPEG / PNG), 204 if none |
 | GET | `/api/wefax` | WEFAX decoder info |
-| POST | `/api/wefax` | `{"action": "new"}` new image, `{"action": "phase", "x": 0.0–1.0}` set the line start, `{"lpm_mode": ...}`, `{"ioc_mode": ...}`, `{"slant_ppm": -3000–3000}` slant correction (saved; the image so far is straightened too) |
+| POST | `/api/wefax` | `{"action": "new"}` new image, `{"action": "phase", "x": 0.0–1.0}` set the line start, `{"lpm_mode": ...}`, `{"ioc_mode": ...}`, `{"slant_ppm": -3000–3000}` slant correction (saved; the image so far is straightened too), `{"afc_vfo": true/false}` AFC retunes the VFO onto the signal (centre 1900 Hz, USB; saved), `{"delete": "<file name>"}` or `{"delete": "all"}` (saved images) |
 | GET | `/api/wefax/image.png` | current WEFAX image (PNG) |
+| GET | `/api/wefax/files/<name>` | saved WEFAX image |
 | GET | `/api/sstv` | SSTV decoder info |
-| POST | `/api/sstv` | `{"mode": "auto"}` or a mode name, `{"action": "stop"}` |
+| POST | `/api/sstv` | `{"mode": "auto"}` or a mode name, `{"action": "stop"}`, `{"delete": "<file name>"}` or `{"delete": "all"}` (saved images) |
 | GET | `/api/sstv/image.png` | current SSTV image (PNG) |
 | GET | `/api/sstv/files/<name>` | saved SSTV image |
 
@@ -207,7 +223,7 @@ A memory: `{"id", "name", "group", "freq_hz", "mode", "bw", "fav"}`, and `"dab_c
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/rotor` | antenna rotor: `on`, `connected`, `device`, `az`, `el`, `target`, `target_raw` (K3NG azimuth 0–450 given by the satellite tracking, else null), `tracker` (the satellite tracking moves the rotor), `aim` ([az, el] of the tracked satellite while it is above the horizon), `source` (`manual` or `tracker`), `control`, `fault`, `error`, `next_pass` (`{"sat", "event": "AOS" or "LOS", "seconds"}` of the tracked satellite); `k3ng_az` (the K3NG azimuth 0–450 from its left stop, followed by RADIMCOM), `k3ng_guess` (true while it is not yet known whether K3NG is at 0–90 or 360–450), `az_cal` ([true azimuth at K3NG 0, at K3NG 450]); `az`, `target` and `aim` are true azimuths; `?ports=1` adds the serial `ports` |
-| POST | `/api/rotor` | any of `{"enabled": true/false, "port", "usb_serial"}` (link on / off, saved), `{"start": true}` (CTRL on), `{"stop": true}` (stop the rotor, CTRL off), `{"reset": true}` (clear a fault), `{"goto": [az, el]}` (true azimuth 0–360, elevation 0–180; refused while the satellite tracking moves the rotor), `{"az_cal": [az0, az450]}` (true azimuth at K3NG 0 and at K3NG 450, saved; `[0, 450]` = no correction). **Moves the antenna.** Refused with 403 from a page of another host |
+| POST | `/api/rotor` | any of `{"enabled": true/false, "port", "usb_serial"}` (link on / off, saved), `{"start": true}` (rotor control on: the satellite tracking may move it), `{"stop": true}` (stop the rotor, control off), `{"reset": true}` (clear a fault), `{"goto": [az, el]}` (true azimuth 0–360, elevation 0–180; refused while the satellite tracking moves the rotor), `{"az_cal": [az0, az450]}` (true azimuth at K3NG 0 and at K3NG 450, saved; `[0, 450]` = no correction). **Moves the antenna.** Refused with 403 from a page of another host |
 | GET | `/api/memories` | all memories |
 | POST | `/api/memories` | add: `{"name", "group", "freq_hz", "mode", "bw"}`; returns the new memory with its `id`. Name up to 80 characters, group up to 40, frequency 0–1766 MHz, `bw` clamped to the mode's range. With `dab_channel` the frequency is the centre of that channel |
 | PATCH | `/api/memories/<id>` | change `{"fav": true/false}` and/or `{"name": "..."}` |

@@ -7,6 +7,8 @@ assigned frequency - 1.9 kHz the centre is at 1900 Hz). Course of a transmission
 Automation: AFC finds the signal centre within ±3 kHz of the tuned frequency, IOC is taken from the start
 tone, the line rate (LPM) from autocorrelation and the line start from the phasing pulses. Without the start
 tone (turned on in the middle of a transmission) the image starts by itself when the signal has a line periodicity.
+AFC VFO (on by default): once the signal is locked, the VFO is retuned so that the centre is at 1900 Hz; the
+decoder compensates the retune itself, so the image goes on without a break.
 """
 import base64
 import math
@@ -30,6 +32,9 @@ START_TONES = {300.0: 576, 675.0: 288}
 STOP_TONE = 450.0
 TONE_BLOCKS = 8        # a tone must last 8 × 0.25 s
 SLANT_MAX = 3000.0     # ppm, limit of the slant correction (sample clock error of the SDR)
+AFC_VFO_MIN = 25.0     # Hz, AFC retunes the VFO when the signal centre is further than this from 1900 Hz
+AFC_VFO_HOLD = 4.0     # s, at most one VFO retune in this time
+AFC_VFO_SETTLED = 15.0 # Hz, the fine AFC step must be this small (centre settled) before a VFO retune
 SAVE_DIR = data("wefax")
 # Assigned frequencies of DWD Pinneberg and Northwood GYA (Royal Navy, UK; 2618.5 kHz mainly at night),
 # both 120 LPM, IOC 576.
@@ -52,10 +57,14 @@ def png_gray(rows, width):
 
 
 class WefaxDecoder:
-    def __init__(self, on_event, save_dir=SAVE_DIR):
+    def __init__(self, on_event, save_dir=SAVE_DIR, on_retune=None):
         self.on_event = on_event
+        self.on_retune = on_retune   # on_retune(old_dial_hz, new_dial_hz): AFC asks for a VFO retune
         self.save_dir = save_dir
         self.enabled = False
+        self.afc_vfo = True          # AFC also retunes the VFO (signal centre to 1900 Hz)
+        self.afc_shift = None        # Hz, the last VFO correction made by AFC
+        self._retune_at = 0.0
         self.lpm_mode = "auto"
         self.ioc_mode = "auto"
         self.slant_ppm = 0.0   # slant correction: the line is longer by this many ppm
@@ -86,8 +95,10 @@ class WefaxDecoder:
         self._emit_state()
 
     def command(self, b):
-        """Commands from the web page: action new/phase, lpm_mode, ioc_mode, slant_ppm."""
+        """Commands from the web page: action new/phase, lpm_mode, ioc_mode, slant_ppm, afc_vfo, delete."""
         with self.lock:
+            if "afc_vfo" in b:
+                self.afc_vfo = bool(b["afc_vfo"])
             if "slant_ppm" in b:
                 self._set_slant(float(b["slant_ppm"]))
             if "lpm_mode" in b:
@@ -114,7 +125,36 @@ class WefaxDecoder:
                 # Click in the image: the chosen spot becomes the left edge of the following lines.
                 x = float(b.get("x", 0)) % 1.0
                 self.pos += (x - 1 if x > 0.5 else x) * self._line_len()
+        if "delete" in b:
+            self._delete(b["delete"])
         self._emit_state()
+
+    def _delete(self, what):
+        """Deletes a saved image (file name) or all of them ("all"). Only wefax_*.png files in the folder."""
+        try:
+            names = [n for n in os.listdir(self.save_dir) if n.startswith("wefax_") and n.endswith(".png")]
+        except OSError:
+            names = []
+        if what == "all":
+            targets = names
+        elif isinstance(what, str) and what in names:
+            targets = [what]
+        else:
+            raise ValueError("no such WEFAX image")
+        for n in targets:
+            try:
+                os.remove(os.path.join(self.save_dir, n))
+            except OSError:
+                pass
+            if n == self.saved:
+                self.saved = None
+
+    def files(self):
+        try:
+            names = [n for n in os.listdir(self.save_dir) if n.endswith(".png")]
+        except OSError:
+            return []
+        return sorted(names, reverse=True)[:12]
 
     def _set_slant(self, ppm):
         """New slant correction. The lines already received are straightened too: line k drifted by
@@ -137,7 +177,8 @@ class WefaxDecoder:
             "width": ioc_width(self.ioc), "rows": len(self.rows), "image_id": self.image_id,
             "center_hz": round(self.center), "afc": self.afc_lock, "lpm_mode": self.lpm_mode,
             "ioc_mode": self.ioc_mode, "saved": self.saved, "conf": round(self.lpm_conf, 2),
-            "slant_ppm": self.slant_ppm,
+            "slant_ppm": self.slant_ppm, "files": self.files(),
+            "afc_vfo": self.afc_vfo, "afc_shift": self.afc_shift,
             "freqs": WEFAX_FREQS,
         }
 
@@ -188,8 +229,13 @@ class WefaxDecoder:
             if fs != self._fs:
                 self._setup(fs)
             if dial_hz != self.dial:
+                if self.dial is not None and self.afc_lock and abs(dial_hz - self.dial) < 3000:
+                    # small retune (AFC VFO or fine tuning by hand): the same signal, only its offset moved
+                    self.center -= dial_hz - self.dial
+                else:
+                    self.afc_lock = False
+                    self.afc_shift = None
                 self.dial = dial_hz
-                self.afc_lock = False
             self._coarse_afc(base, fs)
             self._demod(base, fs)
             self._fine_afc()
@@ -254,13 +300,31 @@ class WefaxDecoder:
         present = float(np.mean(np.abs(f) < 600)) > 0.8
         lo, hi = np.percentile(f, [2, 98])
         self.levels_ok = present and 550 < hi - lo < 1600  # 800 Hz + noise at the edges
+        self.afc_step = None
         if self.levels_ok:
-            self.center += 0.7 * float(lo + hi) / 2
+            self.afc_step = float(lo + hi) / 2      # remaining error of the centre
+            self.center += 0.7 * self.afc_step
         self.afc_bad = 0 if present else self.afc_bad + 1
         if present:
             self.afc_lock = True
         elif self.afc_bad >= 2:
             self.afc_lock = False
+        self._afc_vfo()
+
+    def _afc_vfo(self):
+        """Signal locked (both levels seen) but not at 1900 Hz: asks for a VFO retune by the difference.
+        The retune comes back as a new dial in feed(), where the centre is moved by the same amount."""
+        if not (self.afc_vfo and self.on_retune and self.levels_ok and self.dial is not None):
+            return
+        if abs(self.afc_step) > AFC_VFO_SETTLED:
+            return                                  # fine AFC is still converging: the centre is not known yet
+        shift = round(self.center - DEFAULT_CENTER)
+        now = time.time()
+        if abs(shift) < AFC_VFO_MIN or now - self._retune_at < AFC_VFO_HOLD:
+            return
+        self._retune_at = now
+        self.afc_shift = shift
+        self.on_retune(self.dial, self.dial + shift)
 
     def _tones(self):
         if self.n < self.next_tone:

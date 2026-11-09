@@ -21,7 +21,7 @@ Features
 - REC and REC SQ: record the audio of the selected VFO to MP3 files in data\recordings:
   everything, or only while the squelch is open.
 - Decoders: FT8, WEFAX (radio fax), CW (Morse), RTTY (auto shift/speed), SSTV (14 modes),
-  ACARS (aircraft data link, VHF airband), CPDLC (controller-pilot messages in ACARS);
+  PACKET (AX.25 1200 / 9600 Bd, APRS with a station list and map), ACARS (aircraft data link, VHF airband), CPDLC (controller-pilot messages in ACARS);
   optional daily log for each.
 - DSD mode (first test version): digital voice (DMR, P25, D-Star, YSF, NXDN, dPMR, M17...) with call list;
   needs DSD-FME, which is not in the package: run install_dsd.bat (read its patent notice first).
@@ -87,6 +87,50 @@ More details: README.md.
 Change log
 ----------
 (also in CHANGELOG.md)
+
+Ver. 0.112
+Main Features
+- ASQ key (AUDIO group, AM/FM/WFM): auto squelch, the level follows the noise (measured in the spectrum, not on the signal) + a margin
+  (6 dB, set in SET, AUDIO tab). With AGC+ on, a squelch set by the slider works as auto squelch too.
+- AGC+: hold before going up 0.2 s by default (was 2 s), the gain comes back up faster.
+- ATU key (TUNE group, USB/LSB/AM): autotune, a click on a signal finds its carrier and tunes onto it
+  (AM from the carrier in <1 s, SSB from the voice harmonics in 2-6 s); also after wheel / drag tuning by more than 250 Hz.
+- PACKET decoder (DECODERS tab): AX.25 packet radio, 1200 Bd AFSK (APRS 144.800, ISS 145.825) and 9600 Bd
+  FSK/GFSK/GMSK G3RUH (satellites), both at once, from the baseband (any mode and filter). APRS is decoded
+  (positions, Mic-E, objects, weather, messages, status, telemetry): FRAMES list, STATIONS table with the distance and
+  bearing from the station in SATELLITES › SETUP, and a MAP (OpenStreetMap). 9600 Bd shows the tuning error (AFC).
+  Frames with a wrong checksum are only counted. Daily log data\logs\packet_YYYY-MM-DD.txt (LOG).
+  Graph on the right: SPECTRUM around the tuned frequency (averaged, MAX hold, S/N, 99 % bandwidth, live AFC)
+  or EYE diagram in real time (9600 / 1200 Bd) with the eye opening, deviation and live AFC.
+- SATELLITES: FSK / GFSK / GMSK / MSK transmitters (all variants) are tuned in FM (was USB).
+- AGC+ key (next to AGC): tuner gain set from the A/D converter level, as high as possible without clipping
+  (the R820T tuner AGC does not watch the A/D). Red underline on the key = the A/D clips.
+  Its settings for testing are in SET, DONGLE tab (DEFAULTS returns them).
+- DECODE: one key (before SAT) shows / hides the DECODERS tab (like SAT), which has a page for each decoder
+  (FT8, WEFAX, CW, RTTY, SSTV, ACARS, VDL2, DAB, ISM, DSD) the ON key is in the top left corner of the card; green dot = a new message on that page.
+  VDL2, DAB and ISM are greyed out on a LimeSDR, an Airspy or a chained VFO (Unsupported on this dongle).
+Minor Fixes
+- SSTV: saved images can be deleted, × on a picture in the gallery (shown on hover) or DEL ALL for all of them (with a confirmation).
+- WEFAX: AFC VFO (on by default) - when a locked signal is off 1900 Hz, the VFO is retuned onto it (USB);
+  the image goes on without a break. The info line shows the last correction.
+- WEFAX: same layout as SSTV, the live image with a gallery of saved images (data\wefax) next to it;
+  a click opens the image, × deletes it, DEL ALL deletes all of them (with a confirmation).
+- CW in the audio spectrum bubble: in CW mode the text decoded while the bubble is open is shown under the spectrum
+  (erased when it closes); works also without the CW decoder on.
+- SATELLITES, TRACK: one TRACK key for the rotor (CTRL is gone): TRACK plans the passes and moves the rotor, off stops it;
+  STOP stops the motors and ends the tracking. The flag shows TRACKING / CALC ONLY / NOT TRACKING. The polar plot and the
+  elevation chart are side by side, so the chart is seen without scrolling. Big countdown AOS in / LOS in beside the keys.
+- ZOOM key removed from the top row; zoom is on the bar in the corner of the frequency scale.
+- DAB: the slide box takes the picture's own ratio. A click on a slide squeezed into 4:3 (16:9 video stills) shows it as 16:9,
+  a second click returns it; remembered per station.
+- CPU and memory of the PC: small bars under the S-meter, every 3 s.
+- Arrow keys up / down recall the next memory above / below the tuned frequency, among those visible in the spectrum.
+- A click on the RADIMCOM logo opens the project on GitHub in a new tab. A red logo = a newer version is released;
+  a click on it opens the release page in a new tab.
+- BAND key (MENU, next to MEM) slides the row of band keys closed / open; the spectrum takes the freed space.
+- Doppler correction retunes in fine steps (beyond 5 Hz) in all modes, at most once a second.
+- Shorter README.md; the details are in the docs\ folder of the GitHub repository (installation, controls, configuration,
+  decoders, satellite tracking, complete feature list). Missing functions added to the documentation (ASQ, ATU, AFI, ...).
 
 Ver. 0.111
 Main Features

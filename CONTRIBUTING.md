@@ -23,7 +23,7 @@ python -m venv .venv
 
 The third-party binaries in `lib\` and `drivers\` are not in git. Take them from the
 [install zip](https://github.com/om2amr/RADIMCOM/releases/latest), or see
-[Requirements](README.md#requirements) in the README for their sources. Then use `setup.bat` for the first setup and
+[Requirements](docs/installation.md#requirements) in docs/installation.md for their sources. Then use `setup.bat` for the first setup and
 `start.bat` to run the receiver.
 
 ## Pull requests

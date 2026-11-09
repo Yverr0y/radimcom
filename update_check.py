@@ -39,16 +39,19 @@ _lock = threading.Lock()
 def own_version():
     try:
         with open(os.path.join(BASE, "static", "index.html"), encoding="utf-8") as f:
-            m = re.search(r'class="r-ver">\s*Ver\.\s*([0-9.]+)\s*<', f.read())
+            m = re.search(r'class="r-ver">\s*Ver\.\s*([0-9.]+(?:beta\d+)?)\s*<', f.read())
         return m.group(1) if m else None
     except OSError:
         return None
 
 
 def _key(v):
-    """"v0.111" / "0.111" -> (0, 111); None for anything else."""
-    m = re.fullmatch(r"v?(\d+(?:\.\d+)*)", (v or "").strip())
-    return tuple(int(x) for x in m.group(1).split(".")) if m else None
+    """"v0.111" / "0.111" -> (0, 111, 1, 0), "0.112beta1" -> (0, 112, 0, 1): a beta is older than its release
+    and newer than the release before; None for anything else."""
+    m = re.fullmatch(r"v?(\d+)\.(\d+)(?:beta(\d+))?", (v or "").strip())
+    if not m:
+        return None
+    return (int(m.group(1)), int(m.group(2))) + ((0, int(m.group(3))) if m.group(3) else (1, 0))
 
 
 def why_no_upgrade():

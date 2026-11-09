@@ -29,6 +29,7 @@ if __name__ == "__main__" and "--vfo" not in sys.argv and os.path.exists(VFOS_PA
 
 import memories
 import satellites
+import sysload
 import update_check
 try:
     import sattrack       # needs the sgp4 package (upgrade.bat installs it)
@@ -38,6 +39,7 @@ except ImportError:
 from ft8 import FT8_FREQS, Ft8Decoder
 from cw import CwDecoder
 from rtty import RttyDecoder
+from packet import PacketDecoder
 from daylog import DayLog, TextLog
 from recorder import Recorder
 import rotor as rotor_module
@@ -48,8 +50,8 @@ from vdl2 import VDL2_CENTER, VDL2_RATE, VDL2_REGIONS, Vdl2Decoder, region_freqs
 from dsd import PROTOCOLS as DSD_PROTOCOLS, SLOTS as DSD_SLOTS, DsdDecoder
 from dab import CHANNEL_HZ, DAB_CHANNELS, DAB_DEFAULT, DAB_RATE, DabDecoder
 from ism import ISM_DEFAULT, ISM_FREQS, ISM_RATE, IsmDecoder
-from sdr import (AFI_MAX_HZ, AFI_MIN_HZ, DECIM, DSD_MODE, HPF_MAX_HZ, HPF_MIN_HZ, LPF_MAX_HZ, LPF_MIN_HZ, MODES, SQUELCH_OFF,
-                 UPCONV_MAX_HZ, ZOOMS, Receiver, list_devices, lowpass)
+from sdr import (AFI_MAX_HZ, AFI_MIN_HZ, ASQ_MAX_DB, ASQ_MIN_DB, DECIM, DSD_MODE, HPF_MAX_HZ, HPF_MIN_HZ, LPF_MAX_HZ, LPF_MIN_HZ, MODES, SQUELCH_OFF,
+                 SAGC_PARAMS, UPCONV_MAX_HZ, ZOOMS, Receiver, list_devices, lowpass, sagc_params)
 
 
 def vfo_from_args():
@@ -67,7 +69,7 @@ VFO, ALL_VFOS = vfo_from_args() or (None, [])
 OWNER = next((v for v in ALL_VFOS if VFO and v["name"] == VFO.get("chain")), None)
 CHAINED = [v["name"] for v in ALL_VFOS if VFO and v.get("chain") == VFO["name"]]   # VFOs fed by this one
 # dongle settings: on a chained VFO they are sent to the owner VFO, which applies them to the dongle
-DONGLE_KEYS = ("gain", "rtl_agc", "bias_tee", "ppm", "sample_rate")
+DONGLE_KEYS = ("gain", "rtl_agc", "smart_agc", "sagc", "bias_tee", "ppm", "sample_rate")
 CONFIG_PATH = data(VFO["config"] if VFO else "config.json")
 SAMPLE_RATES = (1024000, 1536000, 2048000, 2100000, 2400000)   # 2.1 MS/s = VDL2 (105 kS/s × 20)
 # The Airspy R2 has fixed rates; its 10 MS/s is not offered, the DSP is not made for it (audio = rate / DECIM).
@@ -173,9 +175,9 @@ def save_config_later():
 
 # ---------- daily decoder logs (turned on with LOG in the decoder card) ----------
 
-LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism")
+LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism", "packet")
 _tag = cfg.get("vfo") or ""
-logs = {"ft8": DayLog("ft8", _tag), "wefax": DayLog("wefax", _tag), "sstv": DayLog("sstv", _tag), "dsd": DayLog("dsd", _tag), "ism": DayLog("ism", _tag),
+logs = {"ft8": DayLog("ft8", _tag), "wefax": DayLog("wefax", _tag), "sstv": DayLog("sstv", _tag), "dsd": DayLog("dsd", _tag), "ism": DayLog("ism", _tag), "packet": DayLog("packet", _tag),
         "cw": TextLog("cw", _tag), "rtty": TextLog("rtty", _tag)}
 _saved_logged = {"wefax": None, "sstv": None}
 
@@ -205,6 +207,8 @@ def decoder_event(kind, data):
             ch = f" ch {data['channel']}" if data["channel"] else ""
             rssi = f" {data['rssi']} dB" if data["rssi"] is not None else ""
             logs["ism"].write(f"{_mhz(data['freq_hz'])}{rssi} {data['model']}{dev}{ch} | {data['text']}")
+        elif kind == "packet" and log_on("packet"):
+            logs["packet"].write(f"{_mhz(data['freq_hz'])} {data['baud']} Bd | {data['tnc2']}")
         elif kind == "cwtext" and log_on("cw"):
             f = cw.dial + (cw.tone or 0.0)
             logs["cw"].add(data["t"], f"{_mhz(f)} {round(1200 / cw.dot_ms)} WPM")
@@ -228,9 +232,40 @@ ft8 = Ft8Decoder(on_decode=lambda d: decoder_event("ft8", d),
                  on_cycle=lambda t: hub.event("ft8cycle", {"time": t}))
 
 
-wefax = WefaxDecoder(on_event=decoder_event)
+def wefax_retune(old_hz, new_hz):
+    """WEFAX AFC: the signal centre is off 1900 Hz -> retune the VFO (USB only; not while the Doppler correction
+    or ATU tunes, nor when somebody tuned elsewhere meanwhile). In its own thread: called from the receiver thread."""
+    if cfg["mode"] != "USB" or cfg["tune_hz"] != old_hz or receiver.atune.active:
+        return
+    if doppler is not None and doppler.on:
+        return
+    threading.Thread(target=rotor_set_freq, args=(float(new_hz),), name="wefax-afc", daemon=True).start()
+
+
+wefax = WefaxDecoder(on_event=decoder_event, on_retune=wefax_retune)
 cw = CwDecoder(on_event=decoder_event)
+# Peek CW decoder for the audio spectrum bubble (the CW decoder itself is off): runs only while a browser keeps
+# renewing it (POST /api/cw {"action": "peek"}); its text goes only to the bubble, not to the log or the CW card.
+cw_peek = CwDecoder(on_event=lambda kind, data: hub.event("cwpeek", data) if kind == "cwtext" else None)
+cw_peek_until = 0.0
+CW_PEEK_HOLD = 4.0       # s without renewal and the peek decoder stops
 rtty = RttyDecoder(on_event=decoder_event)
+_qth_cache = [0.0, None]
+
+
+def own_station():
+    """(lat, lon) of the station from the SATELLITES setup, for the APRS distances; read at most once a minute."""
+    if time.monotonic() - _qth_cache[0] > 60:
+        _qth_cache[0] = time.monotonic()
+        try:
+            st_ = sattrack.load_setup() if sattrack is not None else None
+            _qth_cache[1] = (float(st_["lat"]), float(st_["lon"])) if st_ else None
+        except Exception:
+            _qth_cache[1] = None
+    return _qth_cache[1]
+
+
+packet = PacketDecoder(on_event=decoder_event, station=own_station)
 sstv = SstvDecoder(on_event=decoder_event)
 acars = AcarsDecoder(on_event=hub.event, tag=_tag)
 acars.log_on = log_on("acars")
@@ -269,7 +304,7 @@ def audio_muted():
 
 def state():
     capable = tx_capable()
-    return dict(receiver.state(), ft8=ft8.enabled, ft8_error=ft8.error, wefax=wefax.enabled, cw=cw.enabled, rtty=rtty.enabled,
+    return dict(receiver.state(), ft8=ft8.enabled, ft8_error=ft8.error, wefax=wefax.enabled, cw=cw.enabled, rtty=rtty.enabled, packet=packet.enabled,
                 sstv=sstv.enabled, acars=acars.enabled, vdl2=vdl2.enabled, vdl2_error=vdl2.error, vdl2_region=vdl2.region, cpdlc=acars.cpdlc_on,
                 dsd=dsd.info(), dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, dab_sids=cfg.get("dab_sids") or {}, ism=ism.enabled, ism_error=ism.error, ism_hz=cfg.get("ism_hz", ISM_DEFAULT), audio_muted=audio_muted(), recording=recorder.state(), logs={k: log_on(k) for k in LOG_KEYS},
                 **doppler_trsp(),
@@ -300,8 +335,15 @@ def on_baseband(base, fs, dial_hz):
     wefax.feed(base, fs, dial_hz)
     if cw.enabled:
         cw.feed(base, fs, dial_hz, cw_band())
+    if cw_peek.enabled:
+        if cw.enabled or cfg["mode"] != "CW" or time.monotonic() > cw_peek_until:
+            cw_peek.set_enabled(False)
+        else:
+            cw_peek.feed(base, fs, dial_hz, cw_band())
     if rtty.enabled:
         rtty.feed(base, fs, dial_hz, cw_band())
+    if packet.enabled:
+        packet.feed(base, fs, dial_hz)
     acars.feed(base, fs, dial_hz)
 
 
@@ -328,6 +370,7 @@ receiver = Receiver(
 dsd.set_enabled(cfg["mode"] == DSD_MODE)
 ft8.set_enabled(cfg.get("ft8", False))
 wefax.slant_ppm = float(cfg.get("wefax_slant_ppm", 0.0))
+wefax.afc_vfo = bool(cfg.get("wefax_afc_vfo", True))
 wefax.set_enabled(cfg.get("wefax", False))
 cw.set_enabled(cfg.get("cw", False))
 try:
@@ -335,6 +378,8 @@ try:
 except (TypeError, ValueError):
     pass
 rtty.set_enabled(cfg.get("rtty", False))
+packet.set_options(cfg.get("packet_opts") or {})
+packet.set_enabled(cfg.get("packet", False))
 sstv.set_enabled(cfg.get("sstv", False))
 acars.set_enabled(cfg.get("acars", False) and not cfg.get("vdl2", False))
 
@@ -563,6 +608,9 @@ def api_wefax_cmd():
     if "slant_ppm" in body:
         cfg["wefax_slant_ppm"] = wefax.slant_ppm     # clock error of this VFO's SDR: kept across restarts
         save_config_later()
+    if "afc_vfo" in body:
+        cfg["wefax_afc_vfo"] = wefax.afc_vfo
+        save_config_later()
     return jsonify(wefax.info())
 
 
@@ -572,6 +620,11 @@ def api_wefax_image():
     if png is None:
         return "", 204
     return Response(png, mimetype="image/png", headers={"Cache-Control": "no-store"})
+
+
+@app.route("/api/wefax/files/<name>")
+def api_wefax_file(name):
+    return send_from_directory(wefax.save_dir, name)
 
 
 @app.route("/api/sstv", methods=["GET"])
@@ -608,8 +661,22 @@ def api_cw():
 
 @app.route("/api/cw", methods=["POST"])
 def api_cw_cmd():
-    if request.get_json(force=True).get("action") == "clear":
+    global cw_peek_until
+    body = request.get_json(force=True)
+    action = body.get("action")
+    if action == "clear":
         cw.clear()
+    elif action == "peek":
+        # bubble open (on, renewed every ~2 s) / closed (off); a new opening starts with empty text
+        if body.get("on") and not cw.enabled and cfg["mode"] == "CW":
+            cw_peek_until = time.monotonic() + CW_PEEK_HOLD
+            if not cw_peek.enabled:
+                cw_peek.clear()
+                cw_peek.set_enabled(True)
+        elif cw_peek.enabled:
+            cw_peek_until = 0.0
+            cw_peek.set_enabled(False)
+        return jsonify({"peek": cw_peek.enabled})
     return jsonify(cw.info())
 
 
@@ -631,6 +698,21 @@ def api_rtty_cmd():
         cfg["rtty_opts"] = rtty.opts
         save_config_later()
     return jsonify(rtty.info())
+
+
+@app.route("/api/packet", methods=["GET"])
+def api_packet():
+    return jsonify(packet.info())
+
+
+@app.route("/api/packet", methods=["POST"])
+def api_packet_cmd():
+    body = request.get_json(force=True)
+    packet.command(body)
+    if isinstance(body.get("opts"), dict):
+        cfg["packet_opts"] = packet.opts
+        save_config_later()
+    return jsonify(packet.info(frames=False))
 
 
 @app.route("/api/acars", methods=["GET"])
@@ -786,6 +868,12 @@ def api_dab_audio(sid):
     except OSError as e:
         return jsonify({"error": f"DAB audio: {e}"}), 503
     return Response(gen, mimetype="audio/mpeg", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@app.route("/api/sysload")
+def api_sysload():
+    """CPU load and memory use of the PC (indicator under the S-meter)."""
+    return jsonify(sysload.load())
 
 
 @app.route("/api/devices")
@@ -1067,6 +1155,14 @@ def api_set():
             changes["audio_agc"] = bool(body["audio_agc"])
         if "afi" in body:
             changes["afi"] = bool(body["afi"])
+        if "autotune" in body:
+            changes["autotune"] = bool(body["autotune"])
+        if body.get("autotune_go"):
+            changes["autotune_go"] = True
+        if "auto_sql" in body:
+            changes["auto_sql"] = bool(body["auto_sql"])
+        if "auto_sql_db" in body:
+            changes["auto_sql_db"] = min(max(float(body["auto_sql_db"]), ASQ_MIN_DB), ASQ_MAX_DB)
         if "afi_hz" in body:
             hz = float(body["afi_hz"])
             if not AFI_MIN_HZ <= hz <= AFI_MAX_HZ:
@@ -1082,6 +1178,19 @@ def api_set():
                 changes[key + "_hz"] = hz
         if "rtl_agc" in body:
             changes["rtl_agc"] = bool(body["rtl_agc"])
+        if "smart_agc" in body:
+            changes["smart_agc"] = bool(body["smart_agc"])
+        if "sagc" in body:
+            # AGC+ settings: given ones are checked and merged into the current ones; null = all by default
+            new = {} if body["sagc"] is None else sagc_params(cfg)
+            for k, v in (body["sagc"] or {}).items():
+                if k not in SAGC_PARAMS:
+                    raise ValueError(f"unknown AGC+ setting {k}")
+                _d, lo, hi = SAGC_PARAMS[k]
+                if not lo <= float(v) <= hi:
+                    raise ValueError(f"AGC+ {k} must be {lo:g} to {hi:g}")
+                new[k] = float(v)
+            changes["sagc"] = new
         if "dc_remove" in body:
             changes["dc_remove"] = bool(body["dc_remove"])
         if "dc_hz" in body:
@@ -1170,6 +1279,11 @@ def api_set():
     if "rtty" in body:
         cfg["rtty"] = bool(body["rtty"])
         rtty.set_enabled(cfg["rtty"])
+        save_config_later()
+        hub.event("status", state())
+    if "packet" in body:
+        cfg["packet"] = bool(body["packet"])
+        packet.set_enabled(cfg["packet"])
         save_config_later()
         hub.event("status", state())
     if "tx_enabled" in body:

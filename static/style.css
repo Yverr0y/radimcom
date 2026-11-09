@@ -96,6 +96,14 @@ body {
 .meter-val b, .meter-val span { display: inline-block; text-align: right; }
 .meter-val b { width: 8ch; text-align: left; }   /* the S always starts at the same place */
 .meter-val span { width: 11ch; }
+/* CPU and memory of the PC under the S-meter: small, muted; the bar turns amber over 70 %, red over 90 % */
+.sys-load { display: flex; align-items: center; gap: 4px; font: 10px ui-monospace, Consolas, monospace; color: var(--muted); opacity: .8; }
+.sys-load b { font-weight: 400; width: 4ch; text-align: right; margin-right: 6px; }
+.sys-load b:last-child { margin-right: 0; }
+.sys-bar { display: inline-block; width: 34px; height: 4px; border-radius: 2px; background: var(--line2); overflow: hidden; }
+.sys-bar i { display: block; height: 100%; width: 0; background: var(--green); opacity: .7; transition: width .4s; }
+.sys-bar i.warn { background: var(--amber); opacity: 1; }
+.sys-bar i.high { background: var(--red); opacity: 1; }
 
 /* flags in columns of three; SQL, ST and RDS go to the second column */
 /* fixed column width: a text change (2.7 kHz -> 3 kHz) must not shift the rest of the panel */
@@ -131,11 +139,22 @@ body {
   animation: r-logo-pulse 1.8s ease-in-out infinite alternate; }
 @keyframes r-logo-pulse { from { opacity: 1; } to { opacity: .12; } }
 /* right column: logo at the top, clock in the middle, RDS at the bottom */
+.r-logo-link { display: contents; cursor: pointer; }   /* the logo opens GitHub; the link adds no box of its own */
+/* a newer version is released: red letters; a click opens its release page */
+.r-logo-link.outdated .r-logo-letters > g { stroke: url(#logoFaceOld); }
+.r-logo-link.outdated .r-logo-letters { filter: drop-shadow(0 5px 0 #7a2020) drop-shadow(0 5px 0 #4a1010) drop-shadow(0 8px 6px rgba(0, 0, 0, .8)); }
 .r-info-text .r-brandline { order: -1; align-self: center; display: flex; align-items: flex-end; gap: 6px; }
 .r-info-text .r-logo { margin: 2px 0 0; }
+/* version, and above it the note of a newer one: out of the flow, so it does not move the logo */
+.r-vers { position: relative; }
+.r-vers .r-upd { position: absolute; bottom: 100%; left: 0; }   /* above the version: the author line is under it */
 .r-ver { font: 600 10px system-ui, sans-serif; color: var(--muted); white-space: nowrap; margin-bottom: 1px; }
-.r-upd { font: 700 10px system-ui, sans-serif; color: #ffc94d; white-space: nowrap; margin-bottom: 1px; text-decoration: none; }
-.r-upd:hover { text-decoration: underline; }
+/* newer version: an orange block like the CUE flag, blinking once a second */
+.r-upd { font: 700 10px/1.2 system-ui, sans-serif; letter-spacing: .04em; white-space: nowrap; margin-bottom: 2px; text-decoration: none;
+  padding: 0 4px; border-radius: 3px; background: var(--orange); color: #2a1404; border: 1px solid var(--orange);
+  box-shadow: 0 0 10px rgba(255, 140, 26, .45); animation: upd-blink 1s steps(1) infinite; }
+@keyframes upd-blink { 50% { opacity: .25; } }
+.r-upd:hover { animation: none; }   /* steady while pointed at */
 .r-upd[hidden] { display: none; }
 /* author directly under the logo (same order as the brandline, follows it in the source) */
 .r-credit { order: -1; align-self: center; margin-top: -2px; font: 10px system-ui, sans-serif; letter-spacing: .03em;
@@ -342,11 +361,15 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid rgba(255, 2
   color: var(--yellow); background: linear-gradient(180deg, var(--key-on-a), var(--key-on-b));
   box-shadow: inset 0 -2px 0 var(--yellow), inset 0 1px 0 rgba(255, 255, 255, .12);
 }
+/* AGC+ on: red underline while the A/D converter clips (the gain is being lowered) */
+#agcPlusKey.on.clip { box-shadow: inset 0 -2px 0 var(--red, #e5484d), inset 0 1px 0 rgba(255, 255, 255, .12); }
 /* AFI on: the usual yellow backlit key, blinking, because the audio is inverted */
 #afiKey.on { animation: afi-key-blink 1s steps(1) infinite; }
 @keyframes afi-key-blink {
   50% { color: #6e5d20; box-shadow: inset 0 -2px 0 #6e5d20, inset 0 1px 0 rgba(255, 255, 255, .12); }
 }
+/* ATU: blinking while it listens to the clicked signal */
+#atuKey.busy { animation: afi-key-blink .5s steps(1) infinite; }
 /* LPF / HPF: filter curve and cutoff on two lines, as high and wide as the other keys */
 .key.pass-key, .keys button.pass-key { flex-direction: column; gap: 1px; padding-top: 2px; padding-bottom: 2px; line-height: 1; }
 /* SAT key: the icon is taller than a line of key text; the negative margin keeps the key as high as the others */
@@ -404,6 +427,9 @@ label.key.disabled { opacity: .4; cursor: default; }
   display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 8px 12px;
   background: #0b0e12; border-bottom: 1px solid var(--line);
 }
+/* BAND key: the row of band keys slides closed / open (app.js sets the height; the spectrum takes the space) */
+.r-bands { overflow: hidden; transition: height .22s ease, padding .22s ease, opacity .22s ease, border-width .22s ease; }
+.r-bands.bands-off { padding-top: 0; padding-bottom: 0; opacity: 0; border-bottom-width: 0; }
 .bgroup { display: flex; flex-direction: column; gap: 3px; }
 .bands { display: flex; gap: 4px; flex-wrap: wrap; }
 .r-bands .bands button { min-width: 44px; padding: 5px 8px; font-size: 11px; }
@@ -485,12 +511,30 @@ canvas.axis { flex: none; }
 .scope canvas { display: block; width: 100%; height: 100%; }
 .overlay { position: absolute; inset: 0; }
 canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474d; }
+.zoom-bar { position: absolute; top: 2px; right: 6px; z-index: 4; display: flex; align-items: center; gap: 4px; height: 18px;
+  padding: 0 4px; border-radius: 4px; background: rgba(28, 30, 34, .92); border: 1px solid #44474d; user-select: none; }
+.zb-btn { width: 16px; height: 14px; padding: 0; border: 1px solid #5a5e66; border-radius: 3px; background: #2a2d33;
+  color: #cfd6df; font: 700 12px/12px ui-monospace, Consolas, monospace; cursor: pointer; }
+.zb-btn:hover { border-color: var(--yellow); color: var(--yellow); }
+.zb-btn:disabled { opacity: .35; cursor: default; border-color: #5a5e66; color: #cfd6df; }
+.zb-cells { display: flex; gap: 2px; }
+.zb-cells i { width: 10px; height: 10px; border-radius: 2px; background: #33363c; border: 1px solid #50545b; cursor: pointer; }
+.zb-cells i.on { background: var(--yellow); border-color: var(--yellow); }
+.zb-cells i:hover { border-color: var(--yellow); }
+.zb-val { min-width: 26px; text-align: right; font: 700 11px ui-monospace, Consolas, monospace; color: var(--yellow); }
 .waterfall-wrap.dragging, .spectrum-wrap.dragging { cursor: grabbing; }
 .hover-freq { position: absolute; z-index: 3; pointer-events: none; padding: 3px 8px; border-radius: 4px;
   font: 700 13px ui-monospace, Consolas, monospace; color: var(--yellow); white-space: nowrap;
   background: rgba(8, 12, 16, .9); border: 1px solid var(--yellow); box-shadow: 0 2px 8px rgba(0, 0, 0, .6); }
 .audio-bubble { position: absolute; z-index: 3; pointer-events: none; width: 200px; height: 96px; padding: 4px; box-sizing: border-box;
   border-radius: 6px; background: rgba(8, 12, 16, .92); border: 1px solid rgba(255, 181, 71, .7); box-shadow: 0 2px 8px rgba(0, 0, 0, .6); }
+.scope .audio-bubble canvas { height: 88px; }
+.audio-bubble:has(.audio-bubble-cw:not([hidden])) { height: auto; }
+/* CW text decoded while the bubble is open (CW mode): the last two lines, newest at the end */
+.audio-bubble-cw { margin-top: 3px; padding-top: 3px; border-top: 1px solid rgba(255, 181, 71, .3); height: 30px; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: flex-end; color: #e8ecf1; font: 600 12px/15px ui-monospace, Consolas, monospace;
+  white-space: pre-wrap; word-break: break-all; }
+.audio-bubble-cw:empty::before { content: "CW…"; color: #8b95a3; font-weight: 400; }
 
 /* ---------- tabs of the bottom part: SPECTRUM / DECODERS ---------- */
 .body-tabs { display: flex; gap: 2px; padding: 3px 8px 0; background: #0b0e12; border-bottom: 1px solid #44474d; }
@@ -615,6 +659,18 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
    height, the header, settings and notes stay in place, and only the black content box (table, text,
    image) scrolls with its own scrollbar. Several cards on at once share the height. */
 .dec-pane .card { flex: 1 1 0; min-height: 360px; }
+/* pages of the DECODERS tab: only the card of the open page; green ● = a new message not seen yet */
+.dec-pane .card.off-page { display: none; }
+.dec-head { flex: none; }
+.dec-pages { flex-wrap: wrap; }
+/* decoder not available on the receiver of this VFO (VDL2, DAB, ISM on a LimeSDR / Airspy or a chained VFO) */
+.dec-pages .key.na { opacity: .4; text-decoration: line-through; }
+.dec-pane .ft8-empty.dec-na { color: var(--amber); }
+.dec-pages .key { position: relative; }
+.dec-pages .key.new::after { content: "●"; position: absolute; top: -6px; right: -3px; font-size: 10px; color: var(--green); }   /* over the corner: the keys do not move */
+/* the card of the open page is shown also while its decoder is off (ON key in its top left corner); DSD is a mode, not a key */
+.dec-pane .card[data-dec][hidden]:not(.off-page):not(#dsdCard) { display: flex !important; }
+.dec-pane [data-dec-on] { min-width: 44px; }
 .dec-pane .ft8-table, .dec-pane .txt-out, .dec-pane .wefax-wrap, .dec-pane .sstv-main {
   flex: 1 1 0; min-height: 150px; max-height: none; overflow: auto;
 }
@@ -623,6 +679,9 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .dec-pane .sstv-wrap { align-self: flex-start; }
 .dec-pane .sstv-gallery { overflow: auto; align-content: start; padding: 8px;
   border: 1px solid var(--line); border-radius: 6px; background: #000; }
+/* WEFAX: same layout as SSTV, but the live image (wide, long) scrolls by itself and takes most of the width */
+.dec-pane .wefax-main .wefax-wrap { flex: 3 1 0; min-width: 260px; min-height: 0; max-height: none; align-self: stretch; }
+.dec-pane .wefax-main .sstv-gallery { flex: 1 1 200px; max-width: 420px; }
 
 /* ---------- text decoders (CW, RTTY): the text fills the rest of the tab height ---------- */
 .txt-info { color: var(--yellow); font: 600 13px ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: nowrap; }
@@ -737,6 +796,40 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .ism td.dev, .ism td.id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ism td.data { white-space: normal; word-break: break-word; }
 .ism .rep { color: var(--muted); margin-left: 6px; }
+/* PACKET: frames, APRS stations and their map */
+.pkt table { table-layout: fixed; }
+.pkt .c-utc { width: 82px; }
+.pkt .c-bd { width: 52px; }
+.pkt .c-from { width: 112px; }
+.pkt .c-to { width: 86px; }
+.pkt .c-via { width: 150px; }
+.pkt .c-n { width: 44px; }
+.pkt .c-km { width: 96px; }
+.pkt td.via { overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+.pkt td.data { white-space: pre-wrap; word-break: break-word; }
+.pkt td.call { color: var(--amber); overflow: hidden; text-overflow: ellipsis; }
+.pkt td.call.click { cursor: pointer; text-decoration: underline dotted; }
+.pkt td.data .ap { color: #6cb8ff; }          /* parsed APRS (blue = interpreted, not the raw text) */
+.pkt td.data .hex { color: var(--dim); }
+.pkt td.data .raw { color: var(--muted); font-size: 11px; display: block; }
+.pkt .b96 { color: var(--green); }            /* 9600 Bd (satellites) */
+.pkt-filter { width: 110px; }
+.dec-pane .pkt-body { flex: 1 1 0; min-height: 150px; display: flex; gap: 10px; }
+.pkt-main { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
+.pkt-eye { flex: 0 0 340px; display: flex; flex-direction: column; gap: 6px; padding: 8px;
+  border: 1px solid var(--line); border-radius: 6px; background: #000; min-height: 0; }
+.pkt-eye-head { display: flex; align-items: center; gap: 10px; }
+.pkt-eye-head b { font: 700 12px system-ui, sans-serif; letter-spacing: .06em; color: var(--yellow); }
+.pkt-eye-head .bands button { min-width: 0; padding: 2px 8px; font-size: 11px; }
+#packetEye { flex: 1 1 0; width: 100%; min-height: 160px; max-height: 420px; display: block; }
+.pkt-eye-info { font: 12px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--muted); white-space: pre-line; }
+.pkt-eye-info b { color: var(--text); font-weight: 600; }
+@media (max-width: 900px) { .pkt-eye { display: none; } }
+#packetInfo.err { color: #ff7b6b; }
+.dec-pane .pkt-map { flex: 1 1 0; min-height: 200px; display: flex; flex-direction: column; gap: 4px; }
+#packetMap { flex: 1 1 0; min-height: 200px; border: 1px solid var(--line); border-radius: 6px; background: #000; }
+.pkt-label { background: rgba(0, 0, 0, .75); color: #ffd84a; border: none; box-shadow: none; font: 600 11px ui-monospace, Consolas, monospace; padding: 0 3px; }
+.pkt-label::before { display: none; }
 #ismInfo { font-size: 12px; font-variant-numeric: tabular-nums; }
 #ismInfo.err { color: #ff7b6b; }
 .dsd-now { font: 13px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; color: var(--green); }
@@ -799,9 +892,14 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .sstv-gallery img { display: block; width: 100%; height: auto; }
 .sstv-gallery span { display: block; padding: 2px 4px; font-size: 10px; color: var(--muted); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis; }
+.sstv-item { position: relative; }
+.sstv-del { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; padding: 0; line-height: 18px;
+  border: 1px solid var(--line); border-radius: 4px; background: rgba(0, 0, 0, .65); color: var(--text);
+  font-size: 14px; cursor: pointer; opacity: 0; transition: opacity .15s; }
+.sstv-item:hover .sstv-del, .sstv-del:focus { opacity: 1; }
+.sstv-del:hover { border-color: #e55; color: #e55; }
 /* DAB: list of stations on the left, the playing station (DLS text, slideshow) on the right */
 .dab-head { gap: 10px; }
-.ft8 .dab-badge { padding: 2px 8px; border-radius: 5px; background: linear-gradient(135deg, #ffd84a, #f08a24); color: #15120a; letter-spacing: .03em; }
 .dab-flag { width: 24px; height: 18px; object-fit: cover; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .18); }
 .dab-ens { font: 700 15px system-ui, sans-serif; color: var(--text); }
 #dabInfo { font-size: 12px; font-variant-numeric: tabular-nums; }
@@ -843,7 +941,8 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
   overflow: hidden; border-radius: 8px; background: rgba(0, 0, 0, .55); box-shadow: 0 4px 18px rgba(0, 0, 0, .6); }
 .dab-art .dab-mono { width: 84px; height: 84px; border-radius: 18px; font-size: 32px; }
 .dab-art .dab-mono:empty { visibility: hidden; }
-.dab-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+/* the box takes the picture's own ratio (set from app.js); a click switches to 16:9 for slides squeezed into 4:3 */
+.dab-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; background: #000; cursor: pointer; }
 .dab-hero-text { position: relative; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 7px; }
 .dab-title { font: 700 30px/1.15 system-ui, sans-serif; color: var(--yellow); overflow-wrap: anywhere; }
 .dab-chips { display: flex; flex-wrap: wrap; gap: 4px; }
@@ -996,6 +1095,9 @@ html.compact .r-keys .keys:has(.pass-key) { gap: 2px; }
 html.compact .r-keys .keys { padding: 2px; }
 html.compact .r-bands .bands button { min-width: 36px; padding-left: 5px; padding-right: 5px; }
 /* SATELLITES → TRACK (Doppler correction) */
+/* TRACKING flag at the Rotor heading: same size green or grey, like the flags at the S-meter */
+.satt-flag { display: inline-block; height: var(--flag-h); padding: 1px 6px; margin-left: .5em; font-size: 11px; vertical-align: middle; box-sizing: border-box; }
+.satt-flag.dim { font-size: 11px; }
 .satt-left { flex: 1 1 520px; min-width: 0; }
 .satt-live { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; min-height: 76px; }
 .satt-live p { margin: 4px 0; }
@@ -1003,8 +1105,19 @@ html.compact .r-bands .bands button { min-width: 36px; padding-left: 5px; paddin
 .satt-tx-wrap { max-height: 300px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
 .amsat-body.satp-on .satt-tx td.satt-desc { white-space: normal; min-width: 180px; }
 .satt-tx tr[data-uuid] { cursor: pointer; }
-.satt-start { margin: 8px 0 4px; }
-.satt-start input[type="number"] { width: 110px; }
+/* TRACK, rotor: heading, flag, TRACK and STOP on one line; polar plot and elevation chart side by side */
+.satt-rhead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 2px 0 6px; }
+.satt-rhead h4 { margin: 0; }
+.satt-rhead .satt-flag { margin-left: 0; min-width: 9em; }
+.flag.warn { background: var(--yellow); color: #1a1400; box-shadow: none; }
+.satt-live.satt-rot { min-height: 0; }
+.satt-count { margin-left: auto; font-size: 22px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.satt-count b { color: var(--text); }
+.satt-count.live b { color: var(--green); }
+.satt-plots { flex-wrap: wrap; }
+.satt-plots .satp-elchart { flex: 1 1 260px; min-width: 0; margin-top: 0; }
+.satt-facts { display: flex; gap: 6px 24px; flex-wrap: wrap; margin-top: 6px; }
+.satt-facts .satp-facts { flex: 0 1 auto; }
 .satt-right { flex: 1 1 440px; min-width: 0; display: flex; flex-direction: column; }
 .satt-right .satp-detail { flex: none; }
 .satt h4 { margin: 2px 0 6px; color: var(--yellow); font-size: 12px; letter-spacing: 0.05em; }

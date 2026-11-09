@@ -67,6 +67,7 @@ class AirspySdr:
     """Thin wrapper over airspy.dll, the methods match RtlSdr."""
 
     gains = list(range(GAIN_MAX + 1))
+    gain_db_per_unit = 2.0   # AGC+: a linearity preset step is roughly 2 dB
     has_bias_tee = True
     has_rtl_agc = False
 

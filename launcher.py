@@ -14,6 +14,7 @@ import time
 
 from flask import Flask, jsonify, request, send_from_directory
 
+import sysload
 import update_check
 from paths import BASE, data
 
@@ -56,6 +57,11 @@ def main():
     @app.route("/")
     def index():
         return send_from_directory(app.static_folder, "index.html")
+
+    @app.route("/api/sysload")
+    def api_sysload():
+        """CPU load and memory use of the PC (indicator under the S-meter)."""
+        return jsonify(sysload.load())
 
     @app.route("/api/vfos")
     def api_vfos():

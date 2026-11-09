@@ -484,7 +484,16 @@ _tx = {"mtime": None, "by_norad": {}, "last_try": 0.0, "error": ""}
 
 # SatNOGS mode -> RADIMCOM mode; anything else (digital modes) is received in USB for a decoder or a recording
 TX_MODES = {"FM": "FM", "FMN": "FM", "AFSK": "FM", "SSTV": "FM", "DUV": "FM", "AFSK S-Net": "FM",
-            "USB": "USB", "LSB": "LSB", "CW": "CW", "AM": "AM"}
+            "GFSK": "FM", "USB": "USB", "LSB": "LSB", "CW": "CW", "AM": "AM"}
+
+
+def rx_mode(mode):
+    """Receive mode for a SatNOGS transmitter mode: data on FSK / GFSK / GMSK / MSK (any variant such as
+    "GMSK USP" or "FSK AX.100 Mode 5") is frequency modulation, so FM; unknown modes USB."""
+    mode = mode or ""
+    if mode in TX_MODES:
+        return TX_MODES[mode]
+    return "FM" if "FSK" in mode.upper() or "MSK" in mode.upper() else "USB"
 
 
 def _tx_download():
@@ -536,7 +545,7 @@ def transmitters(norad, refresh=False):
             _tx.update(mtime=mtime, by_norad=by)
         order = {"Transponder": 0, "Transceiver": 1, "Transmitter": 2}
         rows = sorted(_tx["by_norad"].get(int(norad), []), key=lambda t: (order.get(t["type"], 3), t["downlink_low"]))
-        return {"transmitters": [dict(t, rx_mode=TX_MODES.get(t["mode"] or "", "USB")) for t in rows],
+        return {"transmitters": [dict(t, rx_mode=rx_mode(t["mode"])) for t in rows],
                 "fetched": mtime, "error": _tx["error"]}
 
 
@@ -554,8 +563,8 @@ class Doppler:
     TICK_S = 0.25
     LEAD_S = 0.5          # the frequency for a moment ahead: retuning takes a little time
     MIN_GAP_S = 1.0       # at most one retune per second
-    STEP_HZ = {"FM": 1000.0, "WFM": 5000.0, "AM": 500.0}     # retune when the error is this big; others (SSB, CW) 20 Hz
-    STEP_FINE_HZ = 20.0
+    STEP_HZ = {}          # retune steps per mode (none now: all modes use STEP_FINE_HZ)
+    STEP_FINE_HZ = 5.0    # retune when the error is this big; keep above HAND_HZ
     HAND_HZ = 3.0         # a VFO frequency this far from the last one set counts as tuned by hand
     AWAY_HZ = 50_000.0    # tuned further than this outside the transponder: Doppler stops
 
