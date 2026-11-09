@@ -1160,3 +1160,76 @@ html.compact .r-bands .bands button { min-width: 36px; padding-left: 5px; paddin
 .sats-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 8px; }
 .sats-tabs .key .muted { margin-left: 4px; }
 .el-rot { fill: #ff4d4d; font: 700 11px system-ui, sans-serif; }
+
+/* MEM editor: a big floating window with tabs (channels, groups, import, export) */
+.med-win { left: 3%; width: 94%; height: 90%; }
+.med-body { gap: 10px; padding: 10px 14px; overflow: hidden; }
+.med-panel { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+.med-panel[hidden] { display: none; }
+.med-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.med-bar input, .med-bar select { padding: 5px 8px; font-size: 12px; min-width: 0; }
+.med-bar input[type=search] { flex: 1; min-width: 180px; }
+.med-bar .grow { flex: 1; }
+.med-bar input[type=color] { width: 34px; height: 26px; padding: 1px; }
+.med-bulk { padding: 6px; border: 1px solid var(--line2); border-radius: 6px; background: #0b0e12; }
+.med-bulk .muted { font-size: 12px; min-width: 80px; }
+.med-sep { width: 1px; align-self: stretch; background: var(--line2); margin: 0 2px; }
+.med-lbl { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.med-split { display: flex; gap: 10px; flex: 1; min-height: 0; }
+.med-table-wrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.med-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.med-table th { position: sticky; top: 0; z-index: 1; background: #12161c; color: var(--muted); font-weight: 600; text-align: left;
+  padding: 6px; border-bottom: 1px solid var(--line2); white-space: nowrap; font-size: 11px; }
+.med-table td { padding: 3px 6px; border-bottom: 1px solid #1a1f26; vertical-align: middle; }
+.med-table .num { text-align: right; }
+.med-table .mono, .med-table .mono input { font-family: ui-monospace, Consolas, monospace; }
+.med-table tr.med-ch { cursor: pointer; }
+.med-table tr.med-ch:hover, .med-table tr[data-g]:hover { background: #1a2028; }
+.med-table tr.sel { background: rgba(110, 170, 255, .1); }
+.med-table tr.editing { box-shadow: inset 3px 0 0 var(--yellow); background: rgba(255, 216, 74, .08); }
+.med-table tr.bad { background: rgba(255, 75, 62, .1); }
+.med-table td.name { font-weight: 600; white-space: nowrap; }
+.med-table td.mode { color: var(--green); white-space: nowrap; }
+.med-table td.note-cell { color: var(--muted); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.med-table .star { border: none; background: none; padding: 0; color: var(--dim); font-size: 13px; cursor: pointer; }
+.med-table .star.on { color: var(--amber); }
+.med-table .dup { font-style: normal; color: var(--amber); cursor: help; }
+.med-table tr.med-sec td { position: sticky; top: 27px; background: #0e1216; color: var(--yellow); font-weight: 700; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .06em; padding-top: 8px; }
+.med-secnote { text-transform: none; letter-spacing: 0; color: var(--muted); font-weight: 400; margin-left: 8px; }
+.med-table td.acts { white-space: nowrap; text-align: right; }
+.med-table td.acts .key { margin-left: 3px; }
+.med-table td.grow input { width: 100%; }
+.med-table input:not([type=checkbox]), .med-table select { width: 100%; min-width: 60px; padding: 3px 5px; font-size: 12px; }
+.med-table input.short { min-width: 50px; width: 70px; }
+.med-table .inc { text-align: center; white-space: nowrap; }
+.med-table .inc label { display: inline-flex; gap: 4px; align-items: center; }
+.med-table .status { white-space: nowrap; }
+.med-table .status .ok { color: var(--green); }
+.med-table .status .warn { color: var(--amber); }
+.med-table .status .error, .med-table .error { color: var(--red); }
+.chip { display: inline-block; margin: 1px 3px 1px 0; padding: 0 6px; border: 1px solid var(--line2); border-radius: 9px; font-size: 11px;
+  color: var(--text); background: #151a21; white-space: nowrap; }
+.swatch { display: inline-block; width: 14px; height: 10px; border-radius: 3px; background: var(--c); vertical-align: middle; }
+.swatch.off { background: transparent; border: 1px dashed var(--c); opacity: .6; }
+.chip-check { display: inline-flex; gap: 4px; align-items: center; margin: 2px 8px 2px 0; font-size: 12px; white-space: nowrap; }
+.med-impgroups { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; color: var(--muted);
+  padding: 6px; border: 1px dashed var(--line2); border-radius: 6px; }
+.med-impgroups b { color: var(--text); font-weight: 600; margin-right: 6px; }
+.med-impgroups input:not([type=checkbox]) { width: 160px; padding: 2px 6px; font-size: 12px; }
+.med-form { width: 300px; flex: none; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px;
+  border: 1px solid var(--yellow); border-radius: 6px; background: #12161c; }
+.med-form[hidden] { display: none; }
+.med-form h4 { margin: 0; color: var(--yellow); font-size: 13px; }
+.med-form label:not(.switch):not(.chip-check):not(.med-color) { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); }
+.med-form input:not([type=checkbox]):not([type=color]), .med-form select, .med-form textarea { width: 100%; min-width: 0; padding: 5px 8px; font-size: 13px; }
+.med-form textarea { resize: vertical; font: 13px system-ui, sans-serif; }
+.med-form [name=freq] { font-family: ui-monospace, Consolas, monospace; }
+.med-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: end; }
+.med-tagrow { align-items: center; }
+.med-color { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); }
+.med-color input { width: 34px; height: 24px; padding: 1px; }
+.med-groups { border: 1px solid var(--line2); border-radius: 6px; padding: 4px 8px 8px; margin: 0; }
+.med-groups legend { font-size: 11px; color: var(--muted); padding: 0 4px; }
+.med-groups #medFormGroups { display: flex; flex-wrap: wrap; max-height: 120px; overflow: auto; margin-bottom: 6px; }
+.med-form .key { width: 100%; }

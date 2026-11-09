@@ -766,6 +766,7 @@
       <datalist id="memGroups"></datalist>
       <button id="memSave" class="key accent" title="Saves the tuned frequency, mode and bandwidth">＋ SAVE CURRENT</button>
       <button id="memNew" class="key" title="New memory with a frequency, mode and bandwidth you enter (filled in from the tuner)">＋ NEW…</button>
+      <button id="memEdKey" class="key" title="Memory editor: channels, groups with notes, import and export with a list to check first">✎ EDITOR</button>
       <p id="memError" class="note error" hidden></p>
     </div>
     <div class="mem-filter">
@@ -807,6 +808,148 @@
     </details>
   </div>
 </aside>
+
+<aside class="drawer med-win" id="memEdWin" hidden aria-label="Memory editor">
+  <div class="drawer-head"><b>MEM · Editor</b><span id="medCount" class="muted"></span><button class="key small" data-close>✕</button></div>
+  <div class="body-tabs set-tabs" id="medTabs" role="tablist">
+    <button data-med-tab="channels" class="on" role="tab">CHANNELS</button>
+    <button data-med-tab="groups" role="tab">GROUPS</button>
+    <button data-med-tab="import" role="tab">IMPORT</button>
+    <button data-med-tab="export" role="tab">EXPORT <span id="medExpCount" class="dec-count"></span></button>
+  </div>
+  <div class="drawer-body med-body">
+    <p id="medNote" class="note" hidden></p>
+
+    <!-- CHANNELS -->
+    <section class="med-panel" data-med-panel="channels">
+      <div class="med-bar">
+        <input id="medSearch" type="search" placeholder="Search name, note, group or kHz…" autocomplete="off">
+        <select id="medGroup" aria-label="Group" title="Show one group"></select>
+        <label class="med-lbl">Sort <select id="medSort" title="Order of the list">
+          <option value="group">group</option><option value="freq">frequency</option><option value="name">name</option>
+          <option value="mode">mode</option><option value="decoder">decoder</option></select></label>
+        <label class="switch small" title="Only memories on the same frequency and mode as another one"><input id="medDups" type="checkbox"><span></span> ⧉ duplicates</label>
+        <button id="medNew" class="key small accent" title="New channel (filled in from the tuner)">＋ NEW</button>
+      </div>
+      <div class="med-bar med-bulk" id="medBulk">
+        <span id="medSelCount" class="muted">0 selected</span>
+        <input id="medBulkGroup" placeholder="Group" maxlength="40" list="medGroupNames" autocomplete="off">
+        <button class="key small" data-bulk="add" title="Adds the selected channels to this group (they stay in their other groups)">＋ TO GROUP</button>
+        <button class="key small" data-bulk="remove" title="Removes the selected channels from this group">− FROM GROUP</button>
+        <button class="key small" data-bulk="move" title="Moves the selected channels to this group only">MOVE</button>
+        <span class="med-sep"></span>
+        <button class="key small" data-bulk="fav" title="Star">★</button>
+        <button class="key small" data-bulk="unfav" title="Remove the star">☆</button>
+        <button class="key small" data-bulk="tagon" title="Show their tags in the spectrum">TAG ON</button>
+        <button class="key small" data-bulk="tagoff" title="Hide their tags in the spectrum">TAG OFF</button>
+        <input id="medBulkColor" type="color" value="#7ee0a8" title="Tag colour">
+        <button class="key small" data-bulk="color" title="Sets this tag colour">COLOUR</button>
+        <button class="key small" data-bulk="nocolor" title="Default tag colour (green)">DEFAULT</button>
+        <span class="med-sep"></span>
+        <button class="key small" data-bulk="export" title="Adds the selected channels to the EXPORT list">⇩ TO EXPORT</button>
+        <button class="key small danger" data-bulk="delete" title="Deletes the selected channels">DELETE</button>
+      </div>
+      <datalist id="medGroupNames"></datalist>
+      <div class="med-split">
+        <div class="med-table-wrap"><table class="med-table" id="medTable"></table></div>
+        <form class="med-form" id="medForm" autocomplete="off" hidden>
+          <h4 id="medFormTitle">Channel</h4>
+          <label>Name<input name="name" maxlength="80" required></label>
+          <div class="med-row2">
+            <label>Frequency<input name="freq" spellcheck="false" title="MHz, or with a unit: 7100k, 145.5M, 7100000Hz"></label>
+            <label>Mode<select name="mode"></select></label>
+          </div>
+          <div class="med-row2">
+            <label>Bandwidth, kHz<input name="bw" title="Clamped to the range of the mode"></label>
+            <label>Decoder<select name="decoder" title="Switched on when the channel is recalled"></select></label>
+          </div>
+          <label>DAB channel<select name="dab" title="Recalling the channel turns DAB on with this channel"></select></label>
+          <fieldset class="med-groups"><legend>Groups</legend><div id="medFormGroups"></div>
+            <input id="medFormNewGroup" placeholder="＋ new group, Enter" maxlength="40"></fieldset>
+          <label>Note<textarea name="note" maxlength="200" rows="2"></textarea></label>
+          <div class="med-row2 med-tagrow">
+            <label class="switch small"><input name="tag" type="checkbox" checked><span></span> tag in spectrum</label>
+            <label class="med-color">colour <input name="color" type="color" value="#7ee0a8"><button type="button" class="key small" data-act="nocolor" title="Default colour (green)">↺</button></label>
+          </div>
+          <label class="switch small"><input name="fav" type="checkbox"><span></span> ★ favourite</label>
+          <p class="note warn" id="medFormDup" hidden></p>
+          <p class="note error" id="medFormErr" hidden></p>
+          <div class="med-row2">
+            <button type="submit" class="key accent" id="medFormSave">SAVE</button>
+            <button type="button" class="key" data-act="cancel">CLOSE</button>
+          </div>
+          <div class="med-row2">
+            <button type="button" class="key" data-act="recall" title="Tunes the receiver to the saved channel">▶ RECALL</button>
+            <button type="button" class="key danger" data-act="delete">DELETE</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- GROUPS -->
+    <section class="med-panel" data-med-panel="groups" hidden>
+      <div class="med-bar">
+        <input id="medGrpName" placeholder="New group" maxlength="40">
+        <input id="medGrpNote" placeholder="Note" maxlength="200" class="grow">
+        <button id="medGrpAdd" class="key small accent">＋ ADD GROUP</button>
+      </div>
+      <div class="med-bar med-bulk">
+        <span id="medGrpSelCount" class="muted">0 selected</span>
+        <button id="medGrpMerge" class="key small" title="Merges the selected groups into one (asks for its name)">MERGE</button>
+        <button id="medGrpExport" class="key small" title="Adds the selected groups to the EXPORT list">⇩ TO EXPORT</button>
+        <button id="medGrpDel" class="key small danger" title="Deletes the selected groups">DELETE</button>
+      </div>
+      <div class="med-table-wrap"><table class="med-table" id="medGrpTable"></table></div>
+    </section>
+
+    <!-- IMPORT -->
+    <section class="med-panel" data-med-panel="import" hidden>
+      <div class="med-bar">
+        <input id="medImpPath" placeholder="SDR# folder, e.g. C:\sdrsharp" spellcheck="false" class="grow"
+          title="SDR# folder: frequencies.xml is read from it and from profile subfolders (e.g. Instances\Profile1)">
+        <button id="medImpSdr" class="key small">LOAD SDR#</button>
+        <button id="medImpFile" class="key small" title="RADIMCOM export (.json), CSV (.csv) or SDR# frequencies.xml">LOAD FILE…</button>
+        <input id="medImpInput" type="file" accept=".json,.csv,.txt,.xml,application/json,text/csv" hidden>
+      </div>
+      <p class="note">The list is not saved until IMPORT. Edit the channels in the list, choose which to import (all by default);
+        the ones not imported stay in the list for later.</p>
+      <div id="medImpGroups" class="med-impgroups" hidden></div>
+      <div class="med-bar med-bulk">
+        <span id="medImpSelCount" class="muted"></span>
+        <button class="key small" data-imp="all">ALL</button>
+        <button class="key small" data-imp="none">NONE</button>
+        <button class="key small" data-imp="nodup" title="Selects the channels that are not in the memories yet">NEW ONLY</button>
+        <input id="medImpGroup" placeholder="Group" maxlength="40" list="medGroupNames">
+        <button class="key small" data-imp="group" title="Puts the selected channels into this group only">SET GROUP</button>
+        <button class="key small" data-imp="clear" title="Empties the list">CLEAR LIST</button>
+        <button class="key small accent" id="medImpGo">IMPORT SELECTED</button>
+      </div>
+      <div class="med-table-wrap"><table class="med-table med-edit-table" id="medImpTable"></table></div>
+    </section>
+
+    <!-- EXPORT -->
+    <section class="med-panel" data-med-panel="export" hidden>
+      <div class="med-bar">
+        <select id="medExpGroup" aria-label="Group"></select>
+        <button id="medExpAddGroup" class="key small" title="Adds the channels of this group to the list">＋ GROUP</button>
+        <button id="medExpAddFav" class="key small">＋ ★ STARRED</button>
+        <button id="medExpAddAll" class="key small">＋ ALL</button>
+        <button id="medExpClear" class="key small">CLEAR LIST</button>
+      </div>
+      <p class="note">Changes here only go into the file, the memories stay as they are. Untick a channel to leave it out,
+        and colour, tag or note per channel (or for all in the header).</p>
+      <div id="medExpGroups" class="med-impgroups" hidden></div>
+      <div class="med-table-wrap"><table class="med-table med-edit-table" id="medExpTable"></table></div>
+      <div class="med-bar">
+        <label class="med-lbl">Format <select id="medExpFormat">
+          <option value="json">JSON (RADIMCOM, with groups and notes)</option><option value="csv">CSV (Excel)</option></select></label>
+        <input id="medExpName" placeholder="file name" value="radimcom-memories" spellcheck="false">
+        <button id="medExpGo" class="key small accent">⇩ DOWNLOAD</button>
+      </div>
+    </section>
+  </div>
+</aside>
+
 
 </div>
 

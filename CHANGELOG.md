@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Main Features
+
+- **Memory editor.** MEM → **✎ EDITOR** opens a big window with the tabs CHANNELS, GROUPS, IMPORT and EXPORT. See [Memory editor](docs/controls.md#memory-editor).
+  - **Channels** can be in several groups, and have a **decoder** (switched on with its page shown when the channel is recalled), a **note**, their own **tag colour** in the spectrum and a switch to **hide the tag** (shown and green by default). The table sorts by group, frequency, name, mode or decoder, shows only the **duplicates** (same frequency and mode) on request and marks them with ⧉. A form edits one channel; ticked channels can be added to or removed from a group, moved, starred, shown / hidden, coloured, deleted or put on the export list.
+  - **Groups** with a **note**, also empty ones: add, rename, copy (with copies of the channels), merge the ticked groups, delete (with or without their channels).
+  - **Import** from SDR#, JSON or CSV through a list: edit the channels there, see the new ones, duplicates and errors, import only the selected ones (all by default); the rest stay in the list for later. Group notes from JSON come along.
+  - **Export** of whole groups and chosen channels through a list: edit, untick, and choose per channel whether the tag colour, tag on / off and note are exported (and the note of each group). JSON with groups and notes, or CSV for Excel.
+  - Files: `data\memory_groups.json` is new; `memories.json` keeps the first group in the old `group` field, so older versions still read it, and is copied to `memories.json.bak` before the first change.
+  - HTTP API: new fields of a memory, `/api/memory_groups`, `/api/memories/preview`, `/api/memories/import_entries`; `PATCH /api/memories/<id>` takes every field.
+
+### Minor Fixes
+
+- **Editing in the MEM window.** **✎** on a row (or a double click) edits the name, groups, frequency, mode, bandwidth and DAB channel in place (Enter saves, Esc cancels); **＋ NEW…** adds a memory with a frequency typed in by hand; **☑ SELECT** moves, stars or deletes several memories at once; **✎** next to the group filter renames a group. The list sorts by frequency, name or group and marks duplicates with ⧉. HTTP API: `PATCH /api/memories/<id>` takes every field, new `POST /api/memories/bulk`.
+
 ## Ver. 0.112
 
 ### Main Features

@@ -137,13 +137,20 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
   - **ROTOR**: antenna rotor, see [Satellite tracking](satellites.md).
   - **TX** (LimeSDR only): Enable TX, see [Transmitting (LimeSDR)](configuration.md#transmitting-limesdr).
 - **MENU → MEM**: frequency memories with groups, search and favourites. ＋ SAVE CURRENT stores the frequency,
-  mode and width under a name and group; ★ marks a favourite. With DAB on it stores the DAB channel too (shown as `DAB 12C` in the list): recalling that memory turns DAB on with the channel, and the last station of the channel plays. Recalling any other memory ends DAB.
+  mode and width under a name and group; ＋ NEW… stores a frequency, mode and width typed in by hand; ★ marks a favourite.
+  **✎** on a row (or a double click) edits the memory in place: name, groups (several: `A | B`), frequency (MHz, or `7100k`, `145.5M`),
+  mode, bandwidth in kHz and DAB channel; Enter saves, Esc cancels. **☑ SELECT** adds check boxes to the rows to move
+  the selected memories to a group, star or unstar them, or delete them together (ALL selects the filtered list).
+  **✎** next to the group filter renames the group. The list sorts by frequency, name or group; the search matches
+  the name, the group or the kHz; **⧉** marks a memory on the same frequency and mode as another one.
+  **✎ EDITOR** opens the [memory editor](#memory-editor). With DAB on it stores the DAB channel too (shown as `DAB 12C` in the list): recalling that memory turns DAB on with the channel, and the last station of the channel plays. Recalling any other memory ends DAB.
   Memories in the visible part of the spectrum show their name on a green tag at the top of the spectrum;
   click a tag to recall the memory.
   **Import / export** (at the bottom of the window): ⇧ IMPORT SDR# imports memories from the SDR# installation folder
   (`frequencies.xml` there and in profile subfolders such as `Instances\Profile1`; duplicates are skipped).
   ⇧ IMPORT JSON imports a JSON file in the format of EXPORT (duplicates and invalid entries are skipped).
   ⇩ EXPORT ★ downloads the starred memories, ⇩ EXPORT &lt;group&gt; the selected group (All = every memory), as JSON.
+  For a list to check first, use the IMPORT and EXPORT tabs of the editor.
 
 - **MENU → BAND**: shows or hides the row of band keys; the spectrum and waterfall take the freed space. Remembered in the browser.
 
@@ -163,3 +170,41 @@ The page is laid out for at least 1920 × 820 px and scaled to the browser windo
 | CONV / BYPASS | required position of the manual upconverter switch (VFOs with upconverter mode auto) |
 
 When squelch is on for an inactive VFO and it opens, that VFO's button lights up green.
+
+## Memory editor
+
+MEM → **✎ EDITOR** opens a big floating window with four tabs. Changes are saved at once (except the IMPORT and EXPORT lists).
+
+- **CHANNELS**: every memory in a table: star, name, frequency, mode, bandwidth, decoder, groups, tag and note. Show one group
+  or `(no group)`, search name, note, group or kHz, and sort by **group** (a channel in two groups is listed under both, with
+  the note of the group), **frequency**, **name**, **mode** or **decoder**. **⧉ duplicates** shows only the channels on the same
+  frequency (within 50 Hz) and mode as another one; ⧉ marks them in the list too.
+  A click on a row opens it in the form on the right; a double click recalls it. The form edits the name, frequency, mode,
+  bandwidth, **decoder** (switched on when the channel is recalled, and its page shown in DECODERS: FT8, WEFAX, CW, RTTY,
+  SSTV, PACKET, ACARS, VDL2 or ISM), DAB channel, the **groups** (tick any number, or type a new one and press Enter),
+  a **note**, the **tag in the spectrum** (shown or hidden, default shown) with its **colour** (↺ = the default green) and
+  the star. It warns when another channel is on the same frequency and mode. **＋ NEW** fills it from the tuner.
+  Tick channels for the bar above the table: add them to a group (**＋ TO GROUP**, they stay in their other groups),
+  remove them from it, **MOVE** them to one group only, star or unstar them, show or hide their tags, set or reset their
+  colour, put them on the export list (**⇩ TO EXPORT**) or delete them.
+- **GROUPS**: every group with the number of its channels and its **note** (saved when you leave the field). **＋ ADD GROUP**
+  adds an empty group. Per group: **SHOW** (its channels in CHANNELS), **RENAME**, **COPY** (a new group with copies of its
+  channels, which can then be changed without touching the original) and **DELETE** (asks whether the channels that are in no
+  other group are deleted too, or kept without a group). Tick groups to **MERGE** them into one (asks for its name; the
+  notes are joined), to delete them or to put their channels on the export list.
+- **IMPORT**: **LOAD SDR#** reads the SDR# folder (`frequencies.xml` there and in profile subfolders), **LOAD FILE…** a RADIMCOM
+  export (JSON, also the older lists of 0.111 and 0.112), a CSV file or a `frequencies.xml`. The channels go to a list first,
+  nothing is saved yet: edit any field there, see which are new, which are already in the memories (⧉ with the name) and which
+  have an error (red, not selected). All valid channels are selected; **NEW ONLY** selects those not in the memories,
+  **SET GROUP** puts the selected ones into one group. **IMPORT SELECTED** saves them; the others stay in the list, so you can
+  edit and import them later. Groups of a JSON file are shown with their notes, which are imported with the channels.
+- **EXPORT**: put channels on the list: a whole group (**＋ GROUP**), the starred ones, all, or ticked channels and groups from the
+  other tabs. Changes in the list only go into the file. Untick a channel to leave it out, and choose per channel (or for
+  all in the header) whether its tag **colour**, its **tag** shown / hidden and its **note** are exported. The groups of the
+  list are shown above it with their notes, each with a tick whether its note is exported. **JSON** keeps everything,
+  **CSV** (`;`, UTF-8, opens in Excel) has the columns `name;frequency_hz;mode;bandwidth_hz;groups;decoder;dab_channel;favourite;note;color;show_tag`
+  (groups separated by `|`) and is read back by IMPORT; group notes go only into JSON.
+
+The memories are in `data\memories.json`, the groups with their notes and empty groups in `data\memory_groups.json`.
+Each memory keeps its first group in the old `group` field, so older versions still read the file; before the first change
+the file of the older version is copied to `memories.json.bak`.

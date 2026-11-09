@@ -1151,7 +1151,7 @@ function drawMemTags(ctx, w, modeLabel) {
   if (!mems.length) return;
   const v = viewNow();
   const f0 = v.c - v.span / 2, f1 = v.c + v.span / 2;
-  const list = mems.filter((m) => m.freq_hz >= f0 && m.freq_hz <= f1)
+  const list = mems.filter((m) => m.tag !== false && m.freq_hz >= f0 && m.freq_hz <= f1)
     .sort((a, b) => (b.fav - a.fav) || a.freq_hz - b.freq_hz);   // favourites get a place first
   if (!list.length) return;
   ctx.font = "600 10px system-ui, sans-serif";
@@ -1169,20 +1169,21 @@ function drawMemTags(ctx, w, modeLabel) {
     for (let r = 0; r < MEM_TAG_ROWS && row < 0; r++) {
       if (used[r].every(([a, b]) => bx + tw + 2 < a || bx - 2 > b)) row = r;
     }
+    const color = m.color || MEM_COLOR;
     // the ▲ mark at the top edge points at the frequency
-    ctx.fillStyle = MEM_COLOR;
+    ctx.fillStyle = color;
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x - 4, 6); ctx.lineTo(x + 4, 6); ctx.closePath(); ctx.fill();
     if (row < 0) { memTagBoxes.push({ m, x0: x - 5, x1: x + 5, y0: 0, y1: 7 }); continue; }
     used[row].push([bx, bx + tw]);
     const y0 = rowY(row);
-    ctx.strokeStyle = "rgba(126,224,168,.55)";
+    ctx.strokeStyle = color + "8c";   // 55 % opacity
     ctx.setLineDash([2, 2]);
     ctx.beginPath(); ctx.moveTo(x, 6); ctx.lineTo(x, y0); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = "rgba(8,20,14,.88)";
-    ctx.strokeStyle = MEM_COLOR;
+    ctx.fillStyle = "rgba(8,12,14,.88)";
+    ctx.strokeStyle = color;
     ctx.beginPath(); ctx.roundRect(bx, y0, tw, MEM_TAG_H, 4); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = MEM_COLOR;
+    ctx.fillStyle = color;
     ctx.textAlign = "left";
     ctx.fillText(name, bx + 5, y0 + MEM_TAG_H / 2 + 0.5);
     memTagBoxes.push({ m, x0: bx, x1: bx + tw, y0: 0, y1: y0 + MEM_TAG_H });
@@ -1493,7 +1494,7 @@ for (const id of ["specOverlay", "wfOverlay"]) {
       const m = memTagAt((e.clientX - r.left) / uiScale, (e.clientY - r.top) / uiScale);
       const onBand = inPassband(e.clientX - r.left, e.clientY - r.top, r.width);
       cv.style.cursor = bwEdgeAt(e.clientX - r.left, r.width) ? "ew-resize" : m ? "pointer" : onBand ? "grab" : "";
-      const tip = m ? `${m.name} · ${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} MHz` : `${fmtKHz(m.freq_hz, 2)} kHz`} · ${m.mode} · ${m.group}` : "";
+      const tip = m ? `${m.name} · ${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} MHz` : `${fmtKHz(m.freq_hz, 2)} kHz`} · ${m.mode} · ${memGroupsOf(m).join(", ")}${m.note ? ` · ${m.note}` : ""}` : "";
       if (cv.title !== tip) cv.title = tip;
     }
     if (!drag || !cv.hasPointerCapture(e.pointerId)) return;
@@ -5362,7 +5363,7 @@ $("wefaxSave").addEventListener("click", () => {
 
 // ---------- SET and MEM drawers, clock, CW row ----------
 
-const DRAWERS = { setKey: "settingsCard", memKey: "memCard" };
+const DRAWERS = { setKey: "settingsCard", memKey: "memCard", memEdKey: "memEdWin" };
 
 function openDrawer(id) {
   for (const [key, d] of Object.entries(DRAWERS)) {
@@ -5622,12 +5623,13 @@ const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<":
 
 async function loadMems() {
   mems = await fetch(vbase + "/api/memories").then((r) => r.json());
+  await loadMemGroups();
   renderMemGroups();
   renderMems();
 }
 
 function renderMemGroups() {
-  const groups = [...new Set(mems.map((m) => m.group))].sort((a, b) => a.localeCompare(b, "en"));
+  const groups = memAllGroups();
   const sel = $("memGroup");
   const cur = sel.value || recall("memGroup") || "";
   sel.innerHTML = `<option value="">All</option>` + groups.map((g) => `<option>${escHtml(g)}</option>`).join("");
@@ -5653,9 +5655,9 @@ function memFiltered() {
   const sort = $("memSort").value;
   const byFreq = (a, b) => a.freq_hz - b.freq_hz;
   const byName = (a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || byFreq(a, b);
-  const cmp = sort === "name" ? byName : sort === "group" ? (a, b) => a.group.localeCompare(b.group, "en") || byFreq(a, b) : byFreq;
-  return mems.filter((m) => (!group || m.group === group) && (!favOnly || m.fav) &&
-    (!q || m.name.toLowerCase().includes(q) || m.group.toLowerCase().includes(q) ||
+  const cmp = sort === "name" ? byName : sort === "group" ? (a, b) => (a.group || "").localeCompare(b.group || "", "en") || byFreq(a, b) : byFreq;
+  return mems.filter((m) => (!group || memGroupsOf(m).includes(group)) && (!favOnly || m.fav) &&
+    (!q || m.name.toLowerCase().includes(q) || memGroupsOf(m).some((g) => g.toLowerCase().includes(q)) ||
       fmtKHz(m.freq_hz, 3).replace(/\s/g, "").includes(q.replace(/\s/g, ""))))
     .sort(cmp);
 }
@@ -5679,7 +5681,7 @@ function memOpenEdit(m) {
   const open = $("memList").querySelector(".mem-edit");
   if (open) open.remove();   // another open form is dropped, not read into this one
   memEditId = m.id || "new";
-  memDraft = { name: m.name, group: m.group, freq: fmtMHz(m.freq_hz, 6), mode: m.mode,
+  memDraft = { name: m.name, group: memGroupsOf(m).join(" | "), freq: fmtMHz(m.freq_hz, 6), mode: m.mode,
     bw: (m.bw / 1000).toLocaleString(LOCALE, { maximumFractionDigits: 3, useGrouping: false }), dab: m.dab_channel || "" };
   memFocus = true;
   renderMems();
@@ -5702,7 +5704,7 @@ function memEditHtml() {
   const isNew = memEditId === "new";
   return `<div class="mem-edit${isNew ? " new" : ""}" data-id="${memEditId}">` +
     `<input data-f="name" value="${escHtml(d.name)}" placeholder="Memory name" maxlength="80" autocomplete="off" title="Name">` +
-    `<input data-f="group" value="${escHtml(d.group)}" placeholder="Group" maxlength="40" list="memGroups" autocomplete="off" title="Group (pick one or type a new one)">` +
+    `<input data-f="group" value="${escHtml(d.group)}" placeholder="Group" list="memGroups" autocomplete="off" title="Group (pick one or type a new one); several: A | B">` +
     `<input data-f="freq" value="${escHtml(d.freq)}" placeholder="MHz" autocomplete="off" spellcheck="false" ${d.dab ? "disabled" : ""} ` +
     `title="Frequency: MHz, or with a unit: 7100k, 145.5M, 7100000Hz">` +
     `<select data-f="mode" title="Mode">${MEM_MODES.map((x) => `<option${x === d.mode ? " selected" : ""}>${x}</option>`).join("")}</select>` +
@@ -5728,7 +5730,8 @@ async function memSaveEdit() {
   if (!d.name.trim()) return fail("Enter a name.");
   if (!d.dab && !freq) return fail("Enter a frequency, e.g. 145.5 or 7100k.");
   if (!(bw > 0)) return fail("Enter the bandwidth in kHz.");
-  const body = { name: d.name.trim(), group: d.group.trim() || "My", mode: d.mode, bw: Math.round(bw),
+  const groups = d.group.split("|").map((g) => g.trim()).filter(Boolean);
+  const body = { name: d.name.trim(), groups: groups.length ? groups : ["My"], mode: d.mode, bw: Math.round(bw),
     ...(d.dab ? { dab_channel: d.dab } : { freq_hz: Math.round(freq), ...(memEditId === "new" ? {} : { dab_channel: null }) }) };
   const isNew = memEditId === "new";
   try {
@@ -5772,12 +5775,12 @@ function renderMems() {
   // Headings: by band (MHz) when sorted by frequency and all groups are shown, by group when sorted by group.
   let last = null;
   for (const m of list) {
-    const head = sort === "group" ? m.group : sort === "freq" && !group ? `${Math.floor(m.freq_hz / 1e6)} MHz` : null;
+    const head = sort === "group" ? m.group || "(no group)" : sort === "freq" && !group ? `${Math.floor(m.freq_hz / 1e6)} MHz` : null;
     if (head !== null && head !== last) { html += `<div class="mem-group">${escHtml(head)}</div>`; last = head; }
     if (m.id === memEditId) { html += memEditHtml(); continue; }
     const dup = dups.get(m.id);
     html += `<div class="mem${memSelecting ? " selecting" : ""}${memSelected.has(m.id) ? " selected" : ""}" data-id="${m.id}" ` +
-      `title="${escHtml(m.name)} · ${escHtml(m.group)} · ${fmtBw(m.bw)}">` +
+      `title="${escHtml(m.name)} · ${escHtml(memGroupsOf(m).join(", "))} · ${fmtBw(m.bw)}${m.note ? ` · ${escHtml(m.note)}` : ""}">` +
       (memSelecting ? `<input type="checkbox" data-pick ${memSelected.has(m.id) ? "checked" : ""} aria-label="Select">` : "") +
       `<button class="star${m.fav ? " on" : ""}" data-star aria-label="Favourite">${m.fav ? "★" : "☆"}</button>` +
       `<span class="name">${escHtml(m.name)}${dup ? `<i class="dup" title="Same frequency and mode as: ${escHtml(dup.join(", "))}">⧉</i>` : ""}</span>` +
@@ -5916,10 +5919,8 @@ $("memGroupRename").addEventListener("click", async () => {
   if (!old) return;
   const name = (prompt(`New name of the group "${old}":`, old) || "").trim().slice(0, 40);
   if (!name || name === old) return;
-  const ids = mems.filter((m) => m.group === old).map((m) => m.id);
-  const res = await fetch(vbase + "/api/memories/bulk", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ids, changes: { group: name } }) }).catch(() => null);
-  if (!res || !res.ok) { memIoNote("Renaming the group failed" + (res ? ` (HTTP ${res.status})` : ""), true); $("memIo").open = true; return; }
+  const r = await memApi("/api/memory_groups", { action: "rename", name: old, new: name });
+  if (!r.ok) { memIoNote(`Renaming the group failed: ${r.error}`, true); $("memIo").open = true; return; }
   $("memGroup").value = "";
   store("memGroup", name);
   await loadMems();   // renderMemGroups picks the renamed group from storage
@@ -5942,7 +5943,24 @@ async function recallMem(m) {
   renderControls();
   tune(m.freq_hz);
   send({ mode: m.mode, bandwidth: m.bw });
+  if (m.decoder) memStartDecoder(m.decoder);
   markActiveMem();
+}
+
+/** The decoder of a recalled memory: switched on (if not on yet) and its page shown in the DECODERS tab. */
+function memStartDecoder(key) {
+  if (key === "ism") {
+    if (!st.ism) ismOn();
+    return;
+  }
+  const box = $(`${key}On`);
+  if (!box || box.disabled) return;   // e.g. VDL2 on a dongle that cannot run it
+  if (!box.checked) {
+    box.checked = true;
+    box.dispatchEvent(new Event("change"));
+  }
+  setDecPage(key);
+  setBodyTab("dec");
 }
 
 $("memSave").addEventListener("click", async () => {
@@ -6043,9 +6061,787 @@ $("memJsonFile").addEventListener("change", async () => {
 $("memExportFav").addEventListener("click", () => exportMems(mems.filter((m) => m.fav), "starred"));
 $("memExportGroup").addEventListener("click", () => {
   const g = $("memGroup").value;
-  exportMems(g ? mems.filter((m) => m.group === g) : mems, g || "all");
+  exportMems(g ? mems.filter((m) => memGroupsOf(m).includes(g)) : mems, g || "all");
 });
 $("memGroup").addEventListener("change", updateExportLabel);
+
+// ---------- memory editor (MEM → ✎ EDITOR): channels, groups with notes, import and export with a list ----------
+
+const DECODER_NAMES = { "": "—", ft8: "FT8", wefax: "WEFAX", cw: "CW", rtty: "RTTY", sstv: "SSTV", packet: "PACKET",
+  acars: "ACARS", vdl2: "VDL2", ism: "ISM" };
+const NO_GROUP = "\u0000none";   // value of "(no group)" in the group filters
+let memGroupList = [];           // [{name, note, count}] from /api/memory_groups
+let medTab = recall("medTab") || "channels";
+const medSel = new Set();        // ids of the channels ticked in CHANNELS
+let medEditId = null;            // channel in the form: id, "new" or null
+let medFormGroups = [];          // groups ticked in the form (with new ones typed there)
+let medFormColor = "";           // "" = default colour
+const medGrpSel = new Set();     // names ticked in GROUPS
+const medImp = { rows: [], groups: [] };   // import list: rows as in medRow(), groups [{name, note, sel}]
+const medExp = { rows: [], notes: {} };    // export list; notes: group -> {note, incl}
+
+async function memApi(path, body, method = "POST") {
+  try {
+    const res = await fetch(vbase + path, { method, headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: data.error || `HTTP ${res.status}${res.status === 404 || res.status === 405 ? " – restart RADIMCOM to load the new version" : ""}` };
+    }
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+async function loadMemGroups() {
+  const r = await memApi("/api/memory_groups", undefined, "GET");
+  if (r.ok) memGroupList = r.data;
+}
+
+function memTagColor(m) { return m.color || MEM_COLOR; }
+function memGroupsOf(m) { return m.groups || (m.group ? [m.group] : []); }
+function memGroupNote(name) { return (memGroupList.find((g) => g.name === name) || {}).note || ""; }
+/** Every group name: the group list (also empty groups) and the groups of the memories. */
+function memAllGroups() {
+  const names = new Set(memGroupList.map((g) => g.name));
+  for (const m of mems) for (const g of memGroupsOf(m)) names.add(g);
+  return [...names].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+}
+function fmtMemFreq(hz) { return hz >= 30e6 ? `${fmtMHz(hz, 4)} M` : `${fmtKHz(hz, 2)} k`; }
+function kHzText(bw) { return (bw / 1000).toLocaleString(LOCALE, { maximumFractionDigits: 3, useGrouping: false }); }
+
+/** After a change on the server: the memory list, the MEM window and the editor are drawn again. */
+async function memChanged(newMems) {
+  if (newMems) mems = newMems;
+  else mems = await fetch(vbase + "/api/memories").then((r) => r.json());
+  await loadMemGroups();
+  renderMemGroups();
+  renderMems();
+  renderMed();
+}
+
+function medMsg(text, error) {
+  const el = $("medNote");
+  el.textContent = text || "";
+  el.classList.toggle("error", !!error);
+  el.hidden = !text;
+}
+
+function showMedTab(name) {
+  medTab = name;
+  store("medTab", name);
+  for (const b of document.querySelectorAll("[data-med-tab]")) b.classList.toggle("on", b.dataset.medTab === name);
+  for (const p of document.querySelectorAll("[data-med-panel]")) p.hidden = p.dataset.medPanel !== name;
+  medMsg("");
+  renderMed();
+}
+$("medTabs").addEventListener("click", (e) => { const b = e.target.closest("[data-med-tab]"); if (b) showMedTab(b.dataset.medTab); });
+
+function renderMed() {
+  if ($("memEdWin").hidden) return;
+  const names = memAllGroups();
+  $("medGroupNames").innerHTML = names.map((g) => `<option value="${escHtml(g)}">`).join("");
+  $("medCount").textContent = `${mems.length} channels · ${names.length} groups`;
+  $("medExpCount").textContent = medExp.rows.length ? `(${medExp.rows.length})` : "";
+  if (medTab === "channels") renderMedChannels();
+  else if (medTab === "groups") renderMedGroups();
+  else if (medTab === "import") renderMedImport();
+  else renderMedExport();
+}
+
+// ----- CHANNELS -----
+
+function medFilterSelect(sel, withAll) {
+  const cur = sel.value;
+  const names = memAllGroups();
+  sel.innerHTML = (withAll ? `<option value="">All groups</option><option value="${NO_GROUP}">(no group)</option>` : "") +
+    names.map((g) => `<option value="${escHtml(g)}">${escHtml(g)}</option>`).join("");
+  sel.value = [...sel.options].some((o) => o.value === cur) ? cur : sel.options[0]?.value || "";
+}
+
+function medVisible() {
+  const q = $("medSearch").value.trim().toLowerCase();
+  const qf = q.replace(/\s/g, "");
+  const group = $("medGroup").value;
+  const dupsOnly = $("medDups").checked;
+  const dups = memDuplicates();
+  return mems.filter((m) => {
+    const gs = memGroupsOf(m);
+    if (group === NO_GROUP ? gs.length : group && !gs.includes(group)) return false;
+    if (dupsOnly && !dups.has(m.id)) return false;
+    return !q || m.name.toLowerCase().includes(q) || (m.note || "").toLowerCase().includes(q) ||
+      gs.some((g) => g.toLowerCase().includes(q)) || fmtKHz(m.freq_hz, 3).replace(/\s/g, "").includes(qf);
+  });
+}
+
+function renderMedChannels() {
+  medFilterSelect($("medGroup"), true);
+  const sort = $("medSort").value;
+  const group = $("medGroup").value;
+  const dups = memDuplicates();
+  const list = medVisible();
+  for (const id of [...medSel]) if (!mems.some((m) => m.id === id)) medSel.delete(id);
+  const byFreq = (a, b) => a.freq_hz - b.freq_hz;
+  const cmp = {
+    freq: byFreq,
+    name: (a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || byFreq(a, b),
+    mode: (a, b) => a.mode.localeCompare(b.mode) || byFreq(a, b),
+    decoder: (a, b) => (a.decoder || "~").localeCompare(b.decoder || "~") || byFreq(a, b),
+    group: byFreq,
+  }[sort];
+  list.sort(cmp);
+  // sections: by group (a channel in two groups is listed in both), mode or decoder; none by frequency and name
+  let sections;
+  if (sort === "group") {
+    const names = group && group !== NO_GROUP ? [group] : memAllGroups();
+    sections = names.map((g) => [g, list.filter((m) => memGroupsOf(m).includes(g)), memGroupNote(g)]);
+    if (!group || group === NO_GROUP) sections.push(["(no group)", list.filter((m) => !memGroupsOf(m).length), ""]);
+    if (group === NO_GROUP) sections = sections.slice(-1);
+    sections = sections.filter(([, l]) => l.length);
+  } else if (sort === "mode" || sort === "decoder") {
+    const key = (m) => (sort === "mode" ? m.mode : DECODER_NAMES[m.decoder || ""] === "—" ? "no decoder" : DECODER_NAMES[m.decoder]);
+    sections = [...new Set(list.map(key))].map((k) => [k, list.filter((m) => key(m) === k), ""]);
+  } else {
+    sections = [[null, list, ""]];
+  }
+  const allSel = list.length && list.every((m) => medSel.has(m.id));
+  let html = `<thead><tr><th><input type="checkbox" data-selall ${allSel ? "checked" : ""} title="Select all in the list"></th>` +
+    `<th>★</th><th>Name</th><th class="num">Frequency</th><th>Mode</th><th class="num">BW</th><th>Decoder</th>` +
+    `<th>Groups</th><th title="Tag in the spectrum">Tag</th><th>Note</th></tr></thead><tbody>`;
+  for (const [title, rows, note] of sections) {
+    if (title !== null) {
+      html += `<tr class="med-sec"><td colspan="10">${escHtml(title)} <span class="muted">${rows.length}</span>` +
+        (note ? ` <span class="med-secnote">${escHtml(note)}</span>` : "") + `</td></tr>`;
+    }
+    for (const m of rows) {
+      const dup = dups.get(m.id);
+      html += `<tr class="med-ch${medSel.has(m.id) ? " sel" : ""}${m.id === medEditId ? " editing" : ""}" data-id="${m.id}">` +
+        `<td><input type="checkbox" data-pick ${medSel.has(m.id) ? "checked" : ""}></td>` +
+        `<td><button class="star${m.fav ? " on" : ""}" data-star>${m.fav ? "★" : "☆"}</button></td>` +
+        `<td class="name">${escHtml(m.name)}${dup ? ` <i class="dup" title="Same frequency and mode as: ${escHtml(dup.join(", "))}">⧉</i>` : ""}</td>` +
+        `<td class="num mono">${fmtMemFreq(m.freq_hz)}</td>` +
+        `<td class="mode">${m.dab_channel ? `DAB ${escHtml(m.dab_channel)}` : m.mode}</td>` +
+        `<td class="num mono">${fmtBw(m.bw)}</td>` +
+        `<td>${m.decoder ? DECODER_NAMES[m.decoder] || escHtml(m.decoder) : ""}</td>` +
+        `<td class="groups">${memGroupsOf(m).map((g) => `<span class="chip">${escHtml(g)}</span>`).join("")}</td>` +
+        `<td><span class="swatch${m.tag === false ? " off" : ""}" style="--c:${memTagColor(m)}" title="${m.tag === false ? "tag hidden" : "tag shown"}"></span></td>` +
+        `<td class="note-cell" title="${escHtml(m.note || "")}">${escHtml(m.note || "")}</td></tr>`;
+    }
+  }
+  if (!list.length) html += `<tr><td colspan="10" class="mem-empty">${mems.length ? "Nothing matches the filter." : "No channels yet."}</td></tr>`;
+  $("medTable").innerHTML = html + "</tbody>";
+  $("medSelCount").textContent = `${medSel.size} selected`;
+  for (const b of $("medBulk").querySelectorAll("button")) b.disabled = !medSel.size;
+  renderMedForm();
+}
+
+for (const id of ["medSearch", "medDups"]) $(id).addEventListener("input", renderMedChannels);
+$("medGroup").addEventListener("change", renderMedChannels);
+$("medSort").value = recall("medSort") || "group";
+$("medSort").addEventListener("change", () => { store("medSort", $("medSort").value); renderMedChannels(); });
+
+$("medTable").addEventListener("click", (e) => {
+  if (e.target.closest("[data-selall]")) {
+    const list = medVisible();
+    if (e.target.checked) for (const m of list) medSel.add(m.id); else for (const m of list) medSel.delete(m.id);
+    renderMedChannels();
+    return;
+  }
+  const row = e.target.closest("tr[data-id]");
+  if (!row) return;
+  const m = mems.find((x) => x.id === row.dataset.id);
+  if (!m) return;
+  if (e.target.closest("[data-pick]")) {
+    if (e.target.checked) medSel.add(m.id); else medSel.delete(m.id);
+    renderMedChannels();
+    return;
+  }
+  if (e.target.closest("[data-star]")) {
+    memApi(`/api/memories/${m.id}`, { fav: !m.fav }, "PATCH").then((r) => r.ok ? memChanged(mems.map((x) => (x.id === m.id ? r.data : x))) : medMsg(r.error, true));
+    return;
+  }
+  medOpenForm(m);
+});
+$("medTable").addEventListener("dblclick", (e) => {
+  const row = e.target.closest("tr[data-id]");
+  const m = row && mems.find((x) => x.id === row.dataset.id);
+  if (m && !e.target.closest("input, button")) recallMem(m);
+});
+
+// bulk actions on the ticked channels
+$("medBulk").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-bulk]");
+  if (!b || !medSel.size) return;
+  const ids = [...medSel];
+  const act = b.dataset.bulk;
+  const group = $("medBulkGroup").value.trim();
+  if (["add", "remove", "move"].includes(act) && !group) { $("medBulkGroup").focus(); medMsg("Enter a group name first.", true); return; }
+  if (act === "export") { medExportAdd(mems.filter((m) => medSel.has(m.id))); showMedTab("export"); return; }
+  if (act === "delete" && !confirm(`Delete ${ids.length} selected channel${ids.length === 1 ? "" : "s"}?`)) return;
+  const changes = { add: { groups_add: [group] }, remove: { groups_remove: [group] }, move: { groups: [group] },
+    fav: { fav: true }, unfav: { fav: false }, tagon: { tag: true }, tagoff: { tag: false },
+    color: { color: $("medBulkColor").value }, nocolor: { color: "" } }[act];
+  const r = await memApi("/api/memories/bulk", act === "delete" ? { ids, delete: true } : { ids, changes });
+  if (!r.ok) { medMsg(r.error, true); return; }
+  if (act === "delete") { medSel.clear(); if (ids.includes(medEditId)) medEditId = null; }
+  medMsg(act === "delete" ? `Deleted ${r.data.deleted}.` : `Changed ${r.data.changed.length}.`);
+  await memChanged();
+});
+
+// the form of one channel
+function medOpenForm(m) {
+  medEditId = m ? m.id : "new";
+  const f = $("medForm");
+  const src = m || { name: "", groups: $("medGroup").value && $("medGroup").value !== NO_GROUP ? [$("medGroup").value] : [],
+    freq_hz: st ? st.tune_hz : 0, mode: st && MEM_MODES.includes(st.mode) ? st.mode : "AM",
+    bw: st && st.bandwidth ? st.bandwidth[st.mode] || 3000 : 3000, decoder: "", note: "", color: "", tag: true, fav: false };
+  f.elements.mode.innerHTML = MEM_MODES.map((x) => `<option>${x}</option>`).join("");
+  f.elements.decoder.innerHTML = Object.entries(DECODER_NAMES).map(([k, v]) => `<option value="${k}">${k ? v : "none"}</option>`).join("");
+  f.elements.dab.innerHTML = `<option value="">no DAB</option>` + dabChannelList.map(([n, hz]) => `<option value="${escHtml(n)}">DAB ${escHtml(n)} · ${fmtMHz(hz, 3)} MHz</option>`).join("");
+  f.elements.name.value = src.name;
+  f.elements.freq.value = fmtMHz(src.freq_hz, 6);
+  f.elements.mode.value = src.mode;
+  f.elements.bw.value = kHzText(src.bw);
+  f.elements.decoder.value = src.decoder || "";
+  f.elements.dab.value = src.dab_channel || "";
+  f.elements.note.value = src.note || "";
+  f.elements.tag.checked = src.tag !== false;
+  f.elements.fav.checked = !!src.fav;
+  medFormColor = src.color || "";
+  f.elements.color.value = medFormColor || MEM_COLOR;
+  medFormGroups = [...memGroupsOf(src)];
+  $("medFormTitle").textContent = m ? "Channel" : "New channel";
+  $("medFormSave").textContent = m ? "SAVE" : "＋ ADD";
+  f.querySelector("[data-act=recall]").hidden = f.querySelector("[data-act=delete]").hidden = !m;
+  $("medFormErr").hidden = true;
+  f.hidden = false;
+  // only the marks of the rows change: drawing the table again would break a double click (recall) on a row
+  for (const tr of $("medTable").querySelectorAll("tr[data-id]")) tr.classList.toggle("editing", tr.dataset.id === medEditId);
+  renderMedForm();
+  if (!m) f.elements.name.focus();
+}
+
+function renderMedForm() {
+  const f = $("medForm");
+  if (medEditId && medEditId !== "new" && !mems.some((m) => m.id === medEditId)) medEditId = null;
+  f.hidden = !medEditId;
+  if (!medEditId) return;
+  const names = [...new Set([...memAllGroups(), ...medFormGroups])].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+  $("medFormGroups").innerHTML = names.length ? names.map((g) => `<label class="chip-check"><input type="checkbox" value="${escHtml(g)}"` +
+    `${medFormGroups.includes(g) ? " checked" : ""}> ${escHtml(g)}</label>`).join("") : `<span class="muted">no groups yet</span>`;
+  f.elements.freq.disabled = !!f.elements.dab.value;
+  medFormDupNote();
+}
+
+/** Warns in the form when another channel is on the same frequency and mode. */
+function medFormDupNote() {
+  const f = $("medForm");
+  const hz = f.elements.dab.value ? (dabChannelList.find(([n]) => n === f.elements.dab.value) || [])[1] : parseFreq(f.elements.freq.value);
+  const other = hz ? mems.filter((m) => m.id !== medEditId && m.mode === f.elements.mode.value && Math.abs(m.freq_hz - hz) < 50) : [];
+  $("medFormDup").textContent = other.length ? `⧉ Same frequency and mode as: ${other.map((m) => m.name).join(", ")}` : "";
+  $("medFormDup").hidden = !other.length;
+}
+
+$("medFormGroups").addEventListener("change", (e) => {
+  const g = e.target.value;
+  medFormGroups = e.target.checked ? [...medFormGroups, g] : medFormGroups.filter((x) => x !== g);
+});
+$("medFormNewGroup").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  const g = e.target.value.trim().replace(/\s+/g, " ").slice(0, 40);
+  if (g && !medFormGroups.includes(g)) medFormGroups.push(g);
+  e.target.value = "";
+  renderMedForm();
+});
+$("medForm").addEventListener("input", (e) => {
+  const f = $("medForm");
+  if (e.target === f.elements.color) medFormColor = e.target.value;
+  if (e.target === f.elements.dab) f.elements.freq.disabled = !!f.elements.dab.value;
+  if ([f.elements.freq, f.elements.mode, f.elements.dab].includes(e.target)) medFormDupNote();
+});
+$("medForm").addEventListener("change", (e) => {
+  const f = $("medForm");
+  if (e.target === f.elements.mode && st && st.bandwidth && st.bandwidth[e.target.value]) f.elements.bw.value = kHzText(st.bandwidth[e.target.value]);
+});
+$("medForm").addEventListener("click", async (e) => {
+  const act = e.target.closest("[data-act]")?.dataset.act;
+  const f = $("medForm");
+  const m = mems.find((x) => x.id === medEditId);
+  if (act === "nocolor") { medFormColor = ""; f.elements.color.value = MEM_COLOR; }
+  else if (act === "cancel") { medEditId = null; renderMedChannels(); }
+  else if (act === "recall" && m) recallMem(m);
+  else if (act === "delete" && m && confirm(`Delete channel "${m.name}"?`)) {
+    const r = await memApi(`/api/memories/${m.id}`, undefined, "DELETE");
+    if (!r.ok) { medMsg(r.error, true); return; }
+    medEditId = null;
+    medSel.delete(m.id);
+    await memChanged();
+  }
+});
+$("medForm").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); medEditId = null; renderMedChannels(); }
+});
+$("medForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = $("medForm");
+  const err = (t) => { $("medFormErr").textContent = t; $("medFormErr").hidden = false; };
+  const pending = $("medFormNewGroup").value.trim();   // typed but Enter not pressed
+  if (pending && !medFormGroups.includes(pending)) medFormGroups.push(pending.slice(0, 40));
+  $("medFormNewGroup").value = "";
+  const dab = f.elements.dab.value;
+  const freq = dab ? null : parseFreq(f.elements.freq.value);
+  const bw = parseFloat(f.elements.bw.value.replace(",", ".")) * 1000;
+  if (!f.elements.name.value.trim()) return err("Enter a name.");
+  if (!dab && !freq) return err("Enter a frequency, e.g. 145.5 or 7100k.");
+  if (!(bw > 0)) return err("Enter the bandwidth in kHz.");
+  const isNew = medEditId === "new";
+  const body = { name: f.elements.name.value.trim(), groups: medFormGroups, mode: f.elements.mode.value, bw: Math.round(bw),
+    decoder: f.elements.decoder.value, note: f.elements.note.value.trim(), color: medFormColor, tag: f.elements.tag.checked,
+    fav: f.elements.fav.checked, ...(dab ? { dab_channel: dab } : { freq_hz: Math.round(freq), ...(isNew ? {} : { dab_channel: null }) }) };
+  const r = await memApi(isNew ? "/api/memories" : `/api/memories/${medEditId}`, body, isNew ? "POST" : "PATCH");
+  if (!r.ok) return err(r.error);
+  $("medFormErr").hidden = true;
+  medEditId = r.data.id;
+  medMsg(isNew ? `Added "${r.data.name}".` : `Saved "${r.data.name}".`);
+  await memChanged(isNew ? [...mems, r.data] : mems.map((x) => (x.id === r.data.id ? r.data : x)));
+  if (isNew) medOpenForm(r.data);   // the new channel stays in the form, now as a saved one
+});
+$("medNew").addEventListener("click", () => medOpenForm(null));
+
+// ----- GROUPS -----
+
+function renderMedGroups() {
+  const counts = {};
+  for (const m of mems) for (const g of memGroupsOf(m)) counts[g] = (counts[g] || 0) + 1;
+  const names = memAllGroups();
+  for (const g of [...medGrpSel]) if (!names.includes(g)) medGrpSel.delete(g);
+  const noGroup = mems.filter((m) => !memGroupsOf(m).length).length;
+  let html = `<thead><tr><th><input type="checkbox" data-selall ${names.length && names.every((g) => medGrpSel.has(g)) ? "checked" : ""}></th>` +
+    `<th>Group</th><th class="num">Channels</th><th>Note</th><th></th></tr></thead><tbody>`;
+  for (const g of names) {
+    html += `<tr data-g="${escHtml(g)}"${medGrpSel.has(g) ? ' class="sel"' : ""}><td><input type="checkbox" data-pick ${medGrpSel.has(g) ? "checked" : ""}></td>` +
+      `<td class="name">${escHtml(g)}</td><td class="num">${counts[g] || 0}</td>` +
+      `<td class="grow"><input data-note value="${escHtml(memGroupNote(g))}" placeholder="note…" maxlength="200"></td>` +
+      `<td class="acts"><button class="key small" data-g-act="show" title="Shows its channels in CHANNELS">SHOW</button>` +
+      `<button class="key small" data-g-act="rename">RENAME</button>` +
+      `<button class="key small" data-g-act="copy" title="Copies the group and its channels under a new name">COPY</button>` +
+      `<button class="key small danger" data-g-act="delete">DELETE</button></td></tr>`;
+  }
+  if (noGroup) html += `<tr data-g="${NO_GROUP}"><td></td><td class="name muted">(no group)</td><td class="num">${noGroup}</td><td></td>` +
+    `<td class="acts"><button class="key small" data-g-act="show">SHOW</button></td></tr>`;
+  if (!names.length && !noGroup) html += `<tr><td colspan="5" class="mem-empty">No groups yet.</td></tr>`;
+  $("medGrpTable").innerHTML = html + "</tbody>";
+  $("medGrpSelCount").textContent = `${medGrpSel.size} selected`;
+  $("medGrpMerge").disabled = medGrpSel.size < 2;
+  $("medGrpDel").disabled = $("medGrpExport").disabled = !medGrpSel.size;
+}
+
+async function medGroupAction(body, done) {
+  const r = await memApi("/api/memory_groups", body);
+  if (!r.ok) { medMsg(r.error, true); return false; }
+  medMsg(done);
+  memGroupList = r.data.groups;
+  await memChanged(r.data.memories);
+  return true;
+}
+
+$("medGrpAdd").addEventListener("click", async () => {
+  const name = $("medGrpName").value.trim();
+  if (!name) { $("medGrpName").focus(); return; }
+  if (await medGroupAction({ action: "add", name, note: $("medGrpNote").value }, `Group "${name}" added.`)) {
+    $("medGrpName").value = $("medGrpNote").value = "";
+  }
+});
+for (const id of ["medGrpName", "medGrpNote"]) $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") $("medGrpAdd").click(); });
+
+$("medGrpTable").addEventListener("change", (e) => {
+  const row = e.target.closest("tr[data-g]");
+  if (e.target.matches("[data-note]") && row) {
+    const name = row.dataset.g;
+    medGroupAction({ action: "note", name, note: e.target.value }, `Note of "${name}" saved.`);
+  }
+});
+$("medGrpTable").addEventListener("click", async (e) => {
+  if (e.target.closest("[data-selall]")) {
+    for (const g of memAllGroups()) if (e.target.checked) medGrpSel.add(g); else medGrpSel.delete(g);
+    renderMedGroups();
+    return;
+  }
+  const row = e.target.closest("tr[data-g]");
+  if (!row) return;
+  const name = row.dataset.g;
+  if (e.target.closest("[data-pick]")) {
+    if (e.target.checked) medGrpSel.add(name); else medGrpSel.delete(name);
+    renderMedGroups();
+    return;
+  }
+  const act = e.target.closest("[data-g-act]")?.dataset.gAct;
+  if (act === "show") {
+    $("medSort").value = "group";
+    showMedTab("channels");
+    medFilterSelect($("medGroup"), true);
+    $("medGroup").value = name;
+    renderMedChannels();
+  } else if (act === "rename" || act === "copy") {
+    const nw = (prompt(act === "rename" ? `New name of the group "${name}":` : `Copy the group "${name}" and its channels as:`,
+      act === "rename" ? name : `${name} copy`) || "").trim();
+    if (nw && nw !== name) medGroupAction({ action: act, name, new: nw }, act === "rename" ? `Renamed to "${nw}".` : `Copied to "${nw}".`);
+  } else if (act === "delete") {
+    medGroupDelete([name]);
+  }
+});
+
+async function medGroupDelete(names) {
+  const only = mems.filter((m) => { const gs = memGroupsOf(m); return gs.length && gs.every((g) => names.includes(g)); }).length;
+  const label = names.length === 1 ? `the group "${names[0]}"` : `${names.length} groups`;
+  if (!confirm(`Delete ${label}?`)) return;
+  const delMems = only > 0 && confirm(`${only} channel${only === 1 ? " is" : "s are"} in no other group.\n\nOK = delete ${only === 1 ? "it" : "them"} too\nCancel = keep ${only === 1 ? "it" : "them"} without a group`);
+  for (const name of names) {
+    const ok = await medGroupAction({ action: "delete", name, delete_memories: delMems }, `Deleted ${label}${delMems ? ` and ${only} channels` : ""}.`);
+    if (!ok) return;
+    medGrpSel.delete(name);
+  }
+}
+$("medGrpDel").addEventListener("click", () => medGroupDelete([...medGrpSel]));
+$("medGrpMerge").addEventListener("click", async () => {
+  const names = [...medGrpSel];
+  if (names.length < 2) return;
+  const into = (prompt(`Merge ${names.join(", ")} into the group:`, names[0]) || "").trim();
+  if (!into) return;
+  if (await medGroupAction({ action: "merge", names, into }, `Merged into "${into}".`)) medGrpSel.clear();
+  renderMedGroups();
+});
+$("medGrpExport").addEventListener("click", () => {
+  medExportAdd(mems.filter((m) => memGroupsOf(m).some((g) => medGrpSel.has(g))));
+  for (const g of medGrpSel) medExp.notes[g] = medExp.notes[g] || { note: memGroupNote(g), incl: true };
+  showMedTab("export");
+});
+
+// ----- editable lists of IMPORT and EXPORT -----
+
+/** A memory (or an entry of a file) as a row of an editable list: the fields as text, as typed in the inputs. */
+function medRow(m) {
+  const num = (v) => (typeof v === "number" ? v : parseFloat(String(v).replace(",", ".")));
+  const hz = num(m.freq_hz);
+  const bw = num(m.bw);
+  return { name: String(m.name ?? ""), freq: Number.isFinite(hz) ? fmtMHz(hz, 6) : String(m.freq_hz ?? ""),
+    mode: String(m.mode || "").toUpperCase(), bw: Number.isFinite(bw) ? kHzText(bw) : String(m.bw ?? ""),
+    decoder: m.decoder || "", groups: (Array.isArray(m.groups) ? m.groups : m.group ? [m.group] : []).filter(Boolean).join(" | "),
+    note: m.note || "", color: m.color || "", tag: m.tag !== false && m.tag !== "0", fav: !!m.fav, dab: m.dab_channel || "",
+    sel: true, err: m.error || "" };
+}
+
+/** Row -> entry for the server; throws Error with the reason when a field is wrong. */
+function medRowEntry(r) {
+  const hz = r.dab ? null : parseFreq(r.freq);
+  const bw = parseFloat(String(r.bw).replace(",", ".")) * 1000;
+  if (!r.name.trim()) throw new Error("name is missing");
+  if (!r.dab && !hz) throw new Error("bad frequency");
+  if (!MEM_MODES.includes(r.mode)) throw new Error("unknown mode");
+  if (!(bw > 0)) throw new Error("bad bandwidth");
+  return { name: r.name.trim(), groups: r.groups.split("|").map((g) => g.trim()).filter(Boolean), mode: r.mode, bw: Math.round(bw),
+    decoder: r.decoder, note: r.note.trim(), color: r.color, tag: r.tag, fav: r.fav,
+    ...(r.dab ? { dab_channel: r.dab } : { freq_hz: Math.round(hz) }) };
+}
+
+function medRowDup(r) {
+  if (r.err) return "";
+  const hz = r.dab ? (dabChannelList.find(([n]) => n === r.dab) || [])[1] : parseFreq(r.freq);
+  const m = hz && mems.find((x) => x.mode === r.mode && Math.abs(x.freq_hz - hz) < 50 && (x.dab_channel || "") === r.dab);
+  return m ? m.name : "";
+}
+
+/** Cells of an editable row (both lists); extra = cells added at the end. */
+function medEditCells(r, i, extra = "") {
+  return `<tr data-i="${i}" class="${r.sel ? "sel" : ""}${r.err ? " bad" : ""}"><td><input type="checkbox" data-f="sel" ${r.sel ? "checked" : ""}></td>` +
+    `<td><input data-f="name" value="${escHtml(r.name)}" maxlength="80"></td>` +
+    `<td><input data-f="freq" class="mono" value="${escHtml(r.freq)}" ${r.dab ? `disabled title="DAB ${escHtml(r.dab)}"` : ""}></td>` +
+    `<td><select data-f="mode">${MEM_MODES.map((x) => `<option${x === r.mode ? " selected" : ""}>${x}</option>`).join("")}` +
+    `${MEM_MODES.includes(r.mode) ? "" : `<option selected value="${escHtml(r.mode)}">${escHtml(r.mode) || "?"}</option>`}</select></td>` +
+    `<td><input data-f="bw" class="mono short" value="${escHtml(r.bw)}"></td>` +
+    `<td><select data-f="decoder">${Object.entries(DECODER_NAMES).map(([k, v]) => `<option value="${k}"${k === r.decoder ? " selected" : ""}>${v}</option>`).join("")}</select></td>` +
+    `<td><input data-f="groups" value="${escHtml(r.groups)}" title="Several groups: A | B"></td>` +
+    `<td><input data-f="note" value="${escHtml(r.note)}" maxlength="200"></td>` + extra + `</tr>`;
+}
+
+const MED_EDIT_HEAD = `<th>Name</th><th>Frequency, MHz</th><th>Mode</th><th>BW, kHz</th><th>Decoder</th><th>Groups (A | B)</th><th>Note</th>`;
+
+/** Typing in an editable list changes its row (without drawing the list again, so the focus stays). */
+function medBindEditList(table, list, after) {
+  const onEdit = (e) => {
+    const tr = e.target.closest("tr[data-i]");
+    const f = e.target.dataset.f;
+    if (!tr || !f) return;
+    const r = list()[Number(tr.dataset.i)];
+    r[f] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    if (f !== "sel") r.err = "";
+    tr.classList.toggle("sel", !!r.sel);
+    tr.classList.remove("bad");
+    after(r, tr, f);
+  };
+  table.addEventListener("input", onEdit);
+  table.addEventListener("change", onEdit);
+}
+
+// ----- IMPORT -----
+
+function renderMedImport() {
+  const rows = medImp.rows;
+  const dupCount = rows.filter((r) => medRowDup(r)).length;
+  $("medImpGroups").hidden = !medImp.groups.length;
+  $("medImpGroups").innerHTML = `<b>Groups in the file</b> (their notes are imported with the channels):` + medImp.groups.map((g, i) =>
+    `<label class="chip-check" data-gi="${i}"><input type="checkbox" data-gf="sel" ${g.sel ? "checked" : ""}> ${escHtml(g.name)}` +
+    `<input data-gf="note" value="${escHtml(g.note)}" placeholder="note" maxlength="200"></label>`).join("");
+  let html = `<thead><tr><th><input type="checkbox" data-selall ${rows.length && rows.every((r) => r.sel) ? "checked" : ""}></th>${MED_EDIT_HEAD}<th>Status</th></tr></thead><tbody>`;
+  rows.forEach((r, i) => {
+    const dup = medRowDup(r);
+    html += medEditCells(r, i, `<td class="status" data-status>${medImpStatus(r, dup)}</td>`);
+  });
+  if (!rows.length) html += `<tr><td colspan="9" class="mem-empty">Load an SDR# folder or a file (JSON, CSV, frequencies.xml).</td></tr>`;
+  $("medImpTable").innerHTML = html + "</tbody>";
+  medImpCount(dupCount);
+}
+
+function medImpStatus(r, dup) {
+  return r.err ? `<span class="error">✕ ${escHtml(r.err)}</span>` : dup ? `<span class="warn" title="Already in the memories">⧉ ${escHtml(dup)}</span>` : `<span class="ok">new</span>`;
+}
+
+function medImpCount(dupCount) {
+  const n = medImp.rows.filter((r) => r.sel).length;
+  $("medImpSelCount").textContent = medImp.rows.length ? `${n} of ${medImp.rows.length} selected` +
+    (dupCount ? `, ${dupCount} already in the memories` : "") : "";
+  $("medImpGo").disabled = !n;
+  $("medImpGo").textContent = n ? `IMPORT ${n} SELECTED` : "IMPORT SELECTED";
+}
+
+medBindEditList($("medImpTable"), () => medImp.rows, (r, tr) => {
+  tr.querySelector("[data-status]").innerHTML = medImpStatus(r, medRowDup(r));
+  medImpCount(medImp.rows.filter((x) => medRowDup(x)).length);
+});
+$("medImpTable").addEventListener("click", (e) => {
+  if (!e.target.closest("[data-selall]")) return;
+  for (const r of medImp.rows) r.sel = e.target.checked;
+  renderMedImport();
+});
+$("medImpGroups").addEventListener("input", (e) => {
+  const g = medImp.groups[Number(e.target.closest("[data-gi]")?.dataset.gi)];
+  if (!g) return;
+  if (e.target.dataset.gf === "sel") g.sel = e.target.checked; else g.note = e.target.value;
+});
+
+function medImpLoaded(data, source) {
+  const rows = data.entries.map((e) => medRow(e));
+  for (const r of rows) r.sel = !r.err;
+  medImp.rows.push(...rows);
+  for (const g of data.groups || []) if (!medImp.groups.some((x) => x.name === g.name)) medImp.groups.push({ ...g, sel: true });
+  const bad = rows.filter((r) => r.err).length;
+  medMsg(`Loaded ${rows.length} channels from ${source}${bad ? `, ${bad} with an error (not selected)` : ""}. Nothing is saved until IMPORT.`, false);
+  renderMedImport();
+}
+
+$("medImpPath").value = recall("memSdrPath") || "";
+$("medImpSdr").addEventListener("click", async () => {
+  const path = $("medImpPath").value.trim();
+  if (!path) { $("medImpPath").focus(); return; }
+  store("memSdrPath", path);
+  const r = await memApi("/api/memories/preview", { format: "sdrsharp", path });
+  if (!r.ok) { medMsg(r.error, true); return; }
+  medImpLoaded(r.data, r.data.files.length > 1 ? `${r.data.files.length} SDR# files` : "SDR#");
+});
+$("medImpPath").addEventListener("keydown", (e) => { if (e.key === "Enter") $("medImpSdr").click(); });
+$("medImpFile").addEventListener("click", () => $("medImpInput").click());
+$("medImpInput").addEventListener("change", async () => {
+  const file = $("medImpInput").files[0];
+  $("medImpInput").value = "";
+  if (!file) return;
+  const text = await file.text();
+  let body;
+  if (/\.json$/i.test(file.name) || /^\s*[[{]/.test(text)) {
+    try { body = { format: "json", data: JSON.parse(text) }; } catch (e) { medMsg(`${file.name}: not valid JSON (${e.message})`, true); return; }
+  } else if (/\.xml$/i.test(file.name) || /^\s*</.test(text)) {
+    body = { format: "sdrsharp_xml", text };
+  } else {
+    body = { format: "csv", text };
+  }
+  const r = await memApi("/api/memories/preview", body);
+  if (!r.ok) { medMsg(`${file.name}: ${r.error}`, true); return; }
+  medImpLoaded(r.data, file.name);
+});
+
+$("medImpTable").closest(".med-panel").querySelector(".med-bulk").addEventListener("click", (e) => {
+  const act = e.target.closest("[data-imp]")?.dataset.imp;
+  if (!act) return;
+  const rows = medImp.rows;
+  if (act === "all") for (const r of rows) r.sel = true;
+  if (act === "none") for (const r of rows) r.sel = false;
+  if (act === "nodup") for (const r of rows) r.sel = !r.err && !medRowDup(r);
+  if (act === "group") {
+    const g = $("medImpGroup").value.trim();
+    if (!g) { $("medImpGroup").focus(); return; }
+    for (const r of rows) if (r.sel) r.groups = g;
+  }
+  if (act === "clear" && (!rows.length || confirm("Empty the import list?"))) { medImp.rows = []; medImp.groups = []; medMsg(""); }
+  renderMedImport();
+});
+
+$("medImpGo").addEventListener("click", async () => {
+  const chosen = medImp.rows.filter((r) => r.sel);
+  const entries = [];
+  let bad = 0;
+  for (const r of chosen) {
+    try { entries.push(medRowEntry(r)); } catch (e) { r.err = e.message; bad++; }
+  }
+  if (bad) { renderMedImport(); medMsg(`${bad} selected channel${bad === 1 ? " has" : "s have"} an error: correct ${bad === 1 ? "it" : "them"} or untick ${bad === 1 ? "it" : "them"}.`, true); return; }
+  const r = await memApi("/api/memories/import_entries", { entries, groups: medImp.groups.filter((g) => g.sel).map(({ name, note }) => ({ name, note })) });
+  if (!r.ok) { medMsg(r.error, true); return; }
+  medImp.rows = medImp.rows.filter((x) => !x.sel);
+  if (!medImp.rows.length) medImp.groups = [];
+  medMsg(`Imported ${r.data.added.length} channels.${medImp.rows.length ? ` ${medImp.rows.length} left in the list.` : ""}`);
+  await memChanged();
+});
+
+// ----- EXPORT -----
+
+function medExportAdd(list) {
+  const have = new Set(medExp.rows.map((r) => r.src));
+  for (const m of list) {
+    if (have.has(m.id)) continue;
+    medExp.rows.push({ ...medRow(m), src: m.id, inColor: true, inTag: true, inNote: true });
+    have.add(m.id);
+  }
+  for (const r of medExp.rows) {
+    for (const g of r.groups.split("|").map((x) => x.trim()).filter(Boolean)) {
+      if (!medExp.notes[g]) medExp.notes[g] = { note: memGroupNote(g), incl: true };
+    }
+  }
+  medExp.rows.sort((a, b) => (parseFreq(a.freq) || 0) - (parseFreq(b.freq) || 0));
+  renderMed();
+}
+
+function medExpGroupsUsed() {
+  return [...new Set(medExp.rows.filter((r) => r.sel).flatMap((r) => r.groups.split("|").map((x) => x.trim()).filter(Boolean)))]
+    .sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+}
+
+function renderMedExport() {
+  medFilterSelect($("medExpGroup"), false);
+  const rows = medExp.rows;
+  const used = medExpGroupsUsed();
+  for (const g of used) if (!medExp.notes[g]) medExp.notes[g] = { note: memGroupNote(g), incl: true };
+  $("medExpGroups").hidden = !used.length;
+  $("medExpGroups").innerHTML = `<b>Groups in the file</b> — tick to export the note:` + used.map((g) =>
+    `<label class="chip-check" data-g="${escHtml(g)}"><input type="checkbox" data-gf="incl" ${medExp.notes[g].incl ? "checked" : ""}> ${escHtml(g)}` +
+    `<input data-gf="note" value="${escHtml(medExp.notes[g].note)}" placeholder="note" maxlength="200"></label>`).join("");
+  const all = (k) => rows.length && rows.every((r) => r[k]);
+  let html = `<thead><tr><th><input type="checkbox" data-all="sel" ${all("sel") ? "checked" : ""} title="Export all"></th>${MED_EDIT_HEAD}` +
+    `<th class="inc"><label title="Export the tag colour of every channel"><input type="checkbox" data-all="inColor" ${all("inColor") ? "checked" : ""}> colour</label></th>` +
+    `<th class="inc"><label title="Export whether the tag is shown"><input type="checkbox" data-all="inTag" ${all("inTag") ? "checked" : ""}> tag</label></th>` +
+    `<th class="inc"><label title="Export the note of every channel"><input type="checkbox" data-all="inNote" ${all("inNote") ? "checked" : ""}> note</label></th>` +
+    `<th></th></tr></thead><tbody>`;
+  rows.forEach((r, i) => {
+    html += medEditCells(r, i,
+      `<td class="inc"><label><input type="checkbox" data-f="inColor" ${r.inColor ? "checked" : ""}><span class="swatch" style="--c:${r.color || MEM_COLOR}"></span></label></td>` +
+      `<td class="inc"><label><input type="checkbox" data-f="inTag" ${r.inTag ? "checked" : ""}> ${r.tag ? "on" : "off"}</label></td>` +
+      `<td class="inc"><input type="checkbox" data-f="inNote" ${r.inNote ? "checked" : ""}></td>` +
+      `<td><button class="key small" data-del title="Remove from the list">×</button></td>`);
+  });
+  if (!rows.length) html += `<tr><td colspan="12" class="mem-empty">Add groups, the starred channels or all of them above, or tick channels in CHANNELS and press ⇩ TO EXPORT.</td></tr>`;
+  $("medExpTable").innerHTML = html + "</tbody>";
+  medExpCountNote();
+}
+
+function medExpCountNote() {
+  const n = medExp.rows.filter((r) => r.sel).length;
+  $("medExpGo").disabled = !n;
+  $("medExpGo").textContent = n ? `⇩ DOWNLOAD ${n}` : "⇩ DOWNLOAD";
+  $("medExpCount").textContent = medExp.rows.length ? `(${medExp.rows.length})` : "";
+}
+
+medBindEditList($("medExpTable"), () => medExp.rows, (r, tr, f) => {
+  if (f === "groups" || f === "sel") { renderMedExportGroupsOnly(); }
+  medExpCountNote();
+});
+function renderMedExportGroupsOnly() {
+  // the group notes above the list follow the groups of the ticked rows; the rows themselves are not redrawn
+  const used = medExpGroupsUsed();
+  for (const g of used) if (!medExp.notes[g]) medExp.notes[g] = { note: memGroupNote(g), incl: true };
+  $("medExpGroups").hidden = !used.length;
+  $("medExpGroups").innerHTML = `<b>Groups in the file</b> — tick to export the note:` + used.map((g) =>
+    `<label class="chip-check" data-g="${escHtml(g)}"><input type="checkbox" data-gf="incl" ${medExp.notes[g].incl ? "checked" : ""}> ${escHtml(g)}` +
+    `<input data-gf="note" value="${escHtml(medExp.notes[g].note)}" placeholder="note" maxlength="200"></label>`).join("");
+}
+$("medExpTable").addEventListener("click", (e) => {
+  const all = e.target.closest("[data-all]");
+  if (all) { for (const r of medExp.rows) r[all.dataset.all] = all.checked; renderMedExport(); return; }
+  if (e.target.closest("[data-del]")) {
+    medExp.rows.splice(Number(e.target.closest("tr[data-i]").dataset.i), 1);
+    renderMedExport();
+  }
+});
+$("medExpGroups").addEventListener("input", (e) => {
+  const g = medExp.notes[e.target.closest("[data-g]")?.dataset.g];
+  if (!g) return;
+  if (e.target.dataset.gf === "incl") g.incl = e.target.checked; else g.note = e.target.value;
+});
+$("medExpAddGroup").addEventListener("click", () => {
+  const g = $("medExpGroup").value;
+  if (g) medExportAdd(mems.filter((m) => memGroupsOf(m).includes(g)));
+});
+$("medExpAddFav").addEventListener("click", () => medExportAdd(mems.filter((m) => m.fav)));
+$("medExpAddAll").addEventListener("click", () => medExportAdd(mems));
+$("medExpClear").addEventListener("click", () => { medExp.rows = []; medExp.notes = {}; renderMed(); });
+
+function csvCell(v) {
+  const s = String(v ?? "");
+  return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+$("medExpGo").addEventListener("click", () => {
+  const out = [];
+  let bad = 0;
+  for (const r of medExp.rows) {
+    if (!r.sel) continue;
+    try {
+      const e = medRowEntry(r);
+      if (!r.inColor) delete e.color;
+      if (!r.inTag) delete e.tag;
+      if (!r.inNote) delete e.note;
+      e.group = e.groups[0] || "";
+      out.push(e);
+    } catch (err) { r.err = err.message; bad++; }
+  }
+  if (bad) { renderMedExport(); medMsg(`${bad} channel${bad === 1 ? " has" : "s have"} an error (marked red): correct or untick.`, true); return; }
+  const fmt = $("medExpFormat").value;
+  const name = ($("medExpName").value.trim() || "radimcom-memories").replace(/[^\w.-]+/g, "_");
+  let blob;
+  if (fmt === "csv") {
+    const cols = ["name", "frequency_hz", "mode", "bandwidth_hz", "groups", "decoder", "dab_channel", "favourite", "note", "color", "show_tag"];
+    const lines = [cols.join(";")].concat(out.map((e) => [e.name, e.freq_hz ?? "", e.mode, e.bw, e.groups.join("|"), e.decoder,
+      e.dab_channel || "", e.fav ? 1 : 0, e.note ?? "", e.color ?? "", e.tag === undefined ? "" : e.tag ? 1 : 0].map(csvCell).join(";")));
+    blob = new Blob(["﻿" + lines.join("\r\n") + "\r\n"], { type: "text/csv" });   // BOM: Excel reads it as UTF-8
+  } else {
+    const groups = [...new Set(out.flatMap((e) => e.groups))].sort().map((g) =>
+      (medExp.notes[g] && medExp.notes[g].incl && medExp.notes[g].note ? { name: g, note: medExp.notes[g].note } : { name: g }));
+    blob = new Blob([JSON.stringify({ format: "radimcom-memories", version: 2, groups, memories: out }, null, 1)], { type: "application/json" });
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `${name}.${fmt}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  medMsg(`Exported ${out.length} channels to ${name}.${fmt}${fmt === "csv" ? " (group notes go only into JSON)" : ""}.`);
+});
+
+// open / close
+$("memEdKey").addEventListener("click", async () => {
+  await loadMemGroups();
+  openDrawer("memEdWin");
+  showMedTab(medTab);
+});
 
 // ---------- stav zo servera ----------
 
@@ -6270,7 +7066,7 @@ function renderVfoDisplays() {
     if (memEl.textContent !== memText) memEl.textContent = memText;
     memEl.classList.toggle("band", !mem && !trsp);
     memEl.classList.toggle("trsp", !!trsp);
-    memEl.title = trsp ? `Doppler correction: ${trsp}` : mem ? `${mem.name} · ${mem.group} · ${mem.mode} · ${fmtBw(mem.bw)}`
+    memEl.title = trsp ? `Doppler correction: ${trsp}` : mem ? `${mem.name} · ${memGroupsOf(mem).join(", ")} · ${mem.mode} · ${fmtBw(mem.bw)}${mem.note ? ` · ${mem.note}` : ""}`
       : bands.map(([, , label, , desc]) => `${label}: ${desc}`).join("\n");
     if (!v.name) continue;
     // VFO receiver state: RUNNING = dongle open and delivering samples.

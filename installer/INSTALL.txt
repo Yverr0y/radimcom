@@ -88,6 +88,17 @@ Change log
 ----------
 (also in CHANGELOG.md)
 
+Unreleased
+Main Features
+- Memory editor: MEM -> EDITOR opens a big window with the tabs CHANNELS, GROUPS, IMPORT and EXPORT.
+  Channels in several groups, with a decoder switched on at recall, a note, their own tag colour or a hidden tag;
+  sort by group, frequency, name, mode or decoder; duplicates shown. Groups with notes: add, rename, copy, merge, delete.
+  Import from SDR#, JSON or CSV and export to JSON or CSV, both through a list to edit and choose from first.
+  New file data\memory_groups.json; memories.json is copied to memories.json.bak before the first change.
+Minor Fixes
+- Editing in MEM: the pencil on a row (or a double click) edits a memory in place; NEW... adds a memory with a frequency
+  typed in by hand; SELECT moves, stars or deletes several memories at once; the pencil next to the group filter renames a group.
+
 Ver. 0.112
 Main Features
 - ASQ key (AUDIO group, AM/FM/WFM): auto squelch, the level follows the noise (measured in the spectrum, not on the signal) + a margin
