@@ -181,8 +181,8 @@ MEM → **✎ EDITOR** opens a big floating window with four tabs. Changes are s
   remove them from it, **MOVE** them to one group only, star or unstar them, show or hide their tags, set or reset their
   colour, put them on the export list (**⇩ TO EXPORT**) or delete them.
 - **GROUPS**: every group with the number of its channels and its **note** (saved when you leave the field). **＋ ADD GROUP**
-  adds an empty group. Per group: **SHOW** (its channels in CHANNELS), **RENAME**, **COPY** (a new group with copies of its
-  channels, which can then be changed without touching the original) and **DELETE** (asks whether the channels that are in no
+  adds an empty group. Per group, as icons: **☰** shows its channels in CHANNELS, **✎** renames it, **⎘** copies it (a new group with copies of its
+  channels, which can then be changed without touching the original) and **🗑** deletes it (asks whether the channels that are in no
   other group are deleted too, or kept without a group). Tick groups to **MERGE** them into one (asks for its name; the
   notes are joined), to delete them or to put their channels on the export list.
 - **IMPORT**: **LOAD SDR#** reads the SDR# folder (`frequencies.xml` there and in profile subfolders), **LOAD FILE…** a RADIMCOM

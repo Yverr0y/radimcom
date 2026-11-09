@@ -1165,7 +1165,11 @@ html.compact .r-bands .bands button { min-width: 36px; padding-left: 5px; paddin
   text-transform: uppercase; letter-spacing: .06em; padding-top: 8px; }
 .med-secnote { text-transform: none; letter-spacing: 0; color: var(--muted); font-weight: 400; margin-left: 8px; }
 .med-table td.acts { white-space: nowrap; text-align: right; }
-.med-table td.acts .key { margin-left: 3px; }
+.med-table td.acts { width: 1%; }
+.icon-btn { width: 26px; height: 24px; margin-left: 2px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: none;
+  color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; filter: grayscale(1); }
+.icon-btn:hover { color: var(--yellow); border-color: var(--line2); background: #1a2028; }
+.icon-btn.danger:hover { color: var(--red); border-color: var(--red); filter: none; }
 .med-table td.grow input { width: 100%; }
 .med-table input:not([type=checkbox]), .med-table select { width: 100%; min-width: 60px; padding: 3px 5px; font-size: 12px; }
 .med-table input.short { min-width: 50px; width: 70px; }

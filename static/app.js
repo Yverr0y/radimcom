@@ -6159,13 +6159,13 @@ function renderMedGroups() {
     html += `<tr data-g="${escHtml(g)}"${medGrpSel.has(g) ? ' class="sel"' : ""}><td><input type="checkbox" data-pick ${medGrpSel.has(g) ? "checked" : ""}></td>` +
       `<td class="name">${escHtml(g)}</td><td class="num">${counts[g] || 0}</td>` +
       `<td class="grow"><input data-note value="${escHtml(memGroupNote(g))}" placeholder="note…" maxlength="200"></td>` +
-      `<td class="acts"><button class="key small" data-g-act="show" title="Shows its channels in CHANNELS">SHOW</button>` +
-      `<button class="key small" data-g-act="rename">RENAME</button>` +
-      `<button class="key small" data-g-act="copy" title="Copies the group and its channels under a new name">COPY</button>` +
-      `<button class="key small danger" data-g-act="delete">DELETE</button></td></tr>`;
+      `<td class="acts"><button class="icon-btn" data-g-act="show" title="Show its channels in CHANNELS" aria-label="Show">☰</button>` +
+      `<button class="icon-btn" data-g-act="rename" title="Rename" aria-label="Rename">✎</button>` +
+      `<button class="icon-btn" data-g-act="copy" title="Copy the group and its channels under a new name" aria-label="Copy">⎘</button>` +
+      `<button class="icon-btn danger" data-g-act="delete" title="Delete" aria-label="Delete">🗑</button></td></tr>`;
   }
   if (noGroup) html += `<tr data-g="${NO_GROUP}"><td></td><td class="name muted">(no group)</td><td class="num">${noGroup}</td><td></td>` +
-    `<td class="acts"><button class="key small" data-g-act="show">SHOW</button></td></tr>`;
+    `<td class="acts"><button class="icon-btn" data-g-act="show" title="Show its channels in CHANNELS" aria-label="Show">☰</button></td></tr>`;
   if (!names.length && !noGroup) html += `<tr><td colspan="5" class="mem-empty">No groups yet.</td></tr>`;
   $("medGrpTable").innerHTML = html + "</tbody>";
   $("medGrpSelCount").textContent = `${medGrpSel.size} selected`;
