@@ -4,6 +4,10 @@
 
 Changes since 0.113beta1 (GitHub branch `0.113beta1`).
 
+### Minor Fixes
+
+- **Recording started by a memory stops when you leave it.** A recording (and ASQ) that recalling a memory with RECORD ON / SQ / ASQ switched on now stops as soon as the VFO leaves that memory (tuning, another mode or DAB channel), not only when another memory is recalled. A recording switched on with REC / REC SQ by hand keeps running while tuning; pressing REC, REC SQ or ASQ during a memory recording takes it over by hand too.
+
 ## Ver. 0.113beta1
 
 ### Main Features

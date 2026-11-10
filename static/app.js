@@ -2084,6 +2084,7 @@ $("afiKey").addEventListener("click", () => {
 });
 $("asqKey").addEventListener("click", () => {
   if (!st) return;
+  memRec.asq = false;   // by hand now: no longer switched off on leaving the recalled memory
   if (st.auto_sql_on && !st.auto_sql) {             // on by AGC+: off = squelch off
     st.squelch_levels = { ...st.squelch_levels, [st.mode]: SQUELCH_OFF };
     st.auto_sql_on = false;
@@ -6101,6 +6102,7 @@ function markActiveMem(scroll = false) {
     list.scrollTop = Math.max(0, top);
   }
   memActiveKey = key;
+  memRecFollow();
 }
 
 $("memList").addEventListener("click", async (e) => {   // a click recalls the memory; ☆ stars it, ✎ opens it in the editor
@@ -6142,9 +6144,35 @@ async function recallMem(m) {
   markActiveMem();
 }
 
-// What recalling memories switched on: {id, cont, squelch, asq}. Only that is switched off again by the next memory,
-// so a recording or ASQ switched on by hand stays as it is.
-let memRec = { id: null, cont: false, squelch: false, asq: false };
+// What recalling a memory switched on: {id, vfo, at, cont, squelch, asq}. Only that is switched off again, by the
+// next memory or by leaving the memory's frequency; a recording or ASQ switched on by hand stays as it is.
+const MEM_REC_NONE = { id: null, vfo: "", at: 0, cont: false, squelch: false, asq: false };
+let memRec = { ...MEM_REC_NONE };
+
+/** Switches off what memRec says the recalled memory switched on (the keys pressed by hand stay). */
+function memRecStop() {
+  for (const b of REC_BUTTONS) if (memRec[b.key]) send({ [b.send]: false });
+  if (memRec.asq && st.auto_sql) {
+    st.auto_sql = st.auto_sql_on = false;
+    st.auto_sql_level = null;
+    send({ auto_sql: false });
+  }
+  memRec = { ...MEM_REC_NONE };
+  renderRds();
+  renderSqlBadge();
+  renderVfoDisplays();
+}
+
+/** The VFO left the frequency (or mode, DAB channel) of the memory that started a recording: the recording stops. */
+function memRecFollow() {
+  if (!memRec.id || memRec.vfo !== vbase) return;          // another VFO is active: its own state is shown
+  if (!(memRec.cont || memRec.squelch || memRec.asq)) return;
+  if (Date.now() - memRec.at < 1500) return;                // the recall itself is still reaching the server
+  const m = mems.find((x) => x.id === memRec.id);
+  const on = !!m && (m.dab_channel ? !!st.dab && st.dab_channel === m.dab_channel
+    : !st.dab && Math.abs(m.freq_hz - st.tune_hz) < 50 && m.mode === st.mode);
+  if (!on) memRecStop();
+}
 
 /** RECORD of a recalled memory: ON = REC (everything), SQ = REC SQ, ASQ = REC SQ with the auto squelch on
  *  (AM, FM, WFM; other modes REC SQ only), OFF = no recording. */
@@ -6152,7 +6180,7 @@ function memStartRecord(m) {
   const mode = m.record || "off";
   const rec = st.recording || {};
   const want = { cont: mode === "on", squelch: mode === "sq" || mode === "asq" };
-  const next = { id: m.id, cont: false, squelch: false, asq: false };
+  const next = { id: m.id, vfo: vbase, at: Date.now(), cont: false, squelch: false, asq: false };
   for (const b of REC_BUTTONS) {
     const on = !!(rec[b.key] && rec[b.key].on);
     if (want[b.key]) {
@@ -7746,6 +7774,7 @@ function renderRec() {
 for (const b of REC_BUTTONS) {
   $(b.btn).addEventListener("click", () => {
     const r = (st && st.recording && st.recording[b.key]) || {};
+    memRec[b.key] = false;   // pressed by hand: the recording no longer follows the recalled memory
     send({ [b.send]: !r.on });
   });
 }
