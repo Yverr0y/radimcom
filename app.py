@@ -884,6 +884,23 @@ def api_devices():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/dongles")
+def api_dongles():
+    """SETTINGS › SDR DONGLE › ADVANCED: the dongles in vfos.json with their VFOs and the connected RTL dongles."""
+    try:
+        with open(VFOS_PATH, encoding="utf-8") as f:
+            vfos = json.load(f).get("vfos", [])
+    except (OSError, ValueError):
+        vfos = []
+    out = {"vfos": [{k: v.get(k) for k in ("name", "serial", "driver", "chain", "note")} for v in vfos],
+           "connected": [], "error": None}
+    try:
+        out["connected"] = list_devices()
+    except OSError as e:  # librtlsdr.dll missing etc.
+        out["error"] = str(e)
+    return jsonify(out)
+
+
 @app.route("/api/satellites", methods=["GET", "POST"])
 def api_satellites():
     """SATELLITES tab: the lists from amsat.org; POST downloads them again."""
@@ -1187,7 +1204,7 @@ def api_set():
             if changes["tune_hz"] < 0:
                 raise ValueError("frequency out of range")
         elif "tune_hz" in changes or "upconv" in changes:
-            # HF below the tuner's lower limit (R820T 24 MHz, LimeSDR Mini 10 MHz, Airspy R2 24 MHz) can only be received
+            # HF below the tuner's lower limit (R820T 24 MHz, RTL-SDR Blog V4 0.5 MHz, LimeSDR Mini 10 MHz, Airspy R2 24 MHz) can only be received
             # through an upconverter; upper limit R820T 1766 MHz, LimeSDR Mini 3500 MHz, Airspy R2 1750 MHz.
             tune = changes.get("tune_hz", cfg["tune_hz"])
             mode = changes.get("upconv", cfg.get("upconv", "auto"))

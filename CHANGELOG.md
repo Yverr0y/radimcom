@@ -4,6 +4,12 @@
 
 Changes since 0.113beta1 (GitHub branch `0.113beta1`).
 
+- **RTL-SDR Blog V4 tunes from 0.5 MHz.** The dongle is recognised by its USB product name (*Blog V4*) when it is opened; its lower limit is then 0.5 MHz instead of 24 MHz. Below 28.8 MHz its driver switches on the built-in upconverter, so HF needs no external converter (upconverter off in `vfos.json`). Other RTL dongles keep 24 MHz.
+
+- **Dongles and VFOs list** in SETTINGS › SDR DONGLE › ADVANCED: every dongle from `data\vfos.json` (type, serial number, the VFOs it serves including chained ones, note), its state from the VFO receiver (✓ running, error with the reason in the tooltip), connected RTL dongles not assigned to any VFO (*free*) and the number of RTL dongles on USB. The dongle the settings apply to (the active VFO, or the VFO owning the dongle of a chained VFO) is highlighted. ⟳ searches again.
+
+- **AD window has a fixed height** (as with RDS), so an error message, the rotor AZ / EL or RDS no longer make it higher or lower.
+
 ## Ver. 0.113beta1
 
 ### Main Features

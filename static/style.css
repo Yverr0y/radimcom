@@ -91,7 +91,8 @@ body {
 .meter-info { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 5px 8px 4px;
   border: 1px solid var(--line); border-radius: 6px; background: #080c10; }
 /* multifunction display: RDS now; without RDS the window stays, empty */
-.mfd { grid-column: 1 / -1; align-self: stretch; position: relative; min-height: 38px; padding: 3px 3px 2px; overflow: hidden;
+/* fixed height (= RDS: 2 lines + padding), so error / rotor / RDS never change it */
+.mfd { grid-column: 1 / -1; align-self: stretch; position: relative; height: 42px; flex: 0 0 auto; padding: 3px 3px 2px; overflow: hidden;
   border: 1px solid var(--line); border-radius: 6px; background: #080c10; }
 #smeter { width: 100%; height: auto; display: block; }
 .meter-face text { font: 600 11px Arial, "Helvetica Neue", sans-serif; text-anchor: middle; dominant-baseline: middle; }
@@ -1154,6 +1155,15 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .set-grid4 > .setting { break-inside: avoid; margin-bottom: 10px; }
 .set-grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .set-grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* SDR DONGLE › ADVANCED: list of dongles and VFOs, the one being set highlighted */
+.set-grid2 > .dongle-list-box { grid-column: 1 / -1; }
+.dongle-list { width: 100%; border-collapse: collapse; font-size: 12px; }
+.dongle-list th { text-align: left; color: var(--muted); font-weight: normal; padding: 3px 6px; border-bottom: 1px solid var(--line); }
+.dongle-list td { padding: 4px 6px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.dongle-list tr.cur td { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); font-weight: bold; }
+.dongle-list tr.cur td:first-child { box-shadow: inset 3px 0 0 var(--accent); }
+.dongle-list td.warn { color: var(--red); }
+.dongle-list td.sum { color: var(--muted); border-bottom: 0; }
 .set-meter { grid-template-columns: 1fr 3fr; }
 .set-skins { grid-template-columns: 1fr 1.8fr; }
 .set-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }

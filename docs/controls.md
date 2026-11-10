@@ -144,6 +144,8 @@ squelch gets a green underline, a transmitting one turns red.
       - **Bias-tee** 4.5 V (if the SDR has it). Turn it on only when the upconverter or preamplifier really needs it.
       - **RESET SDR DONGLE**: closes the dongle and opens it again with the same settings (frequency, gain, bandwidth); for a stopped spectrum or a USB error.
     - **ADVANCED**
+      - **Dongles and VFOs**: every dongle from `data\vfos.json` with its serial number, the VFOs it serves (chained ones too) and its note; State ✓ when the VFO receiver has the dongle open and running
+        (an error with its reason in the tooltip), connected RTL dongles without a VFO as *free*. The dongle these settings apply to is highlighted. Assignment changes need a full server restart.
       - **SP – Spurs removal**: for a switching power supply and the like. **LEARN** finds lines at a regular spacing of 12 kHz or more in the band received now, so learn on a quiet band.
         Each line gets a band-stop set by **Width**, **Edge**, **Shift** and **Depth**, which takes it down to the noise around it. Cleans the waterfall and the channel you listen to (not WFM and wide FM).
         A signal on a spur is removed with it.

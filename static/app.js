@@ -1832,6 +1832,7 @@ function renderSpurInfo() {
 }
 
 function renderSettings() {
+  loadDongleList();   // the VFO changed: other dongle highlighted
   renderGain();
   $("sampleRate").innerHTML = st.sample_rates.map((r) =>
     `<option value="${r}">${(r / 1e6).toLocaleString(LOCALE)} MHz</option>`).join("");
@@ -2274,6 +2275,55 @@ $("device").addEventListener("change", () => {
   send({ device: st.device });
 });
 $("devRefresh").addEventListener("click", loadDevices);
+
+// SETTINGS › SDR DONGLE › ADVANCED: the dongles, the VFOs they serve, the one being set highlighted.
+async function loadDongleList() {
+  if (!st) return;   // the highlight needs the state of the VFO
+  const tbl = $("dongleList");
+  let d;
+  try {
+    d = await fetch(vbase + "/api/dongles").then((r) => r.json());
+  } catch (e) {
+    d = { vfos: [], connected: [], error: String(e) };
+  }
+  const list = d.vfos || [], conn = d.connected || [];
+  const curOwner = st.chain_owner || st.vfo;   // the VFO that holds the dongle these settings go to
+  // State of the dongle from its VFO receiver (an open dongle does not report its serial over USB).
+  const state = (name) => {
+    const v = vfos.find((x) => x.name === name), s = v && v.st;
+    if (!v || !v.online || !s) return ["–", "VFO receiver not reachable"];
+    if (s.error) return ["error", s.error];
+    if (s.status === "running") return ["✓", "running"];
+    return ["…", s.status];
+  };
+  const rows = [];
+  for (const v of list.filter((x) => !x.chain)) {
+    const chained = list.filter((x) => x.chain === v.name).map((x) => x.name);
+    const [ok, why] = state(v.name);
+    rows.push({
+      cur: v.name === curOwner,
+      dongle: `${DEVICE_NAMES[v.driver] || "RTL-SDR"} · SN ${v.serial || "?"}`,
+      vfos: [v.name, ...chained].map((n) => `VFO ${n}`).join(", ") + (chained.length ? " (chained)" : ""),
+      ok, why, note: v.note || "",
+    });
+  }
+  // connected RTL dongles no VFO uses (only those whose serial can be read, i.e. not open)
+  const assigned = new Set(list.map((v) => v.serial));
+  for (const c of conn.filter((c) => list.length ? c.serial && !assigned.has(c.serial) : true)) {
+    rows.push({
+      cur: !list.length && c.index === st.device,   // without vfos.json: the dongle selected on BASIC
+      dongle: `#${c.index} · ${c.product || c.name || "RTL-SDR"}` + (c.serial ? ` · SN ${c.serial}` : ""),
+      vfos: list.length ? "free" : "", ok: "USB", why: "connected, not open", note: c.vendor || "",
+    });
+  }
+  tbl.innerHTML = "<tr><th>Dongle</th><th>VFO</th><th>State</th><th>Note</th></tr>" +
+    rows.map((r) => `<tr${r.cur ? ' class="cur" title="These settings apply to this dongle"' : ""}>` +
+      `<td>${escHtml(r.dongle)}</td><td>${escHtml(r.vfos)}</td><td title="${escHtml(r.why)}">${escHtml(r.ok)}</td>` +
+      `<td>${escHtml(r.note)}</td></tr>`).join("") +
+    `<tr><td colspan="4" class="sum">RTL dongles on USB: ${conn.length}</td></tr>` +
+    (d.error ? `<tr><td colspan="4" class="warn">${escHtml(d.error)}</td></tr>` : "");
+}
+$("dongleListRefresh").addEventListener("click", loadDongleList);
 $("biasTee").addEventListener("change", () => send({ bias_tee: $("biasTee").checked }));
 const TX_ACK_TEXT =
   "IMPORTANT - TRANSMITTING DISCLAIMER\n\n" +
@@ -5631,6 +5681,7 @@ function showSetTab(name) {
   }
   for (const p of document.querySelectorAll("[data-set-panel]")) p.hidden = p.dataset.setPanel !== name;
   if (name === "rotor") setTimeout(pollRotor);      // the ROTOR page fills at once
+  if (name === "dongle") setTimeout(loadDongleList);   // ADVANCED: dongles and VFOs
 }
 function showSetSub(name) {
   const page = name.split(":")[0];
@@ -5640,6 +5691,7 @@ function showSetSub(name) {
     b.setAttribute("aria-selected", on);
   }
   for (const p of document.querySelectorAll(`[data-set-subpanel^="${page}:"]`)) p.hidden = p.dataset.setSubpanel !== name;
+  if (name === "dongle:adv") setTimeout(loadDongleList);
 }
 for (const b of document.querySelectorAll("[data-set-tab]")) {
   b.addEventListener("click", () => { showSetTab(b.dataset.setTab); store("setTab", b.dataset.setTab); });
