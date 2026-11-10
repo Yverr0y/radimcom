@@ -207,8 +207,8 @@ The memory editor was written by **Brano ([brjanicek](https://github.com/brjanic
   bandwidth, **decoder** (switched on when the channel is recalled, and its page shown in DECODERS: FT8, WEFAX, CW, RTTY,
   SSTV, PACKET, ACARS, VDL2 or ISM), **record** (a recording to MP3 started when the channel is recalled: **ON** = REC,
   everything; **SQ** = REC SQ, only while the squelch is open; **ASQ** = REC SQ with the auto squelch switched on, AM, FM
-  and WFM; **OFF** = none, the default; a recording or ASQ that recalling a channel started is stopped by recalling a
-  channel without it, one switched on by hand stays), DAB channel, the **groups** (a list, one per line, scrolls when long: tick any number, or type a new one and press Enter),
+  and WFM; **OFF** = none, the default; a recording or ASQ that recalling a channel started stops when the VFO leaves
+  the channel (another frequency, mode or channel); one switched on by hand, or a key pressed by hand meanwhile, stays), DAB channel, the **groups** (a list, one per line, scrolls when long: tick any number, or type a new one and press Enter),
   a **note**, the **tag in the spectrum** (shown or hidden, default shown) with its **colour** (↺ = the default green) and
   the star. It warns when another channel is on the same frequency and mode. **＋ NEW** fills it from the tuner.
   Tick channels for the bar above the table (with none ticked, it acts on the channel open in the form, e.g. opened with
