@@ -6345,74 +6345,108 @@ function medVisible() {
   });
 }
 
+// Order of the CHANNELS table: a click on a column header sorts by it, a second click reverses it.
+// By groups the table has a section for each group (a channel in two groups is listed in both).
+const MED_COLS = [   // [key, header, class of the column (its fixed width), compare]
+  ["fav", "★", "c-star", (a, b) => (b.fav - a.fav)],
+  ["name", "Name", "c-name", (a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" })],
+  ["freq", "Frequency", "c-freq num", (a, b) => a.freq_hz - b.freq_hz],
+  ["mode", "Mode", "c-mode", (a, b) => (a.dab_channel ? "DAB" : a.mode).localeCompare(b.dab_channel ? "DAB" : b.mode)],
+  ["bw", "BW", "c-bw num", (a, b) => a.bw - b.bw],
+  ["decoder", "Decoder", "c-dec", (a, b) => (a.decoder || "~").localeCompare(b.decoder || "~")],
+  ["record", "Rec", "c-rec", (a, b) => RECORD_ORDER.indexOf(a.record || "off") - RECORD_ORDER.indexOf(b.record || "off")],
+  ["groups", "Groups", "c-groups", null],
+  ["tag", "Tag", "c-tag", (a, b) => (a.tag === false) - (b.tag === false) || memTagColor(a).localeCompare(memTagColor(b))],
+  ["note", "Note", "c-note", (a, b) => (a.note || "~").localeCompare(b.note || "~", "en", { sensitivity: "base" })],
+];
+const RECORD_ORDER = ["on", "sq", "asq", "off"];
+let medSortKey = recall("medSortKey") || "groups";
+let medSortDir = recall("medSortDir") === "-1" ? -1 : 1;
+if (!MED_COLS.some(([k]) => k === medSortKey)) medSortKey = "groups";
+
 function renderMedChannels() {
   medFilterSelect($("medGroup"), true);
-  const sort = $("medSort").value;
+  const sort = medSortKey, dir = medSortDir;
   const group = $("medGroup").value;
   const dups = memDuplicates();
   const list = medVisible();
   for (const id of [...medSel]) if (!mems.some((m) => m.id === id)) medSel.delete(id);
   const byFreq = (a, b) => a.freq_hz - b.freq_hz;
-  const cmp = {
-    freq: byFreq,
-    name: (a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || byFreq(a, b),
-    mode: (a, b) => a.mode.localeCompare(b.mode) || byFreq(a, b),
-    decoder: (a, b) => (a.decoder || "~").localeCompare(b.decoder || "~") || byFreq(a, b),
-    group: byFreq,
-  }[sort];
-  list.sort(cmp);
-  // sections: by group (a channel in two groups is listed in both), mode or decoder; none by frequency and name
+  const cmp = (MED_COLS.find(([k]) => k === sort) || [])[3] || byFreq;
+  list.sort((a, b) => dir * cmp(a, b) || byFreq(a, b));
   let sections;
-  if (sort === "group") {
-    const names = group && group !== NO_GROUP ? [group] : memAllGroups();
+  if (sort === "groups") {
+    let names = group && group !== NO_GROUP ? [group] : memAllGroups();
+    if (dir < 0) names = [...names].reverse();
     sections = names.map((g) => [g, list.filter((m) => memGroupsOf(m).includes(g)), memGroupNote(g)]);
     if (!group || group === NO_GROUP) sections.push(["(no group)", list.filter((m) => !memGroupsOf(m).length), ""]);
     if (group === NO_GROUP) sections = sections.slice(-1);
     sections = sections.filter(([, l]) => l.length);
-  } else if (sort === "mode" || sort === "decoder") {
-    const key = (m) => (sort === "mode" ? m.mode : DECODER_NAMES[m.decoder || ""] === "—" ? "no decoder" : DECODER_NAMES[m.decoder]);
-    sections = [...new Set(list.map(key))].map((k) => [k, list.filter((m) => key(m) === k), ""]);
   } else {
     sections = [[null, list, ""]];
   }
   const allSel = list.length && list.every((m) => medSel.has(m.id));
-  let html = `<thead><tr><th><input type="checkbox" data-selall ${allSel ? "checked" : ""} title="Select all in the list"></th>` +
-    `<th>★</th><th>Name</th><th class="num">Frequency</th><th>Mode</th><th class="num">BW</th><th>Decoder</th><th>Rec</th>` +
-    `<th>Groups</th><th title="Tag in the spectrum">Tag</th><th>Note</th></tr></thead><tbody>`;
+  const n = MED_COLS.length + 1;
+  let html = `<colgroup><col class="c-chk">${MED_COLS.map(([, , c]) => `<col class="${c.split(" ")[0]}">`).join("")}</colgroup>` +
+    `<thead><tr><th><input type="checkbox" data-selall ${allSel ? "checked" : ""} title="Select all in the list"></th>` +
+    MED_COLS.map(([k, label, c]) => `<th class="sortable ${c}${k === sort ? " sorted" : ""}" data-sort="${k}" title="Sort by ${k === "fav" ? "star" : label.toLowerCase()}">` +
+      `${label}${k === sort ? `<i class="sort-dir">${dir > 0 ? "▲" : "▼"}</i>` : ""}</th>`).join("") + `</tr></thead><tbody>`;
   for (const [title, rows, note] of sections) {
     if (title !== null) {
-      html += `<tr class="med-sec"><td colspan="11">${escHtml(title)} <span class="muted">${rows.length}</span>` +
+      html += `<tr class="med-sec"><td colspan="${n}">${escHtml(title)} <span class="muted">${rows.length}</span>` +
         (note ? ` <span class="med-secnote">${escHtml(note)}</span>` : "") + `</td></tr>`;
     }
     for (const m of rows) {
       const dup = dups.get(m.id);
+      const groups = memGroupsOf(m);
+      const dec = m.decoder ? DECODER_NAMES[m.decoder] || m.decoder : "";
+      const rec = RECORD_NAMES[m.record || "off"] || m.record;
       html += `<tr class="med-ch${medSel.has(m.id) ? " sel" : ""}${m.id === medEditId ? " editing" : ""}" data-id="${m.id}">` +
         `<td><input type="checkbox" data-pick ${medSel.has(m.id) ? "checked" : ""}></td>` +
         `<td><button class="star${m.fav ? " on" : ""}" data-star>${m.fav ? "★" : "☆"}</button></td>` +
-        `<td class="name">${escHtml(m.name)}${dup ? ` <i class="dup" title="Same frequency and mode as: ${escHtml(dup.join(", "))}">⧉</i>` : ""}</td>` +
+        `<td class="name" title="${escHtml(m.name)}">${dup ? `<i class="dup" title="Same frequency and mode as: ${escHtml(dup.join(", "))}">⧉</i> ` : ""}${escHtml(m.name)}</td>` +
         `<td class="num mono">${fmtMemFreq(m.freq_hz)}</td>` +
         `<td class="mode">${m.dab_channel ? `DAB ${escHtml(m.dab_channel)}` : m.mode}</td>` +
         `<td class="num mono">${fmtBw(m.bw)}</td>` +
-        `<td>${m.decoder ? DECODER_NAMES[m.decoder] || escHtml(m.decoder) : ""}</td>` +
-        `<td class="rec">${m.record && m.record !== "off" ? RECORD_NAMES[m.record] || escHtml(m.record) : ""}</td>` +
-        `<td class="groups">${memGroupsOf(m).map((g) => `<span class="chip">${escHtml(g)}</span>`).join("")}</td>` +
+        `<td title="${escHtml(dec)}">${escHtml(dec)}</td>` +
+        `<td class="med-rec${m.record && m.record !== "off" ? " on" : ""}">${escHtml(rec)}</td>` +
+        `<td class="groups" title="${escHtml(groups.join(", "))}">${groups.map((g) => `<span class="chip">${escHtml(g)}</span>`).join("")}</td>` +
         `<td><span class="swatch${m.tag === false ? " off" : ""}" style="--c:${memTagColor(m)}" title="${m.tag === false ? "tag hidden" : "tag shown"}"></span></td>` +
         `<td class="note-cell" title="${escHtml(m.note || "")}">${escHtml(m.note || "")}</td></tr>`;
     }
   }
-  if (!list.length) html += `<tr><td colspan="11" class="mem-empty">${mems.length ? "Nothing matches the filter." : "No channels yet."}</td></tr>`;
+  if (!list.length) html += `<tr><td colspan="${n}" class="mem-empty">${mems.length ? "Nothing matches the filter." : "No channels yet."}</td></tr>`;
   $("medTable").innerHTML = html + "</tbody>";
-  $("medSelCount").textContent = `${medSel.size} selected`;
-  for (const b of $("medBulk").querySelectorAll("button")) b.disabled = !medSel.size;
+  medRenderBulk();
   renderMedForm();
+}
+
+/** Channels the bar above the table acts on: the ticked ones, or (none ticked) the channel open in the form. */
+function medBulkIds() {
+  if (medSel.size) return [...medSel];
+  return medEditId && mems.some((m) => m.id === medEditId) ? [medEditId] : [];
+}
+function medRenderBulk() {
+  const open = !medSel.size && medBulkIds().length ? mems.find((m) => m.id === medEditId) : null;
+  $("medSelCount").textContent = open ? "open channel" : `${medSel.size} selected`;
+  $("medSelCount").title = open ? `No channel ticked: the keys act on the channel open in the form (${open.name})` : "";
+  const none = !medBulkIds().length;
+  for (const b of $("medBulk").querySelectorAll("button")) b.disabled = none;
 }
 
 for (const id of ["medSearch", "medDups"]) $(id).addEventListener("input", renderMedChannels);
 $("medGroup").addEventListener("change", renderMedChannels);
-$("medSort").value = recall("medSort") || "group";
-$("medSort").addEventListener("change", () => { store("medSort", $("medSort").value); renderMedChannels(); });
 
 $("medTable").addEventListener("click", (e) => {
+  const th = e.target.closest("th[data-sort]");
+  if (th) {
+    medSortDir = th.dataset.sort === medSortKey ? -medSortDir : 1;
+    medSortKey = th.dataset.sort;
+    store("medSortKey", medSortKey);
+    store("medSortDir", String(medSortDir));
+    renderMedChannels();
+    return;
+  }
   if (e.target.closest("[data-selall]")) {
     const list = medVisible();
     if (e.target.checked) for (const m of list) medSel.add(m.id); else for (const m of list) medSel.delete(m.id);
@@ -6443,12 +6477,12 @@ $("medTable").addEventListener("dblclick", (e) => {
 // bulk actions on the ticked channels
 $("medBulk").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-bulk]");
-  if (!b || !medSel.size) return;
-  const ids = [...medSel];
+  const ids = medBulkIds();
+  if (!b || !ids.length) return;
   const act = b.dataset.bulk;
   const group = $("medBulkGroup").value.trim();
   if (["add", "remove", "move"].includes(act) && !group) { $("medBulkGroup").focus(); medMsg("Enter a group name first.", true); return; }
-  if (act === "export") { medExportAdd(mems.filter((m) => medSel.has(m.id))); showMedTab("export"); return; }
+  if (act === "export") { medExportAdd(mems.filter((m) => ids.includes(m.id))); showMedTab("export"); return; }
   if (act === "delete" && !confirm(`Delete ${ids.length} selected channel${ids.length === 1 ? "" : "s"}?`)) return;
   const changes = { add: { groups_add: [group] }, remove: { groups_remove: [group] }, move: { groups: [group] },
     fav: { fav: true }, unfav: { fav: false }, tagon: { tag: true }, tagoff: { tag: false },
@@ -6491,6 +6525,7 @@ function medOpenForm(m, template) {
   f.hidden = false;
   // only the marks of the rows change: drawing the table again would break a double click (recall) on a row
   for (const tr of $("medTable").querySelectorAll("tr[data-id]")) tr.classList.toggle("editing", tr.dataset.id === medEditId);
+  medRenderBulk();
   renderMedForm();
   if (!m) f.elements.name.focus();
 }
@@ -6591,11 +6626,11 @@ function renderMedGroups() {
   const names = memAllGroups();
   for (const g of [...medGrpSel]) if (!names.includes(g)) medGrpSel.delete(g);
   const noGroup = mems.filter((m) => !memGroupsOf(m).length).length;
-  let html = `<thead><tr><th><input type="checkbox" data-selall ${names.length && names.every((g) => medGrpSel.has(g)) ? "checked" : ""}></th>` +
-    `<th>Group</th><th class="num">Channels</th><th>Note</th><th></th></tr></thead><tbody>`;
+  let html = `<thead><tr><th class="c-chk"><input type="checkbox" data-selall ${names.length && names.every((g) => medGrpSel.has(g)) ? "checked" : ""}></th>` +
+    `<th class="c-gname">Group</th><th class="num c-count">Channels</th><th class="c-gnote">Note</th><th class="c-acts"></th></tr></thead><tbody>`;
   for (const g of names) {
     html += `<tr data-g="${escHtml(g)}"${medGrpSel.has(g) ? ' class="sel"' : ""}><td><input type="checkbox" data-pick ${medGrpSel.has(g) ? "checked" : ""}></td>` +
-      `<td class="name">${escHtml(g)}</td><td class="num">${counts[g] || 0}</td>` +
+      `<td class="name" title="${escHtml(g)}">${escHtml(g)}</td><td class="num">${counts[g] || 0}</td>` +
       `<td class="grow"><input data-note value="${escHtml(memGroupNote(g))}" placeholder="note…" maxlength="200"></td>` +
       `<td class="acts"><button class="icon-btn" data-g-act="show" title="Show channels" aria-label="Show">☰</button>` +
       `<button class="icon-btn" data-g-act="rename" title="Rename" aria-label="Rename">✎</button>` +
@@ -6652,7 +6687,8 @@ $("medGrpTable").addEventListener("click", async (e) => {
   }
   const act = e.target.closest("[data-g-act]")?.dataset.gAct;
   if (act === "show") {
-    $("medSort").value = "group";
+    medSortKey = "groups";
+    medSortDir = 1;
     showMedTab("channels");
     medFilterSelect($("medGroup"), true);
     $("medGroup").value = name;
@@ -6740,7 +6776,17 @@ function medEditCells(r, i, extra = "") {
     `<td><input data-f="note" value="${escHtml(r.note)}" maxlength="200"></td>` + extra + `</tr>`;
 }
 
-const MED_EDIT_HEAD = `<th>Name</th><th>Frequency, MHz</th><th>Mode</th><th>BW, kHz</th><th>Decoder</th><th>Rec</th><th>Groups (A | B)</th><th>Note</th>`;
+const MED_EDIT_HEAD = `<th class="c-name">Name</th><th class="c-freq">Frequency, MHz</th><th class="c-mode">Mode</th><th class="c-bw">BW, kHz</th>` +
+  `<th class="c-dec">Decoder</th><th class="c-rec">Rec</th><th class="c-groups">Groups (A | B)</th><th class="c-note">Note</th>`;
+
+// Columns of the tables have fixed widths: a text that does not fit is cut, its whole value is the tooltip.
+document.addEventListener("mouseover", (e) => {
+  const el = e.target;
+  if (el.matches?.(".med-table input:not([type=checkbox]), .med-table select")) {
+    const v = el.tagName === "SELECT" ? el.selectedOptions[0]?.textContent || "" : el.value;
+    el.title = el.dataset.f === "groups" ? `${v}\nSeveral groups: A | B` : v;
+  }
+});
 
 /** Typing in an editable list changes its row (without drawing the list again, so the focus stays). */
 function medBindEditList(table, list, after) {
@@ -6768,7 +6814,7 @@ function renderMedImport() {
   $("medImpGroups").innerHTML = `<b>Groups in the file</b> (their notes are imported with the channels):` + medImp.groups.map((g, i) =>
     `<label class="chip-check" data-gi="${i}"><input type="checkbox" data-gf="sel" ${g.sel ? "checked" : ""}> ${escHtml(g.name)}` +
     `<input data-gf="note" value="${escHtml(g.note)}" placeholder="note" maxlength="200"></label>`).join("");
-  let html = `<thead><tr><th><input type="checkbox" data-selall ${rows.length && rows.every((r) => r.sel) ? "checked" : ""}></th>${MED_EDIT_HEAD}<th>Status</th></tr></thead><tbody>`;
+  let html = `<thead><tr><th class="c-chk"><input type="checkbox" data-selall ${rows.length && rows.every((r) => r.sel) ? "checked" : ""}></th>${MED_EDIT_HEAD}<th class="c-status">Status</th></tr></thead><tbody>`;
   rows.forEach((r, i) => {
     const dup = medRowDup(r);
     html += medEditCells(r, i, `<td class="status" data-status>${medImpStatus(r, dup)}</td>`);
@@ -6897,11 +6943,11 @@ function renderMedExport() {
     `<label class="chip-check" data-g="${escHtml(g)}"><input type="checkbox" data-gf="incl" ${medExp.notes[g].incl ? "checked" : ""}> ${escHtml(g)}` +
     `<input data-gf="note" value="${escHtml(medExp.notes[g].note)}" placeholder="note" maxlength="200"></label>`).join("");
   const all = (k) => rows.length && rows.every((r) => r[k]);
-  let html = `<thead><tr><th><input type="checkbox" data-all="sel" ${all("sel") ? "checked" : ""} title="Export all"></th>${MED_EDIT_HEAD}` +
-    `<th class="inc"><label title="Export the tag colour of every channel"><input type="checkbox" data-all="inColor" ${all("inColor") ? "checked" : ""}> colour</label></th>` +
-    `<th class="inc"><label title="Export whether the tag is shown"><input type="checkbox" data-all="inTag" ${all("inTag") ? "checked" : ""}> tag</label></th>` +
-    `<th class="inc"><label title="Export the note of every channel"><input type="checkbox" data-all="inNote" ${all("inNote") ? "checked" : ""}> note</label></th>` +
-    `<th></th></tr></thead><tbody>`;
+  let html = `<thead><tr><th class="c-chk"><input type="checkbox" data-all="sel" ${all("sel") ? "checked" : ""} title="Export all"></th>${MED_EDIT_HEAD}` +
+    `<th class="inc c-inc"><label title="Export the tag colour of every channel"><input type="checkbox" data-all="inColor" ${all("inColor") ? "checked" : ""}> colour</label></th>` +
+    `<th class="inc c-inc"><label title="Export whether the tag is shown"><input type="checkbox" data-all="inTag" ${all("inTag") ? "checked" : ""}> tag</label></th>` +
+    `<th class="inc c-inc"><label title="Export the note of every channel"><input type="checkbox" data-all="inNote" ${all("inNote") ? "checked" : ""}> note</label></th>` +
+    `<th class="c-del"></th></tr></thead><tbody>`;
   rows.forEach((r, i) => {
     html += medEditCells(r, i,
       `<td class="inc"><label><input type="checkbox" data-f="inColor" ${r.inColor ? "checked" : ""}><span class="swatch" style="--c:${r.color || MEM_COLOR}"></span></label></td>` +

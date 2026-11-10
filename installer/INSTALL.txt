@@ -93,6 +93,9 @@ Ver. 0.113beta2
 Main Features
 - Memory import: one LOAD FILE... key recognises the format by the content: RADIMCOM JSON / CSV, SDR#
   frequencies.xml, SDR++ frequency manager, gqrx bookmarks.csv, CHIRP CSV (LOAD SDR# removed).
+Minor Fixes
+- Memory editor: sort by a click on a column header, fixed column widths with tooltips, Rec as text,
+  groups of a channel as a list, the bar above the table acts on the open channel when none is ticked.
 
 Ver. 0.113beta1
 Main Features

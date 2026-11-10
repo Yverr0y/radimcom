@@ -7,6 +7,9 @@ Changes since 0.113beta1 (GitHub branch `0.113beta1`).
 ### Main Features
 
 - **Memory import recognises the file format.** MEMORIES → IMPORT has one **LOAD FILE…** key (LOAD SDR# and the SDR# folder field are gone); it takes one or more files and recognises each by its content: RADIMCOM JSON or CSV, SDR# `frequencies.xml`, and new: the **SDR++** frequency manager (`frequency_manager_config.json`, its lists become groups), **gqrx** `bookmarks.csv` (tags become groups, tag colour too) and **CHIRP** CSV (comment as the note). The message names the format found; an unknown file lists the supported ones. HTTP API: `{"format": "auto", "text", "filename"}` in `/api/memories/preview`.
+### Minor Fixes
+
+- **Memory editor:** the CHANNELS table sorts by a click on a column header (again = reversed; by Groups with a section per group), the Sort select is gone. Table columns have fixed widths, a longer text is cut and shown whole as the tooltip. The Rec column shows OFF / ON / SQ / ASQ as text. The groups in the channel form are a list, one per line, with a scroll bar. With no channel ticked, the bar above the table (tag colour SET / DEFAULT, star, tag on / off, groups, export, delete) acts on the channel open in the form. A small gap under the LIST / CHANNELS / GROUPS / IMPORT / EXPORT keys.
 
 ## Ver. 0.113beta1
 
