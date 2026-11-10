@@ -884,18 +884,94 @@ ecordings.</p>
             <button class="key small on" data-set-sub="dongle:basic" role="tab" aria-selected="true">BASIC</button>
             <button class="key small" data-set-sub="dongle:adv" role="tab" aria-selected="false">ADVANCED</button>
           </div>
-          <div class="set-subpanel set-grid4" data-set-subpanel="dongle:basic" role="tabpanel">
-            <div class="setting" id="vfoSetting" hidden>
+          <div class="set-subpanel" id="dongleBasic" data-set-subpanel="dongle:basic" role="tabpanel">
+            <!-- block diagram of the receive chain: each numbered block = the card with the same number; a click shows it -->
+            <div class="setting blk-diagram" id="blkDiagram">
+              <svg viewBox="0 0 1000 190" role="img" aria-label="Block diagram of the SDR dongle receive chain">
+                <defs><marker id="blkArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="blk-arrowhead"/></marker></defs>
+                <!-- antenna -->
+                <path class="blk-wire" d="M30 40V95M16 40L30 62L44 40Z"/>
+                <text class="blk-sub" x="30" y="30">ANT</text>
+                <line class="blk-wire" x1="30" y1="95" x2="70" y2="95" marker-end="url(#blkArrow)"/>
+                <!-- dongle frame: 1 dongle selection, 9 reset -->
+                <g class="blk blk-frame" data-blk-for="deviceSetting vfoSetting resetSetting" tabindex="0">
+                  <rect x="232" y="22" width="476" height="160" rx="10"/>
+                  <text class="blk-title" x="250" y="44" style="text-anchor: start">SDR DONGLE</text>
+                  <text class="blk-title" x="690" y="44" style="text-anchor: end">RESET</text>
+                  <g class="blk-num"><circle cx="232" cy="22" r="10"/><text x="232" y="22">1</text></g><g class="blk-num"><circle cx="708" cy="22" r="10"/><text x="708" y="22">9</text></g>
+                </g>
+                <!-- 2 upconverter + LO -->
+                <g class="blk" data-blk-for="upconvSetting loField" tabindex="0">
+                  <rect x="72" y="68" width="136" height="54" rx="6"/>
+                  <text class="blk-title" x="140" y="90">UPCONVERTER</text>
+                  <text class="blk-sub" x="140" y="108">auto/on/off · LO</text>
+                  <g class="blk-num"><circle cx="72" cy="68" r="10"/><text x="72" y="68">2</text></g>
+                </g>
+                <line class="blk-wire" x1="208" y1="95" x2="252" y2="95" marker-end="url(#blkArrow)"/>
+                <!-- 3 bias-tee: DC up the coax to the converter/LNA -->
+                <g class="blk" data-blk-for="biasTeeSetting" tabindex="0">
+                  <rect x="254" y="72" width="78" height="46" rx="6"/>
+                  <text class="blk-title" x="293" y="92">BIAS-T</text>
+                  <text class="blk-sub" x="293" y="109">4.5 V</text>
+                  <g class="blk-num"><circle cx="254" cy="72" r="10"/><text x="254" y="72">3</text></g>
+                </g>
+                <path class="blk-power" d="M293 72V58H140V68" marker-end="url(#blkArrow)"/>
+                <text class="blk-sub" x="150" y="50">DC to converter/LNA</text>
+                <line class="blk-wire" x1="332" y1="95" x2="358" y2="95" marker-end="url(#blkArrow)"/>
+                <!-- 4 tuner -->
+                <g class="blk" data-blk-for="gainSetting" tabindex="0">
+                  <rect x="360" y="68" width="112" height="54" rx="6"/>
+                  <text class="blk-title" x="416" y="90">TUNER</text>
+                  <text class="blk-sub" x="416" y="108">gain · auto</text>
+                  <g class="blk-num"><circle cx="360" cy="68" r="10"/><text x="360" y="68">4</text></g>
+                </g>
+                <line class="blk-wire" x1="472" y1="95" x2="508" y2="95" marker-end="url(#blkArrow)"/>
+                <!-- 5 + 6: RTL2832 A/D -->
+                <g class="blk" data-blk-for="rtlAgcBox rateSetting" tabindex="0">
+                  <rect x="510" y="62" width="180" height="66" rx="6"/>
+                  <text class="blk-title" x="600" y="81">A/D · RTL2832</text>
+                  <g class="blk-num"><circle cx="526" cy="97" r="8"/><text x="526" y="97">5</text></g><text class="blk-sub" x="540" y="101" style="text-anchor: start">digital gain (AGC)</text>
+                  <g class="blk-num"><circle cx="526" cy="115" r="8"/><text x="526" y="115">6</text></g><text class="blk-sub" x="540" y="119" style="text-anchor: start">bandwidth (sample rate)</text>
+                </g>
+                <!-- 7 crystal: clock of the tuner and the A/D -->
+                <g class="blk" data-blk-for="ppmField" tabindex="0">
+                  <rect x="440" y="144" width="132" height="30" rx="6"/>
+                  <text class="blk-title" x="506" y="164">XTAL · ppm</text>
+                  <g class="blk-num"><circle cx="440" cy="144" r="10"/><text x="440" y="144">7</text></g>
+                </g>
+                <path class="blk-clock" d="M440 159H416V122M572 159H600V128"/>
+                <!-- USB to the PC -->
+                <line class="blk-wire" x1="690" y1="95" x2="758" y2="95" marker-end="url(#blkArrow)"/>
+                <text class="blk-sub" x="728" y="86">USB</text>
+                <text class="blk-sub" x="870" y="40">PC · RADIMCOM</text>
+                <!-- 8 DC removal -->
+                <g class="blk" data-blk-for="dcSetting" tabindex="0">
+                  <rect x="760" y="68" width="100" height="54" rx="6"/>
+                  <text class="blk-title" x="810" y="90">DC</text>
+                  <text class="blk-sub" x="810" y="108">peak removal</text>
+                  <g class="blk-num"><circle cx="760" cy="68" r="10"/><text x="760" y="68">8</text></g>
+                </g>
+                <line class="blk-wire" x1="860" y1="95" x2="878" y2="95" marker-end="url(#blkArrow)"/>
+                <rect class="blk-end" x="880" y="62" width="112" height="66" rx="6"/>
+                <text class="blk-sub" x="936" y="82">spectrum</text>
+                <text class="blk-sub" x="936" y="99">waterfall</text>
+                <text class="blk-sub" x="936" y="116">VFO · decoders</text>
+              </svg>
+              <p class="note">Path of the signal from the antenna to the screen. A number in the diagram = the card with the same number; click a block to find it.
+                Grey block: not for this dongle or VFO.</p>
+            </div>
+            <div class="set-grid4">
+            <div class="setting" id="vfoSetting" data-blk="1" hidden>
               <div class="row"><span>Settings for</span></div>
               <p class="note" id="vfoSettingText"></p>
               <p class="note">Each VFO keeps its own settings. Dongles and VFO assignment are in <code>data\vfos.json</code>.</p>
             </div>
-            <div class="setting" id="deviceSetting">
+            <div class="setting" id="deviceSetting" data-blk="1">
               <div class="row"><span>Dongle</span><button id="devRefresh" class="key small" title="Search for connected dongles again">⟳</button></div>
               <select id="device"></select>
               <p class="note">Switching closes the dongle and opens the selected one. Each dongle remembers its own upconverter, LO and ppm.</p>
             </div>
-            <div class="setting" id="upconvSetting">
+            <div class="setting" id="upconvSetting" data-blk="2">
               <div class="row"><span>Upconverter</span></div>
               <select id="upconv">
                 <option value="auto">Auto (HF via converter)</option>
@@ -905,26 +981,26 @@ ecordings.</p>
               <p class="note">Auto: below 30 MHz via the converter, VHF/UHF direct.
                 Above 30 MHz the signal must go straight to the dongle (bypass switch or another antenna).</p>
             </div>
-            <div class="setting">
+            <div class="setting" id="rateSetting" data-blk="6">
               <div class="row"><span>Bandwidth</span></div>
               <select id="sampleRate"></select>
               <p class="note">Width of the band the dongle receives (its sample rate) = the width of the spectrum and waterfall.</p>
             </div>
-            <div class="setting">
-              <label class="set-field"><span>Correction (ppm)</span><input id="ppm" type="number" step="1"></label>
-              <label class="set-field"><span>Upconverter LO (MHz)</span><input id="lo" type="number" step="0.000001"></label>
+            <div class="setting" id="ppmSetting">
+              <label class="set-field" id="ppmField"><span>Correction (ppm) <b class="blk-n">7</b></span><input id="ppm" type="number" step="1"></label>
+              <label class="set-field" id="loField"><span>Upconverter LO (MHz) <b class="blk-n">2</b></span><input id="lo" type="number" step="0.000001"></label>
             </div>
-            <div class="setting">
+            <div class="setting" id="gainSetting" data-blk="4">
               <div class="row"><span>Tuner gain</span><span id="gainText" class="value"></span></div>
               <input id="gainSlider" type="range" min="0" max="0" step="1">
               <label class="switch"><input id="gainAuto" type="checkbox"><span></span> Automatic gain</label>
             </div>
-            <div class="setting" id="rtlAgcBox">
+            <div class="setting" id="rtlAgcBox" data-blk="5">
               <label class="switch"><input id="rtlAgc" type="checkbox"><span></span> RTL2832 digital gain</label>
               <p class="note">Digital gain (AGC) in the RTL2832 after the A/D converter, independent of the tuner gain.
                 Helps weak signals at low tuner gain, but can overload with strong ones.</p>
             </div>
-            <div class="setting">
+            <div class="setting" id="dcSetting" data-blk="8">
               <label class="switch"><input id="dcRemove" type="checkbox"><span></span> Remove DC peak</label>
               <div class="row"><span>Width</span><span id="dcHzText" class="value"></span></div>
               <input id="dcHz" type="range" min="0" max="1000" step="10" value="0">
@@ -933,14 +1009,15 @@ ecordings.</p>
               <p class="note">Removes the peak of the dongle in the centre of the band. Far left only the peak itself, wider also its
                 skirts (LimeSDR needs this). Suppression = how deep.</p>
             </div>
-            <div class="setting" id="biasTeeSetting">
+            <div class="setting" id="biasTeeSetting" data-blk="3">
               <label class="switch"><input id="biasTee" type="checkbox"><span></span> Bias-tee 4.5 V</label>
               <p class="note warn">Only if the upconverter or LNA is powered by the dongle through the antenna connector.</p>
             </div>
-            <div class="setting">
+            <div class="setting" id="resetSetting" data-blk="9">
               <button id="resetBtn" class="key wide">⟳ RESET SDR DONGLE</button>
               <p class="note">Closes the dongle and opens it again with the same settings (frequency, gain, bandwidth).
                 Use it when the spectrum stops or the dongle reported a USB error.</p>
+            </div>
             </div>
           </div>
           <div class="set-subpanel set-grid2" data-set-subpanel="dongle:adv" role="tabpanel" hidden>

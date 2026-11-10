@@ -100,6 +100,8 @@ Main Features
 - RECORDINGS tab (RECS key in the AUDIO group): the MP3 files of REC / REC SQ in a table (start, memory,
   frequency, mode, length, size), a click plays the file in the browser, NEXT continues with the next older
   file, filter, delete; the file being written is marked. HTTP API: /api/recordings.
+- SETTINGS > SDR DONGLE > BASIC: block diagram of the receive chain (antenna, upconverter, bias-tee, tuner,
+  A/D, ppm crystal, DC removal); numbered blocks match numbered setting cards, a click highlights the card (RTL-SDR only).
 - Waterfall keeps the history of the whole SDR band: after zooming out or dragging the section, the parts
   hidden before are shown at once (coarser), not an empty background.
 - HFDL decoder (aircraft data link on HF, 2.9-22 MHz, dumphfdl): DECODERS > HFDL, all HFDL channels inside

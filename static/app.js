@@ -1958,6 +1958,11 @@ function renderSettings() {
   $("rtlAgcBox").hidden = st.has_rtl_agc === false;
   $("biasTeeSetting").hidden = st.has_bias_tee === false;
   $("biasTee").checked = st.bias_tee;
+  // The block diagram and its numbers describe an RTL dongle (R820T tuner + RTL2832); LimeSDR and Airspy hide them.
+  const rtl = !noRtlDongle(st);
+  $("blkDiagram").hidden = !rtl;
+  $("dongleBasic").classList.toggle("no-blk", !rtl);
+  syncBlkDiagram();
   $("txSetting").hidden = !st.tx_capable;
   $("setTabTx").hidden = !st.tx_capable;
   if (!st.tx_capable && $("setTabTx").classList.contains("on")) showSetTab("dongle");
@@ -6724,6 +6729,24 @@ function showSetTab(name) {
   for (const p of document.querySelectorAll("[data-set-panel]")) p.hidden = p.dataset.setPanel !== name;
   if (name === "rotor") setTimeout(pollRotor);      // the ROTOR page fills at once
   if (name === "dongle") setTimeout(loadDongleList);   // ADVANCED: dongles and VFOs
+}
+// SDR DONGLE › BASIC block diagram: a block names its cards in data-blk-for; a click flashes the first shown one.
+// A block whose cards are all hidden (LimeSDR without bias-tee or RTL AGC, VFO with fixed dongle) is grey.
+function blkCards(g) {
+  return g.dataset.blkFor.split(" ").map((id) => $(id)).filter((el) => el && !el.hidden);
+}
+function syncBlkDiagram() {
+  for (const g of document.querySelectorAll(".blk-diagram .blk")) g.classList.toggle("off", !blkCards(g).length);
+}
+for (const g of document.querySelectorAll(".blk-diagram .blk")) {
+  const go = () => {
+    const cards = blkCards(g);
+    if (!cards.length) return;
+    cards[0].scrollIntoView({ block: "nearest", behavior: "smooth" });
+    for (const c of cards) { c.classList.remove("blk-flash"); void c.offsetWidth; c.classList.add("blk-flash"); }
+  };
+  g.addEventListener("click", go);
+  g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
 }
 function showSetSub(name) {
   const page = name.split(":")[0];
