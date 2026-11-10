@@ -1333,39 +1333,9 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .sat-panel .note { margin: 0; font-size: 12px; }
 .sat-panel .note:empty { display: none; }
 
-/* MEM tab: page LIST = filters on the left, the memories in columns on the right (the list scrolls inside) */
-.mem-listpage { flex-direction: row; }
-.mem-side { width: 320px; flex: none; display: flex; flex-direction: column; gap: 10px; }
-.mem-side #memCount { font-size: 12px; }
-.mem-add { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.mem-add .note { grid-column: 1 / -1; }
-.mem-filter { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
-.mem-filter input, .mem-filter select { width: 100%; min-width: 0; padding: 6px 9px; font-size: 13px; }
-.mem-filter select#memSort { width: auto; }
+/* MEM tab: shared bits (the LIST page is gone since 0.113beta2, CHANNELS is the list to recall from) */
 .key.danger:not(:disabled):hover { color: var(--red); border-color: var(--red); }
-.mem-filter input[type=search] { grid-column: 1 / -1; }
 .switch.small { gap: 6px; font-size: 13px; color: var(--amber); }
-.mem-list { position: relative; flex: 1; min-width: 0; overflow: auto; padding: 0 6px; min-height: 120px;
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); column-gap: 14px; align-content: start; }
-.mem-list .mem-group, .mem-list .mem-empty { grid-column: 1 / -1; }
-.mem-group { position: sticky; top: 0; z-index: 1; padding: 6px 2px 4px; font-size: 10px; text-transform: uppercase;
-  letter-spacing: .08em; color: var(--dim); background: #0e1216; }
-.mem {
-  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 18px; align-items: center; gap: 6px;
-  padding: 5px 6px; border-radius: 4px; cursor: pointer;
-}
-.mem:hover { background: #1a2028; }
-.mem.active { background: rgba(255, 216, 74, .22); box-shadow: inset 3px 0 0 var(--yellow), inset 0 0 0 1px rgba(255, 216, 74, .45); }
-.mem.active .name { color: var(--yellow); font-weight: 600; }
-.mem .star { border: none; background: none; padding: 0; color: var(--muted); font-size: 19px; line-height: 1; cursor: pointer; }
-.mem .star.on { color: var(--amber); }
-.mem .star:hover { color: var(--yellow); }
-.mem .edit { border: none; background: none; padding: 0; color: var(--dim); font-size: 13px; line-height: 1; cursor: pointer; }
-.mem .edit:hover { color: var(--yellow); }
-.mem .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
-.mem .meta { font: 12px ui-monospace, Consolas, monospace; color: var(--muted); text-align: right; white-space: nowrap; }
-.mem .meta b { color: var(--green); font-weight: 600; margin-left: 4px; }
-.mem .dup { margin-left: 6px; font-style: normal; color: var(--amber); font-size: 12px; cursor: help; }
 .mem-empty { padding: 12px; color: var(--dim); font-size: 12px; text-align: center; }
 
 /* ---------- narrower virtual window ---------- */
