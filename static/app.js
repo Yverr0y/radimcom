@@ -1145,17 +1145,98 @@ function colorRange() {
   return [lo, Number($("wfRange").value) / stepDb];
 }
 
-function onRow(center, span, b64, replay = false) {
+const b64Bytes = (b64) => {
+  const bin = atob(b64), vals = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) vals[i] = bin.charCodeAt(i);
+  return vals;
+};
+
+// History of the whole band (hidden canvas, scrolls together with the waterfall): when zooming out or moving the
+// section, the parts that were hidden are drawn from it (coarser, the whole band has the same number of points).
+let wfFull = null;   // { cv, ctx, c, span, n, row: ImageData, acc: { sum, cnt } }
+
+function wfFullAdd(vals, c, span, flush, h, lo, rng) {
+  const n = vals.length;
+  let F = wfFull;
+  if (!F || F.n !== n || Math.abs(F.span - span) > 1) {
+    const cv = document.createElement("canvas");
+    cv.width = n; cv.height = WF_ROWS;
+    F = wfFull = { cv, ctx: cv.getContext("2d"), c, span, n, row: new ImageData(n, 1), acc: null };
+    F.ctx.fillStyle = wfBg();
+    F.ctx.fillRect(0, 0, n, WF_ROWS);
+  }
+  if (F.cv.height !== WF_ROWS) {   // window height changed: keep the newest rows at the top
+    const old = F.ctx.getImageData(0, 0, n, Math.min(F.cv.height, WF_ROWS));
+    F.cv.height = WF_ROWS;
+    F.ctx.fillStyle = wfBg();
+    F.ctx.fillRect(0, 0, n, WF_ROWS);
+    F.ctx.putImageData(old, 0, 0);
+  }
+  const dx = Math.round(((c - F.c) / span) * n);
+  if (dx) {   // band centre moved: move the history with it
+    const img = F.ctx.getImageData(0, 0, n, WF_ROWS);
+    F.ctx.fillStyle = wfBg();
+    F.ctx.fillRect(0, 0, n, WF_ROWS);
+    F.ctx.putImageData(img, -dx, 0);
+    F.c += (dx * span) / n;
+    F.acc = null;
+  }
+  const off = Math.round(((c - F.c) / span) * n);
+  if (!F.acc) F.acc = { sum: new Float32Array(n), cnt: new Uint16Array(n) };
+  for (let j = 0; j < n; j++) {
+    const i = j - off;
+    if (i >= 0 && i < n) { F.acc.sum[j] += vals[i]; F.acc.cnt[j]++; }
+  }
+  if (!flush) return;
+  const d = F.row.data;
+  for (let j = 0; j < n; j++) {
+    let k = 0;
+    if (F.acc.cnt[j]) k = Math.max(0, Math.min(255, Math.round(((F.acc.sum[j] / F.acc.cnt[j] - lo) / rng) * 255))) * 3;
+    d[j * 4] = LUT[k]; d[j * 4 + 1] = LUT[k + 1]; d[j * 4 + 2] = LUT[k + 2]; d[j * 4 + 3] = 255;
+  }
+  F.acc = null;
+  F.ctx.drawImage(F.cv, 0, 0, n, WF_ROWS - h, 0, h, n, WF_ROWS - h);
+  for (let y = 0; y < h; y++) F.ctx.putImageData(F.row, 0, y);
+}
+
+const wfFullOf = (ev) => (ev.full ? { c: ev.fc, span: ev.fspan, row: ev.full } : null);
+
+/** Draws waterfall columns [x0, x1) from the whole-band history (where the history covers them). */
+function paintFromFull(x0, x1) {
+  const F = wfFull;
+  if (!F || !view || x1 <= x0) return;
+  const n = wfCanvas.width, left = imgC - view.span / 2, fLeft = F.c - F.span / 2;
+  const src = (x) => ((left + (x * view.span) / n - fLeft) / F.span) * F.n;   // waterfall column → history column
+  const dst = (s) => ((fLeft + (s * F.span) / F.n - left) / view.span) * n;
+  const s0 = Math.max(0, src(x0)), s1 = Math.min(F.n, src(x1));
+  if (s1 <= s0) return;
+  const d0 = dst(s0), d1 = dst(s1), rows = Math.min(WF_ROWS, F.cv.height);
+  wfCtx.drawImage(F.cv, s0, 0, s1 - s0, rows, d0, 0, d1 - d0, rows);
+}
+
+function onRow(center, span, b64, replay = false, full = null) {
   if (!st) return;
-  const bin = atob(b64);
-  const n = bin.length;
-  const vals = new Uint8Array(n);
-  for (let i = 0; i < n; i++) vals[i] = bin.charCodeAt(i);
+  const vals = b64Bytes(b64);
+  const n = vals.length;
 
   if (!wfRow || wfRow.width !== n || !view || Math.abs(view.span - span) > 1) {
+    // zoom changed: keep the shown picture, it is sharper than the whole-band history
+    let prev = null;
+    if (wfRow && view && wfCanvas.width === n) {
+      const cv = document.createElement("canvas");
+      cv.width = n; cv.height = wfCanvas.height;
+      cv.getContext("2d").drawImage(wfCanvas, 0, 0);
+      prev = { cv, c: imgC, span: view.span };
+    }
     clearWaterfall(n);
     view = { c: center, span };
     imgC = center;
+    paintFromFull(0, n);   // the history of the newly shown section (coarse) ...
+    if (prev) {            // ... and over it the previous picture, scaled to where it belongs
+      const x = (f) => ((f - (imgC - span / 2)) / span) * n;
+      const d0 = x(prev.c - prev.span / 2), d1 = x(prev.c + prev.span / 2), rows = Math.min(WF_ROWS, prev.cv.height);
+      wfCtx.drawImage(prev.cv, 0, 0, n, rows, d0, 0, d1 - d0, rows);
+    }
     drawOverlays();
   } else if (center !== view.c && !drag && Date.now() - viewLocalAt > 1500) {
     // The server moved the section (tuning near the edge, band change): move the image with it.
@@ -1175,7 +1256,9 @@ function onRow(center, span, b64, replay = false) {
     const i = j - off;
     if (i >= 0 && i < n) { wfAcc.sum[j] += vals[i]; wfAcc.cnt[j]++; }
   }
-  if (++wfAcc.rows >= every) {
+  const flush = ++wfAcc.rows >= every;
+  const h = Math.min(wfSpeed > 1 ? wfSpeed : 1, WF_ROWS);   // speed above 1×: the row is drawn as several lines
+  if (flush) {
     const d = wfRow.data;
     for (let j = 0; j < n; j++) {
       let c = 0;
@@ -1183,11 +1266,12 @@ function onRow(center, span, b64, replay = false) {
       d[j * 4] = LUT[c]; d[j * 4 + 1] = LUT[c + 1]; d[j * 4 + 2] = LUT[c + 2]; d[j * 4 + 3] = 255;
     }
     wfAcc = null;
-    // speed above 1×: the row is drawn as several lines
-    const h = Math.min(wfSpeed > 1 ? wfSpeed : 1, WF_ROWS);
     wfCtx.drawImage(wfCanvas, 0, 0, n, WF_ROWS - h, 0, h, n, WF_ROWS - h);
     for (let y = 0; y < h; y++) wfCtx.putImageData(wfRow, 0, y);
   }
+  // whole band: from the server when zoomed in, at 1× the row itself
+  if (full) wfFullAdd(b64Bytes(full.row), full.c, full.span, flush, h, lo, rng);
+  else wfFullAdd(vals, center, span, flush, h, lo, rng);
 
   if (!spec || spec.length !== n) spec = Float32Array.from(vals);
   for (let j = 0; j < n; j++) {
@@ -1206,12 +1290,13 @@ function setView(c) {
     wfCtx.fillStyle = wfBg();
     wfCtx.fillRect(0, 0, n, WF_ROWS);
     wfCtx.putImageData(img, -dx, 0);
+    imgC += (dx * view.span) / n;
+    if (dx > 0) paintFromFull(n - dx, n); else paintFromFull(0, -dx);   // the uncovered strip from the history
     if (spec) {
       const s = new Float32Array(n).fill(floor ?? 0);
       for (let j = 0; j < n; j++) { const i = j + dx; if (i >= 0 && i < n) s[j] = spec[i]; }
       spec = s;
     }
-    imgC += (dx * view.span) / n;
   }
   view.c = c;
   drawOverlays();
@@ -7184,7 +7269,7 @@ function connectEvents(v) {
     const ev = JSON.parse(e.data);
     v.rows.push(ev);
     if (v.rows.length > VFO_ROWS_MAX) v.rows.splice(0, v.rows.length - VFO_ROWS_MAX);
-    if (v === active) onRow(ev.c, ev.span, ev.row);
+    if (v === active) onRow(ev.c, ev.span, ev.row, false, wfFullOf(ev));
   });
   on("meter", (d) => { meterTarget = d.db; });
   on("ft8", (d) => {
@@ -7568,7 +7653,7 @@ async function selectVfo(v) {
   restoreBodyTab();
   // Everything shown belongs to the previous VFO: state, waterfall, decoders.
   closeFreqInput();
-  st = null; view = null; wfRow = null; spec = null; floor = null;
+  st = null; view = null; wfRow = null; spec = null; floor = null; wfFull = null;
   convPrev = null;
   adRotInfo = null; rotorInfo = null; rotorPendingOn = false;
   for (const id of ["modes", "bandwidths", "steps"]) $(id)._html = null;
@@ -7583,7 +7668,7 @@ async function selectVfo(v) {
   $("convWarn").hidden = true;
   if (v.st) {
     onStatus(v.st);
-    for (const r of v.rows) onRow(r.c, r.span, r.row, true);
+    for (const r of v.rows) onRow(r.c, r.span, r.row, true, wfFullOf(r));
     drawSpectrum();
   } else {
     clearWaterfall(wfCanvas.width || 1024);

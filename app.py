@@ -164,6 +164,18 @@ def save_config_later():
             tmp = CONFIG_PATH + ".tmp"
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(cfg, f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())     # without it a power cut can leave a file full of zero bytes
+            try:                         # previous good version → .bak (launcher restores it if the file breaks)
+                with open(CONFIG_PATH, encoding="utf-8") as f:
+                    old = f.read()
+                json.loads(old)
+                with open(CONFIG_PATH + ".bak", "w", encoding="utf-8") as f:
+                    f.write(old)
+                    f.flush()
+                    os.fsync(f.fileno())
+            except (OSError, ValueError):
+                pass
             os.replace(tmp, CONFIG_PATH)
 
     if save_timer:
@@ -359,7 +371,9 @@ def on_audio(pcm):
 
 receiver = Receiver(
     cfg,
-    on_row=lambda row, center, span: hub.event("wf", {"c": center, "span": span, "row": base64.b64encode(row).decode()}),
+    on_row=lambda row, center, span, full, full_c, full_span: hub.event("wf", {
+        "c": center, "span": span, "row": base64.b64encode(row).decode(),
+        **({"fc": full_c, "fspan": full_span, "full": base64.b64encode(full).decode()} if full else {})}),
     on_audio=on_audio,
     on_status=lambda: hub.event("status", state()),
     on_baseband=on_baseband,

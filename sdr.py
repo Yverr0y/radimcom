@@ -1284,11 +1284,15 @@ class Receiver:
             power = power * self.spur_mask
         else:
             self.spur_ema_key = None                # measured afresh when switched on again
-        view = power[start:start + span_bins].reshape(WF_BINS, -1).mean(axis=1)
-        db = 10 * np.log10(view + 1e-20)
-        row = np.clip((db - WF_DB_MIN) / WF_DB_STEP, 0, 255).astype(np.uint8)
+        def to_row(p):
+            db = 10 * np.log10(p.reshape(WF_BINS, -1).mean(axis=1) + 1e-20)
+            return np.clip((db - WF_DB_MIN) / WF_DB_STEP, 0, 255).astype(np.uint8).tobytes()
+
         view_center = lo_edge + (start + span_bins / 2) * bin_hz
-        self.on_row(row.tobytes(), view_center, span_bins * bin_hz)
+        # Zoomed in: also a coarse line of the whole band, so the browser can show the history of the parts hidden
+        # by the zoom when zooming out. At 1× the line itself is the whole band.
+        full = to_row(power) if zoom > 1 else None
+        self.on_row(to_row(power[start:start + span_bins]), view_center, span_bins * bin_hz, full, c["center_hz"], self.fs)
 
     def _loop(self, sdr, blocks, reader):
         last_status = 0

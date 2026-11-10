@@ -8,6 +8,7 @@ VFO settings (config_X.json) are created at the first start from config.json and
 import copy
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -21,6 +22,15 @@ from paths import BASE, data
 VFOS_PATH = data("vfos.json")
 
 
+def _valid_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            json.load(f)
+        return True
+    except (OSError, ValueError):
+        return False
+
+
 def ensure_configs(vfos):
     with open(data("config.json"), encoding="utf-8") as f:
         template = json.load(f)
@@ -29,7 +39,15 @@ def ensure_configs(vfos):
     for v in vfos:
         path = data(v["config"])
         if os.path.exists(path):
-            continue
+            if _valid_json(path):
+                continue
+            # damaged (e.g. zero bytes after a power cut): keep it as .broken, restore .bak or create a new one
+            os.replace(path, path + ".broken")
+            if _valid_json(path + ".bak"):
+                shutil.copyfile(path + ".bak", path)
+                print(f"VFO {v['name']}: {v['config']} was damaged, restored from {v['config']}.bak")
+                continue
+            print(f"VFO {v['name']}: {v['config']} was damaged (kept as .broken), creating a new one")
         c = copy.deepcopy(template)
         c.update(v.get("init", {}))
         c["device"] = 0

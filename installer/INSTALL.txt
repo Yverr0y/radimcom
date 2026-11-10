@@ -96,7 +96,11 @@ Main Features
   free connected dongles; the dongle being set is highlighted
 - Memory import (Brano): one LOAD FILE... key recognises the format by the content: RADIMCOM JSON / CSV, SDR#
   frequencies.xml, SDR++ frequency manager, gqrx bookmarks.csv, CHIRP CSV (LOAD SDR# removed).
+- Waterfall keeps the history of the whole SDR band: after zooming out or dragging the section, the parts
+  hidden before are shown at once (coarser), not an empty background.
 Minor Fixes
+- Damaged VFO settings (config_X.json full of zeros after a power cut) no longer stop the VFO: saving flushes
+  to disk and keeps a .bak, the launcher restores it (or creates new settings), the damaged file stays as .broken
 - AD window has a fixed height: an error, the rotor AZ / EL or RDS no longer change it
 - Memory editor (Brano): sort by a click on a column header, fixed column widths with tooltips, Rec as text,
   groups of a channel as a list, the bar above the table acts on the open channel when none is ticked.
