@@ -7523,10 +7523,14 @@ function medBulkIds() {
 function medRenderBulk() {
   $("medTable").classList.toggle("multi", medSel.size > 1);   // several rows selected: no ✎ (the editor takes one channel)
   const open = !medSel.size && medBulkIds().length ? mems.find((m) => m.id === medEditId) : null;
-  $("medSelCount").textContent = open ? "open channel" : `${medSel.size} selected`;
+  $("medSelCount").textContent = open ? "" : `${medSel.size} selected`;
   $("medSelCount").title = open ? `No channel ticked: the keys act on the channel open in the form (${open.name})` : "";
   const none = !medBulkIds().length;
   for (const b of $("medBulk").querySelectorAll("button")) b.disabled = none;
+  // the groups of the channel open in the form are set in the form: the group keys of the bar are off meanwhile
+  const form = !!medEditId;
+  for (const el of [$("medBulkGroupSel"), $("medBulkGroup")]) el.disabled = form;
+  for (const b of $("medBulk").querySelectorAll("[data-bulk=add], [data-bulk=remove]")) b.disabled = none || form;
 }
 
 for (const id of ["medSearch", "medDups", "medFav"]) $(id).addEventListener("input", renderMedChannels);
@@ -7597,7 +7601,8 @@ $("medBulk").addEventListener("click", async (e) => {
   if (!b || !ids.length) return;
   const act = b.dataset.bulk;
   const group = medBulkGroupName();
-  if (["add", "remove", "move"].includes(act) && !group) {
+  if (["add", "remove"].includes(act) && medEditId) return;   // the form is open: groups are set there
+  if (["add", "remove"].includes(act) && !group) {
     ($("medBulkGroup").hidden ? $("medBulkGroupSel") : $("medBulkGroup")).focus();
     medMsg($("medBulkGroup").hidden ? "Choose a group first." : "Enter the name of the new group first.", true);
     return;
@@ -7605,14 +7610,14 @@ $("medBulk").addEventListener("click", async (e) => {
   if (act === "remove" && !memAllGroups().includes(group)) { medMsg(`There is no group ${group}.`, true); return; }
   if (act === "export") { medExportAdd(mems.filter((m) => ids.includes(m.id))); showMedTab("export"); return; }
   if (act === "delete" && !confirm(`Delete ${ids.length} selected channel${ids.length === 1 ? "" : "s"}?`)) return;
-  const changes = { add: { groups_add: [group] }, remove: { groups_remove: [group] }, move: { groups: [group] },
+  const changes = { add: { groups_add: [group] }, remove: { groups_remove: [group] },
     fav: { fav: true }, unfav: { fav: false }, tagon: { tag: true }, tagoff: { tag: false },
     color: { color: $("medBulkColor").value }, nocolor: { color: "" } }[act];
   const r = await memApi("/api/memories/bulk", act === "delete" ? { ids, delete: true } : { ids, changes });
   if (!r.ok) { medMsg(r.error, true); return; }
   if (act === "delete") { medSel.clear(); if (ids.includes(medEditId)) medEditId = null; }
   medMsg(act === "delete" ? `Deleted ${r.data.deleted}.` : `Changed ${r.data.changed.length}.`);
-  if (["add", "move"].includes(act) && medBulkIsNew()) {
+  if (act === "add" && medBulkIsNew()) {
     // the new group now exists: pick it in the list (filled again by memChanged) instead of the name field
     const o = document.createElement("option"); o.value = group; $("medBulkGroupSel").append(o); $("medBulkGroupSel").value = group;
     $("medBulkGroup").hidden = true;
