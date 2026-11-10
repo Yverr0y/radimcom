@@ -138,7 +138,7 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
   - **TX** (LimeSDR only): Enable TX, see [Transmitting (LimeSDR)](configuration.md#transmitting-limesdr).
 - **MENU → MEM**: the list of frequency memories to recall them: a click tunes the memory (frequency, mode, width;
   a DAB memory turns DAB on with its channel, and the decoder of a memory is switched on). Search the name, group or kHz,
-  show one group, sort by frequency, name or group, or only the starred ones (★). ☆ on a row stars the memory, ✎ opens it in the editor. ⧉ marks a memory on the same frequency
+  show one group, sort by frequency, name or group, or only the starred ones (★). ☆ on a row stars the memory, ✎ opens it in the editor. The memory the VFO is tuned to is highlighted, and the list scrolls to it (the order stays) when the window opens and when the VFO moves to another memory. ⧉ marks a memory on the same frequency
   and mode as another one. **＋ SAVE CURRENT** opens the [memory editor](#memory-editor) with the tuned frequency, mode and
   width (and DAB channel) filled in, **＋ NEW** with an empty channel, **✎ EDITOR** the editor itself: adding, editing,
   deleting, groups, import and export are all there.

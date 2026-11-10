@@ -14,7 +14,7 @@
 
 ### Minor Fixes
 
-- **The MEM window is now only the list to recall memories from** (with ☆ to star a memory and ✎ to open it in the editor). ＋ SAVE CURRENT and ＋ NEW open the new channel in the editor (with the tuned frequency, mode, width and DAB channel, or empty), and the import / export part moved to the editor.
+- **The MEM window is now only the list to recall memories from** (with ☆ to star a memory and ✎ to open it in the editor). The memory the VFO is on is highlighted more clearly, and the list scrolls to it when the window opens or the VFO moves to another memory. ＋ SAVE CURRENT and ＋ NEW open the new channel in the editor (with the tuned frequency, mode, width and DAB channel, or empty), and the import / export part moved to the editor.
 
 ## Ver. 0.112
 

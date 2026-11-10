@@ -1053,7 +1053,7 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .key.danger:not(:disabled):hover { color: var(--red); border-color: var(--red); }
 .mem-filter input[type=search] { grid-column: 1 / -1; }
 .switch.small { gap: 6px; font-size: 13px; color: var(--amber); }
-.mem-list { flex: 1; overflow: auto; margin: 0 -6px; padding: 0 6px; min-height: 120px; }
+.mem-list { position: relative; flex: 1; overflow: auto; margin: 0 -6px; padding: 0 6px; min-height: 120px; }
 .mem-group { position: sticky; top: 0; z-index: 1; padding: 6px 2px 4px; font-size: 10px; text-transform: uppercase;
   letter-spacing: .08em; color: var(--dim); background: #0e1216; }
 .mem {
@@ -1061,7 +1061,8 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
   padding: 5px 6px; border-radius: 4px; cursor: pointer;
 }
 .mem:hover { background: #1a2028; }
-.mem.active { background: rgba(255, 216, 74, .1); box-shadow: inset 2px 0 0 var(--yellow); }
+.mem.active { background: rgba(255, 216, 74, .22); box-shadow: inset 3px 0 0 var(--yellow), inset 0 0 0 1px rgba(255, 216, 74, .45); }
+.mem.active .name { color: var(--yellow); font-weight: 600; }
 .mem .star { border: none; background: none; padding: 0; color: var(--dim); font-size: 13px; line-height: 1; }
 .mem .star.on { color: var(--amber); }
 .mem .star:hover { color: var(--yellow); }

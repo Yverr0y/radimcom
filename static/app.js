@@ -5371,7 +5371,7 @@ function openDrawer(id) {
     $(key).classList.toggle("on", d === id);
   }
   if (id) placeFloating[id]();
-  if (id === "memCard") $("memSearch").focus();
+  if (id === "memCard") { $("memSearch").focus(); markActiveMem(true); }
 }
 for (const [key, d] of Object.entries(DRAWERS)) {
   $(key).addEventListener("click", () => openDrawer($(d).hidden ? d : null));
@@ -5710,13 +5710,25 @@ function memAt(hz, mode) {
   return best;
 }
 
-function markActiveMem() {
+let memActiveKey = null;   // ids of the highlighted memories, to scroll the list only when they change
+function markActiveMem(scroll = false) {
   if (!st) return;
-  for (const el of $("memList").querySelectorAll(".mem")) {
+  const list = $("memList");
+  let first = null, key = "";
+  for (const el of list.querySelectorAll(".mem")) {
     const m = mems.find((x) => x.id === el.dataset.id);
-    el.classList.toggle("active", !!m && (m.dab_channel ? !!st.dab && st.dab_channel === m.dab_channel
-      : !st.dab && Math.abs(m.freq_hz - st.tune_hz) < 50 && m.mode === st.mode));
+    const on = !!m && (m.dab_channel ? !!st.dab && st.dab_channel === m.dab_channel
+      : !st.dab && Math.abs(m.freq_hz - st.tune_hz) < 50 && m.mode === st.mode);
+    el.classList.toggle("active", on);
+    if (on) { key += el.dataset.id + " "; first = first || el; }
   }
+  // The memory the VFO is on is scrolled into the middle of the list (the order stays), once when it changes
+  // or the window opens, so scrolling by hand is not undone.
+  if (first && !$("memCard").hidden && (scroll || key !== memActiveKey)) {
+    const top = first.offsetTop - list.clientHeight / 2 + first.offsetHeight / 2;
+    list.scrollTop = Math.max(0, top);
+  }
+  memActiveKey = key;
 }
 
 $("memList").addEventListener("click", async (e) => {   // a click recalls the memory; ☆ stars it, ✎ opens it in the editor
