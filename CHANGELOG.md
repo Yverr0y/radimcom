@@ -1,5 +1,9 @@
 # Changelog
 
+## Ver. 0.113beta2
+
+Changes since 0.113beta1 (GitHub branch `0.113beta1`).
+
 ## Ver. 0.113beta1
 
 ### Main Features

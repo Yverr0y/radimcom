@@ -88,6 +88,9 @@ Change log
 ----------
 (also in CHANGELOG.md)
 
+Ver. 0.113beta2
+(changes since 0.113beta1)
+
 Ver. 0.113beta1
 Main Features
 - New look: brushed black anodized aluminium panel, displays milled into it (sharp edges, glass), 3D keys
