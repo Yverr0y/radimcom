@@ -1656,10 +1656,11 @@ html[data-ink="dark"] .r-top, html[data-ink="dark"] .r-keys { border-bottom-colo
 .med-table input.short { width: 100%; min-width: 0; }
 .med-groups #medFormGroups { display: flex; flex-direction: column; flex-wrap: nowrap; max-height: 180px; overflow-y: auto;
   border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; background: rgba(0, 0, 0, .18); }
-.med-groups #medFormGroups .chip-check { display: flex; margin: 0; padding: 3px 0; border-bottom: 1px solid #1a1f26;
+.med-groups #medFormGroups .chip-check { display: flex; flex: none; min-height: 22px; margin: 0; padding: 3px 0; border-bottom: 1px solid #1a1f26;
   overflow: hidden; text-overflow: ellipsis; }
 .med-groups #medFormGroups .chip-check:last-child { border-bottom: none; }
 .med-edit-table .c-rec { width: 74px; }
 .med-edit-table .c-dec { width: 96px; }
 #medBulk .med-starbtn { font-size: 18px; line-height: 1; padding-top: 0; padding-bottom: 0; min-width: 32px; }
 #medBulk .med-starbtn.fill { color: var(--amber, #ffb02e); }
+.med-form .med-groups { flex: none; }

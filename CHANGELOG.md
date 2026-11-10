@@ -13,6 +13,7 @@ Changes since 0.113beta1 (GitHub branch `0.113beta1`).
 ### Minor Fixes
 
 - **AD window has a fixed height** (as with RDS), so an error message, the rotor AZ / EL or RDS no longer make it higher or lower.
+- **Memory editor: the group list in the channel form no longer squeezes its rows** with many groups; it keeps their height and scrolls (Brano, brjanicek).
 - **Memory editor** (Brano, brjanicek): the CHANNELS table sorts by a click on a column header (again = reversed; by Groups with a section per group), the Sort select is gone. Table columns have fixed widths, a longer text is cut and shown whole as the tooltip. The Rec column shows OFF / ON / SQ / ASQ as text. The groups in the channel form are a list, one per line, with a scroll bar. With no channel ticked, the bar above the table (tag colour SET / DEFAULT, star, tag on / off, groups, export, delete) acts on the channel open in the form. A small gap under the LIST / CHANNELS / GROUPS / IMPORT / EXPORT keys.
 
 ## Ver. 0.113beta1
