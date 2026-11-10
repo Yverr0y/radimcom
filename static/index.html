@@ -698,11 +698,9 @@
         <!-- IMPORT -->
         <section class="med-panel" data-med-panel="import" hidden>
           <div class="med-bar">
-            <input id="medImpPath" placeholder="SDR# folder, e.g. C:\sdrsharp" spellcheck="false" class="grow"
-              title="SDR# folder: frequencies.xml is read from it and from profile subfolders (e.g. Instances\Profile1)">
-            <button id="medImpSdr" class="key small">LOAD SDR#</button>
-            <button id="medImpFile" class="key small" title="RADIMCOM export (.json), CSV (.csv) or SDR# frequencies.xml">LOAD FILE…</button>
-            <input id="medImpInput" type="file" accept=".json,.csv,.txt,.xml,application/json,text/csv" hidden>
+            <button id="medImpFile" class="key small" title="Recognised by the content: RADIMCOM export (JSON, CSV), SDR# frequencies.xml, SDR++ frequency manager (frequency_manager_config.json), gqrx bookmarks.csv, CHIRP CSV. Several files at once.">LOAD FILE…</button>
+            <span class="muted med-impformats">RADIMCOM JSON / CSV · SDR# frequencies.xml · SDR++ · gqrx · CHIRP</span>
+            <input id="medImpInput" type="file" accept=".json,.csv,.txt,.xml,application/json,text/csv" multiple hidden>
           </div>
           <p class="note">The list is not saved until IMPORT. Edit the channels in the list, choose which to import (all by default);
             the ones not imported stay in the list for later.</p>

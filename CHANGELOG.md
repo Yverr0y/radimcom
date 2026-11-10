@@ -4,6 +4,10 @@
 
 Changes since 0.113beta1 (GitHub branch `0.113beta1`).
 
+### Main Features
+
+- **Memory import recognises the file format.** MEMORIES → IMPORT has one **LOAD FILE…** key (LOAD SDR# and the SDR# folder field are gone); it takes one or more files and recognises each by its content: RADIMCOM JSON or CSV, SDR# `frequencies.xml`, and new: the **SDR++** frequency manager (`frequency_manager_config.json`, its lists become groups), **gqrx** `bookmarks.csv` (tags become groups, tag colour too) and **CHIRP** CSV (comment as the note). The message names the format found; an unknown file lists the supported ones. HTTP API: `{"format": "auto", "text", "filename"}` in `/api/memories/preview`.
+
 ## Ver. 0.113beta1
 
 ### Main Features

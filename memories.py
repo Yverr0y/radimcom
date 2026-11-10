@@ -454,6 +454,109 @@ def parse_json(obj):
     raise ValueError("expected a RADIMCOM memories export (JSON)")
 
 
+# SDR++ frequency manager: mode numbers of its radio module
+SDRPP_MODES = {0: ("FM", 12500), 1: ("WFM", 200000), 2: ("AM", 8000), 3: ("AM", 8000), 4: ("USB", 2700),
+               5: ("CW", 500), 6: ("LSB", 2700)}
+# gqrx bookmarks.csv: modulation names
+GQRX_MODES = {"AM": "AM", "AM-SYNC": "AM", "NARROW FM": "FM", "NFM": "FM", "WFM (MONO)": "WFM", "WFM (STEREO)": "WFM",
+              "WFM (OIRT)": "WFM", "WFM": "WFM", "LSB": "LSB", "USB": "USB", "CW-L": "CW", "CW-U": "CW", "CW": "CW"}
+# CHIRP CSV: modes, with the bandwidth used for them
+CHIRP_MODES = {"FM": ("FM", 12500), "NFM": ("FM", 8000), "WFM": ("WFM", 200000), "AM": ("AM", 8000),
+               "NAM": ("AM", 6000), "USB": ("USB", 2700), "LSB": ("LSB", 2700), "CW": ("CW", 500),
+               "DV": ("DSD", 12500), "DMR": ("DSD", 12500), "DN": ("DSD", 12500), "P25": ("DSD", 12500)}
+FORMATS = "RADIMCOM JSON or CSV, SDR# frequencies.xml, SDR++ frequency manager JSON, gqrx bookmarks.csv, CHIRP CSV"
+
+
+def parse_sdrpp(obj, group=""):
+    """SDR++ frequency_manager_config.json ({"lists": {list: {"bookmarks": {name: {frequency, bandwidth, mode}}}}})
+    -> (raw entries, groups). Each list becomes a group."""
+    out = []
+    for lname, lst in (obj.get("lists") or {}).items():
+        marks = lst.get("bookmarks") if isinstance(lst, dict) else None
+        for name, b in (marks or {}).items():
+            if not isinstance(b, dict):
+                continue
+            mode, bw = SDRPP_MODES.get(b.get("mode"), (f"mode {b.get('mode')}", 0))
+            out.append({"name": name, "groups": [lname or group or DEFAULT_GROUP], "freq_hz": b.get("frequency", ""),
+                        "mode": mode, "bw": b.get("bandwidth") or bw or 3000})
+    return out, []
+
+
+def parse_gqrx(text, group=""):
+    """gqrx bookmarks.csv: a table of tags ("# Tag name ; color") and of bookmarks
+    ("# Frequency ; Name ; Modulation ; Bandwidth ; Tags"). Tags become groups, the colour of the first tag
+    the tag colour."""
+    colors, out, section = {}, [], ""
+    for line in text.splitlines():
+        cells = [c.strip() for c in line.split(";")]
+        if not line.strip():
+            continue
+        if line.lstrip().startswith("#"):
+            section = "tags" if "tag name" in line.lower() else "marks" if "frequency" in line.lower() else section
+            continue
+        if section == "tags" and len(cells) >= 2:
+            colors[cells[0]] = cells[1]
+        elif section == "marks" and len(cells) >= 4:
+            tags = [t.strip() for t in (cells[4] if len(cells) > 4 else "").split(",") if t.strip()]
+            groups = [t for t in tags if t.lower() != "untagged"] or [group or DEFAULT_GROUP]
+            mod = cells[2].upper()
+            color = colors.get(tags[0], "") if tags and tags[0].lower() != "untagged" else ""
+            out.append({"name": cells[1] or cells[0], "groups": groups, "freq_hz": cells[0],
+                        "mode": GQRX_MODES.get(mod, cells[2]), "bw": cells[3] or 3000,
+                        "color": color if re.fullmatch(r"#[0-9a-fA-F]{6}", color or "") else ""})
+    return out
+
+
+def parse_chirp(text, group=""):
+    """CHIRP CSV (Location, Name, Frequency in MHz, ..., Mode, ..., Comment) -> raw entries."""
+    out = []
+    for r in csv.DictReader(io.StringIO(text)):
+        r = {(k or "").strip().lower(): (v or "").strip() for k, v in r.items() if k}
+        if not r.get("frequency"):
+            continue
+        mode, bw = CHIRP_MODES.get(r.get("mode", "FM").upper(), (r.get("mode", ""), 12500))
+        try:
+            hz = float(r["frequency"].replace(",", ".")) * 1e6
+        except ValueError:
+            hz = r["frequency"]
+        out.append({"name": r.get("name") or r["frequency"], "groups": [group or "CHIRP"], "freq_hz": hz,
+                    "mode": mode, "bw": bw, "note": r.get("comment", "")})
+    return out
+
+
+def parse_any(text, filename=""):
+    """A file of any supported format (see FORMATS), recognised by its content.
+    Returns (name of the format, raw entries, groups [{"name", "note"}]); ValueError if it is none of them.
+    Formats without groups put the entries into a group named after the file."""
+    text = text.lstrip("\ufeff")
+    stem = os.path.splitext(os.path.basename(filename or ""))[0][:GROUP_MAX]
+    head = text.lstrip()[:1]
+    if head in "[{" and head:
+        try:
+            obj = json.loads(text)
+        except ValueError as e:
+            raise ValueError(f"not valid JSON ({e})")
+        if isinstance(obj, dict) and isinstance(obj.get("lists"), dict):
+            raw, gs = parse_sdrpp(obj, stem)
+            return "SDR++ frequency manager", raw, gs
+        raw, gs = parse_json(obj)
+        return "RADIMCOM JSON", raw, gs
+    if head == "<":
+        root = ET.fromstring(text)
+        if root.find(".//MemoryEntry") is None and root.tag != "MemoryEntry":
+            raise ValueError(f"unknown XML (<{root.tag}>); supported: {FORMATS}")
+        return "SDR# frequencies.xml", parse_sdrsharp_xml(text), []
+    first = next((ln.strip().lower() for ln in text.splitlines() if ln.strip()), "")
+    if first.startswith("#") and ("tag name" in first or "frequency" in first):
+        return "gqrx bookmarks", parse_gqrx(text, stem), []
+    cols = {c.strip().strip('"') for c in re.split(r"[;,\t]", first)}
+    if {"location", "name", "frequency"} <= cols:
+        return "CHIRP CSV", parse_chirp(text, stem), []
+    if "name" in cols and cols & {"frequency_hz", "frequency_khz", "frequency_mhz"}:
+        return "RADIMCOM CSV", parse_csv(text), []
+    raise ValueError(f"unknown format; supported: {FORMATS}")
+
+
 def preview(raw, dab_channels):
     """Raw entries -> entries checked like on import, for the import list: each valid one as a memory (with a new
     id) plus "duplicate" (name of an existing memory on the same frequency and mode, or ""); an invalid one keeps
