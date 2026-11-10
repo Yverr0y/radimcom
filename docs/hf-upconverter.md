@@ -19,7 +19,7 @@ Setup:
 - In the SDR setup (`setup.bat`) answer **Y** to "Is it connected through an HF upconverter?" and enter the LO in MHz.
   Later it can be changed in **SET → Upconverter LO**.
 - Mode **auto** (default with a converter): below 30 MHz the receiver tunes through the converter, from 30 MHz directly.
-  If your converter has a manual bypass switch (or you swap antennas), the **CONV / BYPASS** flag and a warning
+  If your converter has a manual bypass switch (or you swap antennas), the **CONV / BYPASS** indicator in the VFO window and a warning
   show which position is needed when you cross 30 MHz.
 - The LO crystal is rarely exact: if stations are slightly off, correct the LO in SET (e.g. 125.0012 MHz) or the ppm.
   A good reference is a station with a known frequency, e.g. DWD RTTY on 4583 / 7646 / 10100.8 kHz.

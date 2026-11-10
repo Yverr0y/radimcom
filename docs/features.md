@@ -10,7 +10,7 @@
   each. A chained VFO listens anywhere inside the band its dongle receives and shows a green CHAIN flag
   (see [VFO chaining](configuration.md#vfo-chaining-one-dongle-for-several-vfos)).
 - **Modes:** AM, FM, WFM, LSB, USB and CW with selectable filter width, and DSD for digital voice (see below).
-- **WFM stereo** (19 kHz pilot, **ST** flag) and **RDS**: station name (PS), RadioText, PI, PTY, TP/TA and clock (CT).
+- **WFM stereo** (19 kHz pilot, **ST** indicator) and **RDS**: station name (PS), RadioText, PI, PTY, TP/TA and clock (CT).
 - **Squelch** for AM, FM and WFM, each mode with its own level. It decides every ~8 ms, so it does not cut off
   the start of a transmission (airband), and closes about 25 ms after the signal drops below the level. The level is marked on the S-meter with a yellow tick.
   - **ASQ (auto squelch):** the squelch level follows the noise in the channel plus a margin (6 dB by default, 2–30 dB in SET, AUDIO tab).
@@ -18,8 +18,8 @@
     See [Function keys → AUDIO](controls.md#function-keys).
 - **AGC+ (smart gain):** sets the tuner gain from the level of the A/D converter, as high as possible without clipping it,
   also with strong signals outside the channel. With the squelch set, AGC+ switches it to auto squelch. See [Function keys → GAIN](controls.md#function-keys).
-- **ATU (autotune), experimental,** in USB, LSB and AM: a click on a signal moves the tuning onto its carrier (AM within a few Hz in under 1 s,
-  SSB from the voice in 2–3 s). See [Function keys → TUNE](controls.md#function-keys).
+- **ATU (autotune), experimental,** in USB, LSB and AM: a click on a signal moves the tuning onto its carrier (AM within a few Hz in under 1 s);
+  in SSB the edge of the voice band goes onto the red line (USB lower edge, LSB upper edge, ~2 s). See [Function keys → TUNE](controls.md#function-keys).
 - **Audio processing:** automatic notch filter (NF), audio low-pass and high-pass filters (LPF / HPF), automatic audio level (ALC).
 - **AFI (audio frequency inversion):** voice inversion scrambler / descrambler, inversion frequency 500–4000 Hz; REC and the decoders get the descrambled audio.
   See [Function keys → AUDIO](controls.md#function-keys).
@@ -57,24 +57,31 @@ and the country flag from the ICAO address; a click on a message pauses the list
 ## UI features
 
 - **Transceiver-style screen:** 7-segment frequency displays, function keys and band buttons (the **BAND** key hides the row of band buttons).
+- **Skins** (SET → SKINS): dark, black or light brushed aluminium, mahogany, or a panel sprayed in a RAL colour (or any colour). See [SET](controls.md).
 - **S-meter in seven layouts** (needle, bar graph, LED bar, VFD display, amber needle, 7-segment, peak bar), with the squelch level marked.
   Under it small bars show the CPU load and memory use of the PC.
 - **All VFOs side by side:** the active VFO is lit, inactive ones are grey
   but show the actual tuned frequency. The waterfall of every VFO keeps running, so its history is visible
   right after switching. With fewer than four SDRs the remaining VFO windows stay in place, greyed out ("NO SDR").
-- **Memory name or band plan above each VFO:** a frame on top of the VFO window shows the name of the memory on its
-  frequency, otherwise the band plan label for that frequency, e.g. `HAM 70cm` (in grey).
-- **RF GAIN and SQUELCH sliders** under each VFO display.
-- **Spectrum and waterfall** with 1×–32× zoom; tuning by a click, dragging the band or the passband, the mouse wheel or the wheel over a digit of the display. See [Tuning](controls.md#tuning).
+- **Each VFO is one dark display window:** on top the name of the memory on its frequency, otherwise the band plan label
+  (e.g. `HAM 70cm`) or the satellite transponder, lit on the active VFO (a memory name in its own tag colour); the receiver state, recording and mute indicators;
+  the frequency; an info row (RX/TX, filter width, HPF and LPF with cutoffs, ST, SQL, CONV/BYPASS); annunciators lit like LCD segments (mode, AGC / AGC+, NF, SP, ALC, AFI, ASQ, ATU, satellite Doppler, CUE);
+  **RF and SQL segment bars** (drag, click or mouse wheel). See [VFO window](controls.md#vfo-window).
+- **Spectrum and waterfall** with 1×–32× zoom and a waterfall speed bar (1/8 – 4×) and waterfall settings under a gear (colour scheme, range, offset); tuning by a click, dragging the band or the passband, the mouse wheel or the wheel over a digit of the display. See [Tuning](controls.md#tuning).
 - **Band plan on the frequency axis** (Europe / ITU Region 1: ham, broadcast, aviation, marine, satellites, mobile networks, ISM…); hover it for the descriptions of all bands at that frequency.
 - **Audio spectrum bubble:** hovering over the passband label shows the audio spectrum of the active VFO (in WFM the MPX signal with the stereo pilot, in CW also the decoded text).
-- **Frequency memories** (MEM) with groups, favourites, import from SDR# (`frequencies.xml`) and JSON, export to JSON; memories in view show as tags in the spectrum,
+- **Frequency memories** (MEMORIES tab) with groups, favourites, import from SDR# (`frequencies.xml`), JSON and CSV, export to JSON and CSV; memories in view show as tags in the spectrum,
   ↑ ↓ arrow keys recall the next one. A memory can also hold a DAB channel.
+- **Memory editor** (pages of the MEMORIES tab; by Brano, [brjanicek](https://github.com/brjanicek)): channels in several groups, with a decoder and a recording (REC, REC SQ or REC SQ with ASQ) started at recall, a note and their own tag colour
+  (or no tag); groups with notes (add, rename, copy, merge, delete); duplicates shown; import from SDR#, JSON or CSV and export to
+  JSON or CSV, both through a list to edit and choose from first. See [Memory editor](controls.md#memory-editor).
 - **Audio** starts automatically when the page opens and comes from the active VFO.
 - **CUE:** keep listening to other VFOs at a separate CUE level while one VFO is selected;
   MAIN and CUE volume faders, stereo level meter, MUTE.
 - **DECODERS tab** with a page for each decoder, and the **SATELLITES** tab (also the **SAT** key), which shows the active linear, FM, image and other satellites from AMSAT, with clickable links.
-- **SET and MEM** in floating windows that remember their place; the radio stays usable behind them.
+- **AD (additional display)** under the S-meter: error messages (red, accepted by OK, the frame blinks), the rotor AZ / EL (MONITOR) or RDS, by this priority.
+- **Rotor page** in SETTINGS: ON / OFF per VFO, polar plot and elevation column 0–180° with the antenna and its target, a click moves the antenna; STOP, RESET, MONITOR.
+- **SETTINGS tab** (gear key) with pages SDR DONGLE (BASIC, ADVANCED), AUDIO, UI (SKINS, S-METER, TOUCHPAD), ROTOR, TX; **MEMORIES tab** (MEM key) with the pages LIST, CHANNELS, GROUPS, IMPORT, EXPORT.
 - **Clock** in local time or UTC (a click switches).
 - **The page scales with the browser window** (laid out for at least 1920 × 820 px), so the layout does not reflow in small windows.
 

@@ -88,6 +88,49 @@ Change log
 ----------
 (also in CHANGELOG.md)
 
+Ver. 0.113beta1
+Main Features
+- New look: brushed black anodized aluminium panel, displays milled into it (sharp edges, glass), 3D keys
+  that stay pressed with an LED line when on, spectrum / waterfall as a display sunk behind glass.
+- Skins (SET -> SKINS): dark / black / light brushed aluminium, mahogany, or paint in a RAL colour (or own colour);
+  remembered in the browser.
+- Every VFO is one dark display window: name (lit on the active VFO; a memory name in its own tag colour), connection state, frequency, info row
+  (RX/TX, filter width, HPF / LPF with cutoffs, ST, SQL, CONV/BYPASS), annunciators lit when on (mode, AGC(+),
+  NF, SP, ALC, AFI, ASQ, ATU, satellite Doppler, CUE) and RF / SQL segment bars (drag, click, mouse wheel).
+- Connection state as a USB icon: green = running, blinking orange = connecting, grey = disconnected.
+- VFO keys A-D beside the S-meter (the flags there are gone, their information is in the VFO windows).
+- AD (additional display) under the S-meter, by priority: 1. error messages (red, accepted by a small OK, the frame
+  blinks red every 0.5 s; they used to show 5 s under the logo), 2. rotor AZ / EL (MONITOR), 3. RDS.
+  S reading and CPU / MEM in a window under the S-meter.
+- SP key: a press forgets all stored spurs, learns the band received now and switches the removal on
+  (blinking red while learning, then steady yellow); another press switches it off.
+- Waterfall speed (vertical zoom): vertical bar in the top right corner of the waterfall, 1/8 - 4x.
+- Waterfall settings: gear above the speed bar, window on mouse hover: colour scheme (Classic, Inferno,
+  Viridis, Turbo, Ice), colour range and offset (moved from SET -> DISPLAY).
+- SETTINGS tab instead of the floating SET window: the SET key is a gear; while lit, the bottom part has
+  a SETTINGS tab (beside DECODERS) with pages SDR DONGLE (BASIC, ADVANCED: SP and AGC+), AUDIO, UI (SKINS,
+  S-METER, TOUCHPAD), ROTOR (TX); no scrolling. Bandwidth moved to SDR DONGLE. AUDIO without the squelch
+  slider (SQL bar in the VFO window), only the ASQ margin.
+- ROTOR page: ON / OFF for the VFO (OFF hides the rest); polar plot and elevation column 0-180 deg instead of
+  Position / Go to (a click moves the antenna); actual AZ / EL (orange) and requested (green); STOP, RESET,
+  MONITOR (AZ / EL in the AD, the requested one only while turning); azimuth calibration. The position is
+  filtered, the ~1 % noise of the readings no longer flickers.
+- ATU in SSB: the edge of the signal goes onto the red line (USB lower edge, LSB upper edge);
+  wheel / drag tuning starts ATU from a 150 Hz move (was 250 Hz).
+- Memory editor (contributed by Brano, github.com/brjanicek): channels in several groups, with a decoder
+  switched on at recall, a recording started at recall (OFF, ON = REC, SQ = REC SQ, ASQ = REC SQ with auto squelch),
+  a red dot on the tag of a recording channel, a note, their own tag colour or a hidden tag; sort by group, frequency, name, mode or decoder; duplicates shown.
+  Groups with notes: add, rename, copy, merge, delete. Import from SDR#, JSON or CSV and export to JSON or CSV,
+  both through a list to edit and choose from first. New file data\memory_groups.json; memories.json is copied
+  to memories.json.bak before the first change.
+- MEMORIES tab instead of the floating MEM window: while the MEM key is lit, the bottom part has a MEMORIES tab with the pages
+  LIST (recall), CHANNELS, GROUPS, IMPORT and EXPORT (the memory editor). SAVE CURRENT and NEW open the new
+  channel in CHANNELS.
+Minor Fixes
+- Speaker / REC / REC SQ as raised keys with LED lines; faders with a metal knob.
+- RADIMCOM logo: raised white letters, raised ring LED; the version under the logo instead of the author line.
+- Lighter grey texts on the panel.
+
 Ver. 0.112
 Main Features
 - ASQ key (AUDIO group, AM/FM/WFM): auto squelch, the level follows the noise (measured in the spectrum, not on the signal) + a margin

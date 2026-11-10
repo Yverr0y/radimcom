@@ -44,7 +44,7 @@ Up to four SDRs at once, each assigned to a VFO by its serial number; one dongle
 - **Modes** AM, FM, WFM (stereo + RDS), LSB, USB, CW and DSD, with notch, ALC, audio LPF / HPF and AFI (voice inversion). → [Function keys](docs/controls.md#function-keys)
 - **Squelch with ASQ (auto squelch)**: the level follows the measured noise floor plus a margin. → [AUDIO keys](docs/controls.md#function-keys)
 - **AGC+**: tuner gain set from the A/D level, as high as possible without clipping. → [GAIN keys](docs/controls.md#function-keys)
-- **ATU (autotune, experimental)**: a click on an SSB or AM signal moves the tuning onto its carrier. → [TUNE keys](docs/controls.md#function-keys)
+- **ATU (autotune, experimental)**: a click on an AM signal moves the tuning onto its carrier, on an SSB signal it puts the signal edge on the red line. → [TUNE keys](docs/controls.md#function-keys)
 - **Shortwave (HF)** through an upconverter, always showing the real frequency. → [HF upconverter](docs/hf-upconverter.md)
 - **Digital-mode decoders:** FT8, WEFAX, CW, RTTY, SSTV and PACKET (AX.25 1200 / 9600 Bd, APRS with map). → [DECODE](docs/controls.md#function-keys)
 - **Aircraft data link:** ACARS and VDL2 with CPDLC and ADS-C decoded to plain text. → [Aircraft](docs/decoders/aircraft.md)
@@ -54,12 +54,12 @@ Up to four SDRs at once, each assigned to a VFO by its serial number; one dongle
 
 ### User interface
 
-- **Transceiver-style screen:** S-meter, 7-segment displays, function keys; all VFOs side by side, each waterfall keeps running. → [Controls](docs/controls.md)
-- **Spectrum and waterfall** with 1×–32× zoom; tune by click, drag, mouse wheel or the wheel over a digit. → [Tuning](docs/controls.md#tuning)
+- **Transceiver-style screen** in brushed black anodized aluminium (other skins: black or light aluminium, mahogany, RAL paint): S-meter, recessed displays, 3D keys; every VFO is one dark display window with all its state, side by side, each waterfall keeps running. → [Controls](docs/controls.md)
+- **Spectrum and waterfall** with 1×–32× zoom and a waterfall speed bar; tune by click, drag, mouse wheel or the wheel over a digit. → [Tuning](docs/controls.md#tuning)
 - **Band plan on the frequency axis**, audio spectrum bubble, seven S-meter layouts. → [Tuning](docs/controls.md#tuning)
-- **Memories** with favourites, spectrum tags and import from SDR#. → [MEM](docs/controls.md#function-keys)
+- **Memories** with favourites, spectrum tags and a memory editor (groups with notes, decoder and recording at recall, import from SDR# / JSON / CSV, export). → [MEM](docs/controls.md#function-keys), [Memory editor](docs/controls.md#memory-editor)
 - **CUE**: hear other VFOs while one is selected, with MAIN / CUE faders and a level meter. → [Function keys](docs/controls.md#function-keys)
-- **DECODERS** and **SATELLITES** tabs, floating SET and MEM windows. → [Controls](docs/controls.md)
+- **DECODERS**, **SATELLITES**, **MEMORIES** (memory list and memory editor) and **SETTINGS** tabs. → [Controls](docs/controls.md)
 
 The complete feature list: [docs/features.md](docs/features.md).
 
@@ -97,6 +97,7 @@ Transmitting (LimeSDR) is off by default and legal only with a valid licence, se
 - **Bugs and feature requests:** [issues](https://github.com/om2amr/RADIMCOM/issues/new/choose)
 - **Questions and help with setup:** [Discussions](https://github.com/om2amr/RADIMCOM/discussions)
 - **Contributing code:** [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md)
+- **Contributors:** Brano ([brjanicek](https://github.com/brjanicek)) – the memory editor (0.113)
 
 ## License
 

@@ -46,7 +46,7 @@ transponder stops it. The name frame of the VFO shows the satellite and transpon
 
 ## Rotor
 
-1. In **SET → ROTOR** choose the serial port of the K3NG controller (GS-232 commands, 9600 baud) and turn on **Rotor link**, for one VFO. The tab also has the position, **GO** to an azimuth and elevation, the azimuth calibration and **STOP**.
+1. In **SETTINGS → ROTOR** press **ON** (for one VFO) and choose the serial port of the K3NG controller (GS-232 commands, 9600 baud). The page also has the position on a polar plot and an elevation column (a click moves the antenna there), **STOP**, **RESET**, **MONITOR** (AZ / EL in the additional display under the S-meter) and the azimuth calibration.
 2. On the **TRACK** page, the **Rotor** part: **TRACK** follows the passes of the chosen satellite and moves the rotor (it turns the rotor link on), a second press ends it and stops the rotor. Beside it **STOP** stops both motors and ends the tracking. The flag beside *Rotor*: **TRACKING** (the rotor follows), **CALC ONLY** (the tracking runs but the rotor does not move: the link failed, a fault, STOP in SET; TRACK off and on moves it again) or **NOT TRACKING**. The **TRACK** key on the MAP page and in the pass details of PASSES opens that satellite here (one not on the timeline is added to it).
 3. The polar plot shows the antenna as a red cross, the elevation chart (0 to 180 degrees on this page) its real elevation, over 90 when it looks back. A click on the polar plot turns the antenna there, a click on the elevation chart sets only the elevation.
 
@@ -64,10 +64,10 @@ elevation 2.3°/s) and the one with the smallest pointing error is used:
 On a tie (2° or less) the order of the table decides. The plan gives K3NG its own 0–450 azimuth, so the side of the overlap is decided
 by the plan; where K3NG would take the other side, the rotor goes through a point 90° before the target first. TRACK turns the rotor
 to the start of the next pass in time (the move plus 30 s), follows the pass 2 s ahead and after LOS waits for the next one; the
-rotor stays where it is between the passes. While TRACK moves the rotor, GO and the clicks on the plots are refused.
+rotor stays where it is between the passes. While TRACK moves the rotor, the clicks on the plots (here and in SETTINGS → ROTOR) are refused.
 
 **Rotor safety:** position readings can be noisy and K3NG does not acknowledge commands, so RADIMCOM checks the position itself. A reading that jumps faster
-than the rotor can move, or a move without progress, stops the rotor and needs **RESET FAULT** in SET. A lost serial connection and STOP also stop it. After these the tracking only calculates (flag CALC ONLY) until TRACK is pressed off and on again.
+than the rotor can move, or a move without progress, stops the rotor and needs **RESET** in SETTINGS → ROTOR. A lost serial connection and STOP also stop it. After these the tracking only calculates (flag CALC ONLY) until TRACK is pressed off and on again.
 K3NG ends any move after its operation timeout (60 s here), so an unchanged target is sent again every 30 s.
 
-**Azimuth calibration:** K3NG counts 0–450 degrees from the left stop of the rotor, which need not be exactly north. In **SET → ROTOR**, enter the true azimuth of the antenna at K3NG 0 and at K3NG 450 (measure it, for example, with the antenna parallel to the walls of a house whose orientation is known from a map; 0 and 450 = no correction). The position, the tracking and GO then use true azimuths. K3NG reports its azimuth only modulo 360, so RADIMCOM follows the whole 0–450 position itself and saves it; for GO and the clicks on the plots it picks the command that ends nearest the wanted direction. A direction just beyond a stop is reached as near as the rotor can get, without a fault.
+**Azimuth calibration:** K3NG counts 0–450 degrees from the left stop of the rotor, which need not be exactly north. In **SETTINGS → ROTOR**, enter the true azimuth of the antenna at K3NG 0 and at K3NG 450 (measure it, for example, with the antenna parallel to the walls of a house whose orientation is known from a map; 0 and 450 = no correction). The position, the tracking and the clicks on the plots then use true azimuths. K3NG reports its azimuth only modulo 360, so RADIMCOM follows the whole 0–450 position itself and saves it; for the clicks on the plots it picks the command that ends nearest the wanted direction. A direction just beyond a stop is reached as near as the rotor can get, without a fault.

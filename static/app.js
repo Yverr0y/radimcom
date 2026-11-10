@@ -57,7 +57,6 @@ let pendingSet = {};
 let setTimer = null;
 let localChangeAt = 0;
 let stepHz = 1000;
-let errorUntil = 0; // until when to show the error of the last change in the status field
 let vbase = ""; // receiver address of the active VFO ("" = server of this page, mode without VFOs)
 let vfos = []; // [{name, port, serial, note, base, st, rows, online}]
 let active = null; // active VFO
@@ -107,24 +106,15 @@ async function flushSend() {
   pendingSet = {};
   if (!Object.keys(body).length) return;
   const res = await fetch(vbase + "/api/set", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const err = $("settingsError");
-  err.hidden = res.ok;
-  if (!res.ok) {
-    err.textContent = (await res.json()).error || "Error";
-    // The settings drawer is usually closed: show the error in the status field too.
-    errorUntil = Date.now() + 5000;
-    renderStatusPill(err.textContent);
-  }
+  if (!res.ok) adError((await res.json().catch(() => ({}))).error || "Error");
 }
 
-/** Status field under the clock: error of the last change (5 s). With VFOs the receiver state is in the block above
- *  the display, so the field is otherwise hidden; a standalone receiver without VFOs shows its state here. */
-function renderStatusPill(error) {
+/** Status field under the clock: only a standalone receiver without VFOs shows its state here (with VFOs the state
+ *  is in the VFO windows). Error messages go to the additional display (adError). */
+function renderStatusPill() {
   const pill = $("status");
-  if (error) pill._error = error;
   let txt = null, cls = "bad";
-  if (Date.now() < errorUntil) txt = pill._error;
-  else if (active && !active.name) {
+  if (active && !active.name) {
     const s = st;
     txt = !active.online && s ? "connection to server lost…" : !s ? "waiting for receiver…"
       : s.error ? `error: ${s.error}` : `receiver ${s.status}`;
@@ -178,7 +168,7 @@ function autotuneAt(hz) {
 /** Wheel, arrow keys, dragging or the VFO display digits: autotune once the tuning has rested for ATU_REST_MS.
  *  prevHz = the frequency before this step. A move under ATU_MIN_MOVE_HZ from where the gesture began is fine tuning
  *  by ear and is left alone. */
-const ATU_REST_MS = 700, ATU_MIN_MOVE_HZ = 250;
+const ATU_REST_MS = 700, ATU_MIN_MOVE_HZ = 150;
 let atuTimer = null, atuFrom = null;
 function atuSoon(prevHz) {
   if (atuTimer === null) atuFrom = prevHz;   // a new gesture
@@ -213,8 +203,6 @@ function renderControls() {
   segButtons($("bandwidths"), BANDWIDTHS[st.mode], bw, fmtBw);
   segButtons($("steps"), STEPS, stepHz, fmtBw);
   renderZoomBar();
-  $("modeBadge").textContent = st.mode;
-  $("bwBadge").textContent = fmtBw(bw);
   renderSqlBadge();
   renderRds();
 }
@@ -425,6 +413,19 @@ $("vfoList").addEventListener("wheel", (e) => {
   }, 60);
 }, { passive: false });
 
+// Mouse wheel over the RF / SQL bar of a VFO window: one step of the bar (the same as dragging it).
+$("vfoList").addEventListener("wheel", (e) => {
+  const inp = e.target.closest(".vfo-row:not(.spare) .vfo-foot")?.querySelector("input[type=range]");
+  if (!inp) return;
+  e.preventDefault();
+  const dir = wheelStep(e);
+  if (!dir || inp.disabled) return;
+  const v = Math.min(Number(inp.max), Math.max(Number(inp.min), Number(inp.value) + dir));
+  if (v === Number(inp.value)) return;
+  inp.value = v;
+  inp.dispatchEvent(new Event("input", { bubbles: true }));
+}, { passive: false });
+
 // RF GAIN slider under the display: sets the gain of that VFO without switching (same as the slider in SET).
 $("vfoList").addEventListener("input", (e) => {
   if (!e.target.matches(".vfo-row:not(.spare) .vfo-rf:not(.vfo-sq) input")) return;
@@ -612,12 +613,12 @@ function sqlLine(color = "#ffd84a") {
 /** Fills the SVG: background, clipped content and the frame. id keeps the defs of several meters apart. */
 function meterFace(svg, id, background, inner, defs = "") {
   svg.innerHTML = `<defs>
-    <clipPath id="${id}clip"><rect x="0" y="0" width="260" height="100" rx="6"/></clipPath>${defs}
+    <clipPath id="${id}clip"><rect x="0" y="0" width="260" height="100" rx="1"/></clipPath>${defs}
   </defs>
   <g clip-path="url(#${id}clip)">
   <rect x="0" y="0" width="260" height="100" fill="${background}"/>${inner}
   </g>
-  <rect x=".5" y=".5" width="259" height="99" rx="6" fill="none" stroke="#262c35"/>`;
+  <rect x=".5" y=".5" width="259" height="99" rx="1" fill="none" stroke="#000"/>`;
 }
 
 /** Straight row of n segments (class seg). */
@@ -918,6 +919,90 @@ $("s9").addEventListener("input", () => { s9Dbfs = Number($("s9").value); store(
 renderS9();
 buildMeter();
 buildMeterPicker();
+
+// ---------- SET → SKINS: finish of the chassis (style.css, html[data-skin]); remembered in this browser ----------
+const SKINS = { "alu-dark": "Dark brushed aluminium", "alu-black": "Black brushed aluminium", "alu-light": "Light brushed aluminium", mahogany: "Mahogany", paint: "Paint (RAL)" };
+// RAL Classic: screen approximations (sRGB) of the common shades
+const RAL = [
+  ["1013", "Oyster white", "#e3d9c6"], ["1015", "Light ivory", "#e6d2b5"], ["1021", "Colza yellow", "#f6b600"],
+  ["1023", "Traffic yellow", "#f7b500"], ["2004", "Pure orange", "#e25303"], ["2008", "Bright red orange", "#ed6b21"],
+  ["3000", "Flame red", "#a72920"], ["3003", "Ruby red", "#861a22"], ["3005", "Wine red", "#5e2028"],
+  ["3020", "Traffic red", "#bb1e10"], ["4006", "Traffic purple", "#903373"], ["4005", "Blue lilac", "#76689a"],
+  ["5002", "Ultramarine blue", "#00387b"], ["5003", "Sapphire blue", "#1f3855"], ["5010", "Gentian blue", "#004f7c"],
+  ["5012", "Light blue", "#0089b6"], ["5015", "Sky blue", "#007cb0"], ["5017", "Traffic blue", "#005b8c"],
+  ["5024", "Pastel blue", "#6093ac"], ["6005", "Moss green", "#0f4336"], ["6009", "Fir green", "#27352a"],
+  ["6011", "Reseda green", "#587f40"], ["6018", "Yellow green", "#48a43f"], ["6029", "Mint green", "#006f3d"],
+  ["7001", "Silver grey", "#8c969d"], ["7012", "Basalt grey", "#575d5e"], ["7016", "Anthracite grey", "#383e42"],
+  ["7021", "Black grey", "#2f3234"], ["7024", "Graphite grey", "#474a50"], ["7035", "Light grey", "#cbd0cc"],
+  ["7040", "Window grey", "#9da3a6"], ["8011", "Nut brown", "#5a3826"], ["8017", "Chocolate brown", "#44322d"],
+  ["9005", "Jet black", "#0a0a0d"], ["9006", "White aluminium", "#a5a8a6"], ["9010", "Pure white", "#f1ece1"],
+];
+/** "dark" when print on this colour has to be dark (relative luminance of a light paint). */
+function inkFor(hex) {
+  const lin = (i) => { const c = parseInt(hex.slice(i, i + 2), 16) / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * lin(1) + 0.7152 * lin(3) + 0.0722 * lin(5) > 0.3 ? "dark" : "light";
+}
+let skin = SKINS[recall("skin")] ? recall("skin") : "alu-dark";
+let skinPaint = /^#[0-9a-f]{6}$/i.test(recall("skinPaint") || "") ? recall("skinPaint") : "#383e42";
+
+function applySkin() {
+  const d = document.documentElement;
+  d.dataset.skin = skin;
+  d.style.setProperty("--paint", skinPaint);
+  if (skin === "paint") d.dataset.ink = inkFor(skinPaint); else delete d.dataset.ink;
+  store("skin", skin);
+  store("skinPaint", skinPaint);
+  store("skinInk", d.dataset.ink || "");
+  for (const b of $("skinPicks").children) {
+    b.classList.toggle("on", b.dataset.skin === skin);
+    b.setAttribute("aria-pressed", b.dataset.skin === skin);
+  }
+  const ral = RAL.find((r) => r[2] === skinPaint.toLowerCase());
+  for (const b of $("ralGrid").children) b.classList.toggle("on", skin === "paint" && b.dataset.hex === skinPaint.toLowerCase());
+  $("ralText").textContent = skin !== "paint" ? "" : ral ? `RAL ${ral[0]} ${ral[1]}` : skinPaint;
+  $("ralCustom").value = skinPaint;
+}
+
+function buildSkinPicker() {
+  const box = $("skinPicks");
+  for (const [key, name] of Object.entries(SKINS)) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "skin-pick";
+    b.dataset.skin = key;   // the sample takes the finish's own variables from style.css
+    if (key === "paint") b.style.setProperty("--paint", skinPaint);
+    b.innerHTML = `<i></i><span>${name}</span>`;
+    box.appendChild(b);
+  }
+  box.addEventListener("click", (e) => {
+    const b = e.target.closest(".skin-pick");
+    if (!b) return;
+    skin = b.dataset.skin;
+    applySkin();
+  });
+  const grid = $("ralGrid");
+  for (const [code, name, hex] of RAL) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "ral";
+    b.dataset.hex = hex;
+    b.title = `RAL ${code} ${name}`;
+    b.style.background = hex;
+    b.style.color = inkFor(hex) === "dark" ? "#1a1a1a" : "#f2f2f2";
+    b.innerHTML = `${code}<small>${name}</small>`;
+    grid.appendChild(b);
+  }
+  const paint = (hex) => {
+    skin = "paint";
+    skinPaint = hex.toLowerCase();
+    box.querySelector('[data-skin="paint"]').style.setProperty("--paint", skinPaint);
+    applySkin();
+  };
+  grid.addEventListener("click", (e) => { const b = e.target.closest(".ral"); if (b) paint(b.dataset.hex); });
+  $("ralCustom").addEventListener("input", (e) => paint(e.target.value));
+  applySkin();
+}
+buildSkinPicker();
 requestAnimationFrame(animateMeter);
 
 // ---------- spectrum and waterfall ----------
@@ -936,10 +1021,30 @@ let imgC = 0; // centre that the waterfall image matches exactly (it moves by wh
 let viewLocalAt = 0; // when the section was last moved by dragging
 let drag = null;
 
-const LUT = (() => {
-  // Noise almost black to dark blue, signals change sharply to yellow and red (higher contrast).
-  const stops = [[0, 0, 0, 10], [0.16, 4, 14, 70], [0.32, 18, 60, 190], [0.46, 40, 175, 240],
-    [0.6, 250, 235, 60], [0.78, 255, 100, 20], [1, 255, 255, 255]];
+// Colour schemes of the waterfall (and of its background): stops [position 0–1, r, g, b]. Picked in the waterfall
+// settings (gear in the top right corner of the waterfall), kept in the browser. Only new rows take the new colours.
+const WF_SCHEMES = {
+  classic: { name: "Classic", bg: "#020828",   // noise almost black to dark blue, signals sharply yellow and red
+    stops: [[0, 0, 0, 10], [0.16, 4, 14, 70], [0.32, 18, 60, 190], [0.46, 40, 175, 240],
+      [0.6, 250, 235, 60], [0.78, 255, 100, 20], [1, 255, 255, 255]] },
+  inferno: { name: "Inferno", bg: "#000004",   // black – purple – orange – pale yellow (perceptually uniform)
+    stops: [[0, 0, 0, 4], [0.15, 31, 12, 72], [0.3, 85, 15, 109], [0.45, 136, 34, 106], [0.6, 186, 54, 85],
+      [0.72, 227, 89, 51], [0.85, 249, 140, 10], [0.93, 249, 201, 50], [1, 252, 255, 164]] },
+  viridis: { name: "Viridis", bg: "#0c0018",   // dark violet – blue – green – yellow (colour-blind friendly)
+    stops: [[0, 12, 0, 24], [0.12, 68, 1, 84], [0.25, 65, 58, 130], [0.4, 46, 105, 142], [0.55, 33, 145, 140],
+      [0.7, 53, 183, 121], [0.85, 144, 215, 67], [1, 253, 231, 37]] },
+  turbo: { name: "Turbo", bg: "#12081e",       // rainbow with smooth steps: dark blue – cyan – green – yellow – red
+    stops: [[0, 18, 8, 30], [0.1, 60, 60, 160], [0.2, 70, 117, 237], [0.3, 57, 162, 252], [0.4, 27, 207, 212],
+      [0.5, 36, 236, 166], [0.6, 97, 252, 108], [0.7, 164, 252, 59], [0.8, 229, 209, 57], [0.88, 254, 155, 45],
+      [0.95, 234, 79, 13], [1, 180, 25, 1]] },
+  ice: { name: "Ice", bg: "#000000",           // black – deep blue – cyan – white (calm, signals stand out as light)
+    stops: [[0, 0, 0, 0], [0.25, 0, 20, 45], [0.45, 0, 80, 130], [0.62, 0, 170, 210], [0.8, 120, 230, 255],
+      [1, 255, 255, 255]] },
+};
+let wfScheme = WF_SCHEMES[recall("wfScheme")] ? recall("wfScheme") : "classic";
+const wfBg = () => WF_SCHEMES[wfScheme].bg;
+
+function buildLut(stops) {
   const lut = new Uint8ClampedArray(256 * 3);
   for (let i = 0; i < 256; i++) {
     const t = i / 255;
@@ -950,16 +1055,89 @@ const LUT = (() => {
     lut[i * 3] = r0 + (r1 - r0) * f; lut[i * 3 + 1] = g0 + (g1 - g0) * f; lut[i * 3 + 2] = b0 + (b1 - b0) * f;
   }
   return lut;
-})();
+}
+let LUT = buildLut(WF_SCHEMES[wfScheme].stops);
 
 function clearWaterfall(bins) {
   wfCanvas.width = bins;
   wfCanvas.height = WF_ROWS;
-  wfCtx.fillStyle = "#020828";
+  wfCtx.fillStyle = wfBg();
   wfCtx.fillRect(0, 0, bins, WF_ROWS);
   wfRow = new ImageData(bins, 1);
+  wfAcc = null;
   spec = null;
 }
+
+// Waterfall speed / vertical zoom (bar in the top right corner of the waterfall, same style as the frequency zoom):
+// below 1× several rows from the receiver are averaged into one line (slower, longer history), above 1× every row
+// is drawn as several lines (faster, more detail in time). Kept in the browser.
+const WF_SPEEDS = [0.125, 0.25, 0.5, 1, 2, 4];
+const wfSpeedText = (v) => (v < 1 ? `1/${Math.round(1 / v)}` : `${v}×`);
+let wfSpeed = WF_SPEEDS.includes(Number(recall("wfSpeed"))) ? Number(recall("wfSpeed")) : 1;
+let wfAcc = null;   // rows waiting to be averaged (speed below 1×): sums per point and their count
+
+function renderWfZoomBar() {
+  const i = WF_SPEEDS.indexOf(wfSpeed), cells = $("wfZoomCells");
+  if (cells.children.length !== WF_SPEEDS.length - 1) {
+    cells.innerHTML = WF_SPEEDS.slice(1).map((v) => `<i data-v="${v}" title="${wfSpeedText(v)}"></i>`).join("");
+  }
+  [...cells.children].forEach((c, k) => c.classList.toggle("on", k < i));
+  $("wfZoomVal").textContent = wfSpeedText(wfSpeed);
+  const [minus, plus] = $("wfZoomBar").querySelectorAll(".zb-btn");
+  minus.disabled = i <= 0;
+  plus.disabled = i >= WF_SPEEDS.length - 1;
+}
+function setWfSpeed(v) {
+  if (!WF_SPEEDS.includes(v) || v === wfSpeed) return;
+  wfSpeed = v;
+  wfAcc = null;
+  store("wfSpeed", v);
+  renderWfZoomBar();
+}
+$("wfZoomBar").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const cell = e.target.closest("[data-v]");
+  if (cell) {
+    const v = Number(cell.dataset.v);
+    setWfSpeed(v === wfSpeed ? WF_SPEEDS[WF_SPEEDS.indexOf(v) - 1] : v);   // a click on the last lit cell steps back one
+    return;
+  }
+  const b = e.target.closest("[data-d]");
+  if (b) setWfSpeed(WF_SPEEDS[WF_SPEEDS.indexOf(wfSpeed) + Number(b.dataset.d)]);
+});
+$("wfZoomBar").addEventListener("pointerdown", (e) => e.stopPropagation());
+$("wfZoomBar").addEventListener("wheel", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const dir = wheelStep(e);
+  if (dir) setWfSpeed(WF_SPEEDS[WF_SPEEDS.indexOf(wfSpeed) + dir]);
+}, { passive: false });
+renderWfZoomBar();
+
+// Waterfall settings (gear above the speed bar): the window opens while the mouse is over the gear or the window and
+// stays open while a slider is dragged out of it. Clicks, drags and the wheel in it do not tune.
+function renderWfSchemes() {
+  $("wfSchemes").innerHTML = Object.entries(WF_SCHEMES).map(([k, v]) =>
+    `<button type="button" data-scheme="${k}" class="${k === wfScheme ? "on" : ""}" title="${v.name}">` +
+    `<i style="background:linear-gradient(90deg,${v.stops.map(([t, r, g, b]) => `rgb(${r},${g},${b}) ${t * 100}%`).join(",")})"></i>` +
+    `<span>${v.name}</span></button>`).join("");
+}
+$("wfSchemes").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-scheme]");
+  if (!b || b.dataset.scheme === wfScheme) return;
+  wfScheme = b.dataset.scheme;
+  LUT = buildLut(WF_SCHEMES[wfScheme].stops);
+  store("wfScheme", wfScheme);
+  renderWfSchemes();
+});
+for (const ev of ["click", "pointerdown", "wheel", "dblclick", "contextmenu"]) {
+  $("wfCfg").addEventListener(ev, (e) => e.stopPropagation());
+}
+$("wfCfg").addEventListener("pointerdown", () => {
+  $("wfCfg").classList.add("hold");
+  document.addEventListener("pointerup", () => $("wfCfg").classList.remove("hold"), { once: true });
+});
+renderWfSchemes();
 
 function colorRange() {
   const stepDb = st.wf.db_step;
@@ -990,15 +1168,26 @@ function onRow(center, span, b64, replay = false) {
   const [lo, rng] = colorRange();
   // Draw the row where it belongs in the shown section; while dragging the server may still lag behind.
   const off = Math.round(((center - imgC) / span) * n);
-  const d = wfRow.data;
+  // speed below 1×: sum the rows (in screen points, so a moved section stays in place) and draw their average
+  const every = wfSpeed < 1 ? Math.round(1 / wfSpeed) : 1;
+  if (!wfAcc || wfAcc.sum.length !== n) wfAcc = { sum: new Float32Array(n), cnt: new Uint16Array(n), rows: 0 };
   for (let j = 0; j < n; j++) {
     const i = j - off;
-    let c = 0;
-    if (i >= 0 && i < n) c = Math.max(0, Math.min(255, Math.round(((vals[i] - lo) / rng) * 255))) * 3;
-    d[j * 4] = LUT[c]; d[j * 4 + 1] = LUT[c + 1]; d[j * 4 + 2] = LUT[c + 2]; d[j * 4 + 3] = 255;
+    if (i >= 0 && i < n) { wfAcc.sum[j] += vals[i]; wfAcc.cnt[j]++; }
   }
-  wfCtx.drawImage(wfCanvas, 0, 0, n, WF_ROWS - 1, 0, 1, n, WF_ROWS - 1);
-  wfCtx.putImageData(wfRow, 0, 0);
+  if (++wfAcc.rows >= every) {
+    const d = wfRow.data;
+    for (let j = 0; j < n; j++) {
+      let c = 0;
+      if (wfAcc.cnt[j]) c = Math.max(0, Math.min(255, Math.round(((wfAcc.sum[j] / wfAcc.cnt[j] - lo) / rng) * 255))) * 3;
+      d[j * 4] = LUT[c]; d[j * 4 + 1] = LUT[c + 1]; d[j * 4 + 2] = LUT[c + 2]; d[j * 4 + 3] = 255;
+    }
+    wfAcc = null;
+    // speed above 1×: the row is drawn as several lines
+    const h = Math.min(wfSpeed > 1 ? wfSpeed : 1, WF_ROWS);
+    wfCtx.drawImage(wfCanvas, 0, 0, n, WF_ROWS - h, 0, h, n, WF_ROWS - h);
+    for (let y = 0; y < h; y++) wfCtx.putImageData(wfRow, 0, y);
+  }
 
   if (!spec || spec.length !== n) spec = Float32Array.from(vals);
   for (let j = 0; j < n; j++) {
@@ -1014,7 +1203,7 @@ function setView(c) {
   const dx = Math.round(((c - imgC) / view.span) * n);
   if (dx) {
     const img = wfCtx.getImageData(0, 0, n, WF_ROWS);
-    wfCtx.fillStyle = "#020828";
+    wfCtx.fillStyle = wfBg();
     wfCtx.fillRect(0, 0, n, WF_ROWS);
     wfCtx.putImageData(img, -dx, 0);
     if (spec) {
@@ -1151,7 +1340,7 @@ function drawMemTags(ctx, w, modeLabel) {
   if (!mems.length) return;
   const v = viewNow();
   const f0 = v.c - v.span / 2, f1 = v.c + v.span / 2;
-  const list = mems.filter((m) => m.freq_hz >= f0 && m.freq_hz <= f1)
+  const list = mems.filter((m) => m.tag !== false && m.freq_hz >= f0 && m.freq_hz <= f1)
     .sort((a, b) => (b.fav - a.fav) || a.freq_hz - b.freq_hz);   // favourites get a place first
   if (!list.length) return;
   ctx.font = "600 10px system-ui, sans-serif";
@@ -1163,28 +1352,35 @@ function drawMemTags(ctx, w, modeLabel) {
   for (const m of list) {
     const x = Math.round(freqToX(m.freq_hz, w)) + 0.5;
     const name = m.name.length > MEM_NAME_MAX ? m.name.slice(0, MEM_NAME_MAX - 1) + "…" : m.name;
-    const tw = ctx.measureText(name).width + 10;
+    const rec = m.record && m.record !== "off";   // a red ● before the name: recalling it starts a recording
+    const tw = ctx.measureText(name).width + 10 + (rec ? 9 : 0);
     const bx = Math.min(Math.max(x - tw / 2, 2), w - tw - 2);
     let row = -1;
     for (let r = 0; r < MEM_TAG_ROWS && row < 0; r++) {
       if (used[r].every(([a, b]) => bx + tw + 2 < a || bx - 2 > b)) row = r;
     }
+    const color = m.color || MEM_COLOR;
     // the ▲ mark at the top edge points at the frequency
-    ctx.fillStyle = MEM_COLOR;
+    ctx.fillStyle = color;
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x - 4, 6); ctx.lineTo(x + 4, 6); ctx.closePath(); ctx.fill();
     if (row < 0) { memTagBoxes.push({ m, x0: x - 5, x1: x + 5, y0: 0, y1: 7 }); continue; }
     used[row].push([bx, bx + tw]);
     const y0 = rowY(row);
-    ctx.strokeStyle = "rgba(126,224,168,.55)";
+    ctx.strokeStyle = color + "8c";   // 55 % opacity
     ctx.setLineDash([2, 2]);
     ctx.beginPath(); ctx.moveTo(x, 6); ctx.lineTo(x, y0); ctx.stroke();
     ctx.setLineDash([]);
-    ctx.fillStyle = "rgba(8,20,14,.88)";
-    ctx.strokeStyle = MEM_COLOR;
+    ctx.fillStyle = "rgba(8,12,14,.88)";
+    ctx.strokeStyle = color;
     ctx.beginPath(); ctx.roundRect(bx, y0, tw, MEM_TAG_H, 4); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = MEM_COLOR;
+    ctx.fillStyle = color;
     ctx.textAlign = "left";
-    ctx.fillText(name, bx + 5, y0 + MEM_TAG_H / 2 + 0.5);
+    if (rec) {
+      ctx.fillStyle = "#ff3b3b";
+      ctx.beginPath(); ctx.arc(bx + 8, y0 + MEM_TAG_H / 2, 3, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = color;
+    }
+    ctx.fillText(name, bx + 5 + (rec ? 9 : 0), y0 + MEM_TAG_H / 2 + 0.5);
     memTagBoxes.push({ m, x0: bx, x1: bx + tw, y0: 0, y1: y0 + MEM_TAG_H });
   }
 }
@@ -1493,7 +1689,7 @@ for (const id of ["specOverlay", "wfOverlay"]) {
       const m = memTagAt((e.clientX - r.left) / uiScale, (e.clientY - r.top) / uiScale);
       const onBand = inPassband(e.clientX - r.left, e.clientY - r.top, r.width);
       cv.style.cursor = bwEdgeAt(e.clientX - r.left, r.width) ? "ew-resize" : m ? "pointer" : onBand ? "grab" : "";
-      const tip = m ? `${m.name} · ${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} MHz` : `${fmtKHz(m.freq_hz, 2)} kHz`} · ${m.mode} · ${m.group}` : "";
+      const tip = m ? `${m.name} · ${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} MHz` : `${fmtKHz(m.freq_hz, 2)} kHz`} · ${m.mode} · ${memGroupsOf(m).join(", ")}${m.note ? ` · ${m.note}` : ""}` : "";
       if (cv.title !== tip) cv.title = tip;
     }
     if (!drag || !cv.hasPointerCapture(e.pointerId)) return;
@@ -1583,7 +1779,7 @@ function resizeWaterfall() {
   const old = wfCtx.getImageData(0, 0, w, Math.min(rows, WF_ROWS));
   WF_ROWS = rows;
   wfCanvas.height = rows;
-  wfCtx.fillStyle = "#020828";
+  wfCtx.fillStyle = wfBg();
   wfCtx.fillRect(0, 0, w, rows);
   wfCtx.putImageData(old, 0, 0);
 }
@@ -1626,6 +1822,7 @@ const spurShiftText = (hz) => `${hz > 0 ? "+" : ""}${hz} Hz`;
 /** LEARN changes this on the server at any time, so it is drawn with every status. */
 function renderSpurInfo() {
   $("spurKey").classList.toggle("on", !!st.spur_on);
+  $("spurKey").classList.toggle("learning", !!st.spur_on && !!st.spur_learning);   // SP key: blinks red while learning
   $("spurOn").checked = !!st.spur_on;
   $("spurHz").disabled = $("spurEdge").disabled = $("spurShift").disabled = $("spurDb").disabled = !st.spur_on;
   $("spurLearn").disabled = !!st.spur_learning;
@@ -1694,15 +1891,7 @@ function squelchLevel() {
 
 function renderSquelch() {
   const ok = st.squelch_levels && st.mode in st.squelch_levels;
-  const v = squelchLevel();
-  const auto = ok && !!st.auto_sql_on;
-  const set = st.squelch_levels && st.squelch_levels[st.mode] !== undefined ? st.squelch_levels[st.mode] : SQUELCH_OFF;
-  // auto squelch from the ASQ key: the slider shows the level and is locked; with AGC+ it stays free (it turns the squelch off)
-  if (document.activeElement !== $("squelch")) $("squelch").value = auto && !st.auto_sql ? set : v;
-  $("squelch").disabled = !ok || (auto && !!st.auto_sql);
-  $("squelchMode").textContent = ok ? `(${st.mode})` : "";
-  $("squelchText").textContent = !ok ? `not in ${st.mode}` : auto ? (v <= SQUELCH_OFF ? "AUTO …" : `AUTO ${v} dBFS (${sReading(v)})`)
-    : v <= SQUELCH_OFF ? "OFF" : `${v} dBFS (${sReading(v)})`;
+  // the squelch level is set by the SQL bar of the VFO window; SETTINGS has only the ASQ margin
   if (st.auto_sql_db != null && document.activeElement !== $("asqDb")) $("asqDb").value = st.auto_sql_db;
   placeSqlMark();
 }
@@ -1739,33 +1928,67 @@ function renderRds() {
   $("atuKey").classList.toggle("busy", atuMode && !!st.autotune && st.autotune_info?.state === "listen");
   $("afiKey").disabled = !afiMode;
   $("afiKey").classList.toggle("on", afiMode && !!st.afi);
-  $("afiKey").title = `AFI: audio frequency inversion around ${st.afi_hz ?? 1750} Hz – voice inversion scrambler / descrambler (all modes except WFM); frequency in SET`;
+  $("afiKey").title = `AFI: audio frequency inversion around ${st.afi_hz ?? 1750} Hz – voice inversion scrambler / descrambler (all modes except WFM); frequency in SETTINGS`;
   if (st.afi_hz != null && document.activeElement !== $("afiHz")) $("afiHz").value = st.afi_hz;
   const asqMode = ["AM", "FM", "WFM"].includes(st.mode);
   $("asqKey").disabled = !asqMode;
   $("asqKey").classList.toggle("on", asqMode && !!st.auto_sql_on);
   $("asqKey").title = (asqMode && st.auto_sql_on && !st.auto_sql ? "ASQ: on by AGC+ with the squelch set. " : "")
-    + "ASQ: auto squelch in AM/FM/WFM – the level follows the noise floor (margin in SET, AUDIO tab). Also on by itself with AGC+ and the squelch set";
+    + "ASQ: auto squelch in AM/FM/WFM – the level follows the noise floor (margin in SETTINGS, AUDIO page). Also on by itself with AGC+ and the squelch set";
   renderPassKeys();
-  // ALC flag at the S-meter: green = on, grey = off; hidden in FM/WFM (no ALC)
-  $("alcBadge").hidden = !alcMode;
-  $("alcBadge").classList.toggle("dim", st.audio_agc === false);
-  $("stBadge").hidden = !wfm;
-  $("stBadge").classList.toggle("dim", !st.stereo);
   // The RDS frame is always in place (the waterfall does not move); without RDS it is empty and dark.
   const has = !!r && (r.ps || r.rt || r.pi);
   $("rds").classList.toggle("off", !has);
+  renderAd();
   $("rdsPs").textContent = has ? r.ps || "········" : " ";
   $("rdsMeta").textContent = has ? [r.pi && `PI ${r.pi}`, r.pty, r.tp && (r.ta ? "TP TA" : "TP")].filter(Boolean).join(" · ") : "";
   $("rdsRt").textContent = has ? r.rt : "";
   $("rds").title = has ? [r.rt, r.ct && `Clock: ${r.ct}`].filter(Boolean).join("\n") : "RDS";
 }
 
-// SQL flag with squelch on (AM/FM/WFM): lit while the squelch is open.
+// ---------- AD = additional display under the S-meter: one thing at a time, by priority ----------
+// 1. error messages (red, the frame blinks, OK accepts them), 2. rotor AZ / EL (MONITOR on the ROTOR page), 3. RDS.
+const adErrors = [];       // messages not accepted yet, oldest first
+let adRotInfo = null;      // the last rotor state of the active VFO while its MONITOR is on
+
+/** An error message to the AD; it stays until OK. The same text already waiting is not added again. */
+function adError(msg) {
+  msg = String(msg || "Error");
+  if (!adErrors.includes(msg)) adErrors.push(msg);
+  renderAd();
+}
+
+function renderAd() {
+  const err = adErrors.length > 0, rot = !err && rotorMonOn() && !!adRotInfo;
+  $("mfd").classList.toggle("alarm", err);
+  $("adErr").hidden = !err;
+  if (err) {
+    $("adErrText").textContent = adErrors[0];
+    $("adErrText").title = adErrors[0];
+    $("adErrMore").textContent = adErrors.length > 1 ? `+${adErrors.length - 1}` : "";
+    $("adErrMore").title = adErrors.length > 1 ? `${adErrors.length - 1} more message(s) after OK` : "";
+  }
+  $("adRot").hidden = !rot;
+  if (rot) {
+    const i = adRotInfo, ok = i.on && i.connected;
+    const deg = (v) => (ok && v != null ? `${Math.round(v)}°` : "–");
+    $("adRotAz").textContent = deg(i.azShow);
+    $("adRotEl").textContent = deg(i.elShow);
+    const bad = !i.on || !i.connected || !!i.fault;
+    // the requested direction only while the rotor is on its way; once there it goes out
+    $("adRotTgt").textContent = !i.on ? "LINK OFF" : !i.connected ? "NOT CONNECTED" : i.fault ? "FAULT"
+      : rotorMoving(i) ? `→ ${Math.round(i.target[0])}° / ${Math.round(i.target[1])}°` : "";
+    $("adRotTgt").classList.toggle("bad", bad);
+  }
+  $("rds").hidden = err || rot;
+}
+
+$("adErrOk").addEventListener("click", () => { adErrors.shift(); renderAd(); });
+
+// Squelch changed: the slider in SET and the SQL indicator in the VFO window.
 function renderSqlBadge() {
-  $("sqlBadge").hidden = squelchLevel() <= SQUELCH_OFF;
-  $("sqlBadge").classList.toggle("dim", !st.squelch_open);
   renderSquelch();
+  renderVfoDisplays();
 }
 
 function renderWfLabels() {
@@ -1795,8 +2018,8 @@ const SAGC_UI = [
   ["settle", "Settle", 0, 10, 1, "blocks"],
 ];
 $("sagcRows").innerHTML = SAGC_UI.map(([k, label, min, max, step]) =>
-  `<div class="row"><span>${label}</span><span id="sagc_${k}_t" class="value"></span></div>` +
-  `<input id="sagc_${k}" type="range" min="${min}" max="${max}" step="${step}">`).join("");
+  `<div><div class="row"><span>${label}</span><span id="sagc_${k}_t" class="value"></span></div>` +
+  `<input id="sagc_${k}" type="range" min="${min}" max="${max}" step="${step}"></div>`).join("");
 let sagcTimer = null, sagcLocalAt = 0;
 function renderSagc() {
   const p = st.sagc || {};
@@ -1904,7 +2127,7 @@ function renderPassKeys() {
     const hz = passHz(kind), key = $(kind + "Key"), input = $(kind + "Hz");
     key.disabled = !!st.dab;      // DAB audio comes from welle-cli, past the receiver's audio chain
     key.classList.toggle("on", !st.dab && !!st[kind]);
-    key.title = `${PASS[kind].text} ${hz} Hz. Click = on/off, mouse wheel = frequency (also in SET)`;
+    key.title = `${PASS[kind].text} ${hz} Hz. Click = on/off, mouse wheel = frequency (also in SETTINGS)`;
     $(kind + "Val").textContent = passText(hz);
     if (document.activeElement !== input) input.value = hz;
   }
@@ -1967,7 +2190,15 @@ function setSpurOn(on) {
   send({ spur_on: on });
 }
 $("spurOn").addEventListener("change", () => setSpurOn($("spurOn").checked));
-$("spurKey").addEventListener("click", () => { if (st) setSpurOn(!st.spur_on); });
+// SP key: off -> forget all stored lines, LEARN the band received now and switch the removal on (red blinking while
+// learning, then steady yellow); on -> off. A click while learning is ignored. SET keeps CLEAR / LEARN / the switch.
+$("spurKey").addEventListener("click", () => {
+  if (!st || st.spur_learning) return;
+  if (st.spur_on) { setSpurOn(false); return; }
+  Object.assign(st, { spur_on: true, spur_learning: true, spur_count: 0, spur_found: null });
+  renderSpurInfo();
+  send({ spur_clear: true, spur_learn: true, spur_on: true });
+});
 $("spurHz").addEventListener("input", () => {
   st.spur_hz = Number($("spurHz").value);
   $("spurHzText").textContent = `${st.spur_hz} Hz`;
@@ -2061,12 +2292,6 @@ $("txEnabled").addEventListener("change", () => {
   st.tx_enabled = $("txEnabled").checked;
   if (!st.tx_enabled) pttUp();
   send(st.tx_enabled ? { tx_enabled: true, tx_ack: true } : { tx_enabled: false });
-});
-$("squelch").addEventListener("input", () => {
-  const v = Number($("squelch").value);
-  st.squelch_levels = { ...st.squelch_levels, [st.mode]: v };
-  renderSqlBadge();
-  send({ squelch: v, squelch_mode: st.mode });
 });
 $("resetBtn").addEventListener("click", () => { floor = null; send({ reset: true }); });
 for (const id of ["wfRange", "wfShift"]) {
@@ -2162,8 +2387,8 @@ function restoreBodyTab() {
   decPage = decPageSaved ? page : "ft8";
   renderAmsatTab();
   const saved = recall(tabKey());
-  bodyTabGuess = !["dec", "scope", "sat"].includes(saved);
-  setBodyTab((saved === "dec" && decTabShown()) || (saved === "sat" && amsatTabShown()) ? saved : "scope", !bodyTabGuess);
+  bodyTabGuess = !["dec", "scope", "sat", "set", "mem"].includes(saved);
+  setBodyTab((saved === "dec" && decTabShown()) || (saved === "sat" && amsatTabShown()) || (saved === "set" && setTabShown()) || (saved === "mem" && memTabShown()) ? saved : "scope", !bodyTabGuess);
 }
 
 /** First state of a VFO without a saved tab: if a decoder runs on it, opens DECODERS. */
@@ -2180,14 +2405,22 @@ function setBodyTab(tab, save = true) {
   if (save) store(tabKey(), tab);
   if (tab === "sat" && save) store(satOnKey(), "1");   // the SATELLITES tab open → SAT on for this VFO
   if (tab === "dec" && save) store(decOnKey(), "1");   // the DECODERS tab open → DECODE on for this VFO
+  if (tab === "set" && save) store("setOn", "1");       // the SETTINGS tab open → the gear key on
+  if (tab === "mem" && save) store("memOn", "1");       // the MEMORIES tab open → the MEM key on
   for (const b of $("bodyTabs").querySelectorAll("button")) b.classList.toggle("on", b.dataset.tab === tab);
   $("decPane").hidden = tab !== "dec";
   $("amsatPane").hidden = tab !== "sat";
+  $("settingsCard").hidden = tab !== "set";
+  $("memPane").hidden = tab !== "mem";
   if (tab === "dec") { $("decNew").hidden = true; decNewPages.delete(decPage); }
   renderDecKey();
   renderDecTab();
   if (tab === "sat") renderSatTab();
   renderAmsatTab();
+  renderSetKey();
+  renderMemKey();
+  if (tab === "mem") setTimeout(memPaneOpened);    // declared further down
+  if (tab === "set") setTimeout(pollRotor);    // the ROTOR page fills at once (later: declared further down)
   hoverHide();
 }
 
@@ -2297,6 +2530,34 @@ function renderDecKey() {
   $("decTab").hidden = !on;
 }
 $("decKey").addEventListener("click", () => setDecOn(!decTabShown()));
+/** Gear key (SET): the SETTINGS tab is there only while it is on; one switch for all VFOs. */
+function setTabShown() { return recall("setOn") === "1"; }
+function setSetOn(on) {
+  store("setOn", on ? "1" : "0");
+  if (on) setBodyTab("set");
+  else if (bodyTab === "set") setBodyTab("scope");
+  else renderSetKey();
+}
+function renderSetKey() {
+  const on = setTabShown();
+  $("setKey").classList.toggle("on", on);
+  $("setTab").hidden = !on;
+}
+$("setKey").addEventListener("click", () => setSetOn(!setTabShown()));
+/** MEM key: the MEMORIES tab (list of memories and the memory editor) is there only while it is on; one switch for all VFOs. */
+function memTabShown() { return recall("memOn") === "1"; }
+function setMemOn(on) {
+  store("memOn", on ? "1" : "0");
+  if (on) setBodyTab("mem");
+  else if (bodyTab === "mem") setBodyTab("scope");
+  else renderMemKey();
+}
+function renderMemKey() {
+  const on = memTabShown();
+  $("memKey").classList.toggle("on", on);
+  $("memTab").hidden = !on;
+}
+$("memKey").addEventListener("click", () => setMemOn(!memTabShown()));
 for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "packetOn", "acarsOn", "vdl2On"]) {
   $(id).addEventListener("change", () => renderDecTab());
 }
@@ -3007,7 +3268,7 @@ function renderSatRot() {
     return;
   }
   if (!d.on) {
-    box.innerHTML = `<p><b>Tracking with the rotor is off.</b> <span class="muted">TRACK plans the next pass and moves the rotor${d.rotor_on ? "" : " (it turns the rotor link on, with the port chosen in SET, ROTOR tab)"}.</span>
+    box.innerHTML = `<p><b>Tracking with the rotor is off.</b> <span class="muted">TRACK plans the next pass and moves the rotor${d.rotor_on ? "" : " (it turns the rotor link on, with the port chosen in SETTINGS, ROTOR page)"}.</span>
       ${d.stopped ? `<span class="${d.stopped === "stopped by hand" ? "muted" : "error"}">Stopped: ${escHtml(d.stopped)}</span>` : ""}</p>`;
     return;
   }
@@ -4071,8 +4332,7 @@ const dabEsc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": 
 /** DAB key in DECODE: DAB on (the server tunes the VFO to the saved channel at 2.048 MS/s). */
 function dabOn() {
   if (noRtlDongle(st) || st.chain_owner) {
-    errorUntil = Date.now() + 5000;
-    renderStatusPill(st.chain_owner ? `DAB needs its own dongle (this VFO shares the dongle of VFO ${st.chain_owner})`
+    adError(st.chain_owner ? `DAB needs its own dongle (this VFO shares the dongle of VFO ${st.chain_owner})`
       : `DAB is not supported on ${DEVICE_NAMES[st.driver]} (RTL-SDR only)`);
     return;
   }
@@ -5360,76 +5620,9 @@ $("wefaxSave").addEventListener("click", () => {
   });
 });
 
-// ---------- SET and MEM drawers, clock, CW row ----------
+// ---------- clock, CW row ----------
 
-const DRAWERS = { setKey: "settingsCard", memKey: "memCard" };
-
-function openDrawer(id) {
-  for (const [key, d] of Object.entries(DRAWERS)) {
-    $(d).hidden = d !== id;
-    $(key).classList.toggle("on", d === id);
-  }
-  if (id) placeFloating[id]();
-  if (id === "memCard") $("memSearch").focus();
-}
-for (const [key, d] of Object.entries(DRAWERS)) {
-  $(key).addEventListener("click", () => openDrawer($(d).hidden ? d : null));
-}
-for (const b of document.querySelectorAll("[data-close]")) b.addEventListener("click", () => openDrawer(null));
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Escape" || Object.values(DRAWERS).every((d) => $(d).hidden)) return;
-  // the radio stays usable behind the window: Esc in its fields (frequency entry) must not close the window
-  if (e.target.closest("input, select, textarea") && !e.target.closest(".drawer")) return;
-  openDrawer(null);
-});
-
-// A floating window is moved by its title bar; the place is remembered in the browser. It is inside the scaled
-// .stage, so everything here is in stage px (screen px / uiScale). The title bar always stays reachable, and
-// the window is only as tall as the space below its top edge (the rest of it scrolls). Returns the placing function.
-const FLOAT_KEEP_W = 160, FLOAT_KEEP_H = 100, FLOAT_MARGIN = 8;
-function makeFloating(win, storeKey) {
-  const head = win.querySelector(".drawer-head");
-  let pos = null;     // {x, y} once it has been moved, null = the place from the CSS
-  let drag = null;    // {dx, dy} from the top left corner of the window to the pointer
-  try { pos = JSON.parse(recall(storeKey)); } catch (e) { /* bad value: the default place */ }
-
-  function place() {
-    if (!pos || win.hidden) return;
-    const stage = $("stage");
-    const x = Math.max(FLOAT_KEEP_W - win.offsetWidth, Math.min(pos.x, stage.clientWidth - FLOAT_KEEP_W));
-    const y = Math.max(0, Math.min(pos.y, stage.clientHeight - FLOAT_KEEP_H));
-    win.style.left = `${x}px`;
-    win.style.right = "auto";
-    win.style.top = `${y}px`;
-    win.style.maxHeight = `${stage.clientHeight - y - FLOAT_MARGIN}px`;
-  }
-  head.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0 || e.target.closest("button")) return;
-    const r = win.getBoundingClientRect();
-    drag = { dx: (e.clientX - r.left) / uiScale, dy: (e.clientY - r.top) / uiScale };
-    head.setPointerCapture(e.pointerId);
-    e.preventDefault();
-  });
-  head.addEventListener("pointermove", (e) => {
-    if (!drag) return;
-    pos = { x: e.clientX / uiScale - drag.dx, y: e.clientY / uiScale - drag.dy };
-    place();
-  });
-  for (const type of ["pointerup", "pointercancel"]) {
-    head.addEventListener(type, () => {
-      if (!drag) return;
-      drag = null;
-      if (!win.style.left) return;     // pressed without moving, it stays at the place from the CSS
-      pos = { x: parseFloat(win.style.left), y: parseFloat(win.style.top) };
-      store(storeKey, JSON.stringify(pos));
-    });
-  }
-  window.addEventListener("resize", place);
-  return place;
-}
-const placeFloating = Object.fromEntries(Object.values(DRAWERS).map((d) => [d, makeFloating($(d), `${d}Pos`)]));
-
-// Tabs of the SET window; the open one is remembered in the browser.
+// Pages of the SETTINGS tab and their sub-pages ("page:sub"); the open ones are remembered in the browser.
 function showSetTab(name) {
   for (const b of document.querySelectorAll("[data-set-tab]")) {
     const on = b.dataset.setTab === name;
@@ -5437,14 +5630,35 @@ function showSetTab(name) {
     b.setAttribute("aria-selected", on);
   }
   for (const p of document.querySelectorAll("[data-set-panel]")) p.hidden = p.dataset.setPanel !== name;
+  if (name === "rotor") setTimeout(pollRotor);      // the ROTOR page fills at once
+}
+function showSetSub(name) {
+  const page = name.split(":")[0];
+  for (const b of document.querySelectorAll(`[data-set-sub^="${page}:"]`)) {
+    const on = b.dataset.setSub === name;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", on);
+  }
+  for (const p of document.querySelectorAll(`[data-set-subpanel^="${page}:"]`)) p.hidden = p.dataset.setSubpanel !== name;
 }
 for (const b of document.querySelectorAll("[data-set-tab]")) {
   b.addEventListener("click", () => { showSetTab(b.dataset.setTab); store("setTab", b.dataset.setTab); });
 }
+for (const b of document.querySelectorAll("[data-set-sub]")) {
+  b.addEventListener("click", () => { showSetSub(b.dataset.setSub); store(`setSub_${b.dataset.setSub.split(":")[0]}`, b.dataset.setSub); });
+}
+for (const page of ["dongle", "ui"]) {
+  const sub = recall(`setSub_${page}`);
+  if (sub && document.querySelector(`[data-set-sub="${sub}"]`)) showSetSub(sub);
+}
 // TX is left out here: its key is hidden until the state says the dongle can transmit.
-if (["audio", "display", "rotor"].includes(recall("setTab"))) showSetTab(recall("setTab"));
+// DISPLAY and SKINS of older versions are on the UI page now.
+{
+  const t = { display: "ui", skins: "ui" }[recall("setTab")] || recall("setTab");
+  if (["audio", "ui", "rotor"].includes(t)) showSetTab(t);
+}
 
-// ---------- ROTOR tab of SET: K3NG rotor (rotor.py) ----------
+// ---------- ROTOR page of SETTINGS: K3NG rotor (rotor.py) ----------
 
 let rotorPortsFor = null;     // the address of the VFO the port list belongs to
 let rotorHoldUntil = 0;       // a message from a click stays this long, the regular update does not clear it
@@ -5486,13 +5700,67 @@ function fillRotorPorts(info) {
   if (chosen) sel.value = chosen.device;
 }
 
+let rotorPendingOn = false;   // ON pressed without a chosen port: the page opens, the link starts with the port picked
+let rotorInfo = null;         // the last rotor state of the active VFO (ROTOR page)
+
+/** MONITOR of the rotor (AZ / EL in the AD), per VFO, remembered in this browser. */
+function rotorMonKey() { return `rotorMon_${(active && active.name) || ""}`; }
+function rotorMonOn() { return recall(rotorMonKey()) === "1"; }
+
+// Position readings of K3NG jitter by about 1 % of the range: the shown position is averaged (EMA) and moves only
+// when the average leaves a dead band, so the numbers and the crosses do not flicker. A real move passes at once.
+const ROT_FILT = { alpha: 0.35, az: 2.5, el: 1.5 };     // EMA weight of a new reading, dead band in degrees
+let rotFilt = null;     // {base, az, el (averages), azS, elS (shown)}
+const azDiff = (a, b) => ((a - b + 540) % 360) - 180;
+
+function rotorFilter(info) {
+  if (!info.connected || info.az == null || info.el == null) { rotFilt = null; return; }
+  const f = rotFilt && rotFilt.base === vbase ? rotFilt : null;
+  if (!f) {
+    rotFilt = { base: vbase, az: info.az, el: info.el, azS: info.az, elS: info.el };
+  } else {
+    const dAz = azDiff(info.az, f.az), dEl = info.el - f.el;
+    // while the rotor turns (target away from the reading) or on a big step the reading is taken at once,
+    // otherwise small changes are averaged
+    const t = info.target, turning = !!t && (Math.abs(azDiff(t[0], info.az)) > 5 || Math.abs(t[1] - info.el) > 5);
+    f.az = turning || Math.abs(dAz) > 8 ? info.az : (f.az + ROT_FILT.alpha * dAz + 360) % 360;
+    f.el = turning || Math.abs(dEl) > 6 ? info.el : f.el + ROT_FILT.alpha * dEl;
+    if (Math.abs(azDiff(f.az, f.azS)) >= ROT_FILT.az) f.azS = f.az;
+    if (Math.abs(f.el - f.elS) >= ROT_FILT.el) f.elS = f.el;
+  }
+  info.azShow = rotFilt.azS;
+  info.elShow = rotFilt.elS;
+}
+
+/** The rotor is still on its way: the target is further than the dead band of the rotor (5°) from the position. */
+function rotorMoving(info) {
+  if (!info || !info.target || info.azShow == null) return false;
+  return Math.abs(azDiff(info.target[0], info.azShow)) > 5 || Math.abs(info.target[1] - info.elShow) > 5;
+}
+
 function renderRotor(info) {
-  $("rotorEnabled").checked = info.on;
-  $("rotorPos").textContent = info.az == null ? "–" : `AZ ${Math.round(info.az)}°  EL ${Math.round(info.el ?? 0)}°`;
-  $("rotorTarget").textContent = info.target
-    ? `Moving to AZ ${Math.round(info.target[0])}° EL ${Math.round(info.target[1])}° (${info.source})` : "No target";
+  rotorFilter(info);
+  rotorInfo = info;
+  if (info.on) rotorPendingOn = false;
+  const on = info.on || rotorPendingOn;
+  $("rotorOnKey").textContent = on ? "ON" : "OFF";
+  $("rotorOnKey").classList.toggle("on", on);
+  $("rotorOffNote").textContent = `The rotor configuration for ${active && active.name ? `VFO ${active.name}` : "this receiver"} is off.`;
+  $("rotorOffNote").hidden = on;
+  $("rotorPortBox").hidden = !on;
+  $("rotorOnBox").hidden = !on;
+  const deg = (v) => (info.connected && v != null ? `${Math.round(v)}°` : "–");
+  $("rotAzNow").textContent = deg(info.azShow);
+  $("rotElNowT").textContent = deg(info.elShow);
+  $("rotAzReq").textContent = deg(info.target && info.target[0]);
+  $("rotElReq").textContent = deg(info.target && info.target[1]);
+  $("rotorTarget").textContent = !info.on ? "Choose the serial port of the rotor controller."
+    : !info.connected ? "Connecting to the rotor controller…"
+    : info.target ? `Moving to AZ ${Math.round(info.target[0])}° EL ${Math.round(info.target[1])}° (${info.source})` : "No target";
   rotorShowError(info.fault ? `Fault: ${info.fault}` : info.error);
-  $("rotorReset").hidden = !info.fault;
+  $("rotorReset").classList.toggle("warn", !!info.fault);
+  $("rotorMon").classList.toggle("on", rotorMonOn());
+  rotDialRender(info);
   $("rotorRaw").textContent = info.k3ng_az == null ? ""
     : `K3NG now: ${Math.round(info.k3ng_az)}°${info.k3ng_guess ? " (0–90 or 360–450 not known yet: decided at the first move)" : ""}.`;
   if (info.az_cal) {
@@ -5517,7 +5785,7 @@ let satInfo = null;     // the last rotor state, for the clicks
 // -> why the plots do not take a click now, "" if they do
 function satDialRefusal(info) {
   if (!info || !info.connected) return "Rotor is not connected";
-  if (info.fault) return "Reset the fault in SET, ROTOR tab";
+  if (info.fault) return "Reset the fault in SETTINGS, ROTOR page";
   if (info.tracker) return "Satellite tracking moves the rotor (SATELLITES tab, TRACK): stop it to set the position by hand";
   if (info.az == null) return "Rotor position is not known yet";
   return "";
@@ -5531,43 +5799,147 @@ $("satStop").addEventListener("click", async () => {
   if (satRot && satRot.on) await satRotSend({ stop: true });
 });
 
+let rotorPollBusy = false;
 async function pollRotor() {
   const panel = document.querySelector('[data-set-panel="rotor"]');
-  const setOpen = !panel.hidden && !$("settingsCard").hidden;
+  const setOpen = !panel.hidden && bodyTab === "set" && !document.hidden;
   if (!setOpen) rotorPortsFor = null;
   const trackOpen = bodyTab === "sat" && amsatPage === "track" && !document.hidden;     // the antenna on the polar plot
-  if (!setOpen && !trackOpen) return;
+  const mon = rotorMonOn() && !document.hidden;                                       // AZ / EL in the AD
+  if (!mon && adRotInfo) { adRotInfo = null; renderAd(); }
+  if ((!setOpen && !trackOpen && !mon) || rotorPollBusy) return;
   const needPorts = setOpen && rotorPortsFor !== vbase;
+  const base = vbase;
+  rotorPollBusy = true;
   try {
-    const info = await fetch(vbase + `/api/rotor${needPorts ? "?ports=1" : ""}`).then((r) => r.json());
-    if (needPorts) { fillRotorPorts(info); rotorPortsFor = vbase; }
+    const info = await fetch(base + `/api/rotor${needPorts ? "?ports=1" : ""}`).then((r) => r.json());
+    if (base !== vbase) return;     // the VFO changed meanwhile
+    if (needPorts) { fillRotorPorts(info); rotorPortsFor = base; }
     renderRotor(info);
+    if (rotorMonOn()) { adRotInfo = info; renderAd(); }
   } catch (e) {
     rotorShowError("Receiver is not reachable");
+  } finally {
+    rotorPollBusy = false;
   }
 }
 
-$("rotorRefresh").addEventListener("click", () => { rotorPortsFor = null; pollRotor(); });
-$("rotorEnabled").addEventListener("change", (e) => {
+/** Turns the rotor link of this VFO on with the port chosen in the list (off: closes the port). */
+function rotorLink(on) {
   const opt = $("rotorPort").selectedOptions[0];
-  if (e.target.checked && !opt?.value) {
-    e.target.checked = false;
-    rotorShowError("Choose a port first", true);
+  if (on && !opt?.value) {
+    rotorPendingOn = true;      // show the page, the link starts when a port is chosen
+    rotorShowError("Choose the serial port of the rotor controller", true);
+    if (rotorInfo) renderRotor(rotorInfo);
     return;
   }
-  rotorPost({ enabled: e.target.checked, port: opt?.value || "", usb_serial: opt?.dataset.usbSerial || "" });
+  rotorPendingOn = false;
+  rotorPost({ enabled: on, port: opt?.value || "", usb_serial: opt?.dataset.usbSerial || "" });
+}
+
+$("rotorRefresh").addEventListener("click", () => { rotorPortsFor = null; pollRotor(); });
+$("rotorOnKey").addEventListener("click", () => {
+  const on = !!(rotorInfo && rotorInfo.on) || rotorPendingOn;
+  if (on && !(rotorInfo && rotorInfo.on)) { rotorPendingOn = false; rotorShowError(""); if (rotorInfo) renderRotor(rotorInfo); return; }
+  rotorLink(!on);
+});
+// another port while ON: the link opens that one
+$("rotorPort").addEventListener("change", () => {
+  if ((rotorInfo && rotorInfo.on) || rotorPendingOn) rotorLink(true);
 });
 $("rotorStop").addEventListener("click", () => rotorPost({ stop: true }));
 $("rotorReset").addEventListener("click", () => rotorPost({ reset: true }));
+$("rotorMon").addEventListener("click", () => {
+  const on = !rotorMonOn();
+  store(rotorMonKey(), on ? "1" : "0");
+  $("rotorMon").classList.toggle("on", on);
+  if (!on) adRotInfo = null;
+  else if (rotorInfo) adRotInfo = rotorInfo;
+  renderAd();
+});
 $("rotorCalSave").addEventListener("click", () => {
   if ($("rotorCal0").value === "" || $("rotorCal450").value === "") { rotorShowError("Enter both azimuths", true); return; }
   rotorPost({ az_cal: [Number($("rotorCal0").value), Number($("rotorCal450").value)] });
 });
-$("rotorGo").addEventListener("click", () => {
-  if ($("rotorAz").value === "" || $("rotorEl").value === "") { rotorShowError("Enter azimuth and elevation", true); return; }
-  rotorPost({ goto: [Number($("rotorAz").value), Number($("rotorEl").value)] });
-});
 setInterval(pollRotor, 500);
+
+// ---------- ROTOR page: polar plot (azimuth, elevation 0–90) and the elevation column 0–180 ----------
+// Like the TRACK page: red cross = the antenna now, ring = the target, a click moves the antenna.
+const ROT_EL = { top: 8, h: 216 };      // the column in the SVG: y of 180°, height of 0–180°
+const rotElY = (el) => ROT_EL.top + (1 - Math.min(Math.max(el, 0), 180) / 180) * ROT_EL.h;
+{
+  let g = "";
+  for (let el = 0; el <= 180; el += 15) {
+    const y = rotElY(el).toFixed(1), major = el % 30 === 0;
+    g += `<line class="${major ? "rot-elgrid major" : "rot-elgrid"}" x1="${major ? 26 : 30}" x2="46" y1="${y}" y2="${y}"/>`;
+    if (major) g += `<text class="rot-ellbl" x="22" y="${(+y + 3.5).toFixed(1)}">${el}</text>`;
+  }
+  $("rotElGrid").innerHTML = g;
+}
+
+function rotDialRender(info) {
+  const ok = info.connected && info.azShow != null && info.elShow != null;
+  const x = $("rotPolarX"), now = $("rotElNow"), tg = $("rotPolarTgt"), tgEl = $("rotElTgt");
+  x.setAttribute("visibility", ok ? "visible" : "hidden");
+  now.setAttribute("visibility", ok ? "visible" : "hidden");
+  if (ok) {
+    const az = info.azShow, el = info.elShow;
+    const back = el > 90, [px, py] = satPolarXY(back ? (az + 180) % 360 : az, back ? 180 - el : el, 100);
+    x.setAttribute("transform", `translate(${px.toFixed(1)},${py.toFixed(1)})`);
+    now.setAttribute("transform", `translate(0,${rotElY(el).toFixed(1)})`);
+  }
+  const t = info.connected && rotorMoving(info) && info.target;     // the green ring only while the rotor is on its way
+  tg.setAttribute("visibility", t ? "visible" : "hidden");
+  tgEl.setAttribute("visibility", t ? "visible" : "hidden");
+  if (t) {
+    const [az, el] = t, back = el > 90, [px, py] = satPolarXY(back ? (az + 180) % 360 : az, back ? 180 - el : el, 100);
+    tg.setAttribute("transform", `translate(${px.toFixed(1)},${py.toFixed(1)})`);
+    tgEl.setAttribute("transform", `translate(0,${rotElY(el).toFixed(1)})`);
+  }
+  const refusal = satDialRefusal(info);
+  $("rotPolar").classList.toggle("locked", !!refusal);
+  $("rotEl").classList.toggle("locked", !!refusal);
+}
+
+function rotNote(text) { $("rotPolarNote").textContent = text; }
+const ROT_NOTE = $("rotPolarNote").textContent;
+
+/** Elevation column point -> elevation 0–180 in whole degrees. */
+function rotElAt(e) {
+  const svg = $("rotEl"), p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
+  return Math.round(Math.min(Math.max((1 - (p.y - ROT_EL.top) / ROT_EL.h) * 180, 0), 180));
+}
+
+$("rotPolarHit").addEventListener("pointermove", (e) => {
+  const at = satPolarAt(e), x = $("rotPolarAim"), refusal = satDialRefusal(rotorInfo);
+  if (!at || refusal) { x.setAttribute("visibility", "hidden"); e.target.style.cursor = refusal ? "not-allowed" : ""; rotNote(refusal || ROT_NOTE); return; }
+  const [px, py] = satPolarXY(at[0], at[1], 100);
+  x.setAttribute("transform", `translate(${px.toFixed(1)},${py.toFixed(1)})`);
+  x.setAttribute("visibility", "visible");
+  e.target.style.cursor = "crosshair";
+  rotNote(`Click: turn the antenna to AZ ${at[0]}° EL ${at[1]}°.`);
+});
+$("rotPolarHit").addEventListener("pointerleave", () => { $("rotPolarAim").setAttribute("visibility", "hidden"); rotNote(ROT_NOTE); });
+$("rotPolarHit").addEventListener("click", (e) => {
+  const at = satPolarAt(e), refusal = satDialRefusal(rotorInfo);
+  if (!at) return;
+  if (refusal) { rotorShowError(refusal, true); return; }
+  rotorPost({ goto: at });
+});
+$("rotElHit").addEventListener("pointermove", (e) => {
+  const el = rotElAt(e), aim = $("rotElAim"), refusal = satDialRefusal(rotorInfo);
+  aim.setAttribute("visibility", refusal ? "hidden" : "visible");
+  aim.setAttribute("y1", rotElY(el).toFixed(1)); aim.setAttribute("y2", rotElY(el).toFixed(1));
+  e.target.style.cursor = refusal ? "not-allowed" : "crosshair";
+  rotNote(refusal || `Click: antenna EL ${el}°${el > 90 ? " (over the top, looking back)" : ""}, the azimuth stays.`);
+});
+$("rotElHit").addEventListener("pointerleave", () => { $("rotElAim").setAttribute("visibility", "hidden"); rotNote(ROT_NOTE); });
+$("rotElHit").addEventListener("click", (e) => {
+  const el = rotElAt(e), info = rotorInfo, refusal = satDialRefusal(info);
+  if (refusal) { rotorShowError(refusal, true); return; }
+  const az = info.target ? info.target[0] : info.az;     // the azimuth stays
+  rotorPost({ goto: [Math.round(az), el] });
+});
 
 // A click on the clock switches UTC / local time (LOC); the choice is remembered.
 let clockLocal = recall("clockLocal") === "1";
@@ -5622,45 +5994,78 @@ const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<":
 
 async function loadMems() {
   mems = await fetch(vbase + "/api/memories").then((r) => r.json());
+  await loadMemGroups();
   renderMemGroups();
   renderMems();
 }
 
+// LIST page of the MEMORIES tab: only the list to recall memories from; adding, editing, groups, import and export are in the
+// editor pages (CHANNELS, GROUPS, IMPORT, EXPORT; memory editor by Brano, brjanicek).
+const MEM_MODES = ["AM", "FM", "WFM", "LSB", "USB", "CW", "DSD"];
+let dabChannelList = [];     // [[channel, centre Hz]] from /api/state
+
 function renderMemGroups() {
-  const groups = [...new Set(mems.map((m) => m.group))].sort((a, b) => a.localeCompare(b, "en"));
+  const groups = memAllGroups();
   const sel = $("memGroup");
   const cur = sel.value || recall("memGroup") || "";
   sel.innerHTML = `<option value="">All</option>` + groups.map((g) => `<option>${escHtml(g)}</option>`).join("");
   sel.value = groups.includes(cur) ? cur : "";
-  $("memGroups").innerHTML = groups.map((g) => `<option value="${escHtml(g)}">`).join("");
-  updateExportLabel();
+}
+
+function memFiltered() {
+  const q = $("memSearch").value.trim().toLowerCase();
+  const group = $("memGroup").value;
+  const favOnly = $("memFav").checked;
+  const sort = $("memSort").value;
+  const byFreq = (a, b) => a.freq_hz - b.freq_hz;
+  const byName = (a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || byFreq(a, b);
+  const cmp = sort === "name" ? byName : sort === "group" ? (a, b) => (a.group || "").localeCompare(b.group || "", "en") || byFreq(a, b) : byFreq;
+  return mems.filter((m) => (!group || memGroupsOf(m).includes(group)) && (!favOnly || m.fav) &&
+    (!q || m.name.toLowerCase().includes(q) || memGroupsOf(m).some((g) => g.toLowerCase().includes(q)) ||
+      fmtKHz(m.freq_hz, 3).replace(/\s/g, "").includes(q.replace(/\s/g, ""))))
+    .sort(cmp);
+}
+
+/** id -> names of the other memories on the same frequency (within 50 Hz) and mode, or the same DAB channel. */
+function memDuplicates() {
+  const dups = new Map();
+  const sorted = [...mems].sort((a, b) => a.freq_hz - b.freq_hz);
+  for (let i = 0; i < sorted.length; i++) {
+    for (let j = i + 1; j < sorted.length && sorted[j].freq_hz - sorted[i].freq_hz < 50; j++) {
+      const a = sorted[i], b = sorted[j];
+      if (a.mode !== b.mode || (a.dab_channel || "") !== (b.dab_channel || "")) continue;
+      for (const [x, y] of [[a, b], [b, a]]) dups.set(x.id, [...(dups.get(x.id) || []), y.name]);
+    }
+  }
+  return dups;
 }
 
 function renderMems() {
   drawOverlays();   // memory tags in the spectrum
   renderVfoDisplays();   // memory name above each VFO
-  const q = $("memSearch").value.trim().toLowerCase();
+  renderMed();
   const group = $("memGroup").value;
-  const favOnly = $("memFav").checked;
-  const list = mems.filter((m) => (!group || m.group === group) && (!favOnly || m.fav) &&
-    (!q || m.name.toLowerCase().includes(q) || fmtKHz(m.freq_hz, 3).replace(/\s/g, "").includes(q.replace(/\s/g, ""))))
-    .sort((a, b) => a.freq_hz - b.freq_hz);
+  const sort = $("memSort").value;
+  const list = memFiltered();
   $("memCount").textContent = `${list.length} / ${mems.length}`;
   if (!list.length) {
-    $("memList").innerHTML = `<div class="mem-empty">${mems.length ? "Nothing matches the filter." : "No memories yet."}</div>`;
+    $("memList").innerHTML = `<div class="mem-empty">${mems.length ? "Nothing matches the filter." : "No memories yet: ＋ SAVE CURRENT or ＋ NEW."}</div>`;
     return;
   }
-  // When all groups are shown, group by band (MHz), otherwise the list is just sorted.
+  const dups = memDuplicates();
+  // Headings: by band (MHz) when sorted by frequency and all groups are shown, by group when sorted by group.
   let html = "";
-  let lastMhz = null;
+  let last = null;
   for (const m of list) {
-    const mhz = Math.floor(m.freq_hz / 1e6);
-    if (!group && mhz !== lastMhz) { html += `<div class="mem-group">${mhz} MHz</div>`; lastMhz = mhz; }
-    html += `<div class="mem" data-id="${m.id}" title="${escHtml(m.name)} · ${escHtml(m.group)} · ${fmtBw(m.bw)}">` +
-      `<button class="star${m.fav ? " on" : ""}" data-star aria-label="Favourite">${m.fav ? "★" : "☆"}</button>` +
-      `<span class="name">${escHtml(m.name)}</span>` +
+    const head = sort === "group" ? m.group || "(no group)" : sort === "freq" && !group ? `${Math.floor(m.freq_hz / 1e6)} MHz` : null;
+    if (head !== null && head !== last) { html += `<div class="mem-group">${escHtml(head)}</div>`; last = head; }
+    const dup = dups.get(m.id);
+    html += `<div class="mem" data-id="${m.id}" title="${escHtml(m.name)} · ${escHtml(memGroupsOf(m).join(", "))} · ${fmtBw(m.bw)}` +
+      `${m.decoder ? ` · ${DECODER_NAMES[m.decoder] || m.decoder}` : ""}${m.record && m.record !== "off" ? ` · REC ${RECORD_NAMES[m.record]}` : ""}${m.note ? ` · ${escHtml(m.note)}` : ""}">` +
+      `<button class="star${m.fav ? " on" : ""}" data-star aria-label="Favourite" title="Star">${m.fav ? "★" : "☆"}</button>` +
+      `<span class="name">${escHtml(m.name)}${dup ? `<i class="dup" title="Same frequency and mode as: ${escHtml(dup.join(", "))}">⧉</i>` : ""}</span>` +
       `<span class="meta">${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} M` : fmtKHz(m.freq_hz, 2)}<b>${m.dab_channel ? `DAB ${escHtml(m.dab_channel)}` : m.mode}</b></span>` +
-      `<button class="del" data-del aria-label="Delete">×</button></div>`;
+      `<button class="edit" data-edit aria-label="Edit" title="Open in CHANNELS">✎</button></div>`;
   }
   $("memList").innerHTML = html;
   markActiveMem();
@@ -5677,33 +6082,44 @@ function memAt(hz, mode) {
   return best;
 }
 
-function markActiveMem() {
+let memActiveKey = null;   // ids of the highlighted memories, to scroll the list only when they change
+function markActiveMem(scroll = false) {
   if (!st) return;
-  for (const el of $("memList").querySelectorAll(".mem")) {
+  const list = $("memList");
+  let first = null, key = "";
+  for (const el of list.querySelectorAll(".mem")) {
     const m = mems.find((x) => x.id === el.dataset.id);
-    el.classList.toggle("active", !!m && (m.dab_channel ? !!st.dab && st.dab_channel === m.dab_channel
-      : !st.dab && Math.abs(m.freq_hz - st.tune_hz) < 50 && m.mode === st.mode));
+    const on = !!m && (m.dab_channel ? !!st.dab && st.dab_channel === m.dab_channel
+      : !st.dab && Math.abs(m.freq_hz - st.tune_hz) < 50 && m.mode === st.mode);
+    el.classList.toggle("active", on);
+    if (on) { key += el.dataset.id + " "; first = first || el; }
   }
+  // The memory the VFO is on is scrolled into the middle of the list (the order stays), once when it changes
+  // or the page opens, so scrolling by hand is not undone.
+  if (first && bodyTab === "mem" && medTab === "list" && (scroll || key !== memActiveKey)) {
+    const top = first.offsetTop - list.clientHeight / 2 + first.offsetHeight / 2;
+    list.scrollTop = Math.max(0, top);
+  }
+  memActiveKey = key;
 }
 
-$("memList").addEventListener("click", async (e) => {
+$("memList").addEventListener("click", async (e) => {   // a click recalls the memory; ☆ stars it, ✎ opens it in the editor
   const row = e.target.closest(".mem");
-  if (!row || !st) return;
-  const m = mems.find((x) => x.id === row.dataset.id);
+  const m = row && mems.find((x) => x.id === row.dataset.id);
   if (!m) return;
-  if (e.target.closest("[data-del]")) {
-    if (!confirm(`Delete memory "${m.name}"?`)) return;
-    const res = await fetch(`${vbase}/api/memories/${m.id}`, { method: "DELETE" });
-    if (res.ok) { mems = mems.filter((x) => x !== m); renderMemGroups(); renderMems(); }
-    return;
-  }
   if (e.target.closest("[data-star]")) {
-    m.fav = !m.fav;
-    renderMems();
-    fetch(`${vbase}/api/memories/${m.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fav: m.fav }) });
+    const r = await memApi(`/api/memories/${m.id}`, { fav: !m.fav }, "PATCH");
+    if (r.ok) { mems = mems.map((x) => (x.id === m.id ? r.data : x)); renderMems(); }
     return;
   }
-  recallMem(m);
+  if (e.target.closest("[data-edit]")) {
+    await memOpenEditor();
+    showMedTab("channels");
+    medOpenForm(m);
+    $("medTable").querySelector(`tr[data-id="${m.id}"]`)?.scrollIntoView({ block: "nearest" });
+    return;
+  }
+  if (st) recallMem(m);
 });
 
 /** Recall a memory: frequency, mode and bandwidth (on a VFO that can receive the frequency). A DAB memory: DAB on with its channel. */
@@ -5721,110 +6137,879 @@ async function recallMem(m) {
   renderControls();
   tune(m.freq_hz);
   send({ mode: m.mode, bandwidth: m.bw });
+  if (m.decoder) memStartDecoder(m.decoder);
+  memStartRecord(m);
   markActiveMem();
 }
 
-$("memSave").addEventListener("click", async () => {
+// What recalling memories switched on: {id, cont, squelch, asq}. Only that is switched off again by the next memory,
+// so a recording or ASQ switched on by hand stays as it is.
+let memRec = { id: null, cont: false, squelch: false, asq: false };
+
+/** RECORD of a recalled memory: ON = REC (everything), SQ = REC SQ, ASQ = REC SQ with the auto squelch on
+ *  (AM, FM, WFM; other modes REC SQ only), OFF = no recording. */
+function memStartRecord(m) {
+  const mode = m.record || "off";
+  const rec = st.recording || {};
+  const want = { cont: mode === "on", squelch: mode === "sq" || mode === "asq" };
+  const next = { id: m.id, cont: false, squelch: false, asq: false };
+  for (const b of REC_BUTTONS) {
+    const on = !!(rec[b.key] && rec[b.key].on);
+    if (want[b.key]) {
+      if (!on) send({ [b.send]: true });
+      else if (b.key === "cont" && memRec.cont && memRec.id !== m.id) {
+        // REC started by the previous memory: a new file, named after this memory
+        send({ [b.send]: false });
+        setTimeout(() => send({ [b.send]: true }), 700);
+      }
+      next[b.key] = !on || memRec[b.key];
+    } else if (memRec[b.key]) {   // also when the state from the server has not caught up yet
+      send({ [b.send]: false });
+    }
+  }
+  const asqOk = ["AM", "FM", "WFM"].includes(m.mode);
+  if (mode === "asq" && asqOk) {
+    if (!st.auto_sql) {
+      st.auto_sql = st.auto_sql_on = true;
+      send({ auto_sql: true });
+      next.asq = true;
+    } else next.asq = memRec.asq;
+  } else if (memRec.asq && st.auto_sql) {
+    st.auto_sql = st.auto_sql_on = false;
+    st.auto_sql_level = null;
+    send({ auto_sql: false });
+  }
+  memRec = next;
+  renderRds();
+  renderSqlBadge();
+  renderVfoDisplays();
+}
+
+/** The decoder of a recalled memory: switched on (if not on yet) and its page shown in the DECODERS tab. */
+function memStartDecoder(key) {
+  if (key === "ism") {
+    if (!st.ism) ismOn();
+    return;
+  }
+  const box = $(`${key}On`);
+  if (!box || box.disabled) return;   // e.g. VDL2 on a dongle that cannot run it
+  if (!box.checked) {
+    box.checked = true;
+    box.dispatchEvent(new Event("change"));
+  }
+  setDecPage(key);
+  setBodyTab("dec");
+}
+
+/** Opens the memory editor; template: a new channel to fill in the form (＋ SAVE CURRENT, ＋ NEW). */
+async function memOpenEditor(template) {
+  await loadMemGroups();
+  if (bodyTab !== "mem") setMemOn(true);
+  showMedTab(template ? "channels" : medTab === "list" ? "channels" : medTab);
+  if (template) medOpenForm(null, template);
+}
+$("memSave").addEventListener("click", () => {   // the tuned frequency, mode, width (and DAB channel) in the editor form
   if (!st) return;
   const dabName = st.dab ? ["DAB", st.dab_channel, dabLastInfo.ensemble].filter(Boolean).join(" ") : "";
-  const name = $("memName").value.trim() || dabName || `${fmtKHz(st.tune_hz, 2)} kHz ${st.mode}`;
-  const body = { name, group: $("memGroupNew").value.trim() || $("memGroup").value || "My",
-    freq_hz: st.tune_hz, mode: st.mode, bw: st.bandwidth[st.mode], ...(st.dab ? { dab_channel: st.dab_channel } : {}) };
-  const res = await fetch(vbase + "/api/memories", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const data = await res.json();
-  $("memError").hidden = res.ok;
-  if (!res.ok) { $("memError").textContent = data.error || "Error"; return; }
-  mems.push(data);
-  $("memName").value = "";
-  renderMemGroups();
-  renderMems();
+  const group = $("memGroup").value;
+  memOpenEditor({ name: dabName || `${fmtKHz(st.tune_hz, 2)} kHz ${st.mode}`, groups: group ? [group] : [],
+    freq_hz: st.tune_hz, mode: MEM_MODES.includes(st.mode) ? st.mode : "AM", bw: st.bandwidth[st.mode] || 3000,
+    ...(st.dab ? { dab_channel: st.dab_channel } : {}) });
 });
-$("memName").addEventListener("keydown", (e) => { if (e.key === "Enter") $("memSave").click(); });
+$("memNew").addEventListener("click", () => {   // an empty form: frequency, mode and width typed in by hand
+  const group = $("memGroup").value;
+  memOpenEditor({ name: "", groups: group ? [group] : [], freq_hz: null, mode: st && MEM_MODES.includes(st.mode) ? st.mode : "AM",
+    bw: st && st.bandwidth ? st.bandwidth[st.mode] || 3000 : 3000 });
+});
 $("memSearch").addEventListener("input", renderMems);
 $("memGroup").addEventListener("change", () => { store("memGroup", $("memGroup").value); renderMems(); });
 $("memFav").addEventListener("change", renderMems);
+$("memSort").value = recall("memSort") || "freq";
+$("memSort").addEventListener("change", () => { store("memSort", $("memSort").value); renderMems(); });
 
-// Import from SDR# (frequencies.xml in its installation folder) and export of memories to a JSON file.
-function memIoNote(text, error) {
-  const el = $("memIoNote");
-  el.textContent = text;
+// ---------- memory editor (MEM → ✎ EDITOR): channels, groups with notes, import and export with a list ----------
+
+const RECORD_NAMES = { off: "OFF", on: "ON", sq: "SQ", asq: "ASQ" };   // RECORD of a memory: recording at recall
+const DECODER_NAMES = { "": "—", ft8: "FT8", wefax: "WEFAX", cw: "CW", rtty: "RTTY", sstv: "SSTV", packet: "PACKET",
+  acars: "ACARS", vdl2: "VDL2", ism: "ISM" };
+const NO_GROUP = "\u0000none";   // value of "(no group)" in the group filters
+let memGroupList = [];           // [{name, note, count}] from /api/memory_groups
+let medTab = recall("medTab") || "list";
+const medSel = new Set();        // ids of the channels ticked in CHANNELS
+let medEditId = null;            // channel in the form: id, "new" or null
+let medFormGroups = [];          // groups ticked in the form (with new ones typed there)
+let medFormColor = "";           // "" = default colour
+const medGrpSel = new Set();     // names ticked in GROUPS
+const medImp = { rows: [], groups: [] };   // import list: rows as in medRow(), groups [{name, note, sel}]
+const medExp = { rows: [], notes: {} };    // export list; notes: group -> {note, incl}
+
+async function memApi(path, body, method = "POST") {
+  try {
+    const res = await fetch(vbase + path, { method, headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { ok: false, error: data.error || `HTTP ${res.status}${res.status === 404 || res.status === 405 ? " – restart RADIMCOM to load the new version" : ""}` };
+    }
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+async function loadMemGroups() {
+  const r = await memApi("/api/memory_groups", undefined, "GET");
+  if (r.ok) memGroupList = r.data;
+}
+
+function memTagColor(m) { return m.color || MEM_COLOR; }
+function memGroupsOf(m) { return m.groups || (m.group ? [m.group] : []); }
+function memGroupNote(name) { return (memGroupList.find((g) => g.name === name) || {}).note || ""; }
+/** Every group name: the group list (also empty groups) and the groups of the memories. */
+function memAllGroups() {
+  const names = new Set(memGroupList.map((g) => g.name));
+  for (const m of mems) for (const g of memGroupsOf(m)) names.add(g);
+  return [...names].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+}
+function fmtMemFreq(hz) { return hz >= 30e6 ? `${fmtMHz(hz, 4)} M` : `${fmtKHz(hz, 2)} k`; }
+function kHzText(bw) { return (bw / 1000).toLocaleString(LOCALE, { maximumFractionDigits: 3, useGrouping: false }); }
+
+/** After a change on the server: the memory list and the editor pages are drawn again. */
+async function memChanged(newMems) {
+  if (newMems) mems = newMems;
+  else mems = await fetch(vbase + "/api/memories").then((r) => r.json());
+  await loadMemGroups();
+  renderMemGroups();
+  renderMems();
+  renderMed();
+}
+
+function medMsg(text, error) {
+  const el = $("medNote");
+  el.textContent = text || "";
   el.classList.toggle("error", !!error);
   el.hidden = !text;
 }
 
-function updateExportLabel() {
-  const g = $("memGroup").value;
-  $("memExportGroup").textContent = g ? `⇩ EXPORT ${g}` : "⇩ EXPORT ALL";
-  $("memExportGroup").title = g ? `Downloads the group "${g}" as a JSON file` : "Downloads every memory as a JSON file";
+function showMedTab(name) {
+  medTab = name;
+  store("medTab", name);
+  for (const b of document.querySelectorAll("[data-med-tab]")) b.classList.toggle("on", b.dataset.medTab === name);
+  for (const p of document.querySelectorAll("[data-med-panel]")) p.hidden = p.dataset.medPanel !== name;
+  medMsg("");
+  renderMed();
+}
+$("medTabs").addEventListener("click", (e) => { const b = e.target.closest("[data-med-tab]"); if (b) showMedTab(b.dataset.medTab); });
+
+/** The MEMORIES tab was opened: the shown page filled, the list scrolled to the tuned memory. */
+function memPaneOpened() {
+  showMedTab(medTab);
+  if (medTab === "list") markActiveMem(true);
 }
 
-function exportMems(list, label) {
-  if (!list.length) { memIoNote(`Nothing to export (${label}).`, true); return; }
-  const out = [...list].sort((a, b) => a.freq_hz - b.freq_hz);
-  const blob = new Blob([JSON.stringify(out, null, 1)], { type: "application/json" });
+function renderMed() {
+  if (bodyTab !== "mem") return;
+  const names = memAllGroups();
+  $("medGroupNames").innerHTML = names.map((g) => `<option value="${escHtml(g)}">`).join("");
+  $("medCount").textContent = `${mems.length} channels · ${names.length} groups`;
+  $("medExpCount").textContent = medExp.rows.length ? `(${medExp.rows.length})` : "";
+  if (medTab === "list") return;   // the LIST page is kept up to date by renderMems()
+  if (medTab === "channels") renderMedChannels();
+  else if (medTab === "groups") renderMedGroups();
+  else if (medTab === "import") renderMedImport();
+  else renderMedExport();
+}
+
+// ----- CHANNELS -----
+
+function medFilterSelect(sel, withAll) {
+  const cur = sel.value;
+  const names = memAllGroups();
+  sel.innerHTML = (withAll ? `<option value="">All groups</option><option value="${NO_GROUP}">(no group)</option>` : "") +
+    names.map((g) => `<option value="${escHtml(g)}">${escHtml(g)}</option>`).join("");
+  sel.value = [...sel.options].some((o) => o.value === cur) ? cur : sel.options[0]?.value || "";
+}
+
+function medVisible() {
+  const q = $("medSearch").value.trim().toLowerCase();
+  const qf = q.replace(/\s/g, "");
+  const group = $("medGroup").value;
+  const dupsOnly = $("medDups").checked;
+  const dups = memDuplicates();
+  return mems.filter((m) => {
+    const gs = memGroupsOf(m);
+    if (group === NO_GROUP ? gs.length : group && !gs.includes(group)) return false;
+    if (dupsOnly && !dups.has(m.id)) return false;
+    return !q || m.name.toLowerCase().includes(q) || (m.note || "").toLowerCase().includes(q) ||
+      gs.some((g) => g.toLowerCase().includes(q)) || fmtKHz(m.freq_hz, 3).replace(/\s/g, "").includes(qf);
+  });
+}
+
+function renderMedChannels() {
+  medFilterSelect($("medGroup"), true);
+  const sort = $("medSort").value;
+  const group = $("medGroup").value;
+  const dups = memDuplicates();
+  const list = medVisible();
+  for (const id of [...medSel]) if (!mems.some((m) => m.id === id)) medSel.delete(id);
+  const byFreq = (a, b) => a.freq_hz - b.freq_hz;
+  const cmp = {
+    freq: byFreq,
+    name: (a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || byFreq(a, b),
+    mode: (a, b) => a.mode.localeCompare(b.mode) || byFreq(a, b),
+    decoder: (a, b) => (a.decoder || "~").localeCompare(b.decoder || "~") || byFreq(a, b),
+    group: byFreq,
+  }[sort];
+  list.sort(cmp);
+  // sections: by group (a channel in two groups is listed in both), mode or decoder; none by frequency and name
+  let sections;
+  if (sort === "group") {
+    const names = group && group !== NO_GROUP ? [group] : memAllGroups();
+    sections = names.map((g) => [g, list.filter((m) => memGroupsOf(m).includes(g)), memGroupNote(g)]);
+    if (!group || group === NO_GROUP) sections.push(["(no group)", list.filter((m) => !memGroupsOf(m).length), ""]);
+    if (group === NO_GROUP) sections = sections.slice(-1);
+    sections = sections.filter(([, l]) => l.length);
+  } else if (sort === "mode" || sort === "decoder") {
+    const key = (m) => (sort === "mode" ? m.mode : DECODER_NAMES[m.decoder || ""] === "—" ? "no decoder" : DECODER_NAMES[m.decoder]);
+    sections = [...new Set(list.map(key))].map((k) => [k, list.filter((m) => key(m) === k), ""]);
+  } else {
+    sections = [[null, list, ""]];
+  }
+  const allSel = list.length && list.every((m) => medSel.has(m.id));
+  let html = `<thead><tr><th><input type="checkbox" data-selall ${allSel ? "checked" : ""} title="Select all in the list"></th>` +
+    `<th>★</th><th>Name</th><th class="num">Frequency</th><th>Mode</th><th class="num">BW</th><th>Decoder</th><th>Rec</th>` +
+    `<th>Groups</th><th title="Tag in the spectrum">Tag</th><th>Note</th></tr></thead><tbody>`;
+  for (const [title, rows, note] of sections) {
+    if (title !== null) {
+      html += `<tr class="med-sec"><td colspan="11">${escHtml(title)} <span class="muted">${rows.length}</span>` +
+        (note ? ` <span class="med-secnote">${escHtml(note)}</span>` : "") + `</td></tr>`;
+    }
+    for (const m of rows) {
+      const dup = dups.get(m.id);
+      html += `<tr class="med-ch${medSel.has(m.id) ? " sel" : ""}${m.id === medEditId ? " editing" : ""}" data-id="${m.id}">` +
+        `<td><input type="checkbox" data-pick ${medSel.has(m.id) ? "checked" : ""}></td>` +
+        `<td><button class="star${m.fav ? " on" : ""}" data-star>${m.fav ? "★" : "☆"}</button></td>` +
+        `<td class="name">${escHtml(m.name)}${dup ? ` <i class="dup" title="Same frequency and mode as: ${escHtml(dup.join(", "))}">⧉</i>` : ""}</td>` +
+        `<td class="num mono">${fmtMemFreq(m.freq_hz)}</td>` +
+        `<td class="mode">${m.dab_channel ? `DAB ${escHtml(m.dab_channel)}` : m.mode}</td>` +
+        `<td class="num mono">${fmtBw(m.bw)}</td>` +
+        `<td>${m.decoder ? DECODER_NAMES[m.decoder] || escHtml(m.decoder) : ""}</td>` +
+        `<td class="rec">${m.record && m.record !== "off" ? RECORD_NAMES[m.record] || escHtml(m.record) : ""}</td>` +
+        `<td class="groups">${memGroupsOf(m).map((g) => `<span class="chip">${escHtml(g)}</span>`).join("")}</td>` +
+        `<td><span class="swatch${m.tag === false ? " off" : ""}" style="--c:${memTagColor(m)}" title="${m.tag === false ? "tag hidden" : "tag shown"}"></span></td>` +
+        `<td class="note-cell" title="${escHtml(m.note || "")}">${escHtml(m.note || "")}</td></tr>`;
+    }
+  }
+  if (!list.length) html += `<tr><td colspan="11" class="mem-empty">${mems.length ? "Nothing matches the filter." : "No channels yet."}</td></tr>`;
+  $("medTable").innerHTML = html + "</tbody>";
+  $("medSelCount").textContent = `${medSel.size} selected`;
+  for (const b of $("medBulk").querySelectorAll("button")) b.disabled = !medSel.size;
+  renderMedForm();
+}
+
+for (const id of ["medSearch", "medDups"]) $(id).addEventListener("input", renderMedChannels);
+$("medGroup").addEventListener("change", renderMedChannels);
+$("medSort").value = recall("medSort") || "group";
+$("medSort").addEventListener("change", () => { store("medSort", $("medSort").value); renderMedChannels(); });
+
+$("medTable").addEventListener("click", (e) => {
+  if (e.target.closest("[data-selall]")) {
+    const list = medVisible();
+    if (e.target.checked) for (const m of list) medSel.add(m.id); else for (const m of list) medSel.delete(m.id);
+    renderMedChannels();
+    return;
+  }
+  const row = e.target.closest("tr[data-id]");
+  if (!row) return;
+  const m = mems.find((x) => x.id === row.dataset.id);
+  if (!m) return;
+  if (e.target.closest("[data-pick]")) {
+    if (e.target.checked) medSel.add(m.id); else medSel.delete(m.id);
+    renderMedChannels();
+    return;
+  }
+  if (e.target.closest("[data-star]")) {
+    memApi(`/api/memories/${m.id}`, { fav: !m.fav }, "PATCH").then((r) => r.ok ? memChanged(mems.map((x) => (x.id === m.id ? r.data : x))) : medMsg(r.error, true));
+    return;
+  }
+  medOpenForm(m);
+});
+$("medTable").addEventListener("dblclick", (e) => {
+  const row = e.target.closest("tr[data-id]");
+  const m = row && mems.find((x) => x.id === row.dataset.id);
+  if (m && !e.target.closest("input, button")) recallMem(m);
+});
+
+// bulk actions on the ticked channels
+$("medBulk").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-bulk]");
+  if (!b || !medSel.size) return;
+  const ids = [...medSel];
+  const act = b.dataset.bulk;
+  const group = $("medBulkGroup").value.trim();
+  if (["add", "remove", "move"].includes(act) && !group) { $("medBulkGroup").focus(); medMsg("Enter a group name first.", true); return; }
+  if (act === "export") { medExportAdd(mems.filter((m) => medSel.has(m.id))); showMedTab("export"); return; }
+  if (act === "delete" && !confirm(`Delete ${ids.length} selected channel${ids.length === 1 ? "" : "s"}?`)) return;
+  const changes = { add: { groups_add: [group] }, remove: { groups_remove: [group] }, move: { groups: [group] },
+    fav: { fav: true }, unfav: { fav: false }, tagon: { tag: true }, tagoff: { tag: false },
+    color: { color: $("medBulkColor").value }, nocolor: { color: "" } }[act];
+  const r = await memApi("/api/memories/bulk", act === "delete" ? { ids, delete: true } : { ids, changes });
+  if (!r.ok) { medMsg(r.error, true); return; }
+  if (act === "delete") { medSel.clear(); if (ids.includes(medEditId)) medEditId = null; }
+  medMsg(act === "delete" ? `Deleted ${r.data.deleted}.` : `Changed ${r.data.changed.length}.`);
+  await memChanged();
+});
+
+// the form of one channel
+function medOpenForm(m, template) {
+  medEditId = m ? m.id : "new";
+  const f = $("medForm");
+  const src = m || template || { name: "", groups: $("medGroup").value && $("medGroup").value !== NO_GROUP ? [$("medGroup").value] : [],
+    freq_hz: st ? st.tune_hz : 0, mode: st && MEM_MODES.includes(st.mode) ? st.mode : "AM",
+    bw: st && st.bandwidth ? st.bandwidth[st.mode] || 3000 : 3000, decoder: "", record: "off", note: "", color: "", tag: true, fav: false };
+  f.elements.mode.innerHTML = MEM_MODES.map((x) => `<option>${x}</option>`).join("");
+  f.elements.decoder.innerHTML = Object.entries(DECODER_NAMES).map(([k, v]) => `<option value="${k}">${k ? v : "none"}</option>`).join("");
+  f.elements.dab.innerHTML = `<option value="">no DAB</option>` + dabChannelList.map(([n, hz]) => `<option value="${escHtml(n)}">DAB ${escHtml(n)} · ${fmtMHz(hz, 3)} MHz</option>`).join("");
+  f.elements.name.value = src.name;
+  f.elements.freq.value = src.freq_hz == null ? "" : fmtMHz(src.freq_hz, 6);
+  f.elements.mode.value = src.mode;
+  f.elements.bw.value = kHzText(src.bw);
+  f.elements.decoder.value = src.decoder || "";
+  f.elements.record.innerHTML = Object.entries(RECORD_NAMES).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+  f.elements.record.value = src.record || "off";
+  f.elements.dab.value = src.dab_channel || "";
+  f.elements.note.value = src.note || "";
+  f.elements.tag.checked = src.tag !== false;
+  f.elements.fav.checked = !!src.fav;
+  medFormColor = src.color || "";
+  f.elements.color.value = medFormColor || MEM_COLOR;
+  medFormGroups = [...memGroupsOf(src)];
+  $("medFormTitle").textContent = m ? "Channel" : "New channel";
+  $("medFormSave").textContent = m ? "SAVE" : "＋ ADD";
+  f.querySelector("[data-act=recall]").hidden = f.querySelector("[data-act=delete]").hidden = !m;
+  $("medFormErr").hidden = true;
+  f.hidden = false;
+  // only the marks of the rows change: drawing the table again would break a double click (recall) on a row
+  for (const tr of $("medTable").querySelectorAll("tr[data-id]")) tr.classList.toggle("editing", tr.dataset.id === medEditId);
+  renderMedForm();
+  if (!m) f.elements.name.focus();
+}
+
+function renderMedForm() {
+  const f = $("medForm");
+  if (medEditId && medEditId !== "new" && !mems.some((m) => m.id === medEditId)) medEditId = null;
+  f.hidden = !medEditId;
+  if (!medEditId) return;
+  const names = [...new Set([...memAllGroups(), ...medFormGroups])].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+  $("medFormGroups").innerHTML = names.length ? names.map((g) => `<label class="chip-check"><input type="checkbox" value="${escHtml(g)}"` +
+    `${medFormGroups.includes(g) ? " checked" : ""}> ${escHtml(g)}</label>`).join("") : `<span class="muted">no groups yet</span>`;
+  f.elements.freq.disabled = !!f.elements.dab.value;
+  medFormDupNote();
+}
+
+/** Warns in the form when another channel is on the same frequency and mode. */
+function medFormDupNote() {
+  const f = $("medForm");
+  const hz = f.elements.dab.value ? (dabChannelList.find(([n]) => n === f.elements.dab.value) || [])[1] : parseFreq(f.elements.freq.value);
+  const other = hz ? mems.filter((m) => m.id !== medEditId && m.mode === f.elements.mode.value && Math.abs(m.freq_hz - hz) < 50) : [];
+  $("medFormDup").textContent = other.length ? `⧉ Same frequency and mode as: ${other.map((m) => m.name).join(", ")}` : "";
+  $("medFormDup").hidden = !other.length;
+}
+
+$("medFormGroups").addEventListener("change", (e) => {
+  const g = e.target.value;
+  medFormGroups = e.target.checked ? [...medFormGroups, g] : medFormGroups.filter((x) => x !== g);
+});
+$("medFormNewGroup").addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  const g = e.target.value.trim().replace(/\s+/g, " ").slice(0, 40);
+  if (g && !medFormGroups.includes(g)) medFormGroups.push(g);
+  e.target.value = "";
+  renderMedForm();
+});
+$("medForm").addEventListener("input", (e) => {
+  const f = $("medForm");
+  if (e.target === f.elements.color) medFormColor = e.target.value;
+  if (e.target === f.elements.dab) f.elements.freq.disabled = !!f.elements.dab.value;
+  if ([f.elements.freq, f.elements.mode, f.elements.dab].includes(e.target)) medFormDupNote();
+});
+$("medForm").addEventListener("change", (e) => {
+  const f = $("medForm");
+  if (e.target === f.elements.mode && st && st.bandwidth && st.bandwidth[e.target.value]) f.elements.bw.value = kHzText(st.bandwidth[e.target.value]);
+});
+$("medForm").addEventListener("click", async (e) => {
+  const act = e.target.closest("[data-act]")?.dataset.act;
+  const f = $("medForm");
+  const m = mems.find((x) => x.id === medEditId);
+  if (act === "nocolor") { medFormColor = ""; f.elements.color.value = MEM_COLOR; }
+  else if (act === "cancel") { medEditId = null; renderMedChannels(); }
+  else if (act === "recall" && m) recallMem(m);
+  else if (act === "delete" && m && confirm(`Delete channel "${m.name}"?`)) {
+    const r = await memApi(`/api/memories/${m.id}`, undefined, "DELETE");
+    if (!r.ok) { medMsg(r.error, true); return; }
+    medEditId = null;
+    medSel.delete(m.id);
+    await memChanged();
+  }
+});
+$("medForm").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); medEditId = null; renderMedChannels(); }
+});
+$("medForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = $("medForm");
+  const err = (t) => { $("medFormErr").textContent = t; $("medFormErr").hidden = false; };
+  const pending = $("medFormNewGroup").value.trim();   // typed but Enter not pressed
+  if (pending && !medFormGroups.includes(pending)) medFormGroups.push(pending.slice(0, 40));
+  $("medFormNewGroup").value = "";
+  const dab = f.elements.dab.value;
+  const freq = dab ? null : parseFreq(f.elements.freq.value);
+  const bw = parseFloat(f.elements.bw.value.replace(",", ".")) * 1000;
+  if (!f.elements.name.value.trim()) return err("Enter a name.");
+  if (!dab && !freq) return err("Enter a frequency, e.g. 145.5 or 7100k.");
+  if (!(bw > 0)) return err("Enter the bandwidth in kHz.");
+  const isNew = medEditId === "new";
+  const body = { name: f.elements.name.value.trim(), groups: medFormGroups, mode: f.elements.mode.value, bw: Math.round(bw),
+    decoder: f.elements.decoder.value, record: f.elements.record.value, note: f.elements.note.value.trim(), color: medFormColor, tag: f.elements.tag.checked,
+    fav: f.elements.fav.checked, ...(dab ? { dab_channel: dab } : { freq_hz: Math.round(freq), ...(isNew ? {} : { dab_channel: null }) }) };
+  const r = await memApi(isNew ? "/api/memories" : `/api/memories/${medEditId}`, body, isNew ? "POST" : "PATCH");
+  if (!r.ok) return err(r.error);
+  $("medFormErr").hidden = true;
+  medEditId = r.data.id;
+  medMsg(isNew ? `Added "${r.data.name}".` : `Saved "${r.data.name}".`);
+  await memChanged(isNew ? [...mems, r.data] : mems.map((x) => (x.id === r.data.id ? r.data : x)));
+  if (isNew) medOpenForm(r.data);   // the new channel stays in the form, now as a saved one
+});
+$("medNew").addEventListener("click", () => medOpenForm(null));
+
+// ----- GROUPS -----
+
+function renderMedGroups() {
+  const counts = {};
+  for (const m of mems) for (const g of memGroupsOf(m)) counts[g] = (counts[g] || 0) + 1;
+  const names = memAllGroups();
+  for (const g of [...medGrpSel]) if (!names.includes(g)) medGrpSel.delete(g);
+  const noGroup = mems.filter((m) => !memGroupsOf(m).length).length;
+  let html = `<thead><tr><th><input type="checkbox" data-selall ${names.length && names.every((g) => medGrpSel.has(g)) ? "checked" : ""}></th>` +
+    `<th>Group</th><th class="num">Channels</th><th>Note</th><th></th></tr></thead><tbody>`;
+  for (const g of names) {
+    html += `<tr data-g="${escHtml(g)}"${medGrpSel.has(g) ? ' class="sel"' : ""}><td><input type="checkbox" data-pick ${medGrpSel.has(g) ? "checked" : ""}></td>` +
+      `<td class="name">${escHtml(g)}</td><td class="num">${counts[g] || 0}</td>` +
+      `<td class="grow"><input data-note value="${escHtml(memGroupNote(g))}" placeholder="note…" maxlength="200"></td>` +
+      `<td class="acts"><button class="icon-btn" data-g-act="show" title="Show channels" aria-label="Show">☰</button>` +
+      `<button class="icon-btn" data-g-act="rename" title="Rename" aria-label="Rename">✎</button>` +
+      `<button class="icon-btn" data-g-act="copy" title="Copy the group and its channels under a new name" aria-label="Copy">⎘</button>` +
+      `<button class="icon-btn danger" data-g-act="delete" title="Delete" aria-label="Delete">🗑</button></td></tr>`;
+  }
+  if (noGroup) html += `<tr data-g="${NO_GROUP}"><td></td><td class="name muted">(no group)</td><td class="num">${noGroup}</td><td></td>` +
+    `<td class="acts"><button class="icon-btn" data-g-act="show" title="Show channels" aria-label="Show">☰</button></td></tr>`;
+  if (!names.length && !noGroup) html += `<tr><td colspan="5" class="mem-empty">No groups yet.</td></tr>`;
+  $("medGrpTable").innerHTML = html + "</tbody>";
+  $("medGrpSelCount").textContent = `${medGrpSel.size} selected`;
+  $("medGrpMerge").disabled = medGrpSel.size < 2;
+  $("medGrpDel").disabled = $("medGrpExport").disabled = !medGrpSel.size;
+}
+
+async function medGroupAction(body, done) {
+  const r = await memApi("/api/memory_groups", body);
+  if (!r.ok) { medMsg(r.error, true); return false; }
+  medMsg(done);
+  memGroupList = r.data.groups;
+  await memChanged(r.data.memories);
+  return true;
+}
+
+$("medGrpAdd").addEventListener("click", async () => {
+  const name = $("medGrpName").value.trim();
+  if (!name) { $("medGrpName").focus(); return; }
+  if (await medGroupAction({ action: "add", name, note: $("medGrpNote").value }, `Group "${name}" added.`)) {
+    $("medGrpName").value = $("medGrpNote").value = "";
+  }
+});
+for (const id of ["medGrpName", "medGrpNote"]) $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") $("medGrpAdd").click(); });
+
+$("medGrpTable").addEventListener("change", (e) => {
+  const row = e.target.closest("tr[data-g]");
+  if (e.target.matches("[data-note]") && row) {
+    const name = row.dataset.g;
+    medGroupAction({ action: "note", name, note: e.target.value }, `Note of "${name}" saved.`);
+  }
+});
+$("medGrpTable").addEventListener("click", async (e) => {
+  if (e.target.closest("[data-selall]")) {
+    for (const g of memAllGroups()) if (e.target.checked) medGrpSel.add(g); else medGrpSel.delete(g);
+    renderMedGroups();
+    return;
+  }
+  const row = e.target.closest("tr[data-g]");
+  if (!row) return;
+  const name = row.dataset.g;
+  if (e.target.closest("[data-pick]")) {
+    if (e.target.checked) medGrpSel.add(name); else medGrpSel.delete(name);
+    renderMedGroups();
+    return;
+  }
+  const act = e.target.closest("[data-g-act]")?.dataset.gAct;
+  if (act === "show") {
+    $("medSort").value = "group";
+    showMedTab("channels");
+    medFilterSelect($("medGroup"), true);
+    $("medGroup").value = name;
+    renderMedChannels();
+  } else if (act === "rename" || act === "copy") {
+    const nw = (prompt(act === "rename" ? `New name of the group "${name}":` : `Copy the group "${name}" and its channels as:`,
+      act === "rename" ? name : `${name} copy`) || "").trim();
+    if (nw && nw !== name) medGroupAction({ action: act, name, new: nw }, act === "rename" ? `Renamed to "${nw}".` : `Copied to "${nw}".`);
+  } else if (act === "delete") {
+    medGroupDelete([name]);
+  }
+});
+
+async function medGroupDelete(names) {
+  const only = mems.filter((m) => { const gs = memGroupsOf(m); return gs.length && gs.every((g) => names.includes(g)); }).length;
+  const label = names.length === 1 ? `the group "${names[0]}"` : `${names.length} groups`;
+  if (!confirm(`Delete ${label}?`)) return;
+  const delMems = only > 0 && confirm(`${only} channel${only === 1 ? " is" : "s are"} in no other group.\n\nOK = delete ${only === 1 ? "it" : "them"} too\nCancel = keep ${only === 1 ? "it" : "them"} without a group`);
+  for (const name of names) {
+    const ok = await medGroupAction({ action: "delete", name, delete_memories: delMems }, `Deleted ${label}${delMems ? ` and ${only} channels` : ""}.`);
+    if (!ok) return;
+    medGrpSel.delete(name);
+  }
+}
+$("medGrpDel").addEventListener("click", () => medGroupDelete([...medGrpSel]));
+$("medGrpMerge").addEventListener("click", async () => {
+  const names = [...medGrpSel];
+  if (names.length < 2) return;
+  const into = (prompt(`Merge ${names.join(", ")} into the group:`, names[0]) || "").trim();
+  if (!into) return;
+  if (await medGroupAction({ action: "merge", names, into }, `Merged into "${into}".`)) medGrpSel.clear();
+  renderMedGroups();
+});
+$("medGrpExport").addEventListener("click", () => {
+  medExportAdd(mems.filter((m) => memGroupsOf(m).some((g) => medGrpSel.has(g))));
+  for (const g of medGrpSel) medExp.notes[g] = medExp.notes[g] || { note: memGroupNote(g), incl: true };
+  showMedTab("export");
+});
+
+// ----- editable lists of IMPORT and EXPORT -----
+
+/** A memory (or an entry of a file) as a row of an editable list: the fields as text, as typed in the inputs. */
+function medRow(m) {
+  const num = (v) => (typeof v === "number" ? v : parseFloat(String(v).replace(",", ".")));
+  const hz = num(m.freq_hz);
+  const bw = num(m.bw);
+  return { name: String(m.name ?? ""), freq: Number.isFinite(hz) ? fmtMHz(hz, 6) : String(m.freq_hz ?? ""),
+    mode: String(m.mode || "").toUpperCase(), bw: Number.isFinite(bw) ? kHzText(bw) : String(m.bw ?? ""),
+    decoder: m.decoder || "", record: String(m.record || "off").toLowerCase(), groups: (Array.isArray(m.groups) ? m.groups : m.group ? [m.group] : []).filter(Boolean).join(" | "),
+    note: m.note || "", color: m.color || "", tag: m.tag !== false && m.tag !== "0", fav: !!m.fav, dab: m.dab_channel || "",
+    sel: true, err: m.error || "" };
+}
+
+/** Row -> entry for the server; throws Error with the reason when a field is wrong. */
+function medRowEntry(r) {
+  const hz = r.dab ? null : parseFreq(r.freq);
+  const bw = parseFloat(String(r.bw).replace(",", ".")) * 1000;
+  if (!r.name.trim()) throw new Error("name is missing");
+  if (!r.dab && !hz) throw new Error("bad frequency");
+  if (!MEM_MODES.includes(r.mode)) throw new Error("unknown mode");
+  if (!(bw > 0)) throw new Error("bad bandwidth");
+  return { name: r.name.trim(), groups: r.groups.split("|").map((g) => g.trim()).filter(Boolean), mode: r.mode, bw: Math.round(bw),
+    decoder: r.decoder, record: r.record, note: r.note.trim(), color: r.color, tag: r.tag, fav: r.fav,
+    ...(r.dab ? { dab_channel: r.dab } : { freq_hz: Math.round(hz) }) };
+}
+
+function medRowDup(r) {
+  if (r.err) return "";
+  const hz = r.dab ? (dabChannelList.find(([n]) => n === r.dab) || [])[1] : parseFreq(r.freq);
+  const m = hz && mems.find((x) => x.mode === r.mode && Math.abs(x.freq_hz - hz) < 50 && (x.dab_channel || "") === r.dab);
+  return m ? m.name : "";
+}
+
+/** Cells of an editable row (both lists); extra = cells added at the end. */
+function medEditCells(r, i, extra = "") {
+  return `<tr data-i="${i}" class="${r.sel ? "sel" : ""}${r.err ? " bad" : ""}"><td><input type="checkbox" data-f="sel" ${r.sel ? "checked" : ""}></td>` +
+    `<td><input data-f="name" value="${escHtml(r.name)}" maxlength="80"></td>` +
+    `<td><input data-f="freq" class="mono" value="${escHtml(r.freq)}" ${r.dab ? `disabled title="DAB ${escHtml(r.dab)}"` : ""}></td>` +
+    `<td><select data-f="mode">${MEM_MODES.map((x) => `<option${x === r.mode ? " selected" : ""}>${x}</option>`).join("")}` +
+    `${MEM_MODES.includes(r.mode) ? "" : `<option selected value="${escHtml(r.mode)}">${escHtml(r.mode) || "?"}</option>`}</select></td>` +
+    `<td><input data-f="bw" class="mono short" value="${escHtml(r.bw)}"></td>` +
+    `<td><select data-f="decoder">${Object.entries(DECODER_NAMES).map(([k, v]) => `<option value="${k}"${k === r.decoder ? " selected" : ""}>${v}</option>`).join("")}</select></td>` +
+    `<td><select data-f="record">${Object.entries(RECORD_NAMES).map(([k, v]) => `<option value="${k}"${k === r.record ? " selected" : ""}>${v}</option>`).join("")}${r.record in RECORD_NAMES ? "" : `<option selected value="${escHtml(r.record)}">${escHtml(r.record) || "?"}</option>`}</select></td>` +
+    `<td><input data-f="groups" value="${escHtml(r.groups)}" title="Several groups: A | B"></td>` +
+    `<td><input data-f="note" value="${escHtml(r.note)}" maxlength="200"></td>` + extra + `</tr>`;
+}
+
+const MED_EDIT_HEAD = `<th>Name</th><th>Frequency, MHz</th><th>Mode</th><th>BW, kHz</th><th>Decoder</th><th>Rec</th><th>Groups (A | B)</th><th>Note</th>`;
+
+/** Typing in an editable list changes its row (without drawing the list again, so the focus stays). */
+function medBindEditList(table, list, after) {
+  const onEdit = (e) => {
+    const tr = e.target.closest("tr[data-i]");
+    const f = e.target.dataset.f;
+    if (!tr || !f) return;
+    const r = list()[Number(tr.dataset.i)];
+    r[f] = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    if (f !== "sel") r.err = "";
+    tr.classList.toggle("sel", !!r.sel);
+    tr.classList.remove("bad");
+    after(r, tr, f);
+  };
+  table.addEventListener("input", onEdit);
+  table.addEventListener("change", onEdit);
+}
+
+// ----- IMPORT -----
+
+function renderMedImport() {
+  const rows = medImp.rows;
+  const dupCount = rows.filter((r) => medRowDup(r)).length;
+  $("medImpGroups").hidden = !medImp.groups.length;
+  $("medImpGroups").innerHTML = `<b>Groups in the file</b> (their notes are imported with the channels):` + medImp.groups.map((g, i) =>
+    `<label class="chip-check" data-gi="${i}"><input type="checkbox" data-gf="sel" ${g.sel ? "checked" : ""}> ${escHtml(g.name)}` +
+    `<input data-gf="note" value="${escHtml(g.note)}" placeholder="note" maxlength="200"></label>`).join("");
+  let html = `<thead><tr><th><input type="checkbox" data-selall ${rows.length && rows.every((r) => r.sel) ? "checked" : ""}></th>${MED_EDIT_HEAD}<th>Status</th></tr></thead><tbody>`;
+  rows.forEach((r, i) => {
+    const dup = medRowDup(r);
+    html += medEditCells(r, i, `<td class="status" data-status>${medImpStatus(r, dup)}</td>`);
+  });
+  if (!rows.length) html += `<tr><td colspan="10" class="mem-empty">Load an SDR# folder or a file (JSON, CSV, frequencies.xml).</td></tr>`;
+  $("medImpTable").innerHTML = html + "</tbody>";
+  medImpCount(dupCount);
+}
+
+function medImpStatus(r, dup) {
+  return r.err ? `<span class="error">✕ ${escHtml(r.err)}</span>` : dup ? `<span class="warn" title="Already in the memories">⧉ ${escHtml(dup)}</span>` : `<span class="ok">new</span>`;
+}
+
+function medImpCount(dupCount) {
+  const n = medImp.rows.filter((r) => r.sel).length;
+  $("medImpSelCount").textContent = medImp.rows.length ? `${n} of ${medImp.rows.length} selected` +
+    (dupCount ? `, ${dupCount} already in the memories` : "") : "";
+  $("medImpGo").disabled = !n;
+  $("medImpGo").textContent = n ? `IMPORT ${n} SELECTED` : "IMPORT SELECTED";
+}
+
+medBindEditList($("medImpTable"), () => medImp.rows, (r, tr) => {
+  tr.querySelector("[data-status]").innerHTML = medImpStatus(r, medRowDup(r));
+  medImpCount(medImp.rows.filter((x) => medRowDup(x)).length);
+});
+$("medImpTable").addEventListener("click", (e) => {
+  if (!e.target.closest("[data-selall]")) return;
+  for (const r of medImp.rows) r.sel = e.target.checked;
+  renderMedImport();
+});
+$("medImpGroups").addEventListener("input", (e) => {
+  const g = medImp.groups[Number(e.target.closest("[data-gi]")?.dataset.gi)];
+  if (!g) return;
+  if (e.target.dataset.gf === "sel") g.sel = e.target.checked; else g.note = e.target.value;
+});
+
+function medImpLoaded(data, source) {
+  const rows = data.entries.map((e) => medRow(e));
+  for (const r of rows) r.sel = !r.err;
+  medImp.rows.push(...rows);
+  for (const g of data.groups || []) if (!medImp.groups.some((x) => x.name === g.name)) medImp.groups.push({ ...g, sel: true });
+  const bad = rows.filter((r) => r.err).length;
+  medMsg(`Loaded ${rows.length} channels from ${source}${bad ? `, ${bad} with an error (not selected)` : ""}. Nothing is saved until IMPORT.`, false);
+  renderMedImport();
+}
+
+$("medImpPath").value = recall("memSdrPath") || "";
+$("medImpSdr").addEventListener("click", async () => {
+  const path = $("medImpPath").value.trim();
+  if (!path) { $("medImpPath").focus(); return; }
+  store("memSdrPath", path);
+  const r = await memApi("/api/memories/preview", { format: "sdrsharp", path });
+  if (!r.ok) { medMsg(r.error, true); return; }
+  medImpLoaded(r.data, r.data.files.length > 1 ? `${r.data.files.length} SDR# files` : "SDR#");
+});
+$("medImpPath").addEventListener("keydown", (e) => { if (e.key === "Enter") $("medImpSdr").click(); });
+$("medImpFile").addEventListener("click", () => $("medImpInput").click());
+$("medImpInput").addEventListener("change", async () => {
+  const file = $("medImpInput").files[0];
+  $("medImpInput").value = "";
+  if (!file) return;
+  const text = await file.text();
+  let body;
+  if (/\.json$/i.test(file.name) || /^\s*[[{]/.test(text)) {
+    try { body = { format: "json", data: JSON.parse(text) }; } catch (e) { medMsg(`${file.name}: not valid JSON (${e.message})`, true); return; }
+  } else if (/\.xml$/i.test(file.name) || /^\s*</.test(text)) {
+    body = { format: "sdrsharp_xml", text };
+  } else {
+    body = { format: "csv", text };
+  }
+  const r = await memApi("/api/memories/preview", body);
+  if (!r.ok) { medMsg(`${file.name}: ${r.error}`, true); return; }
+  medImpLoaded(r.data, file.name);
+});
+
+$("medImpTable").closest(".med-panel").querySelector(".med-bulk").addEventListener("click", (e) => {
+  const act = e.target.closest("[data-imp]")?.dataset.imp;
+  if (!act) return;
+  const rows = medImp.rows;
+  if (act === "all") for (const r of rows) r.sel = true;
+  if (act === "none") for (const r of rows) r.sel = false;
+  if (act === "nodup") for (const r of rows) r.sel = !r.err && !medRowDup(r);
+  if (act === "group") {
+    const g = $("medImpGroup").value.trim();
+    if (!g) { $("medImpGroup").focus(); return; }
+    for (const r of rows) if (r.sel) r.groups = g;
+  }
+  if (act === "clear" && (!rows.length || confirm("Empty the import list?"))) { medImp.rows = []; medImp.groups = []; medMsg(""); }
+  renderMedImport();
+});
+
+$("medImpGo").addEventListener("click", async () => {
+  const chosen = medImp.rows.filter((r) => r.sel);
+  const entries = [];
+  let bad = 0;
+  for (const r of chosen) {
+    try { entries.push(medRowEntry(r)); } catch (e) { r.err = e.message; bad++; }
+  }
+  if (bad) { renderMedImport(); medMsg(`${bad} selected channel${bad === 1 ? " has" : "s have"} an error: correct ${bad === 1 ? "it" : "them"} or untick ${bad === 1 ? "it" : "them"}.`, true); return; }
+  const r = await memApi("/api/memories/import_entries", { entries, groups: medImp.groups.filter((g) => g.sel).map(({ name, note }) => ({ name, note })) });
+  if (!r.ok) { medMsg(r.error, true); return; }
+  medImp.rows = medImp.rows.filter((x) => !x.sel);
+  if (!medImp.rows.length) medImp.groups = [];
+  medMsg(`Imported ${r.data.added.length} channels.${medImp.rows.length ? ` ${medImp.rows.length} left in the list.` : ""}`);
+  await memChanged();
+});
+
+// ----- EXPORT -----
+
+function medExportAdd(list) {
+  const have = new Set(medExp.rows.map((r) => r.src));
+  for (const m of list) {
+    if (have.has(m.id)) continue;
+    medExp.rows.push({ ...medRow(m), src: m.id, inColor: true, inTag: true, inNote: true });
+    have.add(m.id);
+  }
+  for (const r of medExp.rows) {
+    for (const g of r.groups.split("|").map((x) => x.trim()).filter(Boolean)) {
+      if (!medExp.notes[g]) medExp.notes[g] = { note: memGroupNote(g), incl: true };
+    }
+  }
+  medExp.rows.sort((a, b) => (parseFreq(a.freq) || 0) - (parseFreq(b.freq) || 0));
+  renderMed();
+}
+
+function medExpGroupsUsed() {
+  return [...new Set(medExp.rows.filter((r) => r.sel).flatMap((r) => r.groups.split("|").map((x) => x.trim()).filter(Boolean)))]
+    .sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+}
+
+function renderMedExport() {
+  medFilterSelect($("medExpGroup"), false);
+  const rows = medExp.rows;
+  const used = medExpGroupsUsed();
+  for (const g of used) if (!medExp.notes[g]) medExp.notes[g] = { note: memGroupNote(g), incl: true };
+  $("medExpGroups").hidden = !used.length;
+  $("medExpGroups").innerHTML = `<b>Groups in the file</b> — tick to export the note:` + used.map((g) =>
+    `<label class="chip-check" data-g="${escHtml(g)}"><input type="checkbox" data-gf="incl" ${medExp.notes[g].incl ? "checked" : ""}> ${escHtml(g)}` +
+    `<input data-gf="note" value="${escHtml(medExp.notes[g].note)}" placeholder="note" maxlength="200"></label>`).join("");
+  const all = (k) => rows.length && rows.every((r) => r[k]);
+  let html = `<thead><tr><th><input type="checkbox" data-all="sel" ${all("sel") ? "checked" : ""} title="Export all"></th>${MED_EDIT_HEAD}` +
+    `<th class="inc"><label title="Export the tag colour of every channel"><input type="checkbox" data-all="inColor" ${all("inColor") ? "checked" : ""}> colour</label></th>` +
+    `<th class="inc"><label title="Export whether the tag is shown"><input type="checkbox" data-all="inTag" ${all("inTag") ? "checked" : ""}> tag</label></th>` +
+    `<th class="inc"><label title="Export the note of every channel"><input type="checkbox" data-all="inNote" ${all("inNote") ? "checked" : ""}> note</label></th>` +
+    `<th></th></tr></thead><tbody>`;
+  rows.forEach((r, i) => {
+    html += medEditCells(r, i,
+      `<td class="inc"><label><input type="checkbox" data-f="inColor" ${r.inColor ? "checked" : ""}><span class="swatch" style="--c:${r.color || MEM_COLOR}"></span></label></td>` +
+      `<td class="inc"><label><input type="checkbox" data-f="inTag" ${r.inTag ? "checked" : ""}> ${r.tag ? "on" : "off"}</label></td>` +
+      `<td class="inc"><input type="checkbox" data-f="inNote" ${r.inNote ? "checked" : ""}></td>` +
+      `<td><button class="key small" data-del title="Remove from the list">×</button></td>`);
+  });
+  if (!rows.length) html += `<tr><td colspan="13" class="mem-empty">Add groups, the starred channels or all of them above, or tick channels in CHANNELS and press ⇩ TO EXPORT.</td></tr>`;
+  $("medExpTable").innerHTML = html + "</tbody>";
+  medExpCountNote();
+}
+
+function medExpCountNote() {
+  const n = medExp.rows.filter((r) => r.sel).length;
+  $("medExpGo").disabled = !n;
+  $("medExpGo").textContent = n ? `⇩ DOWNLOAD ${n}` : "⇩ DOWNLOAD";
+  $("medExpCount").textContent = medExp.rows.length ? `(${medExp.rows.length})` : "";
+}
+
+medBindEditList($("medExpTable"), () => medExp.rows, (r, tr, f) => {
+  if (f === "groups" || f === "sel") { renderMedExportGroupsOnly(); }
+  medExpCountNote();
+});
+function renderMedExportGroupsOnly() {
+  // the group notes above the list follow the groups of the ticked rows; the rows themselves are not redrawn
+  const used = medExpGroupsUsed();
+  for (const g of used) if (!medExp.notes[g]) medExp.notes[g] = { note: memGroupNote(g), incl: true };
+  $("medExpGroups").hidden = !used.length;
+  $("medExpGroups").innerHTML = `<b>Groups in the file</b> — tick to export the note:` + used.map((g) =>
+    `<label class="chip-check" data-g="${escHtml(g)}"><input type="checkbox" data-gf="incl" ${medExp.notes[g].incl ? "checked" : ""}> ${escHtml(g)}` +
+    `<input data-gf="note" value="${escHtml(medExp.notes[g].note)}" placeholder="note" maxlength="200"></label>`).join("");
+}
+$("medExpTable").addEventListener("click", (e) => {
+  const all = e.target.closest("[data-all]");
+  if (all) { for (const r of medExp.rows) r[all.dataset.all] = all.checked; renderMedExport(); return; }
+  if (e.target.closest("[data-del]")) {
+    medExp.rows.splice(Number(e.target.closest("tr[data-i]").dataset.i), 1);
+    renderMedExport();
+  }
+});
+$("medExpGroups").addEventListener("input", (e) => {
+  const g = medExp.notes[e.target.closest("[data-g]")?.dataset.g];
+  if (!g) return;
+  if (e.target.dataset.gf === "incl") g.incl = e.target.checked; else g.note = e.target.value;
+});
+$("medExpAddGroup").addEventListener("click", () => {
+  const g = $("medExpGroup").value;
+  if (g) medExportAdd(mems.filter((m) => memGroupsOf(m).includes(g)));
+});
+$("medExpAddFav").addEventListener("click", () => medExportAdd(mems.filter((m) => m.fav)));
+$("medExpAddAll").addEventListener("click", () => medExportAdd(mems));
+$("medExpClear").addEventListener("click", () => { medExp.rows = []; medExp.notes = {}; renderMed(); });
+
+function csvCell(v) {
+  const s = String(v ?? "");
+  return /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+$("medExpGo").addEventListener("click", () => {
+  const out = [];
+  let bad = 0;
+  for (const r of medExp.rows) {
+    if (!r.sel) continue;
+    try {
+      const e = medRowEntry(r);
+      if (!r.inColor) delete e.color;
+      if (!r.inTag) delete e.tag;
+      if (!r.inNote) delete e.note;
+      e.group = e.groups[0] || "";
+      out.push(e);
+    } catch (err) { r.err = err.message; bad++; }
+  }
+  if (bad) { renderMedExport(); medMsg(`${bad} channel${bad === 1 ? " has" : "s have"} an error (marked red): correct or untick.`, true); return; }
+  const fmt = $("medExpFormat").value;
+  const name = ($("medExpName").value.trim() || "radimcom-memories").replace(/[^\w.-]+/g, "_");
+  let blob;
+  if (fmt === "csv") {
+    const cols = ["name", "frequency_hz", "mode", "bandwidth_hz", "groups", "decoder", "record", "dab_channel", "favourite", "note", "color", "show_tag"];
+    const lines = [cols.join(";")].concat(out.map((e) => [e.name, e.freq_hz ?? "", e.mode, e.bw, e.groups.join("|"), e.decoder, e.record,
+      e.dab_channel || "", e.fav ? 1 : 0, e.note ?? "", e.color ?? "", e.tag === undefined ? "" : e.tag ? 1 : 0].map(csvCell).join(";")));
+    blob = new Blob(["﻿" + lines.join("\r\n") + "\r\n"], { type: "text/csv" });   // BOM: Excel reads it as UTF-8
+  } else {
+    const groups = [...new Set(out.flatMap((e) => e.groups))].sort().map((g) =>
+      (medExp.notes[g] && medExp.notes[g].incl && medExp.notes[g].note ? { name: g, note: medExp.notes[g].note } : { name: g }));
+    blob = new Blob([JSON.stringify({ format: "radimcom-memories", version: 2, groups, memories: out }, null, 1)], { type: "application/json" });
+  }
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `radimcom-memories-${label.replace(/[^\w.-]+/g, "_")}.json`;
+  a.download = `${name}.${fmt}`;
   document.body.appendChild(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  memIoNote(`Exported ${out.length} memories (${label}).`);
-}
+  medMsg(`Exported ${out.length} channels to ${name}.${fmt}${fmt === "csv" ? " (group notes go only into JSON)" : ""}.`);
+});
 
-$("memSdrPath").value = recall("memSdrPath") || "C:\\sdrsharp";
-$("memSdrPath").addEventListener("change", () => store("memSdrPath", $("memSdrPath").value.trim()));
-$("memSdrPath").addEventListener("keydown", (e) => { if (e.key === "Enter") $("memImport").click(); });
-$("memImport").addEventListener("click", async () => {
-  const path = $("memSdrPath").value.trim();
-  if (!path) { memIoNote("Enter the SDR# installation folder.", true); return; }
-  store("memSdrPath", path);
-  $("memImport").disabled = true;
-  try {
-    const res = await fetch(vbase + "/api/memories/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path }) });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      memIoNote(data.error || `Import failed (HTTP ${res.status}${res.status === 405 || res.status === 404 ? " – restart RADIMCOM to load the new version" : ""})`, true);
-      return;
-    }
-    const n = data.files.length;
-    memIoNote(`Imported ${data.added}, skipped ${data.skipped} (duplicates / unsupported) from ${n} file${n === 1 ? "" : "s"}` +
-      (n > 1 ? ` (${data.files.map((f) => f.split(/[\\/]/).slice(-2, -1)[0]).join(", ")})` : "") +
-      (data.errors.length ? `. Failed: ${data.errors.join("; ")}` : "."), data.errors.length > 0);
-    await loadMems();
-  } catch (e) {
-    memIoNote("Import failed: " + e.message, true);
-  } finally {
-    $("memImport").disabled = false;
-  }
-});
-$("memImportJson").addEventListener("click", () => $("memJsonFile").click());
-$("memJsonFile").addEventListener("change", async () => {
-  const file = $("memJsonFile").files[0];
-  $("memJsonFile").value = "";   // the same file can be chosen again
-  if (!file) return;
-  $("memImportJson").disabled = true;
-  try {
-    const res = await fetch(vbase + "/api/memories/import_json", { method: "POST", headers: { "Content-Type": "application/json" }, body: file });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      memIoNote(data.error || `Import failed (HTTP ${res.status}${res.status === 405 || res.status === 404 ? " – restart RADIMCOM to load the new version" : ""})`, true);
-      return;
-    }
-    memIoNote(`Imported ${data.added}, skipped ${data.skipped} (duplicates / invalid) from ${file.name}.`);
-    await loadMems();
-  } catch (e) {
-    memIoNote("Import failed: " + e.message, true);
-  } finally {
-    $("memImportJson").disabled = false;
-  }
-});
-$("memExportFav").addEventListener("click", () => exportMems(mems.filter((m) => m.fav), "starred"));
-$("memExportGroup").addEventListener("click", () => {
-  const g = $("memGroup").value;
-  exportMems(g ? mems.filter((m) => m.group === g) : mems, g || "all");
-});
-$("memGroup").addEventListener("change", updateExportLabel);
 
 // ---------- stav zo servera ----------
 
@@ -5966,6 +7151,113 @@ const USB_ICON = `<svg class="usb-icon" viewBox="0 0 690 440" aria-label="runnin
   `<rect x="430" y="322" width="118" height="118" rx="10"/></g><g fill="none" stroke="currentColor" stroke-width="38">` +
   `<path d="M140 222 H580"/><path d="M200 222 C250 160 250 56 370 56"/><path d="M290 222 C340 280 330 381 440 381"/></g></svg>`;
 
+// Annunciators of a VFO window: lit like LCD segments when on, dark when off or not used in the current mode.
+// [class, text, tooltip]; the order is fixed, so nothing moves. SAT = Doppler correction from satellite tracking.
+const SAT_ANN_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.6 7C3.2 12.6 8.4 18.8 15 17.4Z"/><path d="M9.8 12.2L13.4 8.6"/>` +
+  `<circle cx="14.6" cy="7.4" r="1.6"/><path d="M16.6 3.1A5 5 0 0 1 19 5.5"/><path d="M7.6 15.4L5.8 20.6M11 17.2L12.4 20.6M3.2 21.2H15"/></svg>`;
+const VFO_ANNS = [
+  ["agc", "AGC<i>+</i>", "AGC: automatic tuner gain · AGC+: highest gain without A/D clipping"],
+  ["nf", "NF", "NF: automatic notch filter (AM/LSB/USB)"],
+  ["sp", "SP", "SP: spur removal"],
+  ["alc", "ALC", "ALC: automatic audio level (AM/LSB/USB/CW)"],
+  ["afi", "AFI", "AFI: audio frequency inversion"],
+  ["asq", "ASQ", "ASQ: auto squelch (AM/FM/WFM)"],
+  ["atu", "ATU", "ATU: autotune (USB/LSB/AM)"],
+  ["sat", SAT_ANN_ICON, "SAT: frequency corrected for Doppler by satellite tracking"],
+];
+const vfoAnnsHtml = (mode = "") => `<div class="vfo-anns"><span class="ann vfo-mode">${mode}</span>` +
+  VFO_ANNS.map(([c, t, tip]) => `<span class="ann ${c}" title="${tip}">${t}</span>`).join("") +
+  `<span class="gap"></span><span class="ann vfo-cue" role="button">CUE</span></div>`;
+/** Lights the annunciators of one VFO window from its state s. */
+function renderVfoAnns(row, s) {
+  const a = (c) => row.querySelector(`.vfo-anns .${c}`);
+  const auto = s.gain === "auto", smart = !!s.smart_agc && !auto;
+  const agc = a("agc");
+  agc.classList.toggle("on", auto || smart);
+  agc.classList.toggle("plus", smart);   // the + is always there, lit only with AGC+
+  agc.classList.toggle("clip", smart && !!s.adc_clip);
+  a("nf").classList.toggle("on", ["AM", "LSB", "USB"].includes(s.mode) && !!s.notch);
+  a("sp").classList.toggle("on", !!s.spur_on);
+  a("alc").classList.toggle("on", ["AM", "LSB", "USB", "CW"].includes(s.mode) && s.audio_agc !== false);
+  a("afi").classList.toggle("on", s.mode !== "WFM" && s.mode !== "DSD" && !!s.afi);
+  a("asq").classList.toggle("on", ["AM", "FM", "WFM"].includes(s.mode) && !!s.auto_sql_on);
+  a("atu").classList.toggle("on", ATU_MODES.includes(s.mode) && !!s.autotune);
+  a("sat").classList.toggle("on", !!s.trsp_name);
+}
+// Info row under the frequency (was the flags beside the S-meter): RX/TX, filter width, audio HPF and LPF with their
+// cutoffs, stereo pilot, squelch and the upconverter switch. Every item has a fixed width, so no text moves.
+const PASS_ICON = {
+  hpf: `<svg class="inf-ico" viewBox="60 180 680 440" aria-hidden="true"><path d="M100 576H150Q190 576 215 535L390 265Q415 228 460 228H695"/></svg>`,
+  lpf: `<svg class="inf-ico" viewBox="60 180 680 440" aria-hidden="true"><path d="M100 228H340Q390 228 415 270L580 540Q610 576 650 576H695"/></svg>`,
+};
+const vfoInfoHtml = () => `<div class="vfo-info">` +
+  `<span class="ann rx" title="RX / TX (hold SPACE to transmit: PTT, only with the LimeSDR VFO selected)">RX</span>` +
+  `<span class="ann bw" title="Filter width"></span>` +
+  `<span class="ann hpf">${PASS_ICON.hpf}<b></b></span><span class="ann lpf">${PASS_ICON.lpf}<b></b></span>` +
+  `<span class="ann st" title="Stereo: 19 kHz pilot detected (WFM)"><svg class="st-icon" viewBox="0 0 30 20" aria-hidden="true">` +
+  `<circle cx="10.5" cy="10" r="8.6"/><circle cx="19.5" cy="10" r="8.6"/></svg>ST</span>` +
+  `<span class="ann sql">SQL</span><span class="ann conv" title="Required position of the upconverter switch">CONV</span></div>`;
+/** Fills the info row of one VFO window from its state s. */
+function renderVfoInfo(row, s) {
+  const a = (c) => row.querySelector(`.vfo-info .${c}`);
+  if (!a("bw")) return;
+  a("bw").textContent = fmtBw(s.bandwidth?.[s.mode] ?? 0);
+  for (const kind of ["hpf", "lpf"]) {
+    const hz = s[kind + "_hz"] ?? PASS[kind].def, on = !s.dab && !!s[kind];
+    a(kind).classList.toggle("on", on);
+    a(kind).querySelector("b").textContent = passText(hz);
+    a(kind).title = `${PASS[kind].text} ${hz} Hz: ${on ? "on" : "off"}`;
+  }
+  // ST: lit with the pilot, grey in WFM without it, dark in other modes
+  const wfm = s.mode === "WFM";
+  a("st").classList.toggle("on", wfm && !!s.stereo);
+  a("st").classList.toggle("set", wfm && !s.stereo);
+  // SQL: lit while the squelch is open, grey while closed, dark without squelch
+  const levels = s.squelch_levels || {};
+  const sqOk = s.mode in levels;
+  const lvl = !sqOk ? SQUELCH_OFF : s.auto_sql_on ? (s.auto_sql_level ?? SQUELCH_OFF) : levels[s.mode];
+  const sqOn = sqOk && lvl > SQUELCH_OFF;
+  const sql = a("sql");
+  sql.classList.toggle("on", sqOn && !!s.squelch_open);
+  sql.classList.toggle("set", sqOn && !s.squelch_open);
+  sql.title = sqOn ? `Squelch ${lvl} dBFS: ${s.squelch_open ? "open" : "closed"}` : "Squelch off";
+  // upconverter in Auto mode: CONV below 30 MHz, BYPASS (amber) above
+  const conv = a("conv"), has = s.upconv === "auto" && s.lo_offset_hz > 0, need = s.tune_hz < 30e6;
+  conv.textContent = has && !need ? "BYPASS" : "CONV";
+  conv.classList.toggle("on", has && need);
+  conv.classList.toggle("warn", has && !need);
+}
+
+/** VFO keys beside the S-meter, one for each VFO window (also the free ones, disabled); the active one is lit. */
+function renderVfoKeys() {
+  const box = $("vfoKeys");
+  if (!box) return;
+  const rows = [...$("vfoList").querySelectorAll(".vfo-row")].filter((r) => r.querySelector(".vfo-key"));
+  if (box.children.length !== rows.length) box.innerHTML = rows.map(() => `<button class="key vfo-sel"></button>`).join("");
+  rows.forEach((r, i) => {
+    const b = box.children[i], name = r.querySelector(".vfo-key").textContent;
+    if (b.textContent !== name) b.textContent = name;
+    b.dataset.vfo = r.dataset.vfo;
+    b.disabled = r.classList.contains("spare");
+    b.classList.toggle("on", r.classList.contains("active"));
+    b.classList.toggle("busy", r.classList.contains("busy"));
+    b.classList.toggle("tx", r.classList.contains("tx"));
+    b.title = r.classList.contains("spare") ? r.title : `Select ${name.replace("-", " ")}`;
+  });
+}
+$("vfoKeys").addEventListener("click", (e) => {
+  const b = e.target.closest(".vfo-sel");
+  if (!b || b.disabled) return;
+  const v = vfos.find((x) => String(x.name) === b.dataset.vfo);
+  if (v) selectVfo(v);
+});
+
+/** Lit part of an RF / SQL segment bar = position of its value (CSS --p). */
+function setBarFill(inp) {
+  const lo = Number(inp.min), hi = Number(inp.max);
+  inp.style.setProperty("--p", `${hi > lo ? ((Number(inp.value) - lo) / (hi - lo)) * 100 : 0}%`);
+}
+
 // With fewer than 4 SDRs the remaining VFO windows stay in place but without function (grey, "NO SDR"),
 // so the screen layout is always the same. SDR added -> run setup.bat.
 const VFO_SLOTS = 4;
@@ -5978,14 +7270,14 @@ function renderSpareVfos() {
     row.className = "vfo-row spare";
     row.dataset.vfo = "spare";
     row.title = `VFO ${name}: no SDR assigned (connect one and run the SDR setup)`;
-    row.innerHTML = `<div class="vfo-memname"></div><div class="vfo-head"><span class="flag vfo-stat off">NO SDR</span>` +
-      `<button class="key vfo-key" disabled>VFO-${name}</button><span class="flag vfo-mode">---</span>` +
-      `<span class="flag vfo-cue">CUE</span></div>` +
-      `<div class="vfo-disp"><span class="rec-tag"></span><div class="freq">${seg7("          ")}<span class="unit"><span class="mute-tag" hidden></span><span class="afi-tag">AFI</span>MHz</span></div></div>` +
-      `<div class="vfo-foot"><label class="vfo-rf"><span>RF GAIN</span>` +
-      `<input type="range" min="0" max="1" value="0" disabled></label><span class="flag vfo-gain">--- dB</span></div>` +
-      `<div class="vfo-foot"><label class="vfo-rf vfo-sq"><span>SQUELCH</span>` +
-      `<input type="range" min="0" max="1" value="0" disabled></label><span class="flag vfo-sql">---</span></div>`;
+    row.innerHTML = `<div class="vfo-top"><button class="vfo-key" disabled>VFO-${name}</button><div class="vfo-memname"></div>` +
+      `<div class="vfo-ind"><span class="vfo-stat off">NO SDR</span></div></div>` +
+      `<div class="vfo-disp"><div class="freq">${seg7("          ")}<span class="unit">MHz</span></div></div>` +
+      vfoInfoHtml() + vfoAnnsHtml("---") +
+      `<div class="vfo-foot"><label class="vfo-rf"><span>RF</span>` +
+      `<input type="range" min="0" max="1" value="0" disabled></label><span class="vfo-gain">---</span></div>` +
+      `<div class="vfo-foot vfo-sqrow"><label class="vfo-rf vfo-sq"><span>SQL</span>` +
+      `<input type="range" min="0" max="1" value="0" disabled></label><span class="vfo-sql">---</span></div>`;
     $("vfoList").append(row);
   }
 }
@@ -6001,16 +7293,18 @@ function renderVfoDisplays() {
       row.className = "vfo-row";
       row.dataset.vfo = String(v.name);
       // on top the name of the memory on this frequency or the band plan, above the display the receiver state, VFO button, mode and CUE; under the display the RF GAIN slider and the gain value
-      row.innerHTML = `<div class="vfo-memname"></div>` + (v.name ? `<div class="vfo-head"><span class="flag vfo-stat"></span>` +
-        `<button class="key vfo-key">VFO-${v.name}</button><span class="flag vfo-mode"></span>` +
-        `<span class="flag vfo-cue" role="button">CUE</span></div>` : "") +
-        `<div class="vfo-disp"><span class="rec-tag"></span><div class="freq"></div></div>` +
-        (v.name ? `<div class="vfo-foot"><label class="vfo-rf"><span>RF GAIN</span>` +
+      // one dark window: VFO-x, name and state on top, the frequency, the annunciators, RF and SQL bars
+      row.innerHTML = `<div class="vfo-top">` + (v.name ? `<button class="vfo-key">VFO-${v.name}</button>` : "<span></span>") +
+        `<div class="vfo-memname"></div><div class="vfo-ind"><span class="rec-tag"></span>` +
+        `<span class="mute-tag" title="Audio muted while the ACARS, VDL2 or ISM decoder runs" hidden></span>` +
+        (v.name ? `<span class="vfo-stat"></span>` : "") + `</div></div>` +
+        `<div class="vfo-disp"><div class="freq"></div></div>` +
+        (v.name ? vfoInfoHtml() + vfoAnnsHtml() + `<div class="vfo-foot"><label class="vfo-rf"><span>RF</span>` +
         `<input type="range" min="0" max="0" step="1" value="0"></label>` +
-        `<span class="flag vfo-gain" title="RF gain"></span></div>` +
-        `<div class="vfo-foot vfo-sqrow"><label class="vfo-rf vfo-sq"><span>SQUELCH</span>` +
+        `<span class="vfo-gain" title="RF gain"></span></div>` +
+        `<div class="vfo-foot vfo-sqrow"><label class="vfo-rf vfo-sq"><span>SQL</span>` +
         `<input type="range" min="${SQUELCH_OFF}" max="-20" step="1" value="${SQUELCH_OFF}"></label>` +
-        `<span class="flag vfo-sql"></span></div>` : "");
+        `<span class="vfo-sql"></span></div>` : "");
       if (v.name) row.querySelector(".vfo-key").title = `VFO ${v.name} · ` +
         (v.chain ? `dongle of VFO ${v.chain}` : v.serial || "") + (v.note ? " · " + v.note : "");
       list.append(row);
@@ -6026,14 +7320,12 @@ function renderVfoDisplays() {
       const { txt, unit } = freqDigits(s.tune_hz);
       if (txt !== v.shown) {
         v.shown = txt;
-        fr.innerHTML = seg7(txt) + `<span class="unit"><span class="mute-tag" title="Audio muted while the ACARS, VDL2 or ISM decoder runs" hidden></span><span class="afi-tag">AFI</span>${unit}</span>`;
+        fr.innerHTML = seg7(txt) + `<span class="unit">${unit}</span>`;
         fr.setAttribute("aria-label", `${fmtMHz(s.tune_hz, 6)} MHz`);
       }
-      // AFI above the unit: lit while this VFO's audio is inverted (no AFI in WFM), otherwise dark like an unlit LCD segment
-      const afiTag = fr.querySelector(".afi-tag");
-      if (afiTag) afiTag.classList.toggle("on", !!s.afi && s.mode !== "WFM");
-      const muteTag = fr.querySelector(".mute-tag");
-      if (muteTag) muteTag.hidden = !s.audio_muted;
+      // red struck-through speaker in the top row: the audio of this VFO is muted by a decoder
+      row.querySelector(".mute-tag").hidden = !s.audio_muted;
+      if (v.name) { renderVfoAnns(row, s); renderVfoInfo(row, s); }
       // red dot in the corner of the display: blinks while a file is being written, steady while waiting for the squelch
       const recs = [s.recording?.cont, s.recording?.squelch];
       const recTag = row.querySelector(".rec-tag");
@@ -6049,7 +7341,11 @@ function renderVfoDisplays() {
     if (memEl.textContent !== memText) memEl.textContent = memText;
     memEl.classList.toggle("band", !mem && !trsp);
     memEl.classList.toggle("trsp", !!trsp);
-    memEl.title = trsp ? `Doppler correction: ${trsp}` : mem ? `${mem.name} · ${mem.group} · ${mem.mode} · ${fmtBw(mem.bw)}`
+    // the memory's own tag colour (memory editor) also colours its name here; the default green stays the CSS green
+    const own = !trsp && mem && mem.color ? mem.color : "";
+    memEl.classList.toggle("own", !!own);
+    if (own) memEl.style.setProperty("--mc", own); else memEl.style.removeProperty("--mc");
+    memEl.title = trsp ? `Doppler correction: ${trsp}` : mem ? `${mem.name} · ${memGroupsOf(mem).join(", ")} · ${mem.mode} · ${fmtBw(mem.bw)}${mem.note ? ` · ${mem.note}` : ""}`
       : bands.map(([, , label, , desc]) => `${label}: ${desc}`).join("\n");
     if (!v.name) continue;
     // VFO receiver state: RUNNING = dongle open and delivering samples.
@@ -6064,11 +7360,14 @@ function renderVfoDisplays() {
       : s.status === "opening dongle" ? ["OPENING", "wait", "opening dongle"]
       : s.status === "calibrating" ? ["CAL", "wait", "LimeSDR calibration"]
       : ["OFFLINE", "off", `receiver ${s.status}`];
-    // RUNNING is shown as a USB icon (dongle connected and delivering data), other states as text.
-    const stHtml = stTxt === "RUNNING" ? USB_ICON : stTxt;
+    // Connection as a USB icon: green = running, blinking orange = connecting (WAIT / OPENING / CAL),
+    // grey = disconnected (OFFLINE); CHAIN and OOR stay as text. Details in the tooltip.
+    const connecting = ["WAIT", "OPENING", "CAL"].includes(stTxt);
+    const icon = connecting || stTxt === "RUNNING" || stTxt === "OFFLINE";
+    const stHtml = icon ? USB_ICON : stTxt;
     if (stat.dataset.html !== stHtml) { stat.innerHTML = stHtml; stat.dataset.html = stHtml; }
-    stat.className = `flag vfo-stat ${stCls}${stTxt === "RUNNING" ? " usb" : ""}`;
-    stat.title = stTitle;
+    stat.className = `vfo-stat ${stCls}${connecting ? " blink" : ""}`;
+    stat.title = `${stTxt}: ${stTitle}`;
     const mode = row.querySelector(".vfo-mode"), gain = row.querySelector(".vfo-gain"), sql = row.querySelector(".vfo-sql");
     // without a state only make it invisible, so the layout does not shift
     mode.style.visibility = gain.style.visibility = sql.style.visibility = s ? "" : "hidden";
@@ -6087,6 +7386,7 @@ function renderVfoDisplays() {
         gains.forEach((g, i) => { if (Math.abs(g - s.gain) < Math.abs(gains[best] - s.gain)) best = i; });
         rf.value = best;
       }
+      setBarFill(rf);
       // squelch only in AM/FM/WFM; in other modes it stays in place but dimmed and inactive
       const levels = s.squelch_levels || {};
       const sqOk = s.mode in levels, set = sqOk ? levels[s.mode] : SQUELCH_OFF;
@@ -6095,6 +7395,7 @@ function renderVfoDisplays() {
       row.querySelector(".vfo-sqrow").classList.toggle("na", !sqOk);
       sq.disabled = !sqOk || (auto && !!s.auto_sql);
       if (document.activeElement !== sq) sq.value = auto && !s.auto_sql ? set : lvl;
+      setBarFill(sq);
       sql.textContent = !sqOk ? "OFF" : auto ? "AUTO" : lvl <= SQUELCH_OFF ? "OFF" : `${lvl} dB`;
       sql.title = !sqOk ? `squelch not available in ${s.mode}` : auto ? `auto squelch ${lvl > SQUELCH_OFF ? `${lvl} dBFS (${sReading(lvl)})` : "(measuring the noise)"}`
         : lvl <= SQUELCH_OFF ? "squelch off" : `squelch ${lvl} dBFS (${sReading(lvl)})`;
@@ -6108,6 +7409,7 @@ function renderVfoDisplays() {
     row.classList.toggle("busy", !!(s && !isActive && s.squelch > SQUELCH_OFF && s.squelch_open));
   }
   renderTx();
+  renderVfoKeys();
 }
 
 // ---------- vysielanie (PTT) ----------
@@ -6143,15 +7445,19 @@ function pttUp() {
 }
 
 function pttError(msg) {
-  errorUntil = Date.now() + 5000;
-  renderStatusPill(`TX: ${msg}`);
+  adError(`TX: ${msg}`);
 }
 
+/** RX / TX in the info row of each VFO window (TX = that VFO transmits, also while PTT is held before the server answers). */
 function renderTx() {
-  const on = !!ptt || vfos.some((v) => v.st && v.st.tx);
-  const f = $("rxtxFlag");
-  f.textContent = on ? "TX" : "RX";
-  f.classList.toggle("tx", on);
+  for (const v of vfos) {
+    const f = v.row && v.row.querySelector(".vfo-info .rx");
+    if (!f) continue;
+    const s = v === active ? st || v.st : v.st;
+    const on = !!(s && s.tx) || (!!ptt && ptt.v === v);
+    f.textContent = on ? "TX" : "RX";
+    f.classList.toggle("tx", on);
+  }
 }
 
 const isSpace = (e) => e.code === "Space" && !e.target.closest("input, select, textarea");
@@ -6177,7 +7483,8 @@ async function selectVfo(v) {
   // Everything shown belongs to the previous VFO: state, waterfall, decoders.
   closeFreqInput();
   st = null; view = null; wfRow = null; spec = null; floor = null;
-  errorUntil = 0; convPrev = null;
+  convPrev = null;
+  adRotInfo = null; rotorInfo = null; rotorPendingOn = false;
   for (const id of ["modes", "bandwidths", "steps"]) $(id)._html = null;
   $("ft8Rows").innerHTML = ""; $("ft8Empty").hidden = false; ft8Cycle = null; ft8Count = 0;
   cwOut.clear(); rttyOut.clear();
@@ -6244,12 +7551,10 @@ async function loadDecoders() {
 let convPrev = null;
 
 function renderConv() {
+  // the required switch position is shown in the info row of the VFO window (CONV / BYPASS)
   const has = st.upconv === "auto" && st.lo_offset_hz > 0;
-  $("convBadge").hidden = !has;
   if (!has) { $("convWarn").hidden = true; return; }
   const needConv = st.tune_hz < 30e6;
-  $("convBadge").textContent = needConv ? "CONV" : "BYPASS";
-  $("convBadge").classList.toggle("warn", !needConv);
   if (convPrev !== null && convPrev !== needConv) {
     $("convWarnText").textContent = needConv
       ? "HF below 30 MHz: switch the upconverter ON"
@@ -6433,7 +7738,7 @@ function renderRec() {
     btn.classList.toggle("armed", !!r.on && !r.open);
     $(b.time).textContent = r.on && r.open ? `${Math.floor(r.secs / 60)}:${String(r.secs % 60).padStart(2, "0")}` : b.label;
     btn.title = r.error || (r.on ? `Recording, click to stop${r.file ? "\n" + r.file : ""}` : b.title);
-    if (r.error && r.error !== recErrors[b.key]) { errorUntil = Date.now() + 5000; renderStatusPill(r.error); }
+    if (r.error && r.error !== recErrors[b.key]) adError(r.error);
     recErrors[b.key] = r.error;
   }
 }
@@ -6614,7 +7919,7 @@ async function init() {
   vbase = active.base;
   restoreBodyTab();
   renderVfoDisplays();
-  if (list && list.length) renderSpareVfos();
+  if (list && list.length) { renderSpareVfos(); renderVfoKeys(); }
   renderCueKey();
   // The VFO receivers open one after another after start: keep trying until the active one answers.
   let info = null;
@@ -6626,6 +7931,7 @@ async function init() {
   }
   sampleRates = info.sample_rates;
   renderFt8Bands(info.ft8_freqs);
+  dabChannelList = info.dab_channels || [];
   $("dabChannel").innerHTML = (info.dab_channels || []).map(([n, f]) => `<option value="${n}">${n} · ${fmtMHz(f, 3)}</option>`).join("");
   $("ismBands").innerHTML = (info.ism_freqs || []).map((f) => `<button data-f="${f}" title="Centre the VFO on ${fmtMHz(f, 2)} MHz">${fmtMHz(f, 2)}</button>`).join("");
   linkFreqs = { acars: info.acars_freqs || [], vdl2Center: info.vdl2_center || 136500000,

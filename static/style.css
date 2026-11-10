@@ -72,12 +72,28 @@ body {
 
 /* ---------- top strip: S-meter, flags, frequency, info ---------- */
 .r-top {
-  display: grid; grid-template-columns: 240px auto minmax(0, 1fr) auto; align-items: center; gap: 14px;
+  /* align to the top: the S-meter and the flags start level with the band / memory name above the VFOs */
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 14px;
   padding: 10px 14px; background: linear-gradient(180deg, #0c1016, #06080b);
   border-bottom: 1px solid var(--line);
 }
-.meter-box { display: flex; flex-direction: column; align-items: center; gap: 2px; }
-#smeter { width: 240px; max-width: 100%; height: auto; display: block; }
+/* left block: S-meter | flags, the multifunction display under both */
+/* stretched to the height of the VFO windows: the multifunction display grows, so its bottom is level with theirs */
+.r-left { display: grid; grid-template-columns: 266px 54px; grid-template-rows: auto 1fr; align-items: start; gap: 6px 10px; align-self: stretch; }
+/* VFO keys beside the S-meter: four under one another, centred on the S-meter with its window, as high as the other keys; the active one lit */
+.vfo-keys { align-self: center; display: grid; gap: 6px; }
+.vfo-keys .vfo-sel { min-width: 0; padding-left: 2px; padding-right: 2px; }
+/* squelch open on an inactive VFO: green LED line; transmitting: red key */
+.key.vfo-sel.busy { color: var(--green); box-shadow: var(--key-raised, none), inset 0 -2px 0 var(--green), 0 0 8px rgba(60, 240, 124, .35); }
+.key.vfo-sel.tx { color: #fff; background: var(--red); border-color: var(--red); box-shadow: 0 0 12px rgba(255, 75, 62, .7); }
+.meter-box { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+/* dark window under the S-meter (as wide as the meter): S reading and the PC load */
+.meter-info { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 5px 8px 4px;
+  border: 1px solid var(--line); border-radius: 6px; background: #080c10; }
+/* multifunction display: RDS now; without RDS the window stays, empty */
+.mfd { grid-column: 1 / -1; align-self: stretch; position: relative; min-height: 38px; padding: 3px 3px 2px; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 6px; background: #080c10; }
+#smeter { width: 100%; height: auto; display: block; }
 .meter-face text { font: 600 11px Arial, "Helvetica Neue", sans-serif; text-anchor: middle; dominant-baseline: middle; }
 .meter-face text.big { font-size: 14px; font-weight: 700; }
 .meter-face text.title { font-size: 9px; letter-spacing: .2em; }
@@ -109,11 +125,9 @@ body {
 /* fixed column width: a text change (2.7 kHz -> 3 kHz) must not shift the rest of the panel */
 /* one column (saves width): RX, mode, bandwidth, under it ST (WFM) or ALC (AM/SSB/CW), CONV;
  * SQL with squelch on goes to the second column */
-.r-flags { display: grid; grid-template-rows: repeat(5, auto); grid-auto-flow: column; grid-auto-columns: 76px; gap: 4px 6px; }
 /* lower and with a smaller font than the other flags; the column width stays fixed */
 /* --flag-h: one height for all flags, at the S-meter and in the VFO head/foot, whatever the state (a border stays inside it) */
 :root { --flag-h: 17px; --rec-red: #ff1a1a; }
-.r-flags .flag { height: var(--flag-h); white-space: nowrap; padding: 2px 4px; font-size: 11px; }
 .flag {
   min-width: 58px; text-align: center; padding: 3px 8px; border-radius: 4px;
   font: 700 13px/1.2 system-ui, sans-serif; letter-spacing: .04em;
@@ -123,32 +137,31 @@ body {
 .st-icon { width: 1.5em; height: 1em; margin-right: .3em; vertical-align: -.15em; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .flag.dim { background: #1a2029; color: #b8c2cf; border: 1px solid var(--line2); box-shadow: none; font-size: 12px; }
 /* a flag that is off at the S-meter is as big as one that is on: border instead of padding, same font */
-.r-flags .flag.dim { padding: 1px 3px; font-size: 11px; }
 
 .freq-center { display: flex; flex-direction: column; align-items: center; min-width: 0; }
 .r-brand { font: 600 11px system-ui, sans-serif; letter-spacing: .18em; color: var(--dim); margin-bottom: 4px; }
 .r-brand small { color: var(--yellow); letter-spacing: 0; }
 .logo { color: var(--green); }
-/* RADIMCOM logo under the clock (as wide as the clock): light letters, the ring above I in receiver green */
-.r-logo { display: block; height: 36px; width: auto; max-width: 100%; color: #e8edf2; margin: 4px 0 2px;
-  align-self: center; overflow: visible; }
-/* 3D: stacked hard shadows make the extrusion. Lengths are in SVG units here (1 screen px = about 5 units) */
-.r-logo-letters { filter: drop-shadow(0 5px 0 #6d7987) drop-shadow(0 5px 0 #414a55) drop-shadow(0 8px 6px rgba(0, 0, 0, .8)); }
+/* RADIMCOM logo above the clock, centred in its column, the version under it.
+ * Letters: white vinyl stuck on the aluminium – thin, with only a small shadow at the edge (SVG units: 1 screen px ≈ 5 units). */
+.r-logo { display: block; height: 36px; width: auto; max-width: 100%; color: #e8edf2; margin: 6px 0 0; overflow: visible; }
+.r-logo-letters { filter: drop-shadow(0 4px 0 #b3bcc6) drop-shadow(0 4px 0 #6a7480) drop-shadow(0 3px 0 #2b3138) drop-shadow(0 10px 8px rgba(0, 0, 0, .8)); }
+/* ring LED above the I, raised like the letters: the unlit body carries the 3D side and the shadow, the lit ring pulses over it */
+.r-logo-led-body { filter: drop-shadow(0 4px 0 #0b5a28) drop-shadow(0 4px 0 #063218) drop-shadow(0 3px 0 #021a0b) drop-shadow(0 10px 8px rgba(0, 0, 0, .8)); }
 /* opacity only, so the shading and glow fade together and the filter does not have to be animated */
-.r-logo-ring { filter: drop-shadow(0 4px 0 #07481f) drop-shadow(0 0 14px rgba(60, 240, 124, .8));
+.r-logo-ring { filter: drop-shadow(0 0 12px rgba(60, 240, 124, .9));
   animation: r-logo-pulse 1.8s ease-in-out infinite alternate; }
-@keyframes r-logo-pulse { from { opacity: 1; } to { opacity: .12; } }
-/* right column: logo at the top, clock in the middle, RDS at the bottom */
+@keyframes r-logo-pulse { from { opacity: 1; } to { opacity: .08; } }
 .r-logo-link { display: contents; cursor: pointer; }   /* the logo opens GitHub; the link adds no box of its own */
 /* a newer version is released: red letters; a click opens its release page */
 .r-logo-link.outdated .r-logo-letters > g { stroke: url(#logoFaceOld); }
-.r-logo-link.outdated .r-logo-letters { filter: drop-shadow(0 5px 0 #7a2020) drop-shadow(0 5px 0 #4a1010) drop-shadow(0 8px 6px rgba(0, 0, 0, .8)); }
-.r-info-text .r-brandline { order: -1; align-self: center; display: flex; align-items: flex-end; gap: 6px; }
-.r-info-text .r-logo { margin: 2px 0 0; }
-/* version, and above it the note of a newer one: out of the flow, so it does not move the logo */
+.r-logo-link.outdated .r-logo-letters { filter: drop-shadow(0 4px 0 #a33a3a) drop-shadow(0 4px 0 #6a1c1c) drop-shadow(0 3px 0 #3a0e0e) drop-shadow(0 10px 8px rgba(0, 0, 0, .8)); }
+/* logo and version centred in the column above the clock */
+.r-info-text .r-brandline { order: -1; align-self: stretch; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+/* version under the logo; a newer one blinks beside it, out of the flow, so the version stays centred */
 .r-vers { position: relative; }
-.r-vers .r-upd { position: absolute; bottom: 100%; left: 0; }   /* above the version: the author line is under it */
-.r-ver { font: 600 10px system-ui, sans-serif; color: var(--muted); white-space: nowrap; margin-bottom: 1px; }
+.r-vers .r-upd { position: absolute; left: calc(100% + 6px); top: 50%; transform: translateY(-50%); margin: 0; }
+.r-ver { font: 600 10px system-ui, sans-serif; letter-spacing: .08em; color: var(--muted); white-space: nowrap; }
 /* newer version: an orange block like the CUE flag, blinking once a second */
 .r-upd { font: 700 10px/1.2 system-ui, sans-serif; letter-spacing: .04em; white-space: nowrap; margin-bottom: 2px; text-decoration: none;
   padding: 0 4px; border-radius: 3px; background: var(--orange); color: #2a1404; border: 1px solid var(--orange);
@@ -156,9 +169,6 @@ body {
 @keyframes upd-blink { 50% { opacity: .25; } }
 .r-upd:hover { animation: none; }   /* steady while pointed at */
 .r-upd[hidden] { display: none; }
-/* author directly under the logo (same order as the brandline, follows it in the source) */
-.r-credit { order: -1; align-self: center; margin-top: -2px; font: 10px system-ui, sans-serif; letter-spacing: .03em;
-  color: var(--dim); white-space: nowrap; }
 .freq {
   display: flex; align-items: flex-end; gap: .04em; cursor: text; font-size: 64px; line-height: 1;
   padding: 2px 6px;
@@ -171,99 +181,84 @@ body {
 .freq svg:nth-last-of-type(-n+3) .on { fill: var(--green); filter: drop-shadow(0 0 4px rgba(60, 240, 124, .6)); }
 .freq .gap { width: .16em; }
 .freq .unit { position: relative; margin-left: .25em; margin-bottom: -.25em; font: 700 15px system-ui, sans-serif; color: var(--green); }
-/* AFI above MHz, same size as the unit; out of the flow so the digits do not move */
-.freq .afi-tag { position: absolute; left: 0; bottom: 85%; color: rgba(255, 255, 255, .035); }   /* off: same as an unlit LCD segment */
-.freq .afi-tag.on { color: var(--yellow); animation: afi-tag-blink 1s steps(1) infinite; }
-@keyframes afi-tag-blink { 50% { color: #6e5d20; } }
-/* red struck-through speaker above AFI: the audio of this VFO is muted by a decoder. A background, not an svg: the svg elements in .freq are its digits */
-.freq .mute-tag { position: absolute; left: 50%; bottom: 170%; width: 1.15em; height: 1.15em; transform: translateX(-50%);
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ff4b3e' d='M2 9v6h4l6 5V4L6 9z'/%3E%3Cpath fill='none' stroke='%23ff4b3e' stroke-width='2' d='M15 8a5 5 0 0 1 0 8'/%3E%3Cpath stroke='%23000' stroke-width='5' d='M3 2l18 20'/%3E%3Cpath stroke='%23ff4b3e' stroke-width='2.5' d='M3 2l18 20'/%3E%3C/svg%3E") center / contain no-repeat; }
-.freq .mute-tag[hidden] { display: none; }
-/* narrow window: the digits are too low for three rows, so beside AFI */
-@container (max-width: 820px) {
-  .vfo-list:has(.vfo-key) .freq .mute-tag { left: 1.65em; bottom: 85%; width: 1.15em; height: 1.15em; transform: none; }
-}
-@container (max-width: 1100px) {
-  .vfo-list:has(.vfo-row:nth-child(4)) .freq .mute-tag { left: 1.65em; bottom: 85%; width: 1.15em; height: 1.15em; transform: none; }
-}
-/* recording of this VFO: a dot in the corner of the display; clicks go through to the frequency */
-.rec-tag { display: none; position: absolute; left: 4px; top: 4px; width: 8px; height: 8px; border-radius: 50%;
-  background: var(--rec-red); box-shadow: 0 0 7px 1px var(--rec-red); pointer-events: none; }
-.rec-tag.on { display: block; }
-.rec-tag.writing { animation: rec-tag-blink .6s steps(1) infinite; }   /* 0.3 s on, 0.3 s off */
-@keyframes rec-tag-blink { 50% { opacity: 0; } }
 .freq-input { font: 600 34px ui-monospace, Consolas, monospace; width: 320px; text-align: center; }
 .sub { font: 11px ui-monospace, Consolas, monospace; color: var(--muted); padding: 0 6px; }
 
-/* ---------- VFO A/B/C displays side by side: the active one is lit, inactive ones are grey ---------- */
+/* ---------- VFO windows side by side: every VFO is one dark LCD window with all its information ----------
+ * top: VFO-x (boxed, yellow on the active one) · band / memory / satellite name · REC, mute and receiver state
+ * middle: frequency
+ * under it: annunciators lit or unlit like LCD segments (mode, AGC, NF, SP, ALC, AFI, ASQ, ATU, SAT … CUE)
+ * bottom: RF and SQL as segment bars (drag, click or mouse wheel) with the value.
+ * A click on an inactive window selects that VFO, on the active one's frequency opens the entry. */
 .vfo-list { width: 100%; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 10px;
   container-type: inline-size; }
-.vfo-row { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
-.vfo-head { display: flex; align-items: center; gap: 8px; }
-.vfo-key { padding: 3px 12px; font: 700 13px system-ui, sans-serif; letter-spacing: .05em; color: var(--muted); }
-.vfo-row.active .vfo-key { color: var(--yellow); border-color: var(--yellow); box-shadow: 0 0 0 1px var(--yellow) inset; }
-/* squelch open on an inactive VFO: the button lights up green */
-.vfo-row.busy .vfo-key { color: var(--green); border-color: var(--green); box-shadow: 0 0 10px rgba(60, 240, 124, .55); }
-/* mode and RF gain / AGC above the display like the flags at the S-meter; dark on an inactive VFO */
-/* the header shrinks with the width so that three VFOs fit side by side */
-.vfo-head { gap: .4em .5em; font-size: clamp(9px, 1.3cqw, 12px); white-space: nowrap;
-  flex-wrap: wrap; justify-content: center; }   /* in a narrow window the header wraps into two rows */
-.vfo-head .flag, .vfo-foot .flag { display: inline-flex; align-items: center; justify-content: center; height: var(--flag-h);
-  min-width: 0; padding: 0 .6em; font-size: min(1em, 11px); }   /* letters as at the S-meter; smaller only when a narrow window shrinks the header */
-.vfo-head .vfo-key { padding: .25em .8em; font-size: 1.08em; }
-/* fixed widths: a content change (USB icon / OFFLINE, LSB / WFM, RF 9.0 / 28.0 dB) does not shift the header or footer */
-.vfo-head, .vfo-foot { flex-wrap: nowrap; }
-.vfo-head .flag.vfo-stat { display: inline-flex; justify-content: center; align-items: center; width: 5.6em;
-  padding-left: 0; padding-right: 0; }
-.vfo-head .vfo-key { width: 6em; padding-left: 0; padding-right: 0; }
-.vfo-head .vfo-mode { width: 3.9em; padding-left: 0; padding-right: 0; }
-.vfo-head .flag.vfo-cue { width: 3.6em; padding-left: 0; padding-right: 0; }
-/* name of the memory on the VFO frequency (green), otherwise the band plan (grey), in a frame as wide as the VFO; always in place, so the layout does not shift.
-   width 0 + min-width 100%: a long name is cut with an ellipsis and does not widen the VFO */
-.vfo-memname { width: 0; min-width: 100%; min-height: 1.7em; padding: 0 .6em; border: 1px solid var(--line); border-radius: 6px;
-  background: #080c10; color: #5f6874; font: 700 clamp(10px, 1.4cqw, 13px)/1.6 system-ui, sans-serif; text-align: center;
+.vfo-row { position: relative; display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 6px 9px 6px; cursor: pointer;
+  border: 1px solid #000; border-radius: 2px;
+  background: linear-gradient(165deg, rgba(255, 255, 255, .07) 0%, rgba(255, 255, 255, .02) 30%, rgba(255, 255, 255, 0) 31%), #040507;
+  box-shadow: var(--well-shadow); }
+.vfo-row.active { cursor: default;
+  box-shadow: var(--well-shadow), 0 0 0 2px rgba(255, 216, 74, .5), 0 0 12px rgba(255, 216, 74, .18); }
+/* the font of the small rows follows the width, so that four windows fit side by side */
+.vfo-top, .vfo-anns, .vfo-foot { font-size: clamp(8px, .88cqw, 11px); white-space: nowrap; }
+/* the windows are as tall as the S-meter block beside them; the frequency takes the free height */
+.freq-center { align-self: stretch; }
+.freq-center > .vfo-list { flex: 1; }
+.vfo-row { justify-content: space-between; }
+
+/* top row */
+.vfo-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: .5em; height: 1.7em; }
+.vfo-key { padding: .1em .45em; border: 1px solid transparent; border-radius: 3px; background: none; box-shadow: none;
+  font: 700 1em/1.2 system-ui, sans-serif; letter-spacing: .06em; color: #7d8794; cursor: inherit; }
+.vfo-key:focus-visible { outline: 1px solid rgba(255, 216, 74, .5); }
+.vfo-row.active .vfo-key { color: var(--yellow); border-color: var(--yellow); text-shadow: 0 0 5px rgba(255, 216, 74, .6);
+  box-shadow: 0 0 6px rgba(255, 216, 74, .35), inset 0 0 4px rgba(255, 216, 74, .2); }
+/* squelch open on an inactive VFO: VFO-x lights up green */
+.vfo-row.busy .vfo-key { color: var(--green); border-color: var(--green); text-shadow: 0 0 5px rgba(60, 240, 124, .6);
+  box-shadow: 0 0 8px rgba(60, 240, 124, .5); }
+/* transmitting */
+.vfo-row.tx .vfo-key { color: #fff; background: var(--red); border-color: var(--red); text-shadow: none; box-shadow: 0 0 12px rgba(255, 75, 62, .7); }
+/* name of the memory on this frequency (green), the band plan (white) or the satellite transponder (blue); lit only on the active VFO */
+.vfo-memname { min-width: 0; text-align: center; font: 700 1.18em/1 system-ui, sans-serif; color: #5f6874;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.vfo-row.active .vfo-memname { border-color: #2c3642; color: #7ee0a8; }
-.vfo-row.active .vfo-memname.band { color: var(--muted); }
-/* satellite and transponder of the Doppler correction */
-.vfo-row .vfo-memname.trsp, .vfo-row.active .vfo-memname.trsp { color: #6db3ff; }
-/* frequency display in a frame like the clock */
-.vfo-disp { position: relative; display: flex; justify-content: center; max-width: 100%; padding: 3px 8px; border: 1px solid var(--line);
-  border-radius: 6px; background: #080c10; }
-.vfo-row.active .vfo-disp { border-color: #2c3642; }
-/* header, display and footer are equally wide (by the frequency frame) and aligned to its edges */
-.vfo-list .vfo-row { display: grid; grid-template-columns: minmax(0, max-content); justify-content: center; }
-.vfo-row .vfo-head { justify-content: space-between; }
-.vfo-foot { display: flex; align-items: stretch; gap: .5em; white-space: nowrap; font-size: clamp(9px, 1.3cqw, 12px); }
-.vfo-foot .vfo-gain, .vfo-foot .vfo-sql { width: 5.6em; flex: none; padding-left: 0; padding-right: 0; }
-/* squelch in a mode without squelch (SSB, CW): stays in place, only strongly dimmed */
-.vfo-foot.na { opacity: .3; }
-.vfo-foot.na .vfo-rf { cursor: default; }
-/* frame with the RF GAIN slider, as tall as the gain value */
-.vfo-rf { flex: 1; min-width: 0; height: var(--flag-h); display: flex; align-items: center; gap: .5em; padding: 0 .5em; cursor: pointer;
-  border: 1px solid var(--line); border-radius: 4px; background: #080c10; }
-.vfo-rf span { font: 700 .85em system-ui, sans-serif; letter-spacing: .08em; color: var(--muted); width: 5.4em; flex: none; }
-.vfo-rf input[type=range] { flex: 1; min-width: 0; height: 1.2em; margin: 0; }
-.vfo-rf input[type=range]::-webkit-slider-runnable-track { height: 3px; }
-.vfo-rf input[type=range]::-webkit-slider-thumb { width: 8px; height: 12px; margin-top: -4.5px; box-shadow: none; }
-.vfo-rf input[type=range]::-moz-range-thumb { width: 8px; height: 12px; }
-.vfo-row:not(.active) .vfo-rf input[type=range]::-webkit-slider-thumb { background: #7d8794; }
-.vfo-row:not(.active) .vfo-rf input[type=range]::-moz-range-thumb { background: #7d8794; }
-/* VFO receiver state: RUNNING green, WAIT/OPENING orange, OFFLINE (unplugged dongle, error) grey */
-.flag.vfo-stat.usb { padding: 0 .7em; }
-.usb-icon { display: block; height: 1.15em; width: auto; }
-/* chained VFO (shares the dongle of another VFO): green CHAIN instead of the USB icon */
-.flag.vfo-stat.chain, .vfo-row:not(.active) .flag.vfo-stat.chain { background: var(--green); color: #0b1a0f;
-  box-shadow: 0 0 10px rgba(60, 240, 124, .35); }
-.flag.wait { background: var(--amber); color: #2a1a04; box-shadow: none; }
-.flag.off { background: #1a2029; color: #7d8794; border: 1px solid var(--line2); box-shadow: none; }
-/* inactive VFO: mode and gain dark; the receiver state is always lit (RUNNING green if the dongle delivers data) */
-.vfo-row:not(.active) .vfo-foot .flag, .vfo-row:not(.active) .vfo-head .vfo-mode { background: #1a2029; color: #7d8794; box-shadow: none; }
-/* three displays must fit side by side: digit size by width */
+.vfo-row.active .vfo-memname { color: #9dffc6; text-shadow: 0 0 6px rgba(60, 240, 124, .75), 0 0 1px rgba(60, 240, 124, .9); }
+.vfo-row.active .vfo-memname.band { color: #eef4fa; text-shadow: 0 0 6px rgba(190, 215, 255, .6), 0 0 1px rgba(220, 235, 255, .9); }
+.vfo-row .vfo-memname.trsp { color: #4f7bab; }
+.vfo-row .vfo-memname.own { color: color-mix(in srgb, var(--mc) 45%, #20242a); }
+.vfo-row.active .vfo-memname.own { color: color-mix(in srgb, var(--mc) 75%, #fff);
+  text-shadow: 0 0 6px color-mix(in srgb, var(--mc) 75%, transparent), 0 0 1px var(--mc); }
+.vfo-row.active .vfo-memname.trsp { color: #b5dcff; text-shadow: 0 0 6px rgba(109, 179, 255, .75), 0 0 1px rgba(109, 179, 255, .9); }
+/* REC dot, muted speaker and the receiver state at the right */
+.vfo-ind { display: flex; align-items: center; justify-content: flex-end; gap: .5em; }
+/* recording of this VFO: blinks while a file is being written, steady while waiting for the squelch */
+.rec-tag { display: none; width: 8px; height: 8px; border-radius: 50%; background: var(--rec-red); box-shadow: 0 0 7px 1px var(--rec-red); }
+.rec-tag.on { display: block; }
+.rec-tag.writing { animation: rec-tag-blink .6s steps(1) infinite; }   /* 0.3 s on, 0.3 s off */
+@keyframes rec-tag-blink { 50% { opacity: 0; } }
+/* red struck-through speaker: the audio of this VFO is muted by a decoder */
+.mute-tag { width: 1.3em; height: 1.3em; flex: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23ff4b3e' d='M2 9v6h4l6 5V4L6 9z'/%3E%3Cpath fill='none' stroke='%23ff4b3e' stroke-width='2' d='M15 8a5 5 0 0 1 0 8'/%3E%3Cpath stroke='%23000' stroke-width='5' d='M3 2l18 20'/%3E%3Cpath stroke='%23ff4b3e' stroke-width='2.5' d='M3 2l18 20'/%3E%3C/svg%3E") center / contain no-repeat;
+  filter: drop-shadow(0 0 3px rgba(255, 75, 62, .6)); }
+.mute-tag[hidden] { display: none; }
+/* receiver state: RUNNING = USB icon (green), WAIT/OPENING/CAL/OOR amber, CHAIN green, OFFLINE / NO SDR grey */
+.vfo-stat { display: inline-flex; align-items: center; font: 700 .95em/1 system-ui, sans-serif; letter-spacing: .05em;
+  color: var(--green); text-shadow: 0 0 5px rgba(60, 240, 124, .6); }
+.usb-icon { display: block; height: 1.05em; width: auto; filter: drop-shadow(0 0 3px rgba(60, 240, 124, .7)); }
+.vfo-stat.wait { color: var(--amber); text-shadow: 0 0 5px rgba(255, 181, 71, .6); }
+.vfo-stat.wait .usb-icon { filter: drop-shadow(0 0 3px rgba(255, 181, 71, .7)); }
+.vfo-stat.blink { animation: vfo-stat-blink 1s steps(1) infinite; }   /* connecting */
+@keyframes vfo-stat-blink { 50% { opacity: .2; } }
+.vfo-stat.off { color: #6b7581; text-shadow: none; }
+.vfo-stat.off .usb-icon { filter: none; }   /* disconnected: grey icon without glow */
+
+/* frequency, under a thin line */
+.vfo-disp { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-width: 0; padding-top: 2px;
+  border-top: 1px solid #141b22; }
+.vfo-list .freq { padding: 0 4px; }
+/* three windows side by side: digit size by width */
 .vfo-list:has(.vfo-key) .freq { font-size: clamp(20px, calc(4.9cqw - 6px), 56px); }
 /* four VFOs (A–C dongles + D LimeSDR): smaller digits */
 .vfo-list:has(.vfo-row:nth-child(4)) .freq { font-size: clamp(16px, calc(3.6cqw - 5px), 44px); }
-.vfo-list:has(.vfo-key) .freq .unit { font-size: 12px; }
+.vfo-list:has(.vfo-key) .freq .unit { font-size: 12px; margin-bottom: 0; }
 .vfo-row .freq-input { width: 100%; max-width: 320px; font-size: 24px; }
 .vfo-row:not(.active) .freq { cursor: pointer; }
 /* digit under the mouse (the wheel tunes by its place value) */
@@ -271,19 +266,90 @@ body {
 .vfo-row:not(.active) .freq .on,
 .vfo-row:not(.active) .freq svg:nth-last-of-type(-n+3) .on { fill: #5f6874; filter: none; }
 .vfo-row:not(.active) .freq .unit { color: #5f6874; }
+
+/* annunciators: always in place (nothing moves), lit = on, dark like an unlit segment = off or not used in this mode */
+.vfo-anns { display: flex; align-items: center; gap: .1em; height: 1.45em; }
+.vfo-anns .gap { flex: 1; }
+.ann { display: inline-flex; align-items: center; padding: .1em .22em; border-radius: 2px; font: 700 1em/1.1 system-ui, sans-serif;
+  letter-spacing: .04em; color: #1e252d; }
+.ann.on { color: var(--green); text-shadow: 0 0 5px rgba(60, 240, 124, .6); }
+.ann.vfo-mode { color: var(--green); text-shadow: 0 0 5px rgba(60, 240, 124, .6); min-width: 3em; justify-content: center; }
+.ann.agc { min-width: 3.2em; justify-content: center; }
+/* AGC+: the + is always in place, unlit unless AGC+ is on */
+.ann.agc i { font-style: normal; color: #1e252d; text-shadow: none; }
+.ann.agc.plus i { color: inherit; text-shadow: inherit; }
+.ann.agc.clip { color: var(--red); text-shadow: 0 0 5px rgba(255, 75, 62, .6); }   /* AGC+ while the A/D converter clips */
+.ann.afi.on { color: var(--yellow); text-shadow: 0 0 5px rgba(255, 216, 74, .6); animation: afi-tag-blink 1s steps(1) infinite; }
+@keyframes afi-tag-blink { 50% { color: #6e5d20; text-shadow: none; } }
+.ann.sat svg { width: 1.25em; height: 1.1em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.ann.sat.on { color: #6db3ff; text-shadow: none; filter: drop-shadow(0 0 3px rgba(109, 179, 255, .7)); }
+/* CUE: the VFO audio plays even when another VFO is selected (click toggles it, does not switch the VFO) */
+.ann.vfo-cue { cursor: pointer; box-shadow: inset 0 0 0 1px #1e252d; }
+.ann.vfo-cue:hover { color: #5f6874; }
+.ann.vfo-cue.on { color: var(--orange); box-shadow: inset 0 0 0 1px var(--orange); text-shadow: 0 0 5px rgba(255, 140, 26, .6); }
+/* inactive VFO: what is on is grey (CUE keeps its orange) */
+.vfo-row:not(.active) .ann.on:not(.vfo-cue), .vfo-row:not(.active) .ann.vfo-mode { color: #7d8794; text-shadow: none; filter: none; }
+.vfo-row:not(.active) .ann.afi.on { animation: none; }
+
+/* info row under the frequency: RX/TX, filter width, HPF and LPF with cutoffs, stereo, squelch, upconverter.
+ * Fixed widths, so a change (3 kHz / 200 kHz, OPEN / SQL, CONV / BYPASS) moves nothing. */
+.vfo-info { display: flex; align-items: center; justify-content: space-between; height: 1.45em; font-size: clamp(8px, .84cqw, 10.5px); white-space: nowrap; }
+.vfo-info .ann { justify-content: center; }
+.vfo-info .rx { min-width: 2.3em; }
+.vfo-info .bw { min-width: 5em; }
+.vfo-info .rx, .vfo-info .bw { color: var(--green); text-shadow: 0 0 5px rgba(60, 240, 124, .6); }
+.vfo-info .hpf, .vfo-info .lpf { justify-content: flex-start; }
+.vfo-info .hpf b, .vfo-info .lpf b { font-weight: 700; min-width: 2.7em; }
+.vfo-info .sql { min-width: 3.4em; }
+.vfo-info .conv { min-width: 4.4em; }
+.inf-ico { width: 1.35em; height: .9em; margin-right: .15em; fill: none; stroke: currentColor; stroke-width: 64; stroke-linecap: round; stroke-linejoin: round; }
+.vfo-info .st-icon { width: 1.35em; margin-right: .15em; }
+.ann.set { color: #5f6874; }
+.ann.warn { color: var(--amber); text-shadow: 0 0 5px rgba(255, 181, 71, .6); }
+.vfo-info .ann.tx { color: var(--red); text-shadow: 0 0 6px rgba(255, 75, 62, .8); }
+.vfo-row:not(.active) .vfo-info .rx:not(.tx), .vfo-row:not(.active) .vfo-info .bw { color: #7d8794; text-shadow: none; }
+.vfo-row.spare .vfo-info .ann { color: #1e252d; text-shadow: none; }
+
+/* RF and SQL: label, segment bar (a range input), value */
+.vfo-foot { display: grid; grid-template-columns: 2.6em minmax(0, 1fr) 6.2em; align-items: center; gap: .6em; height: 1.4em;
+  --bar-on: #3cf07c; --bar-off: #0f2016; }
+.vfo-sqrow { --bar-on: var(--amber); --bar-off: #221a0b; }
+.vfo-row:not(.active) .vfo-foot { --bar-on: #56606b; --bar-off: #12171c; }
+.vfo-rf { display: contents; cursor: pointer; }
+.vfo-rf span { font: 700 .9em system-ui, sans-serif; letter-spacing: .1em; color: #8b95a1; }
+.vfo-foot .vfo-gain, .vfo-foot .vfo-sql { text-align: right; font: 700 1em ui-monospace, Consolas, monospace;
+  color: var(--green); text-shadow: 0 0 5px rgba(60, 240, 124, .5); }
+.vfo-foot .vfo-sql { color: var(--amber); text-shadow: 0 0 5px rgba(255, 181, 71, .5); }
+.vfo-row:not(.active) .vfo-foot .vfo-gain, .vfo-row:not(.active) .vfo-foot .vfo-sql { color: #7d8794; text-shadow: none; }
+/* squelch in a mode without squelch (SSB, CW): stays in place, only strongly dimmed */
+.vfo-foot.na { opacity: .3; }
+.vfo-foot.na .vfo-rf { cursor: default; }
+/* the bar: segments 5 px + gap 2 px, lit up to the value (--p set by app.js) */
+.vfo-foot input[type=range] { --p: 0%; width: 100%; min-width: 0; height: 13px; margin: 0; cursor: pointer; }
+.vfo-foot input[type=range]::-webkit-slider-runnable-track { height: 9px; border: 0; border-radius: 1px; box-shadow: none;
+  background: repeating-linear-gradient(90deg, transparent 0 5px, #040507 5px 7px),
+    linear-gradient(90deg, var(--bar-on) var(--p), var(--bar-off) var(--p)); }
+.vfo-foot input[type=range]::-moz-range-track { height: 9px; border: 0; border-radius: 1px; box-shadow: none;
+  background: repeating-linear-gradient(90deg, transparent 0 5px, #040507 5px 7px),
+    linear-gradient(90deg, var(--bar-on) var(--p), var(--bar-off) var(--p)); }
+.vfo-foot input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 2px; height: 13px; margin-top: -2px; border-radius: 0;
+  background: #f2fff4; box-shadow: 0 0 4px rgba(255, 255, 255, .6); }
+.vfo-foot input[type=range]::-moz-range-thumb { width: 2px; height: 12px; border: 0; border-radius: 0; background: #f2fff4; }
+.vfo-row:not(.active) .vfo-foot input[type=range]::-webkit-slider-thumb { background: #8b95a1; box-shadow: none; }
+.vfo-row:not(.active) .vfo-foot input[type=range]::-moz-range-thumb { background: #8b95a1; }
+.vfo-foot input[type=range]:disabled { opacity: .45; cursor: default; }
+
 .vfo-row.offline { opacity: .45; }
 /* free VFO window without an assigned SDR: in place, but dark and without function */
 .vfo-row.spare { opacity: .35; cursor: default; }
 .vfo-row.spare * { cursor: default !important; }
-.vfo-row.spare .key:disabled { opacity: 1; }
-.vfo-row.spare .vfo-mode, .vfo-row.spare .vfo-gain, .vfo-row.spare .vfo-sql { background: #1a2029; color: #7d8794; box-shadow: none; }
-/* CUE: the VFO audio plays even when another VFO is selected; orange = on, grey = off (also on an inactive VFO) */
-.vfo-head .flag.vfo-cue { cursor: pointer; background: #1a2029; color: #7d8794; border: 1px solid var(--line2); box-shadow: none; }
-.vfo-head .flag.vfo-cue.on { background: var(--orange); color: #2a1404; border-color: var(--orange);
-  box-shadow: 0 0 10px rgba(255, 140, 26, .45); }
-/* transmitting: the RX flag turns into a red TX, the transmitting VFO has a red button */
+.vfo-row.spare .ann.vfo-mode { color: #1e252d; text-shadow: none; }
+
+/* flags at the S-meter: states used outside the VFO windows */
+.flag.wait { background: var(--amber); color: #2a1a04; box-shadow: none; }
+.flag.off { background: #1a2029; color: #7d8794; border: 1px solid var(--line2); box-shadow: none; }
+/* transmitting: the RX flag turns into a red TX */
 .flag.tx { background: var(--red); color: #fff; box-shadow: 0 0 14px rgba(255, 75, 62, .7); }
-.vfo-row.tx .vfo-key { color: #fff; background: var(--red); border-color: var(--red); box-shadow: 0 0 12px rgba(255, 75, 62, .7); }
 /* position of the manual upconverter switch and a clear warning on a change */
 .flag.conv.warn { background: var(--amber); color: #2a1a04; box-shadow: 0 0 10px rgba(255, 181, 71, .35); }
 .conv-warn {
@@ -293,13 +359,36 @@ body {
 }
 @keyframes conv-blink { from { box-shadow: 0 0 0 rgba(255, 181, 71, 0); } to { box-shadow: 0 0 16px rgba(255, 181, 71, .6); } }
 
+/* AD (additional display): one of error / rotor monitor / RDS, by priority (app.js renderAd) */
+.ad-err[hidden], .ad-rot[hidden], .rds[hidden] { display: none !important; }
+.ad-err { display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 4px 0 8px; }
+.ad-err-text { flex: 1; min-width: 0; color: #ff5a4f; font: 600 12px/1.25 system-ui, sans-serif; text-shadow: 0 0 6px rgba(255, 70, 60, .45);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ad-err-more { color: #ff8a80; font: 700 10px system-ui, sans-serif; }
+.ad-ok { flex: 0 0 auto; padding: 1px 6px; cursor: pointer; border-radius: 3px; background: transparent;
+  border: 1px solid #ff5a4f; color: #ff5a4f; font: 700 10px/1.3 system-ui, sans-serif; letter-spacing: .04em; }
+.ad-ok:hover { background: rgba(255, 90, 79, .18); color: #ffd0cc; }
+/* an error waits: the window frame blinks red, period 0.5 s */
+.mfd.alarm { animation: ad-alarm .5s steps(1, end) infinite; }
+@keyframes ad-alarm { 0% { box-shadow: var(--well-shadow, none), 0 0 0 2px #ff3b30, 0 0 10px rgba(255, 59, 48, .7); }
+  50% { box-shadow: var(--well-shadow, none); } }
+.ad-rot { display: flex; align-items: center; gap: 10px; height: 100%; padding: 0 8px; white-space: nowrap; overflow: hidden; }
+.ad-rot-tag { margin-right: 6px; color: var(--muted); font: 700 10px system-ui, sans-serif; letter-spacing: .12em; }
+.ad-rot-v { display: flex; align-items: baseline; gap: 5px; }
+.ad-rot-v small { color: var(--muted); font: 700 10px system-ui, sans-serif; }
+.ad-rot-v b { min-width: 3.4em; color: var(--amber); font: 700 18px/1 ui-monospace, Consolas, monospace; text-align: right;
+  text-shadow: 0 0 6px rgba(255, 181, 71, .45); }
+.ad-rot-tgt { flex: 1; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis;
+  color: var(--muted); font: 11px ui-monospace, Consolas, monospace; }
+.ad-rot-tgt.bad { color: #ff5a4f; font-weight: 700; }
+
 /* RDS: compact frame under the logo; station name (PS) like on an LCD, RadioText under it.
  * width 0 + min-width 100 %: the frame is exactly as wide as the clock and a long RadioText does not stretch it */
-.rds { position: relative; align-self: stretch; width: 0; min-width: 100%; padding: 2px 6px 2px 34px; text-align: left;
-  border: 1px solid var(--line); border-radius: 6px; background: #080c10; }
-.rds.off { border-color: #1a2029; background: #06090c; }
+.rds { position: relative; height: 100%; padding: 2px 8px 2px 38px; text-align: left; }
+/* no RDS (or not WFM): nothing in the multifunction display */
+.rds.off { visibility: hidden; }
 /* RDS logo on the left in the frame; the space stays even without RDS so that the text does not shift */
-.rds-logo { position: absolute; left: 5px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px;
+.rds-logo { position: absolute; left: 7px; top: 50%; transform: translateY(-50%); width: 26px; height: 26px;
   color: var(--amber); filter: drop-shadow(0 0 3px rgba(255, 181, 71, .45)); }
 .rds-logo text { fill: currentColor; font: italic 900 25px system-ui, sans-serif; }
 /* without RDS (also in modes other than WFM) the logo stays grey, so it is clear what the frame is for */
@@ -370,12 +459,21 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid rgba(255, 2
 }
 /* ATU: blinking while it listens to the clicked signal */
 #atuKey.busy { animation: afi-key-blink .5s steps(1) infinite; }
+/* SP key: blinking red while LEARN runs after a press (steady yellow once learned) */
+#spurKey.on.learning { color: var(--red); box-shadow: inset 0 -2px 0 var(--red), inset 0 1px 0 rgba(255, 255, 255, .12);
+  animation: sp-learn-blink .5s steps(1) infinite; }
+@keyframes sp-learn-blink {
+  50% { color: #6e2420; box-shadow: inset 0 -2px 0 #6e2420, inset 0 1px 0 rgba(255, 255, 255, .12); }
+}
 /* LPF / HPF: filter curve and cutoff on two lines, as high and wide as the other keys */
 .key.pass-key, .keys button.pass-key { flex-direction: column; gap: 1px; padding-top: 2px; padding-bottom: 2px; line-height: 1; }
 /* SAT key: the icon is taller than a line of key text; the negative margin keeps the key as high as the others */
 .sat-icon { width: 22px; height: 18px; margin-block: calc((1.1em - 18px) / 2); fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 /* lit like the other keys (.key.on), in blue: --blue itself is too dark on the lit key */
 #satKey.on { color: #6db3ff; box-shadow: inset 0 -2px 0 #6db3ff, inset 0 1px 0 rgba(255, 255, 255, .12); }
+/* SET key: a gear, as high as the other keys */
+.gear-icon { width: 18px; height: 18px; margin-block: calc((1.1em - 18px) / 2); fill: currentColor; transition: transform .3s; }
+#setKey.on .gear-icon { transform: rotate(60deg); }
 .pass-icon { width: 19px; height: 12px; fill: none; stroke: currentColor; stroke-width: 56; stroke-linecap: round; stroke-linejoin: round; }
 .pass-val { font-size: 9px; font-weight: 600; letter-spacing: 0; opacity: .85; }
 .key.toggle input { display: none; }
@@ -522,6 +620,36 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .zb-cells i.on { background: var(--yellow); border-color: var(--yellow); }
 .zb-cells i:hover { border-color: var(--yellow); }
 .zb-val { min-width: 26px; text-align: right; font: 700 11px ui-monospace, Consolas, monospace; color: var(--yellow); }
+/* waterfall speed bar: top right corner of the waterfall, over the image (above the overlay that takes the mouse) */
+/* vertical: value and + at the top, cells lit from the bottom up (faster = higher), − and the WF label at the bottom */
+.wf-zoom-bar { top: 34px; z-index: 4; cursor: default; flex-direction: column-reverse; height: auto; width: 32px; gap: 4px; padding: 5px 0; }
+.wf-zoom-bar .zb-cells { flex-direction: column-reverse; }
+.wf-zoom-bar .zb-val { min-width: 0; text-align: center; }
+.zb-lbl { font: 700 9px system-ui, sans-serif; letter-spacing: .12em; color: #8b95a1; }
+/* waterfall settings: gear in a square above the speed bar; the window opens to the left while the mouse is over it,
+   half transparent like the bubbles in the spectrum so the waterfall stays visible behind it */
+.wf-cfg { position: absolute; top: 6px; right: 6px; z-index: 5; width: 34px; user-select: none; cursor: default; }
+.wf-cfg-btn { display: block; width: 34px; height: 24px; padding: 0; border-radius: 4px; cursor: pointer;
+  background: rgba(28, 30, 34, .92); border: 1px solid #44474d; color: #8b95a1; }
+.wf-cfg-btn svg { display: block; width: 16px; height: 16px; margin: 0 auto; fill: currentColor; transition: transform .3s; }
+.wf-cfg:hover .wf-cfg-btn, .wf-cfg.hold .wf-cfg-btn { border-color: var(--yellow); color: var(--yellow); }
+.wf-cfg:hover .wf-cfg-btn svg, .wf-cfg.hold .wf-cfg-btn svg { transform: rotate(60deg); }
+.wf-cfg-panel { display: none; position: absolute; top: 0; right: 100%; margin-right: 6px; width: 230px; padding: 8px 10px 6px;
+  box-sizing: border-box; border-radius: 6px; background: rgba(8, 12, 16, .72); border: 1px solid rgba(255, 181, 71, .7);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .6); backdrop-filter: blur(1.5px); color: #cfd6df; font: 12px system-ui, sans-serif; }
+.wf-cfg-panel::after { content: ""; position: absolute; left: 100%; top: 0; width: 8px; height: 30px; }  /* bridge to the gear */
+.wf-cfg:hover .wf-cfg-panel, .wf-cfg.hold .wf-cfg-panel { display: block; }
+.wf-cfg-title { font: 700 10px system-ui, sans-serif; letter-spacing: .12em; color: var(--yellow); margin-bottom: 6px; }
+.wf-cfg-lbl { color: #8b95a1; font-size: 11px; margin-bottom: 3px; }
+.wf-cfg-row { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: #cfd6df; }
+.wf-cfg-row .value { font: 700 11px ui-monospace, Consolas, monospace; color: var(--yellow); }
+.wf-cfg-panel input[type=range] { height: 18px; }
+.wf-schemes { display: flex; flex-direction: column; gap: 3px; }
+.wf-schemes button { display: flex; align-items: center; gap: 8px; padding: 2px 4px; border-radius: 3px; cursor: pointer;
+  background: transparent; border: 1px solid transparent; color: #cfd6df; font: 11px system-ui, sans-serif; text-align: left; }
+.wf-schemes button i { flex: none; width: 110px; height: 10px; border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .15); }
+.wf-schemes button:hover { border-color: #5a5e66; }
+.wf-schemes button.on { border-color: var(--yellow); color: var(--yellow); background: rgba(255, 216, 74, .08); }
 .waterfall-wrap.dragging, .spectrum-wrap.dragging { cursor: grabbing; }
 .hover-freq { position: absolute; z-index: 3; pointer-events: none; padding: 3px 8px; border-radius: 4px;
   font: 700 13px ui-monospace, Consolas, monospace; color: var(--yellow); white-space: nowrap;
@@ -545,7 +673,7 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .body-tabs button.on { background: #050506; color: var(--yellow); border-color: #44474d; }
 .dec-count { color: var(--muted); font-weight: 600; }
 /* SATELLITES tab: covers the spectrum and waterfall like the decoders; only the list scrolls */
-.amsat-pane { position: absolute; inset: 0; z-index: 4; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: #07090c; }
+.amsat-pane { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: #07090c; }
 .amsat-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .amsat-pages { display: flex; gap: 4px; }
 .amsat-info { flex: 1 1 0; min-width: 120px; color: var(--muted); font-size: 12px; }
@@ -652,7 +780,7 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .dec-new { color: var(--green); margin-left: 4px; }   /* new decoder message while the SPECTRUM tab is open */
 /* the decoders cover the spectrum and waterfall; those keep running underneath (canvases keep their size) */
 .dec-pane {
-  position: absolute; inset: 0; z-index: 4; overflow: auto; padding: 10px;
+  position: absolute; inset: 0; z-index: 6; overflow: auto; padding: 10px;
   display: flex; flex-direction: column; gap: 10px; background: #07090c;
 }
 /* All decoder cards (FT8, ACARS / VDL2, CW, RTTY, WEFAX, SSTV) share one design: the card fills the tab
@@ -977,9 +1105,8 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .note.warn { color: var(--amber); }
 .note.error { color: var(--red); font-size: 12px; }
 
-/* ---------- floating windows (SET, MEM) ----------
-   They have no scrim, so the radio stays usable behind them, and they are moved by the title bar (see makeFloating).
-   They are inside the scaled .stage, so sizes are in stage px and % of the stage. */
+/* ---------- floating window (the offer of a new version) ----------
+   No scrim, so the radio stays usable behind it. It is inside the scaled .stage, so sizes are in stage px and % of the stage. */
 .drawer {
   position: fixed; z-index: 21; top: 3%; max-height: 94%;
   display: flex; flex-direction: column; background: linear-gradient(180deg, #12161c, #0a0d11);
@@ -1002,9 +1129,10 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .setting.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .setting.two label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
 
-/* SET: tabs, related settings as cards in columns. The virtual stage is never narrow (see fitStage), so the
-   fixed width always fits; the window is only as tall as the open tab needs. */
-.set-win { left: calc(50% - 620px); width: 1240px; }
+/* SETTINGS tab (gear key): page keys like SATELLITES, related settings as cards in columns; covers the
+   spectrum and waterfall like the other tabs, only the page scrolls */
+.set-pane { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: #07090c; }
+.set-body { flex: 1 1 0; min-height: 0; overflow: auto; }
 /* new version on GitHub: the upgrade offer after start */
 .upd-win { left: calc(50% - 230px); top: 18%; width: 460px; z-index: 30; }
 .upd-win .drawer-head { cursor: default; }
@@ -1012,15 +1140,30 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .upd-win a:not(.key) { color: var(--yellow); }
 .upd-keys { display: flex; gap: 8px; flex-wrap: wrap; }
 .upd-keys a.key { text-decoration: none; display: inline-flex; align-items: center; }
-.set-tabs { padding-top: 6px; }
-.set-tabs button { min-width: 96px; padding: 5px 14px; font-size: 12px; }
-.set-error { padding: 8px 14px 0; }
-.set-win .drawer-body { padding: 10px; }
-.set-panel { zoom: 1.1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.set-tabs { flex-wrap: wrap; }
+.set-error { margin: 0; }
+.set-panel { zoom: 1.1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
 .set-panel[data-set-panel="tx"] { grid-template-columns: minmax(0, 1fr); }
-/* DISPLAY: settings as 2 x 2 on the left, the S-meter samples on the right, so the window stays low above the waterfall */
-.set-panel[data-set-panel="display"] { grid-template-columns: 1fr 1fr 2.4fr; grid-template-rows: auto auto; }
-.set-panel .meter-card { grid-column: 3; grid-row: 1 / span 2; }
+/* pages with sub-pages (SDR DONGLE, UI): a row of sub-page keys, the open sub-page under it */
+.set-panel.has-sub { display: flex; flex-direction: column; gap: 8px; }
+.set-panel.has-sub[hidden], .set-subpanel[hidden] { display: none; }
+.set-subtabs { display: flex; gap: 4px; flex-wrap: wrap; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+.set-subpanel { display: grid; gap: 10px; align-items: start; }
+/* BASIC: cards flow down four columns (no holes under short cards) */
+.set-subpanel.set-grid4 { display: block; columns: 4; column-gap: 10px; }
+.set-grid4 > .setting { break-inside: avoid; margin-bottom: 10px; }
+.set-grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.set-grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.set-meter { grid-template-columns: 1fr 3fr; }
+.set-skins { grid-template-columns: 1fr 1.8fr; }
+.set-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+.set-cols > div { display: flex; flex-direction: column; gap: 6px; }
+.set-field { display: flex; flex-direction: column; gap: 4px; }
+#sagcRows { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; }
+#sagcRows input { width: 100%; }
+#sagcDefaults { align-self: flex-start; }
+@media (max-width: 1100px) { .set-subpanel.set-grid4 { columns: 2; } }
+@media (max-width: 700px) { .set-subpanel.set-grid4 { columns: 1; } .set-grid3, .set-grid2, .set-meter, .set-skins, .set-cols { grid-template-columns: minmax(0, 1fr); } }
 .meter-card .row small { color: var(--muted); font-size: 11px; font-weight: 400; }
 .meter-card .meter-picks { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .set-panel .setting { padding: 10px; gap: 6px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .02); }
@@ -1031,10 +1174,45 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .set-panel .setting .row > label { flex: 1 1 0; min-width: 0; }
 .set-panel .setting.two { align-content: start; }
 .set-panel .setting.two label { font-size: inherit; color: inherit; }
-/* ROTOR: the satellite tracking note goes under the other three cards at their full width, so the window stays low */
-.set-panel[data-set-panel="rotor"] .setting:last-child { grid-column: 1 / -1; }
+/* ROTOR: ON / OFF and the port on top, under it the plots with the keys and the calibration */
+.set-rotor { grid-template-columns: minmax(0, 1fr); }
+.rot-head .row { justify-content: flex-start; gap: 10px; }
+.rot-head .row > span { flex: 1; }
+.rot-onkey { min-width: 46px; }
+.rot-port { display: flex; gap: 6px; align-items: center; }
+.rot-port[hidden], .rot-on[hidden] { display: none; }
+.rot-port select { flex: 0 1 520px; }
+.rot-on { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 10px; align-items: start; }
+.setting.rot-dial { flex-direction: row; flex-wrap: wrap; gap: 14px; align-items: flex-start; }
+.rot-plots { display: flex; gap: 4px; align-items: flex-start; }
+.rot-polar { width: 230px; height: 230px; }
+.rot-elcol { width: 63px; height: 230px; }
+.rot-elcol text, .rot-polar text { font: 11px system-ui, sans-serif; }
+.rot-elbar { fill: rgba(255, 255, 255, .03); stroke: var(--line2); }
+.rot-elgrid { stroke: var(--line2); }
+.rot-elgrid.major { stroke: var(--muted); opacity: .6; }
+.rot-ellbl { fill: var(--muted); text-anchor: end; font-size: 10px !important; }
+.rot-elnow path { fill: var(--amber); }
+.rot-elnow line { stroke: var(--amber); stroke-width: 2.5; }
+/* ROTOR page: the antenna now in orange like the ACTUAL values (the TRACK page keeps red) */
+.rot-polar .pg-rot line { stroke: var(--amber); }
+.rot-elaim { stroke: #c070ff; stroke-width: 2; }
+.pg-tgt circle { fill: none; stroke: var(--green); stroke-width: 2; }
+.rot-cap { color: var(--muted); font: 700 9px system-ui, sans-serif; font-style: normal; letter-spacing: .1em; }
+.rot-pos b.req, .rot-cap.req { color: var(--green); }
+.rot-pos b.req { text-shadow: 0 0 6px rgba(80, 220, 120, .4); }
+.rot-howto { color: var(--text); }
+.rot-polar.locked .pg-hit, .rot-elcol.locked .pg-hit { cursor: not-allowed; }
+.rot-side { flex: 1 1 180px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.rot-pos { display: grid; grid-template-columns: auto auto auto auto auto; width: max-content; gap: 2px 8px; align-items: baseline;
+  padding: 6px 10px; border: 1px solid #000; border-radius: 2px; background: #080c10; }
+.rot-pos span { color: var(--muted); font: 700 11px system-ui, sans-serif; }
+.rot-pos b { min-width: 3.2em; margin-right: 10px; color: var(--amber); font: 700 22px ui-monospace, Consolas, monospace; text-shadow: 0 0 6px rgba(255, 181, 71, .45); }
+.rot-keys { display: flex; gap: 6px; flex-wrap: wrap; }
+.key.warn { color: var(--amber); border-color: var(--amber); }
+@media (max-width: 900px) { .rot-on { grid-template-columns: minmax(0, 1fr); } }
 
-/* SAT: the antenna in 3D and the dials. It does not close SET or MEM, the port is chosen in SET. */
+/* SAT: STOP and the error line on the TRACK page; the port is chosen in SETTINGS, ROTOR page. */
 .sat-panel { display: inline-flex; flex-direction: column; gap: 4px; }
 .sat-panel[hidden] { display: none; }
 .sat-ctrl { display: flex; align-items: center; gap: 6px; }
@@ -1042,44 +1220,40 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .sat-panel .note { margin: 0; font-size: 12px; }
 .sat-panel .note:empty { display: none; }
 
-/* MEM: narrow and tall, the list scrolls inside it */
-.mem-win { right: 1%; width: 440px; height: 85%; }
-.memories { gap: 10px; }
-.mem-add { display: grid; grid-template-columns: 1fr 100px; gap: 6px; }
-.mem-add button, .mem-add .note { grid-column: 1 / -1; }
-.mem-add input, .mem-filter input, .mem-filter select { width: 100%; min-width: 0; padding: 6px 9px; font-size: 13px; }
-.mem-filter { display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; }
+/* MEM tab: page LIST = filters on the left, the memories in columns on the right (the list scrolls inside) */
+.mem-listpage { flex-direction: row; }
+.mem-side { width: 320px; flex: none; display: flex; flex-direction: column; gap: 10px; }
+.mem-side #memCount { font-size: 12px; }
+.mem-add { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.mem-add .note { grid-column: 1 / -1; }
+.mem-filter { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
+.mem-filter input, .mem-filter select { width: 100%; min-width: 0; padding: 6px 9px; font-size: 13px; }
+.mem-filter select#memSort { width: auto; }
+.key.danger:not(:disabled):hover { color: var(--red); border-color: var(--red); }
 .mem-filter input[type=search] { grid-column: 1 / -1; }
 .switch.small { gap: 6px; font-size: 13px; color: var(--amber); }
-.mem-list { flex: 1; overflow: auto; margin: 0 -6px; padding: 0 6px; min-height: 120px; }
+.mem-list { position: relative; flex: 1; min-width: 0; overflow: auto; padding: 0 6px; min-height: 120px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); column-gap: 14px; align-content: start; }
+.mem-list .mem-group, .mem-list .mem-empty { grid-column: 1 / -1; }
 .mem-group { position: sticky; top: 0; z-index: 1; padding: 6px 2px 4px; font-size: 10px; text-transform: uppercase;
   letter-spacing: .08em; color: var(--dim); background: #0e1216; }
 .mem {
-  display: grid; grid-template-columns: 16px minmax(0, 1fr) auto 22px; align-items: center; gap: 6px;
+  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 18px; align-items: center; gap: 6px;
   padding: 5px 6px; border-radius: 4px; cursor: pointer;
 }
 .mem:hover { background: #1a2028; }
-.mem.active { background: rgba(255, 216, 74, .1); box-shadow: inset 2px 0 0 var(--yellow); }
-.mem .star { border: none; background: none; padding: 0; color: var(--dim); font-size: 13px; line-height: 1; }
+.mem.active { background: rgba(255, 216, 74, .22); box-shadow: inset 3px 0 0 var(--yellow), inset 0 0 0 1px rgba(255, 216, 74, .45); }
+.mem.active .name { color: var(--yellow); font-weight: 600; }
+.mem .star { border: none; background: none; padding: 0; color: var(--muted); font-size: 19px; line-height: 1; cursor: pointer; }
 .mem .star.on { color: var(--amber); }
+.mem .star:hover { color: var(--yellow); }
+.mem .edit { border: none; background: none; padding: 0; color: var(--dim); font-size: 13px; line-height: 1; cursor: pointer; }
+.mem .edit:hover { color: var(--yellow); }
 .mem .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .mem .meta { font: 12px ui-monospace, Consolas, monospace; color: var(--muted); text-align: right; white-space: nowrap; }
 .mem .meta b { color: var(--green); font-weight: 600; margin-left: 4px; }
-.mem .del { border: none; background: none; padding: 0; color: var(--dim); font-size: 15px; line-height: 1; visibility: hidden; }
-.mem:hover .del { visibility: visible; }
-.mem .del:hover { color: var(--red); }
-@media (hover: none) { .mem .del { visibility: visible; } }
+.mem .dup { margin-left: 6px; font-style: normal; color: var(--amber); font-size: 12px; cursor: help; }
 .mem-empty { padding: 12px; color: var(--dim); font-size: 12px; text-align: center; }
-.mem-io { border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 6px; }
-.mem-io[open] { gap: 6px; }
-.mem-io summary { cursor: pointer; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-.mem-io > * + * { margin-top: 6px; }
-.mem-io-label { display: block; font-size: 12px; color: var(--muted); }
-.mem-io-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; }
-#memImportJson { grid-column: 2; }
-.mem-io-row.two { grid-template-columns: 1fr 1fr; }
-.mem-io-row input { width: 100%; min-width: 0; padding: 6px 9px; font-size: 13px; }
-.mem-io-row button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- narrower virtual window ---------- */
 /* Virtual window up to 2100 px wide (e.g. Full HD, or a window taller than 16:9): narrower buttons
@@ -1135,3 +1309,305 @@ html.compact .r-bands .bands button { min-width: 36px; padding-left: 5px; paddin
 .sats-tabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 4px 0 8px; }
 .sats-tabs .key .muted { margin-left: 4px; }
 .el-rot { fill: #ff4d4d; font: 700 11px system-ui, sans-serif; }
+
+/* =====================================================================================================
+ * SKIN: brushed black anodized aluminium (variant 2 of data\ui_povrchy_nahlad.html).
+ * The whole receiver is one aluminium chassis: displays are recessed windows with glass, keys have height and
+ * travel, spectrum / waterfall / tabs are a display sunk into the panel behind glass. Only overrides – deleting
+ * this section returns the previous flat look.
+ * ===================================================================================================== */
+/* colour of the LED line in a lit key (registered, so that a keyframe can switch it) */
+@property --led { syntax: "<color>"; inherits: false; initial-value: #ffd84a; }
+:root, [data-skin="alu-dark"] {   /* also on the SKINS sample of this finish */
+  /* horizontal hairline brushing: noise stretched along x */
+  --alu-brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='200'%3E%3Cfilter id='b'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.002 .85' numOctaves='2' seed='4' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .16 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23b)'/%3E%3C/svg%3E");
+  --alu-top: #2a2d31; --alu-mid: #1d1f22; --alu-bot: #141517;
+  --well: #040507;   /* bottom of a recessed window */
+  /* a window milled ~2 mm into the panel, light from above: dark top wall, dimmer side walls, lit bottom wall,
+     shaded floor; outside a sharp cut edge (dark above, a bright lip below) */
+  --well-shadow: inset 0 3px 0 rgba(0, 0, 0, .9), inset 2px 0 0 rgba(0, 0, 0, .7), inset -2px 0 0 rgba(0, 0, 0, .5),
+    inset 0 -2px 0 rgba(150, 158, 168, .28), inset 0 9px 12px rgba(0, 0, 0, .65),
+    0 1px 0 rgba(255, 255, 255, .16), 0 -1px 0 rgba(0, 0, 0, .75), 1px 0 0 rgba(0, 0, 0, .35), -1px 0 0 rgba(0, 0, 0, .35);
+  --glass: linear-gradient(165deg, rgba(255, 255, 255, .07) 0%, rgba(255, 255, 255, .02) 30%, rgba(255, 255, 255, 0) 31%);
+  /* raised key: side 2 px under it */
+  --key-raised: inset 0 1px 0 rgba(255, 255, 255, .2), inset 0 -2px 0 rgba(0, 0, 0, .35), 0 2px 0 #08090a, 0 3px 4px rgba(0, 0, 0, .65);
+  --engrave: 0 -1px 0 rgba(0, 0, 0, .9), 0 1px 0 rgba(255, 255, 255, .07);
+  /* skin hooks (SET → SKINS overrides them under html[data-skin]): diagonal light sweep, print on the panel */
+  --alu-sheen: linear-gradient(100deg, rgba(255, 255, 255, 0) 15%, rgba(255, 255, 255, .045) 42%, rgba(255, 255, 255, 0) 68%);
+  --ink: #b4bdc8; --ink-dim: #aab4c0;
+}
+.stage { background: radial-gradient(1400px 700px at 50% -10%, #2c3035, #0b0c0d 75%); }
+
+/* ---------- chassis: head and body are one panel ---------- */
+.radio { border: 0; }
+.radio-head {
+  padding: 10px 10px 0; border-radius: 14px 14px 0 0;
+  background: var(--alu-brush), var(--alu-sheen), linear-gradient(180deg, var(--alu-top), var(--alu-mid));
+  box-shadow: 0 -1px 0 #000, 1px 0 0 #000, -1px 0 0 #000, inset 0 1px 0 rgba(255, 255, 255, .2),
+    inset 1px 0 0 rgba(255, 255, 255, .07), inset -1px 0 0 rgba(0, 0, 0, .6), 0 5px 8px rgba(0, 0, 0, .45);
+}
+.radio-body {
+  position: relative; z-index: 0;   /* own stacking context: the glass over the screen stays under the sticky head */
+  padding: 10px 24px 16px; border-radius: 0 0 14px 14px;
+  background: var(--alu-brush), linear-gradient(180deg, var(--alu-mid), var(--alu-bot));
+  box-shadow: 0 1px 0 #000, 1px 0 0 #000, -1px 0 0 #000, inset 1px 0 0 rgba(255, 255, 255, .07),
+    inset -1px 0 0 rgba(0, 0, 0, .6), inset 0 -1px 0 rgba(0, 0, 0, .9), 0 20px 50px rgba(0, 0, 0, .6);
+}
+/* screws in the corners of the panel (under the content) */
+.radio-head::before, .radio-body::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; }
+.radio-head::before {
+  background: radial-gradient(circle 7px at 12px 12px, #8a8f96 0, #3d4045 2.5px, #0f1012 5px, rgba(0, 0, 0, .7) 6px, transparent 7px),
+    radial-gradient(circle 7px at calc(100% - 12px) 12px, #8a8f96 0, #3d4045 2.5px, #0f1012 5px, rgba(0, 0, 0, .7) 6px, transparent 7px); }
+.radio-body::before {
+  background: radial-gradient(circle 7px at 12px calc(100% - 12px), #8a8f96 0, #3d4045 2.5px, #0f1012 5px, rgba(0, 0, 0, .7) 6px, transparent 7px),
+    radial-gradient(circle 7px at calc(100% - 12px) calc(100% - 12px), #8a8f96 0, #3d4045 2.5px, #0f1012 5px, rgba(0, 0, 0, .7) 6px, transparent 7px); }
+/* the screen sunk into the panel: bevel around it, inner shadow, glass reflection and a slight vignette */
+.radio-body::after { content: ""; position: absolute; z-index: 30; inset: 10px 24px 16px; border-radius: 4px; pointer-events: none;
+  background: linear-gradient(165deg, rgba(255, 255, 255, .05) 0, rgba(255, 255, 255, .015) 24%, rgba(255, 255, 255, 0) 24.5%),
+    radial-gradient(130% 110% at 50% 45%, rgba(0, 0, 0, 0) 68%, rgba(0, 0, 0, .3));
+  box-shadow: inset 0 3px 8px rgba(0, 0, 0, .85), inset 0 0 0 1px #000, 0 0 0 1px #000,
+    0 -1px 2px 2px rgba(0, 0, 0, .55), 0 1px 0 3px rgba(255, 255, 255, .06); }
+.radio-body > .body-tabs { border-radius: 4px 4px 0 0; }
+.radio-body > .hint { border-radius: 0 0 4px 4px; }
+
+/* strips of the head: no own background, only engraved grooves between them */
+.r-top, .r-keys, .r-bands { background: none; border-bottom: 1px solid rgba(0, 0, 0, .75); box-shadow: 0 1px 0 rgba(255, 255, 255, .06); }
+.r-bands { border-bottom: 0; box-shadow: none; }
+.klabel, .r-brand, .r-ver, .vol-ch, .vu { text-shadow: var(--engrave); }
+
+/* ---------- recessed windows with glass ---------- */
+.r-clock, .meter-info, .mfd {
+  border-color: #000; border-radius: 2px; background: var(--glass), var(--well); box-shadow: var(--well-shadow);
+}
+/* grey text on the aluminium: lighter, so it reads well */
+:root { --muted: #aab4c0; --dim: #8b95a1; }
+.klabel { color: var(--ink); }
+.r-ver { color: var(--ink); }
+.r-brand, .vol-ch, .vu, .sys-load span { color: var(--ink-dim); }
+.sys-load { opacity: 1; }
+.clock-zone small { color: #4c5561; }
+#smeter { padding: 4px; border-radius: 2px; border: 1px solid #000; background: var(--well); box-shadow: var(--well-shadow); }
+.vu-cols { padding: 4px 3px 3px; border-radius: 2px; border: 1px solid #000; background: var(--well); box-shadow: var(--well-shadow); }
+
+/* flags: backlit glass caps (gloss over every colour state) */
+.flag { position: relative; }
+.flag::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .24), rgba(255, 255, 255, 0) 50%, rgba(0, 0, 0, .14));
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .25); }
+
+/* ---------- keys with height and travel ---------- */
+.key, .keys button, .bands button {
+  border: 1px solid #0b0c0e; border-top-color: #4d535c;
+  background: linear-gradient(180deg, #4a5059 0%, #30343b 50%, #24272c 100%);
+  box-shadow: var(--key-raised); transition: filter .1s, transform .05s, box-shadow .05s;
+}
+.key:active, .keys button:active, .bands button:active { transform: translateY(2px);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .6), 0 0 0 #08090a, 0 1px 1px rgba(0, 0, 0, .6); }
+/* lit = pressed in, with an LED line at the bottom of the key */
+.keys button.active, .bands button.active, .key.toggle:has(input:checked), .key.on, #atuKey.busy {
+  color: var(--yellow); transform: translateY(1px); border-color: #0b0c0e;
+  background: linear-gradient(180deg, #3a3f47, #2a2e34);
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, .55), inset 0 -2px 0 var(--led), 0 1px 0 #08090a,
+    0 0 9px color-mix(in srgb, var(--led) 25%, transparent);
+}
+#agcPlusKey.on.clip { --led: var(--red); }
+#satKey.on { --led: #6db3ff; color: #6db3ff; }
+@keyframes afi-key-blink { 50% { color: #6e5d20; --led: #6e5d20; } }
+#spurKey.on.learning { --led: var(--red); color: var(--red); }
+@keyframes sp-learn-blink { 50% { color: #6e2420; --led: #6e2420; } }
+.key.accent { border-color: #b08a1a; background: linear-gradient(180deg, #ffe27a, #e8b928);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5), 0 2px 0 #3a2c05, 0 3px 4px rgba(0, 0, 0, .65); }
+/* bed milled into the panel for each group of keys */
+.keys, .r-bands .bands { border: 0; border-radius: 6px; padding: 4px 4px 5px; background: rgba(0, 0, 0, .42);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, .85), inset 0 0 0 1px rgba(0, 0, 0, .6), 0 1px 0 rgba(255, 255, 255, .08); }
+
+/* speaker and REC under the faders: raised keys with an LED strip (variant 1 of data\ui_mixer_nahlad.html).
+ * Speaker: green strip = sound on, pressed with a red strip = muted. REC / REC SQ: pressed with a red strip and a red LED
+ * while recording (blinking while a file is written, steady while REC SQ waits for the squelch). */
+.spk, .rec { height: 20px; border: 1px solid #0b0c0e; border-top-color: #4d535c;
+  background: linear-gradient(180deg, #4a5059 0%, #30343b 50%, #24272c 100%); }
+.spk { color: var(--green); box-shadow: var(--key-raised), inset 0 -2px 0 var(--green); }
+.spk.on { color: var(--red); transform: translateY(1px); border-color: #0b0c0e; background: linear-gradient(180deg, #3a3f47, #2a2e34);
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, .55), inset 0 -2px 0 var(--red), 0 1px 0 #08090a, 0 0 9px rgba(255, 75, 62, .3); }
+.rec { color: #eef1f5; box-shadow: var(--key-raised); }
+.rec-dot { width: 7px; height: 7px; background: #4a1414; box-shadow: inset 0 1px 1px rgba(0, 0, 0, .8); }
+.rec.on, .rec.armed { color: #ffb0b0; transform: translateY(1px); border-color: #0b0c0e; background: linear-gradient(180deg, #3a3f47, #2a2e34);
+  box-shadow: inset 0 2px 3px rgba(0, 0, 0, .55), inset 0 -2px 0 var(--rec-red), 0 1px 0 #08090a, 0 0 9px rgba(255, 26, 26, .3); }
+.rec.on .rec-dot, .rec.armed .rec-dot { background: radial-gradient(circle at 35% 30%, #ffc4c4, var(--rec-red) 55%, #a00);
+  box-shadow: 0 0 6px var(--rec-red); }
+.spk:active, .rec:active { transform: translateY(2px); box-shadow: inset 0 1px 2px rgba(0, 0, 0, .6), 0 1px 1px rgba(0, 0, 0, .6); }
+
+/* volume faders: metal knob in a slot */
+.vol input[type=range]::-webkit-slider-runnable-track { border-color: #000; box-shadow: inset 0 1px 3px #000, 0 1px 0 rgba(255, 255, 255, .1); }
+.vol input[type=range]::-moz-range-track { border-color: #000; box-shadow: inset 0 1px 3px #000, 0 1px 0 rgba(255, 255, 255, .1); }
+.vol input[type=range]::-webkit-slider-thumb {
+  background: linear-gradient(180deg, transparent 5px, #15171a 5px, #15171a 7px, transparent 7px),
+              linear-gradient(180deg, #eef1f4, #a3abb4 45%, #6e7782 55%, #c3cad1);
+  border: 1px solid #1d2024; box-shadow: 0 3px 4px rgba(0, 0, 0, .75), inset 0 1px 0 #fff;
+}
+.vol input[type=range]::-moz-range-thumb {
+  background: linear-gradient(180deg, transparent 4px, #15171a 4px, #15171a 6px, transparent 6px),
+              linear-gradient(180deg, #eef1f4, #a3abb4 45%, #6e7782 55%, #c3cad1);
+  border: 1px solid #1d2024; box-shadow: 0 3px 4px rgba(0, 0, 0, .75), inset 0 1px 0 #fff;
+}
+
+/* ---------- tabs drawn on the screen ---------- */
+.body-tabs { padding: 4px 8px 0; background: #070b10; border-bottom-color: #1d2733; }
+.body-tabs button { border-color: transparent; background: transparent; color: #6b7684; }
+.body-tabs button:hover { color: #aab4c0; }
+.body-tabs button.on { background: #0f1620; color: var(--yellow); border-color: #1d2733; box-shadow: inset 0 2px 0 var(--yellow); }
+
+/* ---------- MEM window: aluminium title bar ---------- */
+.drawer { border-color: #000; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 20px 60px rgba(0, 0, 0, .75); }
+.drawer-head { border-bottom-color: #000; text-shadow: var(--engrave);
+  background: var(--alu-brush), linear-gradient(180deg, var(--alu-top), var(--alu-mid));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18), 0 1px 0 rgba(255, 255, 255, .05); }
+
+/* =====================================================================================================
+ * SKINS (SET → SKINS): html[data-skin] swaps the chassis finish; the default above is "alu-dark".
+ * Keys, displays and the screen stay the same on every skin – only the panel, its texture and the print change.
+ * data-ink="dark": the panel is light, so the print and the logo turn dark (set by app.js from the colour).
+ * ===================================================================================================== */
+/* black brushed aluminium: the default finish one shade deeper, finer hairlines, dimmer sheen */
+[data-skin="alu-black"] {
+  --alu-brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='200'%3E%3Cfilter id='b'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.002 .85' numOctaves='2' seed='4' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .12 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23b)'/%3E%3C/svg%3E");
+  --alu-top: #1c1e21; --alu-mid: #131416; --alu-bot: #0c0d0e;
+  --alu-sheen: linear-gradient(100deg, rgba(255, 255, 255, 0) 15%, rgba(255, 255, 255, .035) 42%, rgba(255, 255, 255, 0) 68%);
+}
+/* light brushed (natural, clear-anodized) aluminium */
+[data-skin="alu-light"] {
+  --alu-brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='200'%3E%3Cfilter id='b'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.002 .85' numOctaves='2' seed='4' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .2 0 0 0 0 .22 0 0 0 0 .25 1.6 0 0 0 -.62'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23b)'/%3E%3C/svg%3E");
+  --alu-top: #d3d7dc; --alu-mid: #b9bec4; --alu-bot: #a2a7ae;
+  --alu-sheen: linear-gradient(100deg, rgba(255, 255, 255, 0) 15%, rgba(255, 255, 255, .28) 42%, rgba(255, 255, 255, 0) 68%);
+}
+/* mahogany: SVG layers over the base colour – broad light / dark bands, ribbon stripes (chatoyance), contour grain lines,
+ * fine fibres and elongated pores; satin varnish */
+[data-skin="mahogany"] {
+  --alu-brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='2000' height='1000'%3E %3Cfilter id='band' x='0' y='0' width='100%25' height='100%25'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='.0007 .0045' numOctaves='2' seed='9' stitchTiles='stitch'/%3E %3CfeColorMatrix values='0 0 0 0 .75 0 0 0 0 .38 0 0 0 0 .22 1.6 0 0 0 -.62'/%3E %3C/filter%3E %3Cfilter id='dark' x='0' y='0' width='100%25' height='100%25'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='.0009 .006' numOctaves='2' seed='21' stitchTiles='stitch'/%3E %3CfeColorMatrix values='0 0 0 0 .1 0 0 0 0 .03 0 0 0 0 .01 1.7 0 0 0 -.68'/%3E %3C/filter%3E %3Cfilter id='ribbon' x='0' y='0' width='100%25' height='100%25'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='.0005 .012' numOctaves='2' seed='13' stitchTiles='stitch'/%3E %3CfeComponentTransfer%3E%3CfeFuncR type='table' tableValues='0 1 0 1 0 1 0 1 0 1 0 1 0'/%3E%3C/feComponentTransfer%3E %3CfeColorMatrix values='0 0 0 0 .95 0 0 0 0 .55 0 0 0 0 .35 .11 0 0 0 0'/%3E %3C/filter%3E %3Cfilter id='grain' x='0' y='0' width='100%25' height='100%25'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='.0011 .021' numOctaves='3' seed='5' stitchTiles='stitch'/%3E %3CfeComponentTransfer%3E%3CfeFuncR type='table' tableValues='0 1 1 1 0 1 1 1 0 1 1 1 0 1 1 1 0 1 1 1 0 1 1 1 0 1 1 1 0 1 1 1 0'/%3E%3C/feComponentTransfer%3E %3CfeColorMatrix values='0 0 0 0 .17 0 0 0 0 .05 0 0 0 0 .02 -.8 0 0 0 .8'/%3E %3C/filter%3E %3Cfilter id='fine' x='0' y='0' width='100%25' height='100%25'%3E %3CfeTurbulence type='fractalNoise' baseFrequency='.004 .16' numOctaves='2' seed='3' stitchTiles='stitch'/%3E %3CfeColorMatrix values='0 0 0 0 .18 0 0 0 0 .05 0 0 0 0 .02 2.2 0 0 0 -.95'/%3E %3C/filter%3E %3Cfilter id='pore' x='0' y='0' width='100%25' height='100%25'%3E %3CfeTurbulence type='turbulence' baseFrequency='.025 1.3' numOctaves='1' seed='7' stitchTiles='stitch'/%3E %3CfeColorMatrix values='0 0 0 0 .08 0 0 0 0 .02 0 0 0 0 .01 5 0 0 0 -2.05'/%3E %3C/filter%3E %3Crect width='100%25' height='100%25' filter='url%28%23band%29'/%3E %3Crect width='100%25' height='100%25' filter='url%28%23dark%29'/%3E %3Crect width='100%25' height='100%25' filter='url%28%23ribbon%29'/%3E %3Crect width='100%25' height='100%25' filter='url%28%23grain%29'/%3E %3Crect width='100%25' height='100%25' filter='url%28%23fine%29'/%3E %3Crect width='100%25' height='100%25' filter='url%28%23pore%29'/%3E %3C/svg%3E");
+  --alu-top: #7a301c; --alu-mid: #612414; --alu-bot: #4a190d;
+  --alu-sheen: linear-gradient(100deg, rgba(255, 220, 190, 0) 15%, rgba(255, 220, 190, .09) 42%, rgba(255, 220, 190, 0) 68%);
+  --ink: #ecd9b4; --ink-dim: #d8c29a;
+}
+/* sprayed paint: one RAL colour (--paint, set by app.js) with a fine orange-peel texture and a glossy sweep */
+[data-skin="paint"] {
+  --alu-brush: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.55' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --alu-top: color-mix(in srgb, var(--paint, #383e42) 86%, #fff);
+  --alu-mid: var(--paint, #383e42);
+  --alu-bot: color-mix(in srgb, var(--paint, #383e42) 78%, #000);
+  --alu-sheen: linear-gradient(100deg, rgba(255, 255, 255, 0) 18%, rgba(255, 255, 255, .12) 40%, rgba(255, 255, 255, 0) 52%);
+  --ink: color-mix(in srgb, var(--paint, #383e42) 25%, #fff); --ink-dim: color-mix(in srgb, var(--paint, #383e42) 35%, #fff);
+}
+/* light panel: dark print and dark logo letters, the engraving lit from below */
+html[data-skin="alu-light"], html[data-ink="dark"] {
+  --ink: #1d232a; --ink-dim: #2f363e;
+  --engrave: 0 1px 0 rgba(255, 255, 255, .55), 0 -1px 0 rgba(0, 0, 0, .12);
+}
+html[data-skin="paint"][data-ink="dark"] {
+  --ink: color-mix(in srgb, var(--paint) 30%, #000); --ink-dim: color-mix(in srgb, var(--paint) 40%, #000);
+}
+html[data-skin="alu-light"] #logoFace stop, html[data-ink="dark"] #logoFace stop { stop-color: #20252b; }
+html[data-skin="alu-light"] .r-logo-letters, html[data-ink="dark"] .r-logo-letters {
+  filter: drop-shadow(0 4px 0 #3a4048) drop-shadow(0 4px 0 #15181c) drop-shadow(0 3px 0 rgba(0, 0, 0, .35)) drop-shadow(0 6px 6px rgba(0, 0, 0, .35)); }
+/* lighter panels: softer shadows of the milled key beds and grooves */
+html[data-skin="alu-light"] .keys, html[data-skin="alu-light"] .r-bands .bands,
+html[data-ink="dark"] .keys, html[data-ink="dark"] .r-bands .bands {
+  background: rgba(0, 0, 0, .3); box-shadow: inset 0 2px 4px rgba(0, 0, 0, .6), inset 0 0 0 1px rgba(0, 0, 0, .45), 0 1px 0 rgba(255, 255, 255, .45); }
+html[data-skin="alu-light"] .r-top, html[data-skin="alu-light"] .r-keys,
+html[data-ink="dark"] .r-top, html[data-ink="dark"] .r-keys { border-bottom-color: rgba(0, 0, 0, .35); box-shadow: 0 1px 0 rgba(255, 255, 255, .45); }
+
+/* SET → UI → SKINS: samples of the finishes and the RAL chart (columns: .set-skins) */
+.skin-picks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.skin-pick { display: flex; flex-direction: column; gap: 4px; padding: 4px; cursor: pointer; border-radius: 6px;
+  background: #0b0e12; border: 1px solid var(--line2); color: var(--muted); font: 600 11px system-ui, sans-serif; }
+.skin-pick:hover { border-color: var(--muted); }
+.skin-pick.on { border-color: var(--yellow); color: var(--yellow); box-shadow: 0 0 0 1px var(--yellow); }
+/* the sample is painted with the same variables as the chassis: each button carries its own data-skin */
+.skin-pick i { display: block; height: 54px; border-radius: 4px;
+  background: var(--alu-brush), var(--alu-sheen), linear-gradient(180deg, var(--alu-top), var(--alu-mid) 60%, var(--alu-bot));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), inset 0 -1px 0 rgba(0, 0, 0, .6), 0 0 0 1px #000; }
+.ral-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(66px, 1fr)); gap: 5px; }
+.ral { height: 40px; padding: 2px 4px; border-radius: 4px; cursor: pointer; text-align: left;
+  border: 1px solid #000; font: 700 9px/1.15 system-ui, sans-serif; display: flex; flex-direction: column; justify-content: flex-end;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25), inset 0 -8px 12px rgba(0, 0, 0, .18); }
+.ral small { font-weight: 400; font-size: 8px; opacity: .85; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ral:hover { outline: 1px solid var(--muted); outline-offset: 1px; }
+.ral.on { outline: 2px solid var(--yellow); outline-offset: 1px; }
+.ral-custom { display: flex; align-items: center; gap: 8px; }
+.ral-custom input[type=color] { width: 44px; height: 24px; padding: 0; border: 1px solid #000; background: none; cursor: pointer; }
+
+/* MEM editor (by Brano, brjanicek): pages CHANNELS, GROUPS, IMPORT, EXPORT of the MEM tab */
+.med-body { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+.med-panel { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+.med-panel[hidden] { display: none; }
+.med-bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.med-bar input, .med-bar select { padding: 5px 8px; font-size: 12px; min-width: 0; }
+.med-bar input[type=search] { flex: 1; min-width: 180px; }
+.med-bar .grow { flex: 1; }
+.med-bar input[type=color] { width: 34px; height: 26px; padding: 1px; }
+.med-bulk { padding: 6px; border: 1px solid var(--line2); border-radius: 6px; background: #0b0e12; }
+.med-bulk .muted { font-size: 12px; min-width: 80px; }
+.med-sep { width: 1px; align-self: stretch; background: var(--line2); margin: 0 2px; }
+.med-lbl { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
+.med-split { display: flex; gap: 10px; flex: 1; min-height: 0; }
+.med-table-wrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.med-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.med-table th { position: sticky; top: 0; z-index: 1; background: #12161c; color: var(--muted); font-weight: 600; text-align: left;
+  padding: 6px; border-bottom: 1px solid var(--line2); white-space: nowrap; font-size: 11px; }
+.med-table td { padding: 3px 6px; border-bottom: 1px solid #1a1f26; vertical-align: middle; }
+.med-table .num { text-align: right; }
+.med-table .mono, .med-table .mono input { font-family: ui-monospace, Consolas, monospace; }
+.med-table tr.med-ch { cursor: pointer; }
+.med-table tr.med-ch:hover, .med-table tr[data-g]:hover { background: #1a2028; }
+.med-table tr.sel { background: rgba(110, 170, 255, .1); }
+.med-table tr.editing { box-shadow: inset 3px 0 0 var(--yellow); background: rgba(255, 216, 74, .08); }
+.med-table tr.bad { background: rgba(255, 75, 62, .1); }
+.med-table td.name { font-weight: 600; white-space: nowrap; }
+.med-table td.mode { color: var(--green); white-space: nowrap; }
+.med-table td.note-cell { color: var(--muted); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.med-table .star { border: none; background: none; padding: 0; color: var(--muted); font-size: 19px; line-height: 1; cursor: pointer; }
+.med-table .star:hover { color: var(--yellow); }
+.med-table .star.on { color: var(--amber); }
+.med-table .dup { font-style: normal; color: var(--amber); cursor: help; }
+.med-table tr.med-sec td { position: sticky; top: 27px; background: #0e1216; color: var(--yellow); font-weight: 700; font-size: 11px;
+  text-transform: uppercase; letter-spacing: .06em; padding-top: 8px; }
+.med-secnote { text-transform: none; letter-spacing: 0; color: var(--muted); font-weight: 400; margin-left: 8px; }
+.med-table td.acts { white-space: nowrap; text-align: right; }
+.med-table td.acts { width: 1%; }
+.icon-btn { width: 26px; height: 24px; margin-left: 2px; padding: 0; border: 1px solid transparent; border-radius: 4px; background: none;
+  color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer; filter: grayscale(1); }
+.icon-btn:hover { color: var(--yellow); border-color: var(--line2); background: #1a2028; }
+.icon-btn.danger:hover { color: var(--red); border-color: var(--red); filter: none; }
+.med-table td.grow input { width: 100%; }
+.med-table input:not([type=checkbox]), .med-table select { width: 100%; min-width: 60px; padding: 3px 5px; font-size: 12px; }
+.med-table input.short { min-width: 50px; width: 70px; }
+.med-table .inc { text-align: center; white-space: nowrap; }
+.med-table .inc label { display: inline-flex; gap: 4px; align-items: center; }
+.med-table .status { white-space: nowrap; }
+.med-table .status .ok { color: var(--green); }
+.med-table .status .warn { color: var(--amber); }
+.med-table .status .error, .med-table .error { color: var(--red); }
+.chip { display: inline-block; margin: 1px 3px 1px 0; padding: 0 6px; border: 1px solid var(--line2); border-radius: 9px; font-size: 11px;
+  color: var(--text); background: #151a21; white-space: nowrap; }
+.swatch { display: inline-block; width: 14px; height: 10px; border-radius: 3px; background: var(--c); vertical-align: middle; }
+.swatch.off { background: transparent; border: 1px dashed var(--c); opacity: .6; }
+.chip-check { display: inline-flex; gap: 4px; align-items: center; margin: 2px 8px 2px 0; font-size: 12px; white-space: nowrap; }
+.med-impgroups { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; font-size: 12px; color: var(--muted);
+  padding: 6px; border: 1px dashed var(--line2); border-radius: 6px; }
+.med-impgroups b { color: var(--text); font-weight: 600; margin-right: 6px; }
+.med-impgroups input:not([type=checkbox]) { width: 160px; padding: 2px 6px; font-size: 12px; }
+.med-form { width: 300px; flex: none; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding: 10px;
+  border: 1px solid var(--yellow); border-radius: 6px; background: #12161c; }
+.med-form[hidden] { display: none; }
+.med-form h4 { margin: 0; color: var(--yellow); font-size: 13px; }
+.med-form label:not(.switch):not(.chip-check):not(.med-color) { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); }
+.med-form input:not([type=checkbox]):not([type=color]), .med-form select, .med-form textarea { width: 100%; min-width: 0; padding: 5px 8px; font-size: 13px; }
+.med-form textarea { resize: vertical; font: 13px system-ui, sans-serif; }
+.med-form [name=freq] { font-family: ui-monospace, Consolas, monospace; }
+.med-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-items: end; }
+.med-tagrow { align-items: center; }
+.med-color { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); }
+.med-color input { width: 34px; height: 24px; padding: 1px; }
+.med-groups { border: 1px solid var(--line2); border-radius: 6px; padding: 4px 8px 8px; margin: 0; }
+.med-groups legend { font-size: 11px; color: var(--muted); padding: 0 4px; }
+.med-groups #medFormGroups { display: flex; flex-wrap: wrap; max-height: 120px; overflow: auto; margin-bottom: 6px; }
+.med-form .key { width: 100%; }

@@ -4,7 +4,9 @@ samples (baseband, 0 Hz = tuned frequency) for a moment and moves the tuning ont
 AM: the carrier is the strongest narrow line near the click; its frequency is measured from a fine FFT (~2 Hz)
 with interpolation, so the result is within a few Hz.
 
-SSB (USB / LSB): the carrier is suppressed, so it is found from the speech itself.
+SSB (USB / LSB): the ATU key puts the edge of the voice band on the tuned frequency (estimate_ssb_edge: the lower
+edge for USB, the upper one for LSB), so the signal visibly starts at the red line. estimate_ssb below finds the
+suppressed carrier itself instead (not used by the key now):
   1. Coarse: the averaged spectrum shows the occupied voice band near the click; its lower edge (USB) lies
      ~250 Hz above the carrier (the usual 300–2700 Hz transmitter filter).
   2. Fine: voiced speech has harmonics at exactly c + k·F0 (c = carrier, F0 = pitch). Every short frame gives
@@ -239,6 +241,22 @@ def estimate_ssb(x, fs, lsb=False):
     return sign * float(c_edge), "edge", False
 
 
+def estimate_ssb_edge(x, fs, lsb=False):
+    """(offset Hz from the click, "edge", True) of the voice band edge on the carrier side, or None.
+
+    What the ATU key does in SSB: the visible edge of the signal goes onto the tuned frequency (the red line),
+    the lower edge for USB, the upper one for LSB. The offset is in the real spectrum (also for LSB)."""
+    if lsb:
+        x = np.conj(x)
+    nfft = 1 << int(np.ceil(np.log2(fs / 8.0)))             # ~8 Hz bins
+    f, p = _psd(x, fs, nfft)
+    vb = _voice_band(f, p, f[1] - f[0])
+    if vb is None:
+        return None
+    lo = vb[0] + 30.0                                       # the 60 Hz smoothing in _voice_band widens the band by half of it
+    return (-1.0 if lsb else 1.0) * lo, "edge", True
+
+
 class AutoTune:
     """One autotune job at a time: started by a click, fed with baseband by the receiver thread,
     analysed in its own thread; done(new_tune_hz) is called with the result."""
@@ -317,7 +335,7 @@ class AutoTune:
                     c = estimate_am(x, fs, dc_hz=job["center"] - job["tune"])
                     res = None if c is None else (c, "carrier", True)
                 else:
-                    res = estimate_ssb(x, fs, lsb=job["mode"] == "LSB")
+                    res = estimate_ssb_edge(x, fs, lsb=job["mode"] == "LSB")
             except Exception:                   # never take the receiver down
                 res = None
             if DUMP_DIR:

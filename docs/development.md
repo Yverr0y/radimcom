@@ -61,7 +61,8 @@ The paths are defined in `paths.py`.
 | `config.json` | settings for single-receiver mode and template for new VFOs | installer (template), moved here at first start |
 | `vfos.json` | dongle assignment to VFOs (serial numbers, ports) | `setup_sdr.py` / `setup.bat` |
 | `config_A/B/C/D.json` | settings of each VFO (frequency, mode, filters, squelch, gain, ppm, …), saved on every change | launcher at first start, from `config.json` + `init` |
-| `memories.json` | frequency memories | MEM, import from SDR# |
+| `memories.json` | frequency memories (`memories.json.bak`: the file as it was before the first change by the memory editor) | MEM, import from SDR# |
+| `memory_groups.json` | groups of the memories with their notes, and empty groups | MEMORIES tab → GROUPS |
 | `logs\` | daily decoder logs `<decoder>_YYYY-MM-DD.txt` (UTC) | LOG checkbox in decoder cards |
 | `acars\` | daily logs: classic ACARS `acars_YYYY-MM-DD.txt`, VDL2 `vdl2_YYYY-MM-DD.txt` (UTC) | ACARS / VDL2 with LOG on |
 | `wefax\`, `sstv\` | saved WEFAX / SSTV images (PNG) | the decoders |
@@ -81,7 +82,7 @@ folder somewhere outside the RADIMCOM folder.
 - After each start RADIMCOM asks GitHub once whether a newer version is released. If so, a small window offers it:
   **UPGRADE** downloads the upgrade zip, closes the receiver, installs it in its own console window (unzips the program,
   runs `upgrade.bat`) and starts RADIMCOM again; the page reloads by itself. `data\` and the settings stay.
-  **LATER** asks again at the next start, **SKIP THIS VERSION** not before a still newer one. The RADIMCOM logo turns red and an orange, blinking "0.1xx" shows above the version under the logo;
+  **LATER** asks again at the next start, **SKIP THIS VERSION** not before a still newer one. The RADIMCOM logo turns red and an orange, blinking "0.1xx" shows beside the version under the logo;
   a click on either opens the release page in a new tab. Without internet nothing is shown. Off with
   `"update_check": false` in `data\vfos.json`. A development copy (a folder with `.git`) is not upgraded by itself.
 - Unzipping a new installer package over the old folder keeps `data\` (the package has no `data\`).

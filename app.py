@@ -1027,17 +1027,65 @@ def api_memories():
 
 @app.route("/api/memories", methods=["POST"])
 def api_memory_add():
-    b = request.get_json(force=True)
+    """Adds a memory: {"name", "group" or "groups", "freq_hz" or "dab_channel", "mode", "bw"} and optionally
+    "fav", "decoder", "note", "color", "tag"."""
     try:
-        ch = b.get("dab_channel")
-        if ch is not None and ch not in CHANNEL_HZ:
-            raise ValueError("unknown DAB channel")
-        m = memories.make(b.get("name", ""), b.get("group", ""), CHANNEL_HZ[ch] if ch else b["freq_hz"], b["mode"], b.get("bw", 3000))
-        if ch:
-            m["dab_channel"] = ch                # a recall turns DAB on with this channel
-    except (KeyError, TypeError, ValueError) as e:
+        m = memories.from_dict(request.get_json(force=True), CHANNEL_HZ)
+    except (AttributeError, KeyError, TypeError, ValueError, OverflowError) as e:
         return jsonify({"error": str(e) or "invalid entry"}), 400
     return jsonify(memories.add(m))
+
+
+@app.route("/api/memory_groups", methods=["GET"])
+def api_memory_groups():
+    return jsonify(memories.groups())
+
+
+@app.route("/api/memory_groups", methods=["POST"])
+def api_memory_group_action():
+    """Group editor: {"action": "add" | "note" | "rename" | "copy" | "delete" | "merge", ...}; returns
+    {"groups", "memories"} after the change."""
+    try:
+        gs = memories.group_action(request.get_json(force=True, silent=True) or {})
+    except (TypeError, ValueError) as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"groups": gs, "memories": memories.load()})
+
+
+@app.route("/api/memories/preview", methods=["POST"])
+def api_memory_preview():
+    """Reads memories for the import list without saving them: {"format": "sdrsharp", "path"} (SDR# folder or
+    frequencies.xml), {"format": "sdrsharp_xml", "text"}, {"format": "json", "data"} or {"format": "csv", "text"}.
+    Returns {"entries", "groups", "files"}; see memories.preview."""
+    b = request.get_json(force=True, silent=True) or {}
+    fmt, gs, files = b.get("format"), [], []
+    try:
+        if fmt == "sdrsharp":
+            files = memories.sdrsharp_files(b.get("path", ""))
+            raw = [e for f in files for e in memories.parse_sdrsharp_xml(f)]
+        elif fmt == "sdrsharp_xml":
+            raw = memories.parse_sdrsharp_xml(str(b.get("text", "")))
+        elif fmt == "json":
+            raw, gs = memories.parse_json(b.get("data"))
+        elif fmt == "csv":
+            raw = memories.parse_csv(str(b.get("text", "")))
+        else:
+            raise ValueError("unknown format")
+    except (OSError, ValueError, TypeError, memories.ET.ParseError) as e:
+        return jsonify({"error": str(e) or "cannot read the file"}), 400
+    return jsonify({"entries": memories.preview(raw, CHANNEL_HZ), "groups": gs, "files": files})
+
+
+@app.route("/api/memories/import_entries", methods=["POST"])
+def api_memory_import_entries():
+    """Adds the chosen entries of the import list: {"entries": [...], "groups": [{"name", "note"}]}.
+    All or nothing; returns {"added": [...]}."""
+    b = request.get_json(force=True, silent=True) or {}
+    try:
+        added = memories.import_entries(b.get("entries"), CHANNEL_HZ, b.get("groups") or [])
+    except (TypeError, ValueError) as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"added": added})
 
 
 @app.route("/api/memories/import", methods=["POST"])
@@ -1072,9 +1120,28 @@ def api_memory_import_json():
     return jsonify({"added": added, "skipped": skipped})
 
 
+@app.route("/api/memories/bulk", methods=["POST"])
+def api_memory_bulk():
+    """Several memories at once: {"ids": [...], "delete": true} or {"ids": [...], "changes": {"group": ..., "fav": ...}}."""
+    b = request.get_json(force=True, silent=True) or {}
+    ids = b.get("ids")
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"error": "ids missing"}), 400
+    if b.get("delete"):
+        return jsonify({"deleted": memories.delete_many(ids)})
+    try:
+        changed = memories.update_many(ids, b.get("changes"), CHANNEL_HZ)
+    except (KeyError, TypeError, ValueError, OverflowError) as e:
+        return jsonify({"error": str(e) or "invalid entry"}), 400
+    return jsonify({"changed": changed})
+
+
 @app.route("/api/memories/<mid>", methods=["PATCH"])
 def api_memory_update(mid):
-    m = memories.update(mid, request.get_json(force=True))
+    try:
+        m = memories.update(mid, request.get_json(force=True), CHANNEL_HZ)
+    except (KeyError, TypeError, ValueError, OverflowError) as e:
+        return jsonify({"error": str(e) or "invalid entry"}), 400
     return (jsonify(m), 200) if m else (jsonify({"error": "not found"}), 404)
 
 
