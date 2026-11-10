@@ -70,7 +70,7 @@ and the country flag from the ICAO address; a click on a message pauses the list
 - **Audio spectrum bubble:** hovering over the passband label shows the audio spectrum of the active VFO (in WFM the MPX signal with the stereo pilot, in CW also the decoded text).
 - **Frequency memories** (MEM) with groups, favourites, import from SDR# (`frequencies.xml`) and JSON, export to JSON; memories in view show as tags in the spectrum,
   ↑ ↓ arrow keys recall the next one. A memory can also hold a DAB channel.
-- **Memory editor** (MEM → ✎ EDITOR): channels in several groups, with a decoder switched on at recall, a note and their own tag colour
+- **Memory editor** (MEM → ✎ EDITOR): channels in several groups, with a decoder and a recording (REC, REC SQ or REC SQ with ASQ) started at recall, a note and their own tag colour
   (or no tag); groups with notes (add, rename, copy, merge, delete); duplicates shown; import from SDR#, JSON or CSV and export to
   JSON or CSV, both through a list to edit and choose from first. See [Memory editor](controls.md#memory-editor).
 - **Audio** starts automatically when the page opens and comes from the active VFO.

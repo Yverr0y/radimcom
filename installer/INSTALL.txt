@@ -91,7 +91,8 @@ Change log
 Unreleased
 Main Features
 - Memory editor: MEM -> EDITOR opens a big window with the tabs CHANNELS, GROUPS, IMPORT and EXPORT.
-  Channels in several groups, with a decoder switched on at recall, a note, their own tag colour or a hidden tag;
+  Channels in several groups, with a decoder switched on at recall, a recording started at recall (OFF, ON = REC,
+  SQ = REC SQ, ASQ = REC SQ with auto squelch), a note, their own tag colour or a hidden tag;
   sort by group, frequency, name, mode or decoder; duplicates shown. Groups with notes: add, rename, copy, merge, delete.
   Import from SDR#, JSON or CSV and export to JSON or CSV, both through a list to edit and choose from first.
   New file data\memory_groups.json; memories.json is copied to memories.json.bak before the first change.

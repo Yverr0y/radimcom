@@ -831,7 +831,10 @@
             <label>Bandwidth, kHz<input name="bw" title="Clamped to the range of the mode"></label>
             <label>Decoder<select name="decoder" title="Switched on when the channel is recalled"></select></label>
           </div>
-          <label>DAB channel<select name="dab" title="Recalling the channel turns DAB on with this channel"></select></label>
+          <div class="med-row2">
+            <label>Record<select name="record" title="Recording to MP3 started when the channel is recalled: ON = REC (everything), SQ = REC SQ (while the squelch is open), ASQ = REC SQ with the auto squelch (AM, FM, WFM)"></select></label>
+            <label>DAB channel<select name="dab" title="Recalling the channel turns DAB on with this channel"></select></label>
+          </div>
           <fieldset class="med-groups"><legend>Groups</legend><div id="medFormGroups"></div>
             <input id="medFormNewGroup" placeholder="＋ new group, Enter" maxlength="40"></fieldset>
           <label>Note<textarea name="note" maxlength="200" rows="2"></textarea></label>

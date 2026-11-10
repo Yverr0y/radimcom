@@ -5689,7 +5689,7 @@ function renderMems() {
     if (head !== null && head !== last) { html += `<div class="mem-group">${escHtml(head)}</div>`; last = head; }
     const dup = dups.get(m.id);
     html += `<div class="mem" data-id="${m.id}" title="${escHtml(m.name)} · ${escHtml(memGroupsOf(m).join(", "))} · ${fmtBw(m.bw)}` +
-      `${m.decoder ? ` · ${DECODER_NAMES[m.decoder] || m.decoder}` : ""}${m.note ? ` · ${escHtml(m.note)}` : ""}">` +
+      `${m.decoder ? ` · ${DECODER_NAMES[m.decoder] || m.decoder}` : ""}${m.record && m.record !== "off" ? ` · REC ${RECORD_NAMES[m.record]}` : ""}${m.note ? ` · ${escHtml(m.note)}` : ""}">` +
       `<button class="star${m.fav ? " on" : ""}" data-star aria-label="Favourite" title="Star">${m.fav ? "★" : "☆"}</button>` +
       `<span class="name">${escHtml(m.name)}${dup ? `<i class="dup" title="Same frequency and mode as: ${escHtml(dup.join(", "))}">⧉</i>` : ""}</span>` +
       `<span class="meta">${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} M` : fmtKHz(m.freq_hz, 2)}<b>${m.dab_channel ? `DAB ${escHtml(m.dab_channel)}` : m.mode}</b></span>` +
@@ -5766,7 +5766,51 @@ async function recallMem(m) {
   tune(m.freq_hz);
   send({ mode: m.mode, bandwidth: m.bw });
   if (m.decoder) memStartDecoder(m.decoder);
+  memStartRecord(m);
   markActiveMem();
+}
+
+// What recalling memories switched on: {id, cont, squelch, asq}. Only that is switched off again by the next memory,
+// so a recording or ASQ switched on by hand stays as it is.
+let memRec = { id: null, cont: false, squelch: false, asq: false };
+
+/** RECORD of a recalled memory: ON = REC (everything), SQ = REC SQ, ASQ = REC SQ with the auto squelch on
+ *  (AM, FM, WFM; other modes REC SQ only), OFF = no recording. */
+function memStartRecord(m) {
+  const mode = m.record || "off";
+  const rec = st.recording || {};
+  const want = { cont: mode === "on", squelch: mode === "sq" || mode === "asq" };
+  const next = { id: m.id, cont: false, squelch: false, asq: false };
+  for (const b of REC_BUTTONS) {
+    const on = !!(rec[b.key] && rec[b.key].on);
+    if (want[b.key]) {
+      if (!on) send({ [b.send]: true });
+      else if (b.key === "cont" && memRec.cont && memRec.id !== m.id) {
+        // REC started by the previous memory: a new file, named after this memory
+        send({ [b.send]: false });
+        setTimeout(() => send({ [b.send]: true }), 700);
+      }
+      next[b.key] = !on || memRec[b.key];
+    } else if (memRec[b.key]) {   // also when the state from the server has not caught up yet
+      send({ [b.send]: false });
+    }
+  }
+  const asqOk = ["AM", "FM", "WFM"].includes(m.mode);
+  if (mode === "asq" && asqOk) {
+    if (!st.auto_sql) {
+      st.auto_sql = st.auto_sql_on = true;
+      send({ auto_sql: true });
+      next.asq = true;
+    } else next.asq = memRec.asq;
+  } else if (memRec.asq && st.auto_sql) {
+    st.auto_sql = st.auto_sql_on = false;
+    st.auto_sql_level = null;
+    send({ auto_sql: false });
+  }
+  memRec = next;
+  renderRds();
+  renderSqlBadge();
+  renderVfoDisplays();
 }
 
 /** The decoder of a recalled memory: switched on (if not on yet) and its page shown in the DECODERS tab. */
@@ -5814,6 +5858,7 @@ $("memSort").addEventListener("change", () => { store("memSort", $("memSort").va
 
 // ---------- memory editor (MEM → ✎ EDITOR): channels, groups with notes, import and export with a list ----------
 
+const RECORD_NAMES = { off: "OFF", on: "ON", sq: "SQ", asq: "ASQ" };   // RECORD of a memory: recording at recall
 const DECODER_NAMES = { "": "—", ft8: "FT8", wefax: "WEFAX", cw: "CW", rtty: "RTTY", sstv: "SSTV", packet: "PACKET",
   acars: "ACARS", vdl2: "VDL2", ism: "ISM" };
 const NO_GROUP = "\u0000none";   // value of "(no group)" in the group filters
@@ -5954,11 +5999,11 @@ function renderMedChannels() {
   }
   const allSel = list.length && list.every((m) => medSel.has(m.id));
   let html = `<thead><tr><th><input type="checkbox" data-selall ${allSel ? "checked" : ""} title="Select all in the list"></th>` +
-    `<th>★</th><th>Name</th><th class="num">Frequency</th><th>Mode</th><th class="num">BW</th><th>Decoder</th>` +
+    `<th>★</th><th>Name</th><th class="num">Frequency</th><th>Mode</th><th class="num">BW</th><th>Decoder</th><th>Rec</th>` +
     `<th>Groups</th><th title="Tag in the spectrum">Tag</th><th>Note</th></tr></thead><tbody>`;
   for (const [title, rows, note] of sections) {
     if (title !== null) {
-      html += `<tr class="med-sec"><td colspan="10">${escHtml(title)} <span class="muted">${rows.length}</span>` +
+      html += `<tr class="med-sec"><td colspan="11">${escHtml(title)} <span class="muted">${rows.length}</span>` +
         (note ? ` <span class="med-secnote">${escHtml(note)}</span>` : "") + `</td></tr>`;
     }
     for (const m of rows) {
@@ -5971,12 +6016,13 @@ function renderMedChannels() {
         `<td class="mode">${m.dab_channel ? `DAB ${escHtml(m.dab_channel)}` : m.mode}</td>` +
         `<td class="num mono">${fmtBw(m.bw)}</td>` +
         `<td>${m.decoder ? DECODER_NAMES[m.decoder] || escHtml(m.decoder) : ""}</td>` +
+        `<td class="rec">${m.record && m.record !== "off" ? RECORD_NAMES[m.record] || escHtml(m.record) : ""}</td>` +
         `<td class="groups">${memGroupsOf(m).map((g) => `<span class="chip">${escHtml(g)}</span>`).join("")}</td>` +
         `<td><span class="swatch${m.tag === false ? " off" : ""}" style="--c:${memTagColor(m)}" title="${m.tag === false ? "tag hidden" : "tag shown"}"></span></td>` +
         `<td class="note-cell" title="${escHtml(m.note || "")}">${escHtml(m.note || "")}</td></tr>`;
     }
   }
-  if (!list.length) html += `<tr><td colspan="10" class="mem-empty">${mems.length ? "Nothing matches the filter." : "No channels yet."}</td></tr>`;
+  if (!list.length) html += `<tr><td colspan="11" class="mem-empty">${mems.length ? "Nothing matches the filter." : "No channels yet."}</td></tr>`;
   $("medTable").innerHTML = html + "</tbody>";
   $("medSelCount").textContent = `${medSel.size} selected`;
   for (const b of $("medBulk").querySelectorAll("button")) b.disabled = !medSel.size;
@@ -6042,7 +6088,7 @@ function medOpenForm(m, template) {
   const f = $("medForm");
   const src = m || template || { name: "", groups: $("medGroup").value && $("medGroup").value !== NO_GROUP ? [$("medGroup").value] : [],
     freq_hz: st ? st.tune_hz : 0, mode: st && MEM_MODES.includes(st.mode) ? st.mode : "AM",
-    bw: st && st.bandwidth ? st.bandwidth[st.mode] || 3000 : 3000, decoder: "", note: "", color: "", tag: true, fav: false };
+    bw: st && st.bandwidth ? st.bandwidth[st.mode] || 3000 : 3000, decoder: "", record: "off", note: "", color: "", tag: true, fav: false };
   f.elements.mode.innerHTML = MEM_MODES.map((x) => `<option>${x}</option>`).join("");
   f.elements.decoder.innerHTML = Object.entries(DECODER_NAMES).map(([k, v]) => `<option value="${k}">${k ? v : "none"}</option>`).join("");
   f.elements.dab.innerHTML = `<option value="">no DAB</option>` + dabChannelList.map(([n, hz]) => `<option value="${escHtml(n)}">DAB ${escHtml(n)} · ${fmtMHz(hz, 3)} MHz</option>`).join("");
@@ -6051,6 +6097,8 @@ function medOpenForm(m, template) {
   f.elements.mode.value = src.mode;
   f.elements.bw.value = kHzText(src.bw);
   f.elements.decoder.value = src.decoder || "";
+  f.elements.record.innerHTML = Object.entries(RECORD_NAMES).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+  f.elements.record.value = src.record || "off";
   f.elements.dab.value = src.dab_channel || "";
   f.elements.note.value = src.note || "";
   f.elements.tag.checked = src.tag !== false;
@@ -6145,7 +6193,7 @@ $("medForm").addEventListener("submit", async (e) => {
   if (!(bw > 0)) return err("Enter the bandwidth in kHz.");
   const isNew = medEditId === "new";
   const body = { name: f.elements.name.value.trim(), groups: medFormGroups, mode: f.elements.mode.value, bw: Math.round(bw),
-    decoder: f.elements.decoder.value, note: f.elements.note.value.trim(), color: medFormColor, tag: f.elements.tag.checked,
+    decoder: f.elements.decoder.value, record: f.elements.record.value, note: f.elements.note.value.trim(), color: medFormColor, tag: f.elements.tag.checked,
     fav: f.elements.fav.checked, ...(dab ? { dab_channel: dab } : { freq_hz: Math.round(freq), ...(isNew ? {} : { dab_channel: null }) }) };
   const r = await memApi(isNew ? "/api/memories" : `/api/memories/${medEditId}`, body, isNew ? "POST" : "PATCH");
   if (!r.ok) return err(r.error);
@@ -6275,7 +6323,7 @@ function medRow(m) {
   const bw = num(m.bw);
   return { name: String(m.name ?? ""), freq: Number.isFinite(hz) ? fmtMHz(hz, 6) : String(m.freq_hz ?? ""),
     mode: String(m.mode || "").toUpperCase(), bw: Number.isFinite(bw) ? kHzText(bw) : String(m.bw ?? ""),
-    decoder: m.decoder || "", groups: (Array.isArray(m.groups) ? m.groups : m.group ? [m.group] : []).filter(Boolean).join(" | "),
+    decoder: m.decoder || "", record: String(m.record || "off").toLowerCase(), groups: (Array.isArray(m.groups) ? m.groups : m.group ? [m.group] : []).filter(Boolean).join(" | "),
     note: m.note || "", color: m.color || "", tag: m.tag !== false && m.tag !== "0", fav: !!m.fav, dab: m.dab_channel || "",
     sel: true, err: m.error || "" };
 }
@@ -6289,7 +6337,7 @@ function medRowEntry(r) {
   if (!MEM_MODES.includes(r.mode)) throw new Error("unknown mode");
   if (!(bw > 0)) throw new Error("bad bandwidth");
   return { name: r.name.trim(), groups: r.groups.split("|").map((g) => g.trim()).filter(Boolean), mode: r.mode, bw: Math.round(bw),
-    decoder: r.decoder, note: r.note.trim(), color: r.color, tag: r.tag, fav: r.fav,
+    decoder: r.decoder, record: r.record, note: r.note.trim(), color: r.color, tag: r.tag, fav: r.fav,
     ...(r.dab ? { dab_channel: r.dab } : { freq_hz: Math.round(hz) }) };
 }
 
@@ -6309,11 +6357,12 @@ function medEditCells(r, i, extra = "") {
     `${MEM_MODES.includes(r.mode) ? "" : `<option selected value="${escHtml(r.mode)}">${escHtml(r.mode) || "?"}</option>`}</select></td>` +
     `<td><input data-f="bw" class="mono short" value="${escHtml(r.bw)}"></td>` +
     `<td><select data-f="decoder">${Object.entries(DECODER_NAMES).map(([k, v]) => `<option value="${k}"${k === r.decoder ? " selected" : ""}>${v}</option>`).join("")}</select></td>` +
+    `<td><select data-f="record">${Object.entries(RECORD_NAMES).map(([k, v]) => `<option value="${k}"${k === r.record ? " selected" : ""}>${v}</option>`).join("")}${r.record in RECORD_NAMES ? "" : `<option selected value="${escHtml(r.record)}">${escHtml(r.record) || "?"}</option>`}</select></td>` +
     `<td><input data-f="groups" value="${escHtml(r.groups)}" title="Several groups: A | B"></td>` +
     `<td><input data-f="note" value="${escHtml(r.note)}" maxlength="200"></td>` + extra + `</tr>`;
 }
 
-const MED_EDIT_HEAD = `<th>Name</th><th>Frequency, MHz</th><th>Mode</th><th>BW, kHz</th><th>Decoder</th><th>Groups (A | B)</th><th>Note</th>`;
+const MED_EDIT_HEAD = `<th>Name</th><th>Frequency, MHz</th><th>Mode</th><th>BW, kHz</th><th>Decoder</th><th>Rec</th><th>Groups (A | B)</th><th>Note</th>`;
 
 /** Typing in an editable list changes its row (without drawing the list again, so the focus stays). */
 function medBindEditList(table, list, after) {
@@ -6346,7 +6395,7 @@ function renderMedImport() {
     const dup = medRowDup(r);
     html += medEditCells(r, i, `<td class="status" data-status>${medImpStatus(r, dup)}</td>`);
   });
-  if (!rows.length) html += `<tr><td colspan="9" class="mem-empty">Load an SDR# folder or a file (JSON, CSV, frequencies.xml).</td></tr>`;
+  if (!rows.length) html += `<tr><td colspan="10" class="mem-empty">Load an SDR# folder or a file (JSON, CSV, frequencies.xml).</td></tr>`;
   $("medImpTable").innerHTML = html + "</tbody>";
   medImpCount(dupCount);
 }
@@ -6494,7 +6543,7 @@ function renderMedExport() {
       `<td class="inc"><input type="checkbox" data-f="inNote" ${r.inNote ? "checked" : ""}></td>` +
       `<td><button class="key small" data-del title="Remove from the list">×</button></td>`);
   });
-  if (!rows.length) html += `<tr><td colspan="12" class="mem-empty">Add groups, the starred channels or all of them above, or tick channels in CHANNELS and press ⇩ TO EXPORT.</td></tr>`;
+  if (!rows.length) html += `<tr><td colspan="13" class="mem-empty">Add groups, the starred channels or all of them above, or tick channels in CHANNELS and press ⇩ TO EXPORT.</td></tr>`;
   $("medExpTable").innerHTML = html + "</tbody>";
   medExpCountNote();
 }
@@ -6564,8 +6613,8 @@ $("medExpGo").addEventListener("click", () => {
   const name = ($("medExpName").value.trim() || "radimcom-memories").replace(/[^\w.-]+/g, "_");
   let blob;
   if (fmt === "csv") {
-    const cols = ["name", "frequency_hz", "mode", "bandwidth_hz", "groups", "decoder", "dab_channel", "favourite", "note", "color", "show_tag"];
-    const lines = [cols.join(";")].concat(out.map((e) => [e.name, e.freq_hz ?? "", e.mode, e.bw, e.groups.join("|"), e.decoder,
+    const cols = ["name", "frequency_hz", "mode", "bandwidth_hz", "groups", "decoder", "record", "dab_channel", "favourite", "note", "color", "show_tag"];
+    const lines = [cols.join(";")].concat(out.map((e) => [e.name, e.freq_hz ?? "", e.mode, e.bw, e.groups.join("|"), e.decoder, e.record,
       e.dab_channel || "", e.fav ? 1 : 0, e.note ?? "", e.color ?? "", e.tag === undefined ? "" : e.tag ? 1 : 0].map(csvCell).join(";")));
     blob = new Blob(["﻿" + lines.join("\r\n") + "\r\n"], { type: "text/csv" });   // BOM: Excel reads it as UTF-8
   } else {

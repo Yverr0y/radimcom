@@ -1,9 +1,11 @@
 """Frequency memories (memories.json), their groups (memory_groups.json), import and export.
 
-A memory: {"id", "name", "group", "groups", "freq_hz", "mode", "bw", "fav", "decoder", "note", "color", "tag"}
-and "dab_channel" on a DAB memory. "groups" is the list of groups the memory belongs to; "group" is kept as the
+A memory: {"id", "name", "group", "groups", "freq_hz", "mode", "bw", "fav", "decoder", "record", "note", "color",
+"tag"} and "dab_channel" on a DAB memory. "groups" is the list of groups the memory belongs to; "group" is kept as the
 first of them, so the file stays readable for older versions. "decoder" is switched on when the memory is recalled
-("" = none). "color" is the colour of its tag in the spectrum ("" = default green), "tag" false hides the tag.
+("" = none). "record" starts a recording when the memory is recalled: "off", "on" (no squelch), "sq" (with the
+squelch) or "asq" (with the auto squelch). "color" is the colour of its tag in the spectrum ("" = default green),
+"tag" false hides the tag.
 
 Groups are the names used by the memories plus the groups in memory_groups.json ([{"name", "note"}]), which keeps
 the note of each group and groups without memories.
@@ -29,13 +31,15 @@ PATH = data("memories.json")
 GROUPS_PATH = data("memory_groups.json")
 MODES = ("AM", "FM", "WFM", "LSB", "USB", "CW", "DSD")
 DECODERS = ("", "ft8", "wefax", "cw", "rtty", "sstv", "packet", "acars", "vdl2", "ism")
+RECORDS = ("off", "on", "sq", "asq")
 DETECTORS = {"AM": "AM", "DSB": "AM", "NFM": "FM", "WFM": "WFM", "LSB": "LSB", "USB": "USB", "CW": "CW"}
 NAME_MAX, GROUP_MAX, NOTE_MAX = 80, 40, 200
 DEFAULT_GROUP = "Moje"
 DUP_HZ = 50          # memories closer than this (same mode) are duplicates, as on the VFO display
-FIELDS = ("name", "group", "groups", "freq_hz", "mode", "bw", "fav", "dab_channel", "decoder", "note", "color", "tag")
-CSV_COLUMNS = ("name", "frequency_hz", "mode", "bandwidth_hz", "groups", "decoder", "dab_channel", "favourite",
-               "note", "color", "show_tag")
+FIELDS = ("name", "group", "groups", "freq_hz", "mode", "bw", "fav", "dab_channel", "decoder", "record", "note",
+          "color", "tag")
+CSV_COLUMNS = ("name", "frequency_hz", "mode", "bandwidth_hz", "groups", "decoder", "record", "dab_channel",
+               "favourite", "note", "color", "show_tag")
 
 _lock = threading.RLock()
 
@@ -43,13 +47,14 @@ _lock = threading.RLock()
 # ---------- files ----------
 
 def _normalize(m):
-    """Fills the fields added after 0.111 (groups, decoder, note, color, tag) in an entry read from the file."""
+    """Fills the fields added after 0.111 (groups, decoder, record, note, color, tag) in an entry read from the file."""
     groups = m.get("groups")
     if not isinstance(groups, list):
         groups = [m["group"]] if m.get("group") else []
     m["groups"] = groups
     m["group"] = groups[0] if groups else ""
     m.setdefault("decoder", "")
+    m.setdefault("record", "off")
     m.setdefault("note", "")
     m.setdefault("color", "")
     m.setdefault("tag", True)
@@ -128,7 +133,8 @@ def _bool(value):
     return bool(value)
 
 
-def make(name, group, freq_hz, mode, bw, fav=False, groups=None, decoder="", note="", color="", tag=True):
+def make(name, group, freq_hz, mode, bw, fav=False, groups=None, decoder="", note="", color="", tag=True,
+         record="off"):
     """Validates and creates an entry; ValueError on invalid data. groups (list) wins over group (one name)."""
     name = " ".join(str(name).split())[:NAME_MAX]
     freq_hz = int(round(float(freq_hz)))
@@ -142,12 +148,15 @@ def make(name, group, freq_hz, mode, bw, fav=False, groups=None, decoder="", not
     decoder = str(decoder or "").strip().lower()
     if decoder not in DECODERS:
         raise ValueError(f"unknown decoder (one of {', '.join(d for d in DECODERS if d)})")
+    record = str(record or "").strip().lower() or "off"
+    if record not in RECORDS:
+        raise ValueError(f"unknown record mode (one of {', '.join(RECORDS)})")
     lo, hi = {"WFM": (50000, 250000), "FM": (500, 50000)}.get(mode, (100, 18000))
     bw = int(min(max(float(bw), lo), hi))
     groups = _groups(groups) if groups is not None else [(" ".join(str(group).split()) or DEFAULT_GROUP)[:GROUP_MAX]]
     return {"id": uuid.uuid4().hex[:12], "name": name, "group": groups[0] if groups else "", "groups": groups,
             "freq_hz": freq_hz, "mode": mode, "bw": bw, "fav": _bool(fav), "decoder": decoder,
-            "note": str(note or "").strip()[:NOTE_MAX], "color": _color(color), "tag": _bool(tag)}
+            "record": record, "note": str(note or "").strip()[:NOTE_MAX], "color": _color(color), "tag": _bool(tag)}
 
 
 def from_dict(e, dab_channels):
@@ -158,7 +167,8 @@ def from_dict(e, dab_channels):
     groups = e.get("groups")
     m = make(e.get("name", ""), e.get("group", ""), dab_channels[ch] if ch else e["freq_hz"], e["mode"],
              e.get("bw", 3000), e.get("fav", False), groups=groups, decoder=e.get("decoder", ""),
-             note=e.get("note", ""), color=e.get("color", ""), tag=e.get("tag", True))
+             note=e.get("note", ""), color=e.get("color", ""), tag=e.get("tag", True),
+             record=e.get("record", "off"))
     if ch:
         m["dab_channel"] = ch
     return m
@@ -426,6 +436,7 @@ def parse_csv(text):
         bw = r.get("bandwidth_hz", "").replace(",", ".") or 3000
         out.append({"name": r.get("name", ""), "groups": r.get("groups", r.get("group", "")).split("|"),
                     "freq_hz": f, "mode": r.get("mode", ""), "bw": bw, "decoder": r.get("decoder", ""),
+                    "record": r.get("record", ""),
                     "dab_channel": r.get("dab_channel", ""), "fav": r.get("favourite", ""), "note": r.get("note", ""),
                     "color": r.get("color", ""), "tag": r.get("show_tag", "1") or "1"})
     return out

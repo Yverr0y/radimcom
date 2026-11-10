@@ -168,13 +168,16 @@ When squelch is on for an inactive VFO and it opens, that VFO's button lights up
 
 MEM → **✎ EDITOR** opens a big floating window with four tabs. Changes are saved at once (except the IMPORT and EXPORT lists).
 
-- **CHANNELS**: every memory in a table: star, name, frequency, mode, bandwidth, decoder, groups, tag and note. Show one group
+- **CHANNELS**: every memory in a table: star, name, frequency, mode, bandwidth, decoder, record, groups, tag and note. Show one group
   or `(no group)`, search name, note, group or kHz, and sort by **group** (a channel in two groups is listed under both, with
   the note of the group), **frequency**, **name**, **mode** or **decoder**. **⧉ duplicates** shows only the channels on the same
   frequency (within 50 Hz) and mode as another one; ⧉ marks them in the list too.
   A click on a row opens it in the form on the right; a double click recalls it. The form edits the name, frequency, mode,
   bandwidth, **decoder** (switched on when the channel is recalled, and its page shown in DECODERS: FT8, WEFAX, CW, RTTY,
-  SSTV, PACKET, ACARS, VDL2 or ISM), DAB channel, the **groups** (tick any number, or type a new one and press Enter),
+  SSTV, PACKET, ACARS, VDL2 or ISM), **record** (a recording to MP3 started when the channel is recalled: **ON** = REC,
+  everything; **SQ** = REC SQ, only while the squelch is open; **ASQ** = REC SQ with the auto squelch switched on, AM, FM
+  and WFM; **OFF** = none, the default; a recording or ASQ that recalling a channel started is stopped by recalling a
+  channel without it, one switched on by hand stays), DAB channel, the **groups** (tick any number, or type a new one and press Enter),
   a **note**, the **tag in the spectrum** (shown or hidden, default shown) with its **colour** (↺ = the default green) and
   the star. It warns when another channel is on the same frequency and mode. **＋ NEW** fills it from the tuner.
   Tick channels for the bar above the table: add them to a group (**＋ TO GROUP**, they stay in their other groups),
@@ -195,7 +198,7 @@ MEM → **✎ EDITOR** opens a big floating window with four tabs. Changes are s
   other tabs. Changes in the list only go into the file. Untick a channel to leave it out, and choose per channel (or for
   all in the header) whether its tag **colour**, its **tag** shown / hidden and its **note** are exported. The groups of the
   list are shown above it with their notes, each with a tick whether its note is exported. **JSON** keeps everything,
-  **CSV** (`;`, UTF-8, opens in Excel) has the columns `name;frequency_hz;mode;bandwidth_hz;groups;decoder;dab_channel;favourite;note;color;show_tag`
+  **CSV** (`;`, UTF-8, opens in Excel) has the columns `name;frequency_hz;mode;bandwidth_hz;groups;decoder;record;dab_channel;favourite;note;color;show_tag`
   (groups separated by `|`) and is read back by IMPORT; group notes go only into JSON.
 
 The memories are in `data\memories.json`, the groups with their notes and empty groups in `data\memory_groups.json`.
