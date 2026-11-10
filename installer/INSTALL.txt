@@ -90,9 +90,18 @@ Change log
 
 Ver. 0.113beta2
 (changes since 0.113beta1)
+Main Features
+- RTL-SDR Blog V4 tunes from 0.5 MHz (HF through its built-in upconverter, no external converter)
+- SETTINGS > SDR DONGLE > ADVANCED: list of dongles and the VFOs they serve (from data\vfos.json), their state,
+  free connected dongles; the dongle being set is highlighted
+- Memory import (Brano): one LOAD FILE... key recognises the format by the content: RADIMCOM JSON / CSV, SDR#
+  frequencies.xml, SDR++ frequency manager, gqrx bookmarks.csv, CHIRP CSV (LOAD SDR# removed).
 Minor Fixes
-- A recording (and ASQ) started by recalling a memory with RECORD stops when the VFO leaves the memory;
-  REC / REC SQ switched on by hand keep running while tuning.
+- AD window has a fixed height: an error, the rotor AZ / EL or RDS no longer change it
+- Memory editor (Brano): sort by a click on a column header, fixed column widths with tooltips, Rec as text,
+  groups of a channel as a list, the bar above the table acts on the open channel when none is ticked.
+- Recording (Brano): a recording or ASQ started by recalling a memory with RECORD stops when the VFO
+  leaves the memory; REC / REC SQ switched on by hand keep running while tuning.
 
 Ver. 0.113beta1
 Main Features

@@ -7,5 +7,5 @@
 4. **APRS decoder.**
 5. **AIS decoder.**
 6. **HFDL decoder:** multichannel HFDL (High Frequency Data Link) decoder with dumphfdl.
-7. **RTL-SDR Blog V4 support** - remove the 24 MHz lower limit for the V4, so it can tune down to about 0.5 MHz (R828D tuner, HF through its built-in upconverter, no external converter needed); test receive range, HF, all modes and decoders, VDL2, DAB, ISM.
+7. **RTL-SDR Blog V4 support** - ~~remove the 24 MHz lower limit for the V4~~ (done in 0.113beta2: tunes from 0.5 MHz, HF through its built-in upconverter); test receive range, HF, all modes and decoders, VDL2, DAB, ISM.
 

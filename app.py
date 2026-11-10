@@ -884,6 +884,23 @@ def api_devices():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/dongles")
+def api_dongles():
+    """SETTINGS › SDR DONGLE › ADVANCED: the dongles in vfos.json with their VFOs and the connected RTL dongles."""
+    try:
+        with open(VFOS_PATH, encoding="utf-8") as f:
+            vfos = json.load(f).get("vfos", [])
+    except (OSError, ValueError):
+        vfos = []
+    out = {"vfos": [{k: v.get(k) for k in ("name", "serial", "driver", "chain", "note")} for v in vfos],
+           "connected": [], "error": None}
+    try:
+        out["connected"] = list_devices()
+    except OSError as e:  # librtlsdr.dll missing etc.
+        out["error"] = str(e)
+    return jsonify(out)
+
+
 @app.route("/api/satellites", methods=["GET", "POST"])
 def api_satellites():
     """SATELLITES tab: the lists from amsat.org; POST downloads them again."""
@@ -1054,13 +1071,18 @@ def api_memory_group_action():
 
 @app.route("/api/memories/preview", methods=["POST"])
 def api_memory_preview():
-    """Reads memories for the import list without saving them: {"format": "sdrsharp", "path"} (SDR# folder or
+    """Reads memories for the import list without saving them: {"format": "auto", "text", "filename"} (any format
+    of memories.FORMATS, recognised by its content), {"format": "sdrsharp", "path"} (SDR# folder or
     frequencies.xml), {"format": "sdrsharp_xml", "text"}, {"format": "json", "data"} or {"format": "csv", "text"}.
-    Returns {"entries", "groups", "files"}; see memories.preview."""
+    Returns {"entries", "groups", "files", "format"}; see memories.preview."""
     b = request.get_json(force=True, silent=True) or {}
     fmt, gs, files = b.get("format"), [], []
+    fmt_name = {"sdrsharp": "SDR#", "sdrsharp_xml": "SDR# frequencies.xml", "json": "RADIMCOM JSON",
+                "csv": "RADIMCOM CSV"}.get(fmt, "")
     try:
-        if fmt == "sdrsharp":
+        if fmt == "auto":
+            fmt_name, raw, gs = memories.parse_any(str(b.get("text", "")), str(b.get("filename", "")))
+        elif fmt == "sdrsharp":
             files = memories.sdrsharp_files(b.get("path", ""))
             raw = [e for f in files for e in memories.parse_sdrsharp_xml(f)]
         elif fmt == "sdrsharp_xml":
@@ -1073,7 +1095,7 @@ def api_memory_preview():
             raise ValueError("unknown format")
     except (OSError, ValueError, TypeError, memories.ET.ParseError) as e:
         return jsonify({"error": str(e) or "cannot read the file"}), 400
-    return jsonify({"entries": memories.preview(raw, CHANNEL_HZ), "groups": gs, "files": files})
+    return jsonify({"entries": memories.preview(raw, CHANNEL_HZ), "groups": gs, "files": files, "format": fmt_name})
 
 
 @app.route("/api/memories/import_entries", methods=["POST"])
@@ -1187,7 +1209,7 @@ def api_set():
             if changes["tune_hz"] < 0:
                 raise ValueError("frequency out of range")
         elif "tune_hz" in changes or "upconv" in changes:
-            # HF below the tuner's lower limit (R820T 24 MHz, LimeSDR Mini 10 MHz, Airspy R2 24 MHz) can only be received
+            # HF below the tuner's lower limit (R820T 24 MHz, RTL-SDR Blog V4 0.5 MHz, LimeSDR Mini 10 MHz, Airspy R2 24 MHz) can only be received
             # through an upconverter; upper limit R820T 1766 MHz, LimeSDR Mini 3500 MHz, Airspy R2 1750 MHz.
             tune = changes.get("tune_hz", cfg["tune_hz"])
             mode = changes.get("upconv", cfg.get("upconv", "auto"))

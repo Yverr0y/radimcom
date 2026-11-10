@@ -31,6 +31,7 @@ DSD_MODE = "DSD"       # digital voice (dsd.py): FM discriminator to the decoder
 DSD_BW = 12500.0       # channel width of the DSD mode; fixed, 12.5 kHz covers the protocols it decodes
 UPCONV_MAX_HZ = 30e6   # in auto mode only HF (below 30 MHz) goes through the upconverter
 TUNER_MIN_HZ = 24e6    # R820T tuner range without a converter
+V4_MIN_HZ = 0.5e6      # RTL-SDR Blog V4: HF direct (its driver switches on the built-in upconverter below 28.8 MHz)
 TUNER_MAX_HZ = 1766e6
 # Tuning range by device type (driver in vfos.json / config).
 # LimeSDR Mini officially starts at 10 MHz; lower (via the NCO) it receives weaker, but usable.
@@ -142,6 +143,10 @@ class RtlSdr:
         count = lib.rtlsdr_get_device_count()
         if index >= count:
             raise RuntimeError(f"dongle {index} not found (connected: {count})")
+        # the USB strings can be read only before opening; RTL-SDR Blog V4 receives HF without a converter
+        bufs = [ctypes.create_string_buffer(256) for _ in range(3)]
+        product = bufs[1].value.decode(errors="replace") if lib.rtlsdr_get_device_usb_strings(index, *bufs) == 0 else ""
+        self.tuner_min_hz = V4_MIN_HZ if "Blog V4" in product else TUNER_MIN_HZ
         self.dev = ctypes.c_void_p()
         rc = lib.rtlsdr_open(ctypes.byref(self.dev), index)
         if rc != 0:
@@ -878,6 +883,7 @@ class Receiver:
         self.dropped = 0
         self.opened = 0
         self.sdr = None
+        self.dev_tuner_min = None   # lower tuning limit reported by the opened dongle (None = by the driver)
         self.thread = None
         self._stop = threading.Event()
         # VFO chaining (iqshare.py): the owner of the dongle sends its blocks to iq_server (set by app.py);
@@ -930,7 +936,8 @@ class Receiver:
 
     @property
     def tuner_min(self):
-        return TUNER_LIMITS[self.cfg.get("driver", "rtl")][0]
+        # the opened dongle knows it better (RTL-SDR Blog V4 from 500 kHz); kept while the dongle is reopened
+        return self.dev_tuner_min or TUNER_LIMITS[self.cfg.get("driver", "rtl")][0]
 
     @property
     def tuner_max(self):
@@ -978,6 +985,7 @@ class Receiver:
                 self.opened += 1
                 self.gains = sdr.gains
                 self.has_bias_tee, self.has_rtl_agc = sdr.has_bias_tee, sdr.has_rtl_agc
+                self.dev_tuner_min = getattr(sdr, "tuner_min_hz", None)
                 self._configure(sdr)
                 if hasattr(sdr, "calibrate"):
                     # LimeSDR: DC and IQ calibration when opening (may fail on HF, does not matter).

@@ -144,6 +144,8 @@ squelch gets a green underline, a transmitting one turns red.
       - **Bias-tee** 4.5 V (if the SDR has it). Turn it on only when the upconverter or preamplifier really needs it.
       - **RESET SDR DONGLE**: closes the dongle and opens it again with the same settings (frequency, gain, bandwidth); for a stopped spectrum or a USB error.
     - **ADVANCED**
+      - **Dongles and VFOs**: every dongle from `data\vfos.json` with its serial number, the VFOs it serves (chained ones too) and its note; State ✓ when the VFO receiver has the dongle open and running
+        (an error with its reason in the tooltip), connected RTL dongles without a VFO as *free*. The dongle these settings apply to is highlighted. Assignment changes need a full server restart.
       - **SP – Spurs removal**: for a switching power supply and the like. **LEARN** finds lines at a regular spacing of 12 kHz or more in the band received now, so learn on a quiet band.
         Each line gets a band-stop set by **Width**, **Edge**, **Shift** and **Depth**, which takes it down to the noise around it. Cleans the waterfall and the channel you listen to (not WFM and wide FM).
         A signal on a spur is removed with it.
@@ -197,18 +199,20 @@ The memory editor was written by **Brano ([brjanicek](https://github.com/brjanic
 **EXPORT** of the MEMORIES tab (beside **LIST**). Changes are saved at once (except the IMPORT and EXPORT lists).
 
 - **CHANNELS**: every memory in a table: star, name, frequency, mode, bandwidth, decoder, record, groups, tag and note. Show one group
-  or `(no group)`, search name, note, group or kHz, and sort by **group** (a channel in two groups is listed under both, with
-  the note of the group), **frequency**, **name**, **mode** or **decoder**. **⧉ duplicates** shows only the channels on the same
+  or `(no group)`, search name, note, group or kHz, and click a **column header** to sort by it (again = the other way round;
+  by **Groups** the table has a section per group, a channel in two groups is listed under both, with the note of the
+  group). The columns have fixed widths; a text that does not fit is cut and shown whole as the tooltip. **⧉ duplicates** shows only the channels on the same
   frequency (within 50 Hz) and mode as another one; ⧉ marks them in the list too.
   A click on a row opens it in the form on the right; a double click recalls it. The form edits the name, frequency, mode,
   bandwidth, **decoder** (switched on when the channel is recalled, and its page shown in DECODERS: FT8, WEFAX, CW, RTTY,
   SSTV, PACKET, ACARS, VDL2 or ISM), **record** (a recording to MP3 started when the channel is recalled: **ON** = REC,
   everything; **SQ** = REC SQ, only while the squelch is open; **ASQ** = REC SQ with the auto squelch switched on, AM, FM
   and WFM; **OFF** = none, the default; a recording or ASQ that recalling a channel started stops when the VFO leaves
-  the channel (another frequency, mode or channel); one switched on by hand, or a key pressed by hand meanwhile, stays), DAB channel, the **groups** (tick any number, or type a new one and press Enter),
+  the channel (another frequency, mode or channel); one switched on by hand, or a key pressed by hand meanwhile, stays), DAB channel, the **groups** (a list, one per line, scrolls when long: tick any number, or type a new one and press Enter),
   a **note**, the **tag in the spectrum** (shown or hidden, default shown) with its **colour** (↺ = the default green) and
   the star. It warns when another channel is on the same frequency and mode. **＋ NEW** fills it from the tuner.
-  Tick channels for the bar above the table: add them to a group (**＋ TO GROUP**, they stay in their other groups),
+  Tick channels for the bar above the table (with none ticked, it acts on the channel open in the form, e.g. opened with
+  ✎ from LIST): add them to a group (**＋ TO GROUP**, they stay in their other groups),
   remove them from it, **MOVE** them to one group only, star or unstar them, show or hide their tags, set or reset their
   colour (**SET** / **DEFAULT**), put them on the export list (**⇩ TO EXPORT**) or delete them.
 - **GROUPS**: every group with the number of its channels and its **note** (saved when you leave the field). **＋ ADD GROUP**
@@ -216,8 +220,11 @@ The memory editor was written by **Brano ([brjanicek](https://github.com/brjanic
   channels, which can then be changed without touching the original) and **🗑** deletes it (asks whether the channels that are in no
   other group are deleted too, or kept without a group). Tick groups to **MERGE** them into one (asks for its name; the
   notes are joined), to delete them or to put their channels on the export list.
-- **IMPORT**: **LOAD SDR#** reads the SDR# folder (`frequencies.xml` there and in profile subfolders), **LOAD FILE…** a RADIMCOM
-  export (JSON, also the older lists of 0.111 and 0.112), a CSV file or a `frequencies.xml`. The channels go to a list first,
+- **IMPORT**: **LOAD FILE…** reads one or more files and recognises their format by the content: a RADIMCOM export
+  (JSON, also the older lists of 0.111 and 0.112, or CSV), SDR# `frequencies.xml`, the SDR++ frequency manager
+  (`frequency_manager_config.json`, each list becomes a group), gqrx `bookmarks.csv` (tags become groups, the colour of
+  the first tag the tag colour) or a CHIRP CSV (name, frequency, mode and comment as the note). Files without groups put
+  their channels into a group named after the file (SDR++ / gqrx / CHIRP); the message says which format was found. The channels go to a list first,
   nothing is saved yet: edit any field there, see which are new, which are already in the memories (⧉ with the name) and which
   have an error (red, not selected). All valid channels are selected; **NEW ONLY** selects those not in the memories,
   **SET GROUP** puts the selected ones into one group. **IMPORT SELECTED** saves them; the others stay in the list, so you can

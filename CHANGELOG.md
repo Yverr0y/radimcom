@@ -4,9 +4,17 @@
 
 Changes since 0.113beta1 (GitHub branch `0.113beta1`).
 
+### Main Features
+
+- **RTL-SDR Blog V4 tunes from 0.5 MHz.** The dongle is recognised by its USB product name (*Blog V4*) when it is opened; its lower limit is then 0.5 MHz instead of 24 MHz. Below 28.8 MHz its driver switches on the built-in upconverter, so HF needs no external converter (upconverter off in `vfos.json`). Other RTL dongles keep 24 MHz.
+- **Dongles and VFOs list** in SETTINGS › SDR DONGLE › ADVANCED: every dongle from `data\vfos.json` (type, serial number, the VFOs it serves including chained ones, note), its state from the VFO receiver (✓ running, error with the reason in the tooltip), connected RTL dongles not assigned to any VFO (*free*) and the number of RTL dongles on USB. The dongle the settings apply to (the active VFO, or the VFO owning the dongle of a chained VFO) is highlighted. ⟳ searches again.
+- **Memory import recognises the file format** (Brano, brjanicek). MEMORIES → IMPORT has one **LOAD FILE…** key (LOAD SDR# and the SDR# folder field are gone); it takes one or more files and recognises each by its content: RADIMCOM JSON or CSV, SDR# `frequencies.xml`, and new: the **SDR++** frequency manager (`frequency_manager_config.json`, its lists become groups), **gqrx** `bookmarks.csv` (tags become groups, tag colour too) and **CHIRP** CSV (comment as the note). The message names the format found; an unknown file lists the supported ones. HTTP API: `{"format": "auto", "text", "filename"}` in `/api/memories/preview`.
+
 ### Minor Fixes
 
-- **Recording started by a memory stops when you leave it.** A recording (and ASQ) that recalling a memory with RECORD ON / SQ / ASQ switched on now stops as soon as the VFO leaves that memory (tuning, another mode or DAB channel), not only when another memory is recalled. A recording switched on with REC / REC SQ by hand keeps running while tuning; pressing REC, REC SQ or ASQ during a memory recording takes it over by hand too.
+- **AD window has a fixed height** (as with RDS), so an error message, the rotor AZ / EL or RDS no longer make it higher or lower.
+- **Memory editor** (Brano, brjanicek): the CHANNELS table sorts by a click on a column header (again = reversed; by Groups with a section per group), the Sort select is gone. Table columns have fixed widths, a longer text is cut and shown whole as the tooltip. The Rec column shows OFF / ON / SQ / ASQ as text. The groups in the channel form are a list, one per line, with a scroll bar. With no channel ticked, the bar above the table (tag colour SET / DEFAULT, star, tag on / off, groups, export, delete) acts on the channel open in the form. A small gap under the LIST / CHANNELS / GROUPS / IMPORT / EXPORT keys.
+- **Recording started by a memory stops when you leave it** (Brano, brjanicek). A recording (and ASQ) that recalling a memory with RECORD ON / SQ / ASQ switched on now stops as soon as the VFO leaves that memory (tuning, another mode or DAB channel), not only when another memory is recalled. A recording switched on with REC / REC SQ by hand keeps running while tuning; pressing REC, REC SQ or ASQ during a memory recording takes it over by hand too.
 
 ## Ver. 0.113beta1
 

@@ -614,9 +614,6 @@
           <div class="med-bar">
             <input id="medSearch" type="search" placeholder="Search name, note, group or kHz…" autocomplete="off">
             <select id="medGroup" aria-label="Group" title="Show one group"></select>
-            <label class="med-lbl">Sort <select id="medSort" title="Order of the list">
-              <option value="group">group</option><option value="freq">frequency</option><option value="name">name</option>
-              <option value="mode">mode</option><option value="decoder">decoder</option></select></label>
             <label class="switch small" title="Only memories on the same frequency and mode as another one"><input id="medDups" type="checkbox"><span></span> ⧉ duplicates</label>
             <button id="medNew" class="key small accent" title="New channel (filled in from the tuner)">＋ NEW</button>
           </div>
@@ -627,8 +624,8 @@
             <button class="key small" data-bulk="remove" title="Removes the selected channels from this group">− FROM GROUP</button>
             <button class="key small" data-bulk="move" title="Moves the selected channels to this group only">MOVE</button>
             <span class="med-sep"></span>
-            <button class="key small" data-bulk="fav" title="Star">★</button>
-            <button class="key small" data-bulk="unfav" title="Remove the star">☆</button>
+            <button class="key small med-starbtn fill" data-bulk="fav" title="Star">★</button>
+            <button class="key small med-starbtn" data-bulk="unfav" title="Remove the star">☆</button>
             <button class="key small" data-bulk="tagon" title="Show their tags in the spectrum">TAG ON</button>
             <button class="key small" data-bulk="tagoff" title="Hide their tags in the spectrum">TAG OFF</button>
             <span class="med-sep"></span>
@@ -698,11 +695,9 @@
         <!-- IMPORT -->
         <section class="med-panel" data-med-panel="import" hidden>
           <div class="med-bar">
-            <input id="medImpPath" placeholder="SDR# folder, e.g. C:\sdrsharp" spellcheck="false" class="grow"
-              title="SDR# folder: frequencies.xml is read from it and from profile subfolders (e.g. Instances\Profile1)">
-            <button id="medImpSdr" class="key small">LOAD SDR#</button>
-            <button id="medImpFile" class="key small" title="RADIMCOM export (.json), CSV (.csv) or SDR# frequencies.xml">LOAD FILE…</button>
-            <input id="medImpInput" type="file" accept=".json,.csv,.txt,.xml,application/json,text/csv" hidden>
+            <button id="medImpFile" class="key small" title="Recognised by the content: RADIMCOM export (JSON, CSV), SDR# frequencies.xml, SDR++ frequency manager (frequency_manager_config.json), gqrx bookmarks.csv, CHIRP CSV. Several files at once.">LOAD FILE…</button>
+            <span class="muted med-impformats">RADIMCOM JSON / CSV · SDR# frequencies.xml · SDR++ · gqrx · CHIRP</span>
+            <input id="medImpInput" type="file" accept=".json,.csv,.txt,.xml,application/json,text/csv" multiple hidden>
           </div>
           <p class="note">The list is not saved until IMPORT. Edit the channels in the list, choose which to import (all by default);
             the ones not imported stay in the list for later.</p>
@@ -777,7 +772,7 @@
               <select id="upconv">
                 <option value="auto">Auto (HF via converter)</option>
                 <option value="on">Always via converter</option>
-                <option value="off">Off (24–1766 MHz)</option>
+                <option value="off">Off (direct: 24–1766 MHz, RTL-SDR Blog V4 from 0.5 MHz)</option>
               </select>
               <p class="note">Auto: below 30 MHz via the converter, VHF/UHF direct.
                 Above 30 MHz the signal must go straight to the dongle (bypass switch or another antenna).</p>
@@ -821,6 +816,12 @@
             </div>
           </div>
           <div class="set-subpanel set-grid2" data-set-subpanel="dongle:adv" role="tabpanel" hidden>
+            <div class="setting dongle-list-box">
+              <div class="row"><span>Dongles and VFOs</span><button id="dongleListRefresh" class="key small" title="Search for connected dongles again">⟳</button></div>
+              <table class="dongle-list" id="dongleList"></table>
+              <p class="note">Highlighted: the dongle these settings apply to. Assignment is in <code>data\vfos.json</code>;
+                a change needs a full server restart. State ✓ = the VFO receiver has the dongle open and running; <i>free</i> = connected RTL dongle without a VFO.</p>
+            </div>
             <div class="setting">
               <label class="switch"><input id="spurOn" type="checkbox"><span></span> SP – Spurs removal</label>
               <div class="row"><button id="spurLearn" class="key small" title="Learn the spurs in the band received now (5 s)">LEARN</button><span id="spurInfo" class="value"></span><button id="spurClear" class="key small" title="Forget all learned spurs of this VFO">CLEAR</button></div>
