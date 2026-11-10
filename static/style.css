@@ -1651,4 +1651,4 @@ html[data-ink="dark"] .r-top, html[data-ink="dark"] .r-keys { border-bottom-colo
 .med-edit-table .c-rec { width: 74px; }
 .med-edit-table .c-dec { width: 96px; }
 #medBulk .med-starbtn { font-size: 18px; line-height: 1; padding-top: 0; padding-bottom: 0; min-width: 32px; }
-#medBulk .med-starbtn.on { color: var(--amber, #ffb02e); }
+#medBulk .med-starbtn.fill { color: var(--amber, #ffb02e); }
