@@ -7529,7 +7529,7 @@ function medRenderBulk() {
   for (const b of $("medBulk").querySelectorAll("button")) b.disabled = none;
   // the groups of the channel open in the form are set in the form: the group keys of the bar are off meanwhile
   const form = !!medEditId;
-  for (const el of [$("medBulkGroupSel"), $("medBulkGroup")]) el.disabled = form;
+  for (const el of [$("medBulkGroupSel"), $("medBulkGroup")]) el.disabled = none || form;
   for (const b of $("medBulk").querySelectorAll("[data-bulk=add], [data-bulk=remove]")) b.disabled = none || form;
 }
 
