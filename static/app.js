@@ -7527,6 +7527,7 @@ function medRenderBulk() {
   $("medSelCount").title = open ? `No channel ticked: the keys act on the channel open in the form (${open.name})` : "";
   const none = !medBulkIds().length;
   for (const b of $("medBulk").querySelectorAll("button")) b.disabled = none;
+  $("medBulkColor").disabled = none;
   // the groups of the channel open in the form are set in the form: the group keys of the bar are off meanwhile
   const form = !!medEditId;
   for (const el of [$("medBulkGroupSel"), $("medBulkGroup")]) el.disabled = none || form;
