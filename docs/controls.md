@@ -214,7 +214,7 @@ The memory editor was written by **Brano ([brjanicek](https://github.com/brjanic
   by **Groups** the table has a section per group, a channel in two groups is listed under both, with the note of the
   group). The columns have fixed widths; a text that does not fit is cut and shown whole as the tooltip. **⧉ duplicates** shows only the channels on the same
   frequency (within 50 Hz) and mode as another one; ⧉ marks them in the list too.
-  A click on a row selects it (Ctrl+click adds or removes more rows), a double click recalls the channel, and ✎ at the start of the row opens it in the form on the right (✎ is hidden while more rows are selected; while the form is open the tick boxes are hidden and a click on a row opens that channel in the form). **★ only** shows only the starred channels;
+  A click on a row selects it (Ctrl+click adds or removes more rows), a double click recalls the channel, and ✎ at the start of the row opens it in the form on the right (✎ is hidden while more rows are selected; while the form is open the tick boxes are hidden and a click on a row opens that channel in the form; with unsaved changes in the form it asks first). **★ only** shows only the starred channels;
   **＋ SAVE CURRENT** fills a new channel with the tuned frequency, mode and width (and DAB channel), **＋ NEW** an empty one. The form edits the name, frequency, mode,
   bandwidth, **decoder** (switched on when the channel is recalled, and its page shown in DECODERS: FT8, WEFAX, CW, RTTY,
   SSTV, PACKET, ACARS, VDL2 or ISM), **record** (a recording to MP3 started when the channel is recalled: **ON** = REC,

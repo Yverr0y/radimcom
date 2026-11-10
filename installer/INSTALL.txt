@@ -116,7 +116,7 @@ Minor Fixes
 - MEMORIES tab: the LIST page is gone, CHANNELS: click selects a row, double click
   recalls the channel, the pencil opens it in the form, the tuned channel is highlighted;
   ★ only filter and + SAVE CURRENT there; the group for TO GROUP / FROM GROUP / MOVE is a list of all
-  groups plus "+ new group".
+  groups plus "+ new group"; opening another channel asks before dropping unsaved changes in the form.
 - Damaged VFO settings (config_X.json full of zeros after a power cut) no longer stop the VFO: saving flushes
   to disk and keeps a .bak, the launcher restores it (or creates new settings), the damaged file stays as .broken
 - AD window has a fixed height: an error, the rotor AZ / EL or RDS no longer change it

@@ -7261,7 +7261,7 @@ async function memOpenEditor(template) {
   await loadMemGroups();
   if (bodyTab !== "mem") setMemOn(true);
   showMedTab(template ? "channels" : medTab);
-  if (template) medOpenForm(null, template);
+  if (template && medFormLeaveOk()) medOpenForm(null, template);
 }
 $("medSaveCur").addEventListener("click", () => {   // the tuned frequency, mode, width (and DAB channel) in the form
   if (!st) return;
@@ -7538,10 +7538,10 @@ $("medTable").addEventListener("click", (e) => {
     memApi(`/api/memories/${m.id}`, { fav: !m.fav }, "PATCH").then((r) => r.ok ? memChanged(mems.map((x) => (x.id === m.id ? r.data : x))) : medMsg(r.error, true));
     return;
   }
-  if (e.target.closest("[data-edit]")) { medOpenForm(m); return; }
+  if (e.target.closest("[data-edit]")) { if (medFormLeaveOk()) medOpenForm(m); return; }
   // a click selects the row (Ctrl/Cmd+click adds it to the selection or removes it); the table is not
   // redrawn here, so a double click still lands on the same row
-  if (medEditId) { medOpenForm(m); return; }   // the form is open: a click moves it to the clicked channel
+  if (medEditId) { if (m.id !== medEditId && medFormLeaveOk()) medOpenForm(m); return; }   // the form is open: a click moves it to the clicked channel
   if (e.ctrlKey || e.metaKey) { if (medSel.has(m.id)) medSel.delete(m.id); else medSel.add(m.id); }
   else { medSel.clear(); medSel.add(m.id); }
   medSyncSel();
@@ -7598,8 +7598,15 @@ $("medBulk").addEventListener("click", async (e) => {
 });
 
 // the form of one channel
+let medFormDirty = false;        // the form was changed and not saved yet
+/** Before the form is filled with another channel: asks whether unsaved changes may be dropped. */
+function medFormLeaveOk() {
+  return !medEditId || !medFormDirty ||
+    confirm(medEditId === "new" ? "The new channel is not saved. Discard it?" : "The changes of the channel are not saved. Discard them?");
+}
 function medOpenForm(m, template) {
   medEditId = m ? m.id : "new";
+  medFormDirty = false;
   const f = $("medForm");
   const src = m || template || { name: "", groups: $("medGroup").value && $("medGroup").value !== NO_GROUP ? [$("medGroup").value] : [],
     freq_hz: st ? st.tune_hz : 0, mode: st && MEM_MODES.includes(st.mode) ? st.mode : "AM",
@@ -7659,17 +7666,19 @@ function medFormDupNote() {
 $("medFormGroups").addEventListener("change", (e) => {
   const g = e.target.value;
   medFormGroups = e.target.checked ? [...medFormGroups, g] : medFormGroups.filter((x) => x !== g);
+  medFormDirty = true;
 });
 $("medFormNewGroup").addEventListener("keydown", (e) => {
   if (e.key !== "Enter") return;
   e.preventDefault();
   const g = e.target.value.trim().replace(/\s+/g, " ").slice(0, 40);
-  if (g && !medFormGroups.includes(g)) medFormGroups.push(g);
+  if (g && !medFormGroups.includes(g)) { medFormGroups.push(g); medFormDirty = true; }
   e.target.value = "";
   renderMedForm();
 });
 $("medForm").addEventListener("input", (e) => {
   const f = $("medForm");
+  medFormDirty = true;
   if (e.target === f.elements.color) medFormColor = e.target.value;
   if (e.target === f.elements.dab) f.elements.freq.disabled = !!f.elements.dab.value;
   if ([f.elements.freq, f.elements.mode, f.elements.dab].includes(e.target)) medFormDupNote();
@@ -7682,7 +7691,7 @@ $("medForm").addEventListener("click", async (e) => {
   const act = e.target.closest("[data-act]")?.dataset.act;
   const f = $("medForm");
   const m = mems.find((x) => x.id === medEditId);
-  if (act === "nocolor") { medFormColor = ""; f.elements.color.value = MEM_COLOR; }
+  if (act === "nocolor") { medFormColor = ""; f.elements.color.value = MEM_COLOR; medFormDirty = true; }
   else if (act === "cancel") { medEditId = null; renderMedChannels(); }
   else if (act === "recall" && m) recallMem(m);
   else if (act === "delete" && m && confirm(`Delete channel "${m.name}"?`)) {
@@ -7717,11 +7726,12 @@ $("medForm").addEventListener("submit", async (e) => {
   if (!r.ok) return err(r.error);
   $("medFormErr").hidden = true;
   medEditId = r.data.id;
+  medFormDirty = false;
   medMsg(isNew ? `Added "${r.data.name}".` : `Saved "${r.data.name}".`);
   await memChanged(isNew ? [...mems, r.data] : mems.map((x) => (x.id === r.data.id ? r.data : x)));
   if (isNew) medOpenForm(r.data);   // the new channel stays in the form, now as a saved one
 });
-$("medNew").addEventListener("click", () => medOpenForm(null));
+$("medNew").addEventListener("click", () => { if (medFormLeaveOk()) medOpenForm(null); });
 
 // ----- GROUPS -----
 
