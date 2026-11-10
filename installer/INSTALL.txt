@@ -90,6 +90,9 @@ Change log
 
 Ver. 0.113beta2
 (changes since 0.113beta1)
+Minor Fixes
+- A recording (and ASQ) started by recalling a memory with RECORD stops when the VFO leaves the memory;
+  REC / REC SQ switched on by hand keep running while tuning.
 
 Ver. 0.113beta1
 Main Features
