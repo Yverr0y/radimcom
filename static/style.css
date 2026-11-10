@@ -1057,13 +1057,13 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .mem-group { position: sticky; top: 0; z-index: 1; padding: 6px 2px 4px; font-size: 10px; text-transform: uppercase;
   letter-spacing: .08em; color: var(--dim); background: #0e1216; }
 .mem {
-  display: grid; grid-template-columns: 16px minmax(0, 1fr) auto 18px; align-items: center; gap: 6px;
+  display: grid; grid-template-columns: 22px minmax(0, 1fr) auto 18px; align-items: center; gap: 6px;
   padding: 5px 6px; border-radius: 4px; cursor: pointer;
 }
 .mem:hover { background: #1a2028; }
 .mem.active { background: rgba(255, 216, 74, .22); box-shadow: inset 3px 0 0 var(--yellow), inset 0 0 0 1px rgba(255, 216, 74, .45); }
 .mem.active .name { color: var(--yellow); font-weight: 600; }
-.mem .star { border: none; background: none; padding: 0; color: var(--dim); font-size: 13px; line-height: 1; }
+.mem .star { border: none; background: none; padding: 0; color: var(--muted); font-size: 19px; line-height: 1; cursor: pointer; }
 .mem .star.on { color: var(--amber); }
 .mem .star:hover { color: var(--yellow); }
 .mem .edit { border: none; background: none; padding: 0; color: var(--dim); font-size: 13px; line-height: 1; cursor: pointer; }
@@ -1159,7 +1159,8 @@ html.compact .r-bands .bands button { min-width: 36px; padding-left: 5px; paddin
 .med-table td.name { font-weight: 600; white-space: nowrap; }
 .med-table td.mode { color: var(--green); white-space: nowrap; }
 .med-table td.note-cell { color: var(--muted); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.med-table .star { border: none; background: none; padding: 0; color: var(--dim); font-size: 13px; cursor: pointer; }
+.med-table .star { border: none; background: none; padding: 0; color: var(--muted); font-size: 19px; line-height: 1; cursor: pointer; }
+.med-table .star:hover { color: var(--yellow); }
 .med-table .star.on { color: var(--amber); }
 .med-table .dup { font-style: normal; color: var(--amber); cursor: help; }
 .med-table tr.med-sec td { position: sticky; top: 27px; background: #0e1216; color: var(--yellow); font-weight: 700; font-size: 11px;
