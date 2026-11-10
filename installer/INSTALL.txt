@@ -94,6 +94,8 @@ Main Features
 - RTL-SDR Blog V4 tunes from 0.5 MHz (HF through its built-in upconverter, no external converter)
 - SETTINGS > SDR DONGLE > ADVANCED: list of dongles and the VFOs they serve (from data\vfos.json), their state,
   free connected dongles; the dongle being set is highlighted
+- Memory import (Brano): one LOAD FILE... key recognises the format by the content: RADIMCOM JSON / CSV, SDR#
+  frequencies.xml, SDR++ frequency manager, gqrx bookmarks.csv, CHIRP CSV (LOAD SDR# removed).
 Minor Fixes
 - AD window has a fixed height: an error, the rotor AZ / EL or RDS no longer change it
 - Memory editor (Brano): sort by a click on a column header, fixed column widths with tooltips, Rec as text,

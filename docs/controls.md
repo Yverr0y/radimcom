@@ -220,8 +220,11 @@ The memory editor was written by **Brano ([brjanicek](https://github.com/brjanic
   channels, which can then be changed without touching the original) and **🗑** deletes it (asks whether the channels that are in no
   other group are deleted too, or kept without a group). Tick groups to **MERGE** them into one (asks for its name; the
   notes are joined), to delete them or to put their channels on the export list.
-- **IMPORT**: **LOAD SDR#** reads the SDR# folder (`frequencies.xml` there and in profile subfolders), **LOAD FILE…** a RADIMCOM
-  export (JSON, also the older lists of 0.111 and 0.112), a CSV file or a `frequencies.xml`. The channels go to a list first,
+- **IMPORT**: **LOAD FILE…** reads one or more files and recognises their format by the content: a RADIMCOM export
+  (JSON, also the older lists of 0.111 and 0.112, or CSV), SDR# `frequencies.xml`, the SDR++ frequency manager
+  (`frequency_manager_config.json`, each list becomes a group), gqrx `bookmarks.csv` (tags become groups, the colour of
+  the first tag the tag colour) or a CHIRP CSV (name, frequency, mode and comment as the note). Files without groups put
+  their channels into a group named after the file (SDR++ / gqrx / CHIRP); the message says which format was found. The channels go to a list first,
   nothing is saved yet: edit any field there, see which are new, which are already in the memories (⧉ with the name) and which
   have an error (red, not selected). All valid channels are selected; **NEW ONLY** selects those not in the memories,
   **SET GROUP** puts the selected ones into one group. **IMPORT SELECTED** saves them; the others stay in the list, so you can

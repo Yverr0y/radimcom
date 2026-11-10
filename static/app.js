@@ -6903,43 +6903,31 @@ $("medImpGroups").addEventListener("input", (e) => {
   if (e.target.dataset.gf === "sel") g.sel = e.target.checked; else g.note = e.target.value;
 });
 
-function medImpLoaded(data, source) {
+function medImpLoaded(data, source, quiet = false) {
   const rows = data.entries.map((e) => medRow(e));
   for (const r of rows) r.sel = !r.err;
   medImp.rows.push(...rows);
   for (const g of data.groups || []) if (!medImp.groups.some((x) => x.name === g.name)) medImp.groups.push({ ...g, sel: true });
   const bad = rows.filter((r) => r.err).length;
+  if (quiet) { renderMedImport(); return `${source}: ${rows.length}${bad ? ` (${bad} with an error)` : ""}`; }
   medMsg(`Loaded ${rows.length} channels from ${source}${bad ? `, ${bad} with an error (not selected)` : ""}. Nothing is saved until IMPORT.`, false);
   renderMedImport();
 }
 
-$("medImpPath").value = recall("memSdrPath") || "";
-$("medImpSdr").addEventListener("click", async () => {
-  const path = $("medImpPath").value.trim();
-  if (!path) { $("medImpPath").focus(); return; }
-  store("memSdrPath", path);
-  const r = await memApi("/api/memories/preview", { format: "sdrsharp", path });
-  if (!r.ok) { medMsg(r.error, true); return; }
-  medImpLoaded(r.data, r.data.files.length > 1 ? `${r.data.files.length} SDR# files` : "SDR#");
-});
-$("medImpPath").addEventListener("keydown", (e) => { if (e.key === "Enter") $("medImpSdr").click(); });
 $("medImpFile").addEventListener("click", () => $("medImpInput").click());
+// The server recognises the format by the content (memories.parse_any); several files are loaded one after another.
 $("medImpInput").addEventListener("change", async () => {
-  const file = $("medImpInput").files[0];
+  const files = [...$("medImpInput").files];
   $("medImpInput").value = "";
-  if (!file) return;
-  const text = await file.text();
-  let body;
-  if (/\.json$/i.test(file.name) || /^\s*[[{]/.test(text)) {
-    try { body = { format: "json", data: JSON.parse(text) }; } catch (e) { medMsg(`${file.name}: not valid JSON (${e.message})`, true); return; }
-  } else if (/\.xml$/i.test(file.name) || /^\s*</.test(text)) {
-    body = { format: "sdrsharp_xml", text };
-  } else {
-    body = { format: "csv", text };
+  const done = [], failed = [];
+  for (const file of files) {
+    const r = await memApi("/api/memories/preview", { format: "auto", text: await file.text(), filename: file.name });
+    if (!r.ok) { failed.push(`${file.name}: ${r.error}`); continue; }
+    if (files.length === 1) { medImpLoaded(r.data, `${file.name} (${r.data.format})`); return; }
+    done.push(medImpLoaded(r.data, `${file.name} (${r.data.format})`, true));
   }
-  const r = await memApi("/api/memories/preview", body);
-  if (!r.ok) { medMsg(`${file.name}: ${r.error}`, true); return; }
-  medImpLoaded(r.data, file.name);
+  medMsg([done.length ? `Loaded ${done.join(", ")}. Nothing is saved until IMPORT.` : "", ...failed].filter(Boolean).join(" · "),
+    failed.length > 0);
 });
 
 $("medImpTable").closest(".med-panel").querySelector(".med-bulk").addEventListener("click", (e) => {
