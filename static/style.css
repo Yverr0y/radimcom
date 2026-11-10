@@ -1865,3 +1865,4 @@ html[data-ink="dark"] .r-top, html[data-ink="dark"] .r-keys { border-bottom-colo
 .med-table.form-open [data-pick], .med-table.form-open [data-selall] { visibility: hidden; pointer-events: none; }
 #medBulkGroupSel { min-width: 140px; max-width: 200px; } #medBulkGroup { width: 150px; }
 .med-bar select:disabled, .med-bar input:disabled { opacity: .4; cursor: default; }
+#medSearch { flex: 0 1 33%; min-width: 180px; }
