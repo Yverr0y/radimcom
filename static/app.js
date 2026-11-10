@@ -1163,7 +1163,8 @@ function drawMemTags(ctx, w, modeLabel) {
   for (const m of list) {
     const x = Math.round(freqToX(m.freq_hz, w)) + 0.5;
     const name = m.name.length > MEM_NAME_MAX ? m.name.slice(0, MEM_NAME_MAX - 1) + "…" : m.name;
-    const tw = ctx.measureText(name).width + 10;
+    const rec = m.record && m.record !== "off";   // a red ● before the name: recalling it starts a recording
+    const tw = ctx.measureText(name).width + 10 + (rec ? 9 : 0);
     const bx = Math.min(Math.max(x - tw / 2, 2), w - tw - 2);
     let row = -1;
     for (let r = 0; r < MEM_TAG_ROWS && row < 0; r++) {
@@ -1185,7 +1186,12 @@ function drawMemTags(ctx, w, modeLabel) {
     ctx.beginPath(); ctx.roundRect(bx, y0, tw, MEM_TAG_H, 4); ctx.fill(); ctx.stroke();
     ctx.fillStyle = color;
     ctx.textAlign = "left";
-    ctx.fillText(name, bx + 5, y0 + MEM_TAG_H / 2 + 0.5);
+    if (rec) {
+      ctx.fillStyle = "#ff3b3b";
+      ctx.beginPath(); ctx.arc(bx + 8, y0 + MEM_TAG_H / 2, 3, 0, 2 * Math.PI); ctx.fill();
+      ctx.fillStyle = color;
+    }
+    ctx.fillText(name, bx + 5 + (rec ? 9 : 0), y0 + MEM_TAG_H / 2 + 0.5);
     memTagBoxes.push({ m, x0: bx, x1: bx + tw, y0: 0, y1: y0 + MEM_TAG_H });
   }
 }
@@ -6219,13 +6225,13 @@ function renderMedGroups() {
     html += `<tr data-g="${escHtml(g)}"${medGrpSel.has(g) ? ' class="sel"' : ""}><td><input type="checkbox" data-pick ${medGrpSel.has(g) ? "checked" : ""}></td>` +
       `<td class="name">${escHtml(g)}</td><td class="num">${counts[g] || 0}</td>` +
       `<td class="grow"><input data-note value="${escHtml(memGroupNote(g))}" placeholder="note…" maxlength="200"></td>` +
-      `<td class="acts"><button class="icon-btn" data-g-act="show" title="Show its channels in CHANNELS" aria-label="Show">☰</button>` +
+      `<td class="acts"><button class="icon-btn" data-g-act="show" title="Show channels" aria-label="Show">☰</button>` +
       `<button class="icon-btn" data-g-act="rename" title="Rename" aria-label="Rename">✎</button>` +
       `<button class="icon-btn" data-g-act="copy" title="Copy the group and its channels under a new name" aria-label="Copy">⎘</button>` +
       `<button class="icon-btn danger" data-g-act="delete" title="Delete" aria-label="Delete">🗑</button></td></tr>`;
   }
   if (noGroup) html += `<tr data-g="${NO_GROUP}"><td></td><td class="name muted">(no group)</td><td class="num">${noGroup}</td><td></td>` +
-    `<td class="acts"><button class="icon-btn" data-g-act="show" title="Show its channels in CHANNELS" aria-label="Show">☰</button></td></tr>`;
+    `<td class="acts"><button class="icon-btn" data-g-act="show" title="Show channels" aria-label="Show">☰</button></td></tr>`;
   if (!names.length && !noGroup) html += `<tr><td colspan="5" class="mem-empty">No groups yet.</td></tr>`;
   $("medGrpTable").innerHTML = html + "</tbody>";
   $("medGrpSelCount").textContent = `${medGrpSel.size} selected`;

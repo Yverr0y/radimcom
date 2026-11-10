@@ -143,7 +143,7 @@ that VFO without switching), the frequency display and the **RF GAIN** and **SQU
   width (and DAB channel) filled in, **＋ NEW** with an empty channel, **✎ EDITOR** the editor itself: adding, editing,
   deleting, groups, import and export are all there.
   Memories in the visible part of the spectrum show their name on a tag at the top of the spectrum (green, or the colour
-  chosen in the editor); click a tag to recall the memory.
+  chosen in the editor; a red ● before the name = recalling it starts a recording); click a tag to recall the memory.
 
 - **MENU → BAND**: shows or hides the row of band keys; the spectrum and waterfall take the freed space. Remembered in the browser.
 
@@ -182,7 +182,7 @@ MEM → **✎ EDITOR** opens a big floating window with four tabs. Changes are s
   the star. It warns when another channel is on the same frequency and mode. **＋ NEW** fills it from the tuner.
   Tick channels for the bar above the table: add them to a group (**＋ TO GROUP**, they stay in their other groups),
   remove them from it, **MOVE** them to one group only, star or unstar them, show or hide their tags, set or reset their
-  colour, put them on the export list (**⇩ TO EXPORT**) or delete them.
+  colour (**SET** / **DEFAULT**), put them on the export list (**⇩ TO EXPORT**) or delete them.
 - **GROUPS**: every group with the number of its channels and its **note** (saved when you leave the field). **＋ ADD GROUP**
   adds an empty group. Per group, as icons: **☰** shows its channels in CHANNELS, **✎** renames it, **⎘** copies it (a new group with copies of its
   channels, which can then be changed without touching the original) and **🗑** deletes it (asks whether the channels that are in no
