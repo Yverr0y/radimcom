@@ -32,7 +32,7 @@ def wait_exit(pid, timeout):
 
 
 def end_lib_programs(base):
-    """Decoders started from lib\\ (welle-cli, rtl_433, dumpvdl2, dsd-fme) that outlived RADIMCOM hold their files."""
+    """Decoders started from lib\\ (welle-cli, rtl_433, dumpvdl2, dumphfdl, dsd-fme) that outlived RADIMCOM hold their files."""
     lib = os.path.join(base, "lib") + "\\"
     ps = ("Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith($env:RC_LIB, 'OrdinalIgnoreCase') } | "
           "ForEach-Object { Write-Output ('  ending ' + $_.Path); Stop-Process -Id $_.Id -Force }")

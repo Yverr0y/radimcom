@@ -82,7 +82,7 @@ Main fields:
 | `range` | tuning range of this VFO |
 | `vfo`, `serial`, `driver`, `device` | VFO name, dongle serial, `rtl`, `lime` or `airspy`, device index |
 | `chain_owner`, `out_of_band`, `chained_vfos` | chained VFO: VFO that owns the dongle (`null` otherwise), tuned outside the owner's band (silent, OOR); owner VFO: number of chained VFOs connected |
-| `ppm`, `rtl_agc`, `dc_remove`, `dc_hz`, `dc_db`, `spur_on`, `spur_hz`, `spur_edge`, `spur_shift`, `spur_db`, `spur_count`, `spur_learning`, `spur_found`, `audio_agc`, `notch`, `notch_active`, `bias_tee`, `stereo_on`, `stereo`, `rds` | receiver options and WFM stereo / RDS |
+| `ppm`, `rtl_agc`, `dc_remove`, `dc_hz`, `dc_db`, `spur_on`, `spur_hz`, `spur_edge`, `spur_shift`, `spur_db`, `spur_count`, `spur_learning`, `spur_found`, `audio_agc`, `notch`, `notch_active`, `bias_tee`, `stereo_on`, `stereo` (L−R decoded), `pilot` (19 kHz pilot locked), `rds` | receiver options and WFM stereo / RDS |
 | `afi`, `afi_hz` | audio frequency inversion (voice scrambler / descrambler) on/off and its inversion frequency in Hz |
 | `autotune`, `autotune_info` | ATU on/off; last autotune job `{id, state: "listen" \| "done" \| "none" \| "", shift_hz, how: "carrier" \| "comb" \| "edge", mode}` |
 | `lpf`, `lpf_hz`, `hpf`, `hpf_hz` | audio low-pass and high-pass filter on/off and their cutoff frequencies in Hz |
@@ -90,16 +90,24 @@ Main fields:
 | `ft8`, `cw`, `rtty`, `wefax`, `sstv`, `packet`, `acars`, `vdl2`, `cpdlc` | decoders on/off |
 | `ft8_error`, `vdl2_error` | decoder errors |
 | `vdl2_region` | selected VDL2 channel set, `"eu"` or `"us"` |
-| `audio_muted` | the audio of this VFO is muted because the ACARS, VDL2 or ISM decoder runs |
+| `audio_muted` | the audio of this VFO is muted because the ACARS, VDL2, HFDL, AIS or ISM decoder runs |
 | `recording` | `{"cont": {...}, "squelch": {...}, "dropped": n}`: REC and REC SQ, each with `on`, `open` (a file is being written), `file` (current or last file in `data\recordings`), `secs` (length of the current file), `saved` (files finished since switched on), `error`; `dropped` = audio blocks lost because the disk did not keep up |
 | `dab`, `dab_channel`, `dab_sids`, `dab_error` | DAB on/off, Band III channel (e.g. `12C`), last station of each channel (`{"12C": "0x5464"}`, `null` = stopped), welle-cli error |
-| `logs` | daily logs on/off: `{"ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism", "packet"}` (`acars` covers both the ACARS and the VDL2 log) |
+| `logs` | daily logs on/off: `{"ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism", "packet", "hfdl", "ais"}` (`acars` covers both the ACARS and the VDL2 log) |
 | `trsp_name`, `trsp_sat` | transmitter and satellite of the Doppler correction (`/api/sat/doppler`) while it is on, empty otherwise |
 | `tx_capable`, `tx_enabled`, `can_tx`, `tx`, `tx_info` | transmitter (LimeSDR) |
 | `wf` | waterfall format: `bins`, `db_min`, `db_step`, `rows_per_s` |
 
 `/api/state` also returns the constants `sample_rates`, `modes`, `ft8_freqs`, `acars_freqs`, `vdl2_freqs` (channels of the
-selected region), `vdl2_region_freqs` (`{"eu": […], "us": […]}`), `vdl2_center`, `vdl2_rate`, `dab_channels` (`[[name, Hz], …]`), `ism_freqs`. The state has `ism`, `ism_error` and `ism_hz`; `GET /api/ism` gives the decoder state with the last `messages`, `POST /api/ism` with `{"action": "clear"}` clears them.
+selected region), `vdl2_region_freqs` (`{"eu": […], "us": […]}`), `vdl2_center`, `vdl2_rate`, `dab_channels` (`[[name, Hz], …]`), `ism_freqs`. The state has `ism`, `ism_error` and `ism_hz`; `GET /api/ism` gives the decoder state with the last `messages`, `POST /api/ism` with `{"action": "clear"}` clears them. HFDL: `hfdl_bands` (`[{lo, hi, center, n}]` in Hz) and
+`hfdl_stations` (`[{id, name, lat, lon, freqs_khz}]`); the state has `hfdl` and `hfdl_error`; `GET /api/hfdl` gives the decoder
+state (`channels` decoded now, `heard` ground stations, counters) with the last `messages`, `POST /api/hfdl` with `{"action": "clear"}` clears them. Each message has `ac` (ADS-B data, `{"found": false}` when not seen, `null` while
+`lookup` is true); the event `hfdlinfo` (`{id, ac}`) brings it later. AIS: `ais_center` (162000000) and `ais_channels` (`[161975000, 162025000]`);
+the state has `ais` and `ais_error`; `GET /api/ais` gives the decoder state (`channels` decoded now, `levels` per channel in dBFS, counters) with the last
+`messages` (each with `type`, `type_name`, `mmsi`, `cc`, `country`, `station`, `name`, `callsign`, `shiptype`, `status`, `lat`, `lon`, `sog`, `cog`, `hdg`,
+`dest`, `text`, `nmea`, `channel`, `freq_hz`, `level`, `time`) and `ships` (the newest data of each station: the same fields plus `pos_time`, `imo`, `size`,
+`draught`, `eta`, `first`, `last`, `n`); `POST /api/ais` with `{"action": "clear"}` clears them. The event `ais` carries a message with `ship`,
+the newest data of its station; `aisstate` the decoder state.
 
 ### POST /api/set
 
@@ -140,6 +148,8 @@ Send any combination of these keys:
 | `vdl2_region` | VDL2 channel set: `"eu"` or `"us"`. Restarts dumpvdl2 with the new channels |
 | `dab_sid` | remembers the station of the current DAB channel (`"0x5464"`, `null` = stopped) |
 | `dab`, `dab_channel` | DAB on / off and channel. `dab: true` starts welle-cli and switches the VFO to 2.048 MS/s on the channel centre (ACARS and VDL2 off, RTL-SDR only); `dab: false` restores the sample rate; `dab_channel` alone retunes a running DAB |
+| `hfdl`, `hfdl_band` | HFDL decoder on / off; `hfdl_band` (index into `hfdl_bands`) centres and tunes the VFO on the middle of that band and turns HFDL on (ACARS, VDL2, DAB and ISM off). HFDL decodes all channels inside the band of the VFO and mutes its audio; not on a chained VFO |
+| `ais`, `ais_center` | AIS decoder on / off; `ais_center: true` centres and tunes the VFO on 162.000 MHz in FM (between the two AIS channels, both are decoded) and turns AIS on (ACARS, VDL2, DAB, ISM and HFDL off). AIS decodes the channels inside the band of the VFO and mutes its audio; not on a chained VFO |
 | `ism`, `ism_hz` | ISM decoder on / off and preset (one of `ism_freqs`). `ism: true` starts rtl_433, mutes the audio and switches the VFO to 2.048 MS/s on that preset in AM (ACARS, VDL2 and DAB off, RTL-SDR only); `ism: false` restores the sample rate; `ism_hz` alone re-centres a running decoder |
 | `rec`, `rec_sq` | MP3 recording on / off: `rec` everything, a new file after 15 min; `rec_sq` only with an open squelch, each session in its own file |
 | `log` | daily logs, e.g. `{"log": {"cw": true, "ft8": false}}` |
@@ -241,6 +251,16 @@ when the memory is recalled in the page: `""` (none), `ft8`, `wefax`, `cw`, `rtt
 `POST /api/memories/import_json` imports a RADIMCOM export in one step (a list, or `{"groups", "memories"}` from the editor): each entry needs `freq_hz` (or `dab_channel`) and `mode`, and every imported memory gets a new `id`. Duplicates (same frequency and name) and invalid entries are skipped. Returns `{"added", "skipped"}`.
 
 Export (MEMORIES tab → EXPORT) is done in the browser from `GET /api/memories` and `GET /api/memory_groups`.
+
+## Recordings
+
+The MP3 files of REC / REC SQ in `data\recordings` (RECORDINGS tab). The folder is shared by all VFOs, so every VFO port gives the same list.
+
+| Method | Path | Meaning |
+|---|---|---|
+| GET | `/api/recordings` | the files, newest first: `[{"name", "size", "mtime", "secs", "hz", "mode", "start", "memory", "writing"}]` (`secs` from the size at 128 kbps; `hz`, `mode`, `start` (`YYYY-MM-DD HH:MM:SS`, local time) and `memory` from the file name, empty for a foreign file; `writing` = being recorded now) |
+| GET | `/api/recordings/<name>` | the file (`audio/mpeg`, Range requests work) |
+| DELETE | `/api/recordings/<name>` | delete; 400 with `error` for a file being written or an unknown name |
 
 ## Examples
 

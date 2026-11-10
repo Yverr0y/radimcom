@@ -192,9 +192,11 @@
       <button id="afiKey" class="key" title="AFI: audio frequency inversion – voice inversion scrambler / descrambler (all modes except WFM); the inversion frequency is set in SETTINGS">AFI</button>
       <button id="asqKey" class="key" title="ASQ: auto squelch in AM/FM/WFM – the level follows the noise floor (margin in SETTINGS, AUDIO page). Also on by itself with AGC+ and the squelch set">ASQ</button>
       <button id="cueKey" class="key" title="CUE: keep hearing this VFO (at CUE level) when another VFO is selected">CUE</button>
+      <button id="recsKey" class="key" aria-controls="recsPane" title="RECS: the RECORDINGS tab – the MP3 files recorded by REC / REC SQ (data
+ecordings), play them in the browser">RECS</button>
     </div></div>
     <div class="kgroup"><span class="klabel">DECODE</span><div class="keys">
-      <button id="decKey" class="key" aria-controls="decPane" title="Decoders on/off: shows or hides the DECODERS tab, one page for each decoder (FT8, WEFAX, CW, RTTY, SSTV, ACARS, VDL2, DAB, ISM, DSD)">DECODE</button>
+      <button id="decKey" class="key" aria-controls="decPane" title="Decoders on/off: shows or hides the DECODERS tab, one page for each decoder (FT8, WEFAX, CW, RTTY, SSTV, ACARS, VDL2, HFDL, AIS, DAB, ISM, DSD)">DECODE</button>
     </div></div>
     <div class="kgroup"><span class="klabel">SAT</span><div class="keys">
       <button id="satKey" class="key sat-key" aria-label="Satellite tracking" aria-controls="amsatPane" title="Satellite tracking: the SATELLITES tab (passes, map, Doppler, rotor)"><svg class="sat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.6 7C3.2 12.6 8.4 18.8 15 17.4Z"/><path d="M9.8 12.2L13.4 8.6"/><circle cx="14.6" cy="7.4" r="1.6"/><path d="M16.6 3.1A5 5 0 0 1 19 5.5"/><path d="M17.2.6A8 8 0 0 1 21.5 4.9"/><path d="M7.6 15.4L5.8 20.6M11 17.2L12.4 20.6M3.2 21.2H15"/></svg></button>
@@ -218,6 +220,7 @@
     <button data-tab="dec" id="decTab">DECODERS <span id="decCount" class="dec-count"></span><span id="decNew" class="dec-new" hidden>●</span></button>
     <button data-tab="sat" id="amsatTab">SATELLITES</button>
     <button data-tab="mem" id="memTab" hidden>MEMORIES</button>
+    <button data-tab="recs" id="recsTab" hidden>RECORDINGS</button>
     <button data-tab="set" id="setTab" hidden>SETTINGS</button>
   </div>
   <div class="scope display">
@@ -446,6 +449,126 @@
       </div>
     </section>
 
+    <section class="card ft8 hfdl" id="hfdlCard" data-dec="hfdl" hidden>
+      <div class="ft8-head">
+        <label class="key small toggle" data-dec-on="hfdl" title="HFDL (aircraft data link on HF, 2.9–22 MHz) on/off. Decodes all HFDL channels inside the band the VFO receives; mutes the audio of the VFO"><input id="hfdlOn" type="checkbox">ON</label>
+        <div class="bands" id="hfdlBands"></div>
+        <button id="hfdlInfoKey" class="key small" title="Show / hide the description of the decoder (the table or map takes its place)">INFO</button>
+        <span id="hfdlInfo" class="muted"></span>
+        <span id="hfdlPaused" class="scroll-paused" hidden title="A click on a message holds the list still. Turn the mouse wheel over the messages to resume.">SCROLL PAUSED</span>
+        <div class="bands" id="hfdlViews">
+          <button class="key small on" data-view="msgs" title="All received HFDL messages">MESSAGES</button>
+          <button class="key small" data-view="aircraft" title="Aircraft heard: the newest data of each (from HFDL and ADS-B)">AIRCRAFT</button>
+          <button class="key small" data-view="map" title="Aircraft with a position, their tracks and the HFDL ground stations on a map">MAP</button>
+        </div>
+        <label class="wf-opt" title="Which messages the table shows">SHOW
+          <select id="hfdlShow"><option value="all">All</option><option value="acars">ACARS</option><option value="pos">With position</option><option value="logon">Logon / logoff</option></select>
+        </label>
+        <input id="hfdlFilter" class="pkt-filter" type="search" placeholder="filter" title="Show only messages containing this text (flight, registration, ICAO, ground station, text)">
+        <label class="wf-opt log-opt" title="Write to the daily log data\logs\hfdl_YYYY-MM-DD.txt (UTC, shared by all VFOs; squitters are not logged)"><input type="checkbox" data-log="hfdl">LOG</label>
+        <button id="hfdlClear" class="key small" title="Clear the list, the heard ground stations and the counters">CLR</button>
+      </div>
+      <p class="note" id="hfdlNote" hidden>HFDL (High Frequency Data Link): ACARS of aircraft over oceans and remote areas, plus logons, positions and
+        frequency data, decoded by dumphfdl. <b>Frequencies: 2.9–22 MHz</b>, 16 ground stations, each on a few channels
+        (the table below); the band buttons centre the VFO on a band.
+        The audio of the VFO is muted while this decoder runs: all channels within ±(sample rate / 2) of the VFO centre are decoded at once, so a higher sample rate covers more of them
+        (2.4 MS/s: the whole band, often 8.8 + 10 MHz or 10 + 11 MHz together).
+        Needs HF: RTL-SDR Blog V4, a dongle with an upconverter (or direct sampling), LimeSDR, Airspy with an upconverter.
+        Best by day on 8–22 MHz, by night on 3–11 MHz. Each ground station sends a squitter every 32 s on its active channels,
+        so the heard stations show up even without aircraft traffic. ↑ = from the ground, ↓ = from the aircraft.
+        <span class="ext">Blue</span> = aircraft type, flight level, speed and squawk looked up on ADS-B (adsb.fi / adsb.lol, needs internet)
+        by the ICAO address or registration; click the flight, registration or ICAO to open the map in a new tab.
+        Over the oceans aircraft are often out of ADS-B coverage: then "not seen on ADS-B now".
+        Ground station: the one the message is addressed to (↓) or sent by (↑), from the HFDL frame header.
+        A click on a message marks it and holds the list still (SCROLL PAUSED); the mouse wheel over the messages resumes it;
+        a long message shows 3 lines, a click shows all. AIRCRAFT: the newest data of each aircraft; MAP: aircraft with a position and their tracks.</p>
+      <div class="hfdl-status">
+        <div id="hfdlChannels" class="muted"></div>
+        <div id="hfdlHeard"></div>
+        <details id="hfdlTableBox">
+          <summary>HFDL ground stations and frequencies (kHz)</summary>
+          <div id="hfdlStations"></div>
+        </details>
+      </div>
+      <div class="ft8-table" id="hfdlMsgBox">
+        <table class="hfdl-table">
+          <colgroup><col class="c-utc"><col class="c-freq"><col class="c-sig"><col class="c-dir"><col class="c-gs"><col class="c-cty"><col class="c-flt"><col class="c-reg"><col class="c-icao"><col class="c-sqk"><col class="c-act"><col class="c-model"><col class="c-fl"><col class="c-spd"><col class="c-kind"><col class="c-lbl"><col class="c-pos"><col></colgroup>
+          <thead><tr><th>UTC</th><th title="HFDL channel in kHz">kHz</th><th title="Signal level in dBFS and bit rate">Signal</th><th title="↑ uplink (ground station → aircraft), ↓ downlink (aircraft → ground station)">Dir</th><th title="Ground station the message is addressed to (↓ downlink) or sent by (↑ uplink), from the HFDL frame header">To ground station</th><th title="Country of registration, from the 24-bit ICAO address">Country</th><th title="Flight; click for the map (adsb.lol)">Flight</th><th title="Registration (from ACARS or ADS-B); click for the map (adsb.fi)">Reg</th><th title="24-bit ICAO aircraft address (hex), from HFDL or ADS-B">ICAO</th><th title="Transponder squawk code from ADS-B">Squawk</th><th title="Aircraft type code from ADS-B">ACFT type</th><th title="Aircraft model from ADS-B">Model</th><th title="Flight level from ADS-B">FL</th><th title="Ground speed from ADS-B">Speed</th><th title="HFDL message type, or ACARS">Type</th><th title="ACARS label">Label</th><th title="Position sent by the aircraft over HFDL; click for the map">Position</th><th>Message</th></tr></thead>
+          <tbody id="hfdlRows"></tbody>
+        </table>
+        <div id="hfdlEmpty" class="ft8-empty">No messages yet. Tune an HFDL band; squitters of the ground stations (heard stations above) come first,
+          aircraft messages every few seconds to minutes depending on the band and time of day.</div>
+      </div>
+      <div class="ft8-table" id="hfdlAcBox" hidden>
+        <table class="hfdl-ac-table">
+          <colgroup><col class="c-utc"><col class="c-cty"><col class="c-flt"><col class="c-reg"><col class="c-icao"><col class="c-act"><col class="c-model"><col class="c-fl"><col class="c-spd"><col class="c-sqk"><col class="c-pos"><col class="c-src"><col class="c-gs"><col class="c-n"></colgroup>
+          <thead><tr><th title="Last message">UTC</th><th>Country</th><th>Flight</th><th>Reg</th><th>ICAO</th><th title="Aircraft type code from ADS-B">ACFT type</th><th title="Aircraft model from ADS-B">Model</th><th title="Flight level from ADS-B">FL</th><th title="Ground speed from ADS-B">Speed</th><th title="Squawk from ADS-B">Squawk</th><th title="Newest known position; click to show it on the MAP">Position</th><th title="Where the position comes from and its age: HFDL (sent by the aircraft) is preferred, ADS-B (adsb.fi / adsb.lol) only when no HFDL position is known">Source</th><th title="Ground station of the last message of the aircraft">To ground station</th><th title="Number of HFDL messages">Msgs</th></tr></thead>
+          <tbody id="hfdlAcRows"></tbody>
+        </table>
+        <div id="hfdlAcEmpty" class="ft8-empty">No aircraft yet.</div>
+      </div>
+      <div class="hfdl-map" id="hfdlMapBox" hidden>
+        <div class="hfdl-map-main"><div id="hfdlMap"></div><div id="hfdlMapNote" class="muted"></div></div>
+        <div class="hfdl-map-list" id="hfdlMapList"></div>
+      </div>
+    </section>
+
+    <section class="card ft8 ais" id="aisCard" data-dec="ais" hidden>
+      <div class="ft8-head">
+        <label class="key small toggle" data-dec-on="ais" title="AIS (ships, 161.975 / 162.025 MHz) on/off. Decodes the AIS channels inside the band the VFO receives; mutes the audio of the VFO"><input id="aisOn" type="checkbox">ON</label>
+        <div class="bands" id="aisBands"></div>
+        <button id="aisInfoKey" class="key small" title="Show / hide the description of the decoder (the table or map takes its place)">INFO</button>
+        <span id="aisInfo" class="muted"></span>
+        <span id="aisPaused" class="scroll-paused" hidden title="A click on a message holds the list still. Turn the mouse wheel over the messages to resume.">SCROLL PAUSED</span>
+        <div class="bands" id="aisViews">
+          <button class="key small on" data-view="msgs" title="All received AIS messages">MESSAGES</button>
+          <button class="key small" data-view="ships" title="Ships and other stations heard: the newest data of each">SHIPS</button>
+          <button class="key small" data-view="map" title="Ships with a position, their tracks, base stations and aids to navigation on a map">MAP</button>
+        </div>
+        <label class="wf-opt" title="Which messages the table shows">SHOW
+          <select id="aisShow"><option value="all">All</option><option value="pos">With position</option><option value="static">Static data</option><option value="base">Base stations</option><option value="other">Other</option></select>
+        </label>
+        <input id="aisFilter" class="pkt-filter" type="search" placeholder="filter" title="Show only messages containing this text (MMSI, name, call sign, type, destination, country, text)">
+        <label class="wf-opt log-opt" title="Write to the daily log data\logs\ais_YYYY-MM-DD.txt (UTC, shared by all VFOs; one line per message with the NMEA sentence)"><input type="checkbox" data-log="ais">LOG</label>
+        <button id="aisClear" class="key small" title="Clear the list, the ships and the counters">CLR</button>
+      </div>
+      <p class="note" id="aisNote" hidden>AIS (Automatic Identification System): position reports, static and voyage data of ships, base stations,
+        aids to navigation and SAR aircraft, GMSK 9600 Bd on <b>161.975 MHz (AIS 1) and 162.025 MHz (AIS 2)</b>, decoded here in RADIMCOM
+        (no external program). The <b>162.000</b> button centres the VFO between the two channels, so both are decoded at once;
+        the audio of the VFO is muted while this decoder runs (the decoder takes the raw samples, the sample rate stays).
+        Range: line of sight, 20–40 km from the coast or a river with a vertical antenna; inland only on rivers and lakes.
+        Country from the MMSI (its first three digits); the station kind (ship, base station, aid to navigation, SAR aircraft) too.
+        Static data (name, call sign, type, destination, size, draught, ETA) comes in a message of its own every 6 min
+        (class A) or every few minutes (class B), so a ship can be shown first by its MMSI only; SHIPS and the MAP keep
+        the newest data of each. A click on the MMSI opens MarineTraffic, on the name VesselFinder, in a new tab.
+        A click on a message marks it and holds the list still (SCROLL PAUSED); the mouse wheel over the messages resumes it.
+        Each message also has its NMEA !AIVDM sentence (in the tooltip of the message type and in the LOG).</p>
+      <div class="ais-status">
+        <div id="aisChannels" class="muted"></div>
+      </div>
+      <div class="ft8-table" id="aisMsgBox">
+        <table class="ais-table">
+          <colgroup><col class="c-utc"><col class="c-ch"><col class="c-sig"><col class="c-cty"><col class="c-mmsi"><col class="c-name"><col class="c-call"><col class="c-stype"><col class="c-kind"><col class="c-status"><col class="c-pos"><col class="c-sog"><col class="c-cog"><col class="c-hdg"><col class="c-dest"><col></colgroup>
+          <thead><tr><th>UTC</th><th title="AIS channel: A = 161.975 MHz, B = 162.025 MHz">Ch</th><th title="Peak signal level in the block of samples, dBFS">Signal</th><th title="Country from the MMSI">Country</th><th title="Maritime Mobile Service Identity; click for MarineTraffic">MMSI</th><th title="Name of the ship / station (from its static data); click for VesselFinder">Name</th><th>Call</th><th title="Ship type (from the static data), kind of aid to navigation">Type</th><th title="AIS message type">Message</th><th title="Navigational status">Status</th><th title="Position sent by the station; click for the map">Position</th><th title="Speed over ground, knots">SOG</th><th title="Course over ground">COG</th><th title="True heading">HDG</th><th title="Destination (from the static data)">Dest</th><th title="IMO, size, draught, ETA, rate of turn, safety text…">Details</th></tr></thead>
+          <tbody id="aisRows"></tbody>
+        </table>
+        <div id="aisEmpty" class="ft8-empty">No messages yet. Centre the VFO on 162.000 MHz (the button) with an antenna that sees the sea, a river or a lake;
+          a ship under way reports every 2–10 s, moored ships every 3 min, base stations every 10 s.</div>
+      </div>
+      <div class="ft8-table" id="aisShipBox" hidden>
+        <table class="ais-ship-table">
+          <colgroup><col class="c-utc"><col class="c-cty"><col class="c-mmsi"><col class="c-name"><col class="c-call"><col class="c-stype"><col class="c-status"><col class="c-pos"><col class="c-sog"><col class="c-cog"><col class="c-hdg"><col class="c-dest"><col class="c-eta"><col class="c-size"><col class="c-n"></colgroup>
+          <thead><tr><th title="Last message">UTC</th><th>Country</th><th title="Click for MarineTraffic">MMSI</th><th title="Click for VesselFinder">Name</th><th>Call</th><th title="Ship type, kind of station">Type</th><th>Status</th><th title="Newest position; click to show it on the MAP">Position</th><th title="Speed over ground, knots">SOG</th><th>COG</th><th>HDG</th><th>Dest</th><th title="Estimated time of arrival (month-day hour:minute, UTC)">ETA</th><th title="Length × beam, draught">Size</th><th title="Number of messages">Msgs</th></tr></thead>
+          <tbody id="aisShipRows"></tbody>
+        </table>
+        <div id="aisShipEmpty" class="ft8-empty">No ships yet.</div>
+      </div>
+      <div class="ais-map" id="aisMapBox" hidden>
+        <div class="ais-map-main"><div id="aisMap"></div><div id="aisMapNote" class="muted"></div></div>
+        <div class="ais-map-list" id="aisMapList"></div>
+      </div>
+    </section>
+
     <section class="card ft8 wefax" id="wefaxCard" data-dec="wefax" hidden>
       <div class="ft8-head">
         <label class="key small toggle" data-dec-on="wefax" title="WEFAX decoder on/off"><input id="wefaxOn" type="checkbox">ON</label>
@@ -572,6 +695,29 @@
         <button id="amsatRefresh" class="key small" title="Download the lists from amsat.org again">REFRESH</button>
       </div>
       <div class="amsat-body" id="amsatBody"></div>
+    </div>
+    <!-- RECORDINGS tab (RECS key): the MP3 files of REC / REC SQ in data
+ecordings, played in the browser -->
+    <div class="set-pane recs-pane" id="recsPane" hidden aria-label="Recordings">
+      <div class="amsat-head">
+        <div class="recs-player">
+          <button id="recsPlayKey" class="key accent" title="Play / pause the selected recording (also a click on a row)">▶ PLAY</button>
+          <audio id="recsAudio" controls preload="none"></audio>
+          <span class="recs-now" id="recsNow" title="The recording being played"></span>
+        </div>
+        <label class="key small toggle" title="When a recording ends, the next one below in the list (the older one) plays by itself"><input id="recsNext" type="checkbox">NEXT</label>
+        <input id="recsFilter" class="recs-filter" type="search" placeholder="filter: name, memory, kHz, mode…" title="Shows only the recordings whose name contains the text">
+        <button id="recsReload" class="key small" title="Read the folder again (it is read by itself when the tab opens and every 10 s while a recording runs)">⟳</button>
+        <span class="amsat-info" id="recsInfo"></span>
+      </div>
+      <div class="amsat-body recs-body">
+        <table class="recs-table">
+          <thead><tr><th></th><th>Start</th><th>Memory</th><th>Frequency</th><th>Mode</th><th>Length</th><th>Size</th><th>File</th><th></th></tr></thead>
+          <tbody id="recsRows"></tbody>
+        </table>
+        <p class="note" id="recsEmpty" hidden>No recordings yet: REC or REC SQ (under the volume faders) records the audio of the active VFO to MP3 files in data
+ecordings.</p>
+      </div>
     </div>
     <!-- MEMORIES tab (MEM key): LIST to recall memories, and the memory editor (CHANNELS, GROUPS, IMPORT, EXPORT);
          memory editor by Brano (brjanicek) -->

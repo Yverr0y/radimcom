@@ -861,10 +861,10 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .acars td.flt a { color: var(--text); }
 .acars td a { text-decoration: underline dotted; }
 /* aircraft type and position from ADS-B under the registration */
-.acars .ac-sub { font-size: 10px; color: #6cb8ff; white-space: nowrap; }   /* blue = from ADS-B, not from ACARS */
-.acars .ac-sub.none { color: var(--dim); }
+.acars .ac-sub, .hfdl .ac-sub { font-size: 10px; color: #6cb8ff; white-space: nowrap; }   /* blue = from ADS-B, not from ACARS */
+.acars .ac-sub.none, .hfdl .ac-sub.none { color: var(--dim); }
 #vdl2Info.err { color: #ff7b6b; }
-.acars .ext { color: #6cb8ff; }
+.acars .ext, .hfdl .ext { color: #6cb8ff; }
 .acars td.desc { white-space: normal; min-width: 12em; max-width: 18em; color: var(--text); }
 .acars tr.bad td { color: var(--dim); }
 /* scroll pause: the marked message; the position is held by acarsKeepView() alone */
@@ -900,8 +900,8 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .acars td.icao { color: var(--muted); }
 .acars-table td.reg .ac-sub, .acars-table td.loc .ac-sub { white-space: normal; }
 .acars-table td.desc, .acars-table td.msg { min-width: 0; max-width: none; }
-.acars .cflag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
-.acars .cflag img { width: 20px; height: 15px; object-fit: cover; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .15); }
+.acars .cflag, .hfdl .cflag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
+.acars .cflag img, .hfdl .cflag img { width: 20px; height: 15px; object-fit: cover; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .15); }
 .acars td.tag .type-tag { font-size: 10px; line-height: 16px; padding: 0 6px; }   /* same size as the filter tags */
 /* decoded CPDLC / ADS-C / ATN in the row: coloured tag + stripe on the left; uplinks (ATC) amber, downlinks green */
 .type-tag { display: inline-block; font-size: 9px; line-height: 13px; padding: 0 4px; border-radius: 3px;
@@ -925,6 +925,90 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .ism td.dev, .ism td.id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ism td.data { white-space: normal; word-break: break-word; }
 .ism .rep { color: var(--muted); margin-left: 6px; }
+/* HFDL: channels decoded now, ground stations heard, the station / frequency table, messages */
+.hfdl-status { flex: none; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.hfdl-status summary { cursor: pointer; color: var(--muted); }
+#hfdlInfo.err { color: #ff7b6b; }
+.hfdl-gs { display: inline-block; margin: 0 8px 2px 4px; color: var(--green); }
+.hfdl-gs small { color: var(--muted); }
+/* the station table: compact, at most ~10 rows high with its own scroll bar, so it never pushes out of the card */
+#hfdlStations { max-height: 190px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; margin-top: 4px; }
+.hfdl table.hfdl-st { width: auto; table-layout: auto; border-collapse: collapse; margin: 0; font-size: 12px; line-height: 16px; }
+.hfdl .hfdl-st td, .hfdl .hfdl-st th { padding: 1px 10px; text-align: left; vertical-align: top; overflow: visible; }
+.hfdl .hfdl-st th { position: sticky; top: 0; background: #0b0e12; }
+.hfdl .hfdl-st td.fq { white-space: normal; }
+.hfdl-st td.fq { color: var(--muted); }
+.hfdl-st .lis { color: var(--text); text-decoration: underline dotted; }   /* listened to, nothing received (yet) */
+.hfdl-st .heard { color: var(--green); font-weight: 700; }
+.hfdl table { table-layout: fixed; }
+.hfdl .c-utc { width: 76px; }
+.hfdl .c-freq { width: 56px; }
+.hfdl .c-sig { width: 70px; }
+.hfdl .c-dir { width: 34px; }
+.hfdl .c-gs { width: 150px; }
+.hfdl .c-flt { width: 80px; }
+.hfdl .c-reg { width: 80px; }
+.hfdl .c-icao { width: 66px; }
+.hfdl .c-kind { width: 150px; }
+.hfdl .c-lbl { width: 46px; }
+.hfdl .c-pos { width: 120px; }
+.hfdl .c-cty { width: 64px; }
+.hfdl .c-sqk { width: 60px; }
+.hfdl .c-act { width: 70px; }
+.hfdl .c-model { width: 160px; }
+.hfdl .c-fl { width: 56px; }
+.hfdl .c-spd { width: 60px; }
+.hfdl table.hfdl-table { min-width: 1700px; }
+.hfdl td.reg, .hfdl td.flt, .hfdl td.model { white-space: normal; overflow-wrap: anywhere; }
+.hfdl td.reg a { color: var(--amber); }
+.hfdl td.flt a { color: var(--text); }
+.hfdl td { vertical-align: top; overflow: hidden; text-overflow: ellipsis; }
+.hfdl td.up { color: var(--amber); }
+.hfdl td.down { color: var(--green); }
+.hfdl td.reg { color: var(--amber); }
+.hfdl td.icao { color: var(--muted); }
+.hfdl td .sub { display: block; font-size: 10px; color: var(--muted); }
+.hfdl td.data { white-space: pre-wrap; word-break: break-word; }
+.hfdl td.data .desc { display: block; color: var(--muted); font-size: 11px; }
+.hfdl td.data .bad, .hfdl tr.bad td { color: var(--dim); }
+.hfdl td a { color: #6cb8ff; text-decoration: underline dotted; }
+/* HFDL message column: 3 lines and "▾ more" (like ACARS / VDL2); scroll pause */
+.hfdl td.data.long { cursor: pointer; }
+.hfdl td.data.long:not(.open) .msg-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.hfdl td.data.long::after { content: "▾ more"; display: block; font-size: 10px; color: var(--muted); }
+.hfdl td.data.long.open::after { content: "▴ less"; }
+.hfdl tr.picked td { background: rgba(255, 255, 255, .17); }
+.hfdl .ft8-table.paused { overflow-anchor: none; }
+/* HFDL AIRCRAFT list and MAP (aircraft, tracks, ground stations; list on the right) */
+.hfdl table.hfdl-ac-table { min-width: 1200px; }
+.hfdl .c-src { width: 120px; }
+.hfdl .c-n { width: 50px; }
+.hfdl td.num { text-align: right; }
+.dec-pane .hfdl-map { flex: 1 1 0; min-height: 300px; display: flex; gap: 8px; }
+.hfdl-map-main { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+#hfdlMap { flex: 1 1 0; min-height: 300px; border: 1px solid var(--line); border-radius: 6px; background: #0e1116; }
+#hfdlMap.leaflet-container { font: 12px system-ui, sans-serif; }
+.hfdl-dark { filter: invert(1) hue-rotate(180deg) brightness(.8) contrast(.9) saturate(.4); }   /* OSM tiles turned dark */
+.hfdl-map-list { width: 330px; flex: none; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; font-size: 12px; }
+.hfdl-ml-head { position: sticky; top: 0; padding: 4px 8px; background: #0b0e12; color: var(--muted); }
+.hfdl-ml { display: grid; grid-template-columns: 22px 72px 62px 54px 40px 50px 1fr; gap: 4px; align-items: center; padding: 2px 8px; cursor: pointer;
+  border-top: 1px solid rgba(255, 255, 255, .04); white-space: nowrap; }
+.hfdl-ml:hover { background: rgba(255, 255, 255, .06); }
+.hfdl-ml.sel { background: rgba(255, 75, 60, .22); }
+.hfdl-ml.old { opacity: .55; }
+.hfdl-ml img { width: 20px; height: 14px; object-fit: cover; border-radius: 2px; }
+.hfdl-ml span { overflow: hidden; text-overflow: ellipsis; }
+.hfdl-ml .icao, .hfdl-ml .age { color: var(--muted); }
+.hfdl-ml .age { text-align: right; }
+.hfdl-ml .ext { color: #6cb8ff; }
+.hfdl-plane svg { width: 22px; height: 22px; fill: #ffd84a; filter: drop-shadow(0 0 2px #000); }   /* yellow; selected red; old grey */
+.hfdl-plane.old svg { fill: #8a929c; }
+.hfdl-plane.sel svg { fill: #ff4b3c; }
+.leaflet-tooltip.hfdl-label { background: rgba(20, 24, 30, .85); color: #fff; border: 1px solid #444; box-shadow: none; padding: 0 4px;
+  font: 10px/12px ui-monospace, Consolas, monospace; text-align: center; }
+.leaflet-tooltip.hfdl-label::before { display: none; }
+.hfdl-gs-mark { color: #6b7380; font-size: 13px; line-height: 14px; text-align: center; text-shadow: 0 0 2px #000; }
+.hfdl-gs-mark.heard { color: var(--green); font-size: 16px; }
 /* PACKET: frames, APRS stations and their map */
 .pkt table { table-layout: fixed; }
 .pkt .c-utc { width: 82px; }
@@ -979,9 +1063,9 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .acars tr.r-adsc td:first-child { box-shadow: inset 3px 0 #c79bff; }
 .acars tr.r-atn td:first-child { box-shadow: inset 3px 0 #6cff9c; }
 /* emergency squawk: red frame around the whole row */
-.acars tr.sqk-alert td { box-shadow: inset 0 2px var(--red), inset 0 -2px var(--red); }
-.acars tr.sqk-alert td:first-child { box-shadow: inset 2px 0 var(--red), inset 0 2px var(--red), inset 0 -2px var(--red); }
-.acars tr.sqk-alert td:last-child { box-shadow: inset -2px 0 var(--red), inset 0 2px var(--red), inset 0 -2px var(--red); }
+.acars tr.sqk-alert td, .hfdl tr.sqk-alert td { box-shadow: inset 0 2px var(--red), inset 0 -2px var(--red); }
+.acars tr.sqk-alert td:first-child, .hfdl tr.sqk-alert td:first-child { box-shadow: inset 2px 0 var(--red), inset 0 2px var(--red), inset 0 -2px var(--red); }
+.acars tr.sqk-alert td:last-child, .hfdl tr.sqk-alert td:last-child { box-shadow: inset -2px 0 var(--red), inset 0 2px var(--red), inset 0 -2px var(--red); }
 .acars .dec { margin-bottom: 3px; white-space: pre-wrap; }
 .acars .dec.cp-up .cp-el { color: var(--amber); }
 .acars .dec.cp-down .cp-el { color: #6cff9c; }
@@ -1143,6 +1227,25 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .upd-keys a.key { text-decoration: none; display: inline-flex; align-items: center; }
 .set-tabs { flex-wrap: wrap; }
 .set-error { margin: 0; }
+/* RECORDINGS tab: player in the head, the list of files below */
+.recs-player { display: flex; align-items: center; gap: 8px; flex: 1 1 420px; min-width: 0; }
+.recs-player audio { flex: 1 1 0; min-width: 200px; height: 32px; color-scheme: dark; }
+.recs-now { flex: 0 1 auto; max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--yellow); font-size: 12px; }
+.recs-filter { width: 220px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 4px; background: #000; color: var(--text); font-size: 12px; }
+.recs-body { padding: 0; }
+.recs-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.recs-table th { position: sticky; top: 0; background: #151a21; color: var(--yellow); text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.recs-table td { padding: 4px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: middle; }
+.recs-table td.file { color: var(--muted); max-width: 360px; overflow: hidden; text-overflow: ellipsis; }
+.recs-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.recs-table tbody tr { cursor: pointer; }
+.recs-table tbody tr:hover { background: #10151c; }
+.recs-table tbody tr.playing { background: #1a2638; color: #fff; }
+.recs-table tbody tr.playing td.file { color: #cfd8e3; }
+.recs-table .rec-mark { color: var(--red); animation: rec-tag-blink 1s steps(2, start) infinite; }
+.recs-table .play { width: 22px; color: var(--yellow); text-align: center; }
+.recs-table .del { width: 20px; color: var(--muted); text-align: center; }
+.recs-table .del:hover { color: var(--red); }
 .set-panel { zoom: 1.1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
 .set-panel[data-set-panel="tx"] { grid-template-columns: minmax(0, 1fr); }
 /* pages with sub-pages (SDR DONGLE, UI): a row of sub-page keys, the open sub-page under it */
@@ -1683,3 +1786,71 @@ html[data-ink="dark"] .r-top, html[data-ink="dark"] .r-keys { border-bottom-colo
 #memPane ::-webkit-scrollbar-track { background: transparent; }
 #memPane ::-webkit-scrollbar-button { display: none; }
 .med-form .med-color .key { width: auto; min-width: 30px; }
+
+/* AIS: ships (ais.py): the channels decoded now, the messages, SHIPS and the MAP (ships, tracks, base stations, aids to navigation) */
+.ais-status { flex: none; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+#aisInfo.err { color: #ff7b6b; }
+.ais table { table-layout: fixed; }
+.ais .c-utc { width: 76px; }
+.ais .c-ch { width: 34px; }
+.ais .c-sig { width: 56px; }
+.ais .c-cty { width: 64px; }
+.ais .c-mmsi { width: 86px; }
+.ais .c-name { width: 170px; }
+.ais .c-call { width: 66px; }
+.ais .c-stype { width: 140px; }
+.ais .c-kind { width: 190px; }
+.ais .c-status { width: 150px; }
+.ais .c-pos { width: 130px; }
+.ais .c-sog { width: 56px; }
+.ais .c-cog { width: 50px; }
+.ais .c-hdg { width: 50px; }
+.ais .c-dest { width: 150px; }
+.ais .c-eta { width: 90px; }
+.ais .c-size { width: 150px; }
+.ais .c-n { width: 50px; }
+.ais table.ais-table { min-width: 1700px; }
+.ais table.ais-ship-table { min-width: 1500px; }
+.ais td { vertical-align: top; overflow: hidden; text-overflow: ellipsis; }
+.ais td.name, .ais td.dest { white-space: normal; overflow-wrap: anywhere; }
+.ais td.name, .ais td.name a { color: var(--amber); }
+.ais td.mmsi a { color: var(--text); }
+.ais td.data { white-space: pre-wrap; word-break: break-word; }
+.ais td a { color: #6cb8ff; text-decoration: underline dotted; }
+.ais td.num { text-align: right; }
+.ais td.ch-a { color: var(--green); }
+.ais td.ch-b { color: var(--amber); }
+.ais .cflag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
+.ais .cflag img { width: 20px; height: 15px; object-fit: cover; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .15); }
+.ais tr.picked td { background: rgba(255, 255, 255, .17); }
+.ais .ft8-table.paused { overflow-anchor: none; }
+.type-tag.t-base { background: #6cb8ff; }
+.type-tag.t-aton { background: #6cff9c; }
+.type-tag.t-sar { background: #ff8a6b; }
+.type-tag.t-static { background: #c79bff; }
+.dec-pane .ais-map { flex: 1 1 0; min-height: 300px; display: flex; gap: 8px; }
+.ais-map-main { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+#aisMap { flex: 1 1 0; min-height: 300px; border: 1px solid var(--line); border-radius: 6px; background: #0e1116; }
+#aisMap.leaflet-container { font: 12px system-ui, sans-serif; }
+.ais-map-list { width: 340px; flex: none; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; font-size: 12px; }
+.ais-ml-head { position: sticky; top: 0; padding: 4px 8px; background: #0b0e12; color: var(--muted); }
+.ais-ml { display: grid; grid-template-columns: 22px 1fr 76px 60px 44px 50px; gap: 4px; align-items: center; padding: 2px 8px; cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, .05); }
+.ais-ml:hover { background: rgba(255, 255, 255, .06); }
+.ais-ml.sel { background: rgba(255, 75, 60, .22); }
+.ais-ml.old { opacity: .55; }
+.ais-ml img { width: 20px; height: 14px; object-fit: cover; border-radius: 2px; }
+.ais-ml span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ais-ml .mmsi, .ais-ml .age { color: var(--muted); }
+.ais-ml .age { text-align: right; }
+.ais-ml .stype { color: #6cb8ff; }
+.ais-ship svg { width: 20px; height: 20px; fill: #ffd84a; filter: drop-shadow(0 0 2px #000); }   /* yellow ship under way; selected red; old grey */
+.ais-ship.stop svg { fill: #c9a227; }
+.ais-ship.base svg { fill: #6cb8ff; }
+.ais-ship.aton svg { fill: #6cff9c; }
+.ais-ship.sar svg { fill: #ff8a6b; }
+.ais-ship.old svg { fill: #8a929c; }
+.ais-ship.sel svg { fill: #ff4b3c; }
+.leaflet-tooltip.ais-label { background: rgba(20, 24, 30, .85); color: #fff; border: 1px solid #444; box-shadow: none; padding: 0 4px;
+  font-size: 10px; line-height: 12px; white-space: nowrap; }
+.leaflet-tooltip.ais-label::before { display: none; }

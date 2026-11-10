@@ -29,6 +29,7 @@
 - **Decoders:** 11 decoders, see [Decoders](#decoders) below.
 - **Satellite tracking:** pass prediction, world map, Doppler correction of the VFO and a K3NG antenna rotor over USB, planned for passes across the north; no other program needed. See [Satellite tracking](satellites.md).
 - **REC and REC SQ:** record the audio of the selected VFO to MP3 files in `data\recordings`: everything, or only while the squelch is open.
+- **RECORDINGS tab (RECS key):** the recorded files in a table (start, memory, frequency, mode, length, size), played in the browser; NEXT plays the next older file, filter, delete. See [RECS](controls.md#function-keys).
 - **Daily logs:** the LOG checkbox in each decoder card writes to `data\logs\<decoder>_YYYY-MM-DD.txt` (UTC, one line per message; WEFAX/SSTV log the names of saved images), classic ACARS to `data\acars\acars_YYYY-MM-DD.txt` and VDL2 to `data\acars\vdl2_YYYY-MM-DD.txt`.
 - **TX with LimeSDR** (optional, off by default), see [Transmitting (LimeSDR)](configuration.md#transmitting-limesdr).
 - **HTTP API:** everything the page does can be done from scripts, see [API/API.md](../API/API.md).
@@ -47,6 +48,8 @@
 | **PACKET** | AX.25 at 1200 Bd AFSK and 9600 Bd FSK / GFSK G3RUH (satellites) | APRS with a station list and map, spectrum and eye diagram | all | [DECODE](controls.md#function-keys) |
 | **ACARS** | classic aircraft data link (131.725 MHz and others, AM, MSK 2400 bit/s) | FANS-1/A CPDLC and ADS-C decoded to plain text | all | [Aircraft data link](decoders/aircraft.md) |
 | **VDL2** | VDL Mode 2, EU or US channels 136.100–136.975 MHz, all channels of the region at once | via dumpvdl2; CPDLC (FANS-1/A and European ATN), ADS-C, VDL2 ground station of each message with a filter | RTL-SDR only | [Aircraft data link](decoders/aircraft.md) |
+| **HFDL** | aircraft data link on HF, **2.9–22 MHz**, 16 ground stations; all HFDL channels inside the band of the VFO at once | via dumphfdl; ACARS, positions, logons, frequency data; aircraft data from ADS-B with a map link; heard ground stations, table of stations and frequencies, band buttons | all (needs HF: V4, upconverter) | [HFDL](decoders/hfdl.md) |
+| **AIS** | ships: position reports, static and voyage data, base stations, aids to navigation, SAR aircraft on **161.975 / 162.025 MHz** (both channels at once) | own decoder (GMSK 9600 Bd, no external program); country from the MMSI, MarineTraffic / VesselFinder links; MESSAGES / SHIPS / MAP views (ships turned to their heading, tracks), NMEA sentence, LOG | all | [AIS](decoders/ais.md) |
 | **DAB / DAB+** | digital broadcast radio in Band III | via welle-cli: station list of the ensemble, DLS text, slideshow, audio, signal, ensemble and capacity panels, remembered channel and station | RTL-SDR only | [DAB / DAB+](decoders/dab.md) |
 | **DSD** (first test version) | digital voice: DMR, P25, D-Star, YSF, NXDN, dPMR, M17 and more | the **DSD** key in MODE, via DSD-FME, list of calls; **separate download: run `install_dsd.bat`** | all | [DSD](decoders/dsd.md) |
 | **ISM** | devices on 433 and 868 MHz: weather sensors, remote controls, tyre sensors | via rtl_433 | RTL-SDR only | [ISM](decoders/ism.md) |

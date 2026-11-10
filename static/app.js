@@ -2523,8 +2523,8 @@ function restoreBodyTab() {
   decPage = decPageSaved ? page : "ft8";
   renderAmsatTab();
   const saved = recall(tabKey());
-  bodyTabGuess = !["dec", "scope", "sat", "set", "mem"].includes(saved);
-  setBodyTab((saved === "dec" && decTabShown()) || (saved === "sat" && amsatTabShown()) || (saved === "set" && setTabShown()) || (saved === "mem" && memTabShown()) ? saved : "scope", !bodyTabGuess);
+  bodyTabGuess = !["dec", "scope", "sat", "set", "mem", "recs"].includes(saved);
+  setBodyTab((saved === "dec" && decTabShown()) || (saved === "sat" && amsatTabShown()) || (saved === "set" && setTabShown()) || (saved === "mem" && memTabShown()) || (saved === "recs" && recsTabShown()) ? saved : "scope", !bodyTabGuess);
 }
 
 /** First state of a VFO without a saved tab: if a decoder runs on it, opens DECODERS. */
@@ -2543,11 +2543,13 @@ function setBodyTab(tab, save = true) {
   if (tab === "dec" && save) store(decOnKey(), "1");   // the DECODERS tab open → DECODE on for this VFO
   if (tab === "set" && save) store("setOn", "1");       // the SETTINGS tab open → the gear key on
   if (tab === "mem" && save) store("memOn", "1");       // the MEMORIES tab open → the MEM key on
+  if (tab === "recs" && save) store("recsOn", "1");     // the RECORDINGS tab open → the RECS key on
   for (const b of $("bodyTabs").querySelectorAll("button")) b.classList.toggle("on", b.dataset.tab === tab);
   $("decPane").hidden = tab !== "dec";
   $("amsatPane").hidden = tab !== "sat";
   $("settingsCard").hidden = tab !== "set";
   $("memPane").hidden = tab !== "mem";
+  $("recsPane").hidden = tab !== "recs";
   if (tab === "dec") { $("decNew").hidden = true; decNewPages.delete(decPage); }
   renderDecKey();
   renderDecTab();
@@ -2555,7 +2557,9 @@ function setBodyTab(tab, save = true) {
   renderAmsatTab();
   renderSetKey();
   renderMemKey();
+  renderRecsKey();
   if (tab === "mem") setTimeout(memPaneOpened);    // declared further down
+  if (tab === "recs") setTimeout(loadRecordings);  // declared further down
   if (tab === "set") setTimeout(pollRotor);    // the ROTOR page fills at once (later: declared further down)
   hoverHide();
 }
@@ -2564,7 +2568,7 @@ function setBodyTab(tab, save = true) {
 
 const DEC_PAGES = [
   { key: "ft8", title: "FT8" }, { key: "wefax", title: "WEFAX" }, { key: "cw", title: "CW" }, { key: "rtty", title: "RTTY" },
-  { key: "sstv", title: "SSTV" }, { key: "packet", title: "PACKET" }, { key: "acars", title: "ACARS" }, { key: "vdl2", title: "VDL2" }, { key: "dab", title: "DAB" },
+  { key: "sstv", title: "SSTV" }, { key: "packet", title: "PACKET" }, { key: "acars", title: "ACARS" }, { key: "vdl2", title: "VDL2" }, { key: "hfdl", title: "HFDL" }, { key: "ais", title: "AIS" }, { key: "dab", title: "DAB" },
   { key: "ism", title: "ISM" }, { key: "dsd", title: "DSD" },
 ];
 // the open page is remembered for each VFO separately (decPage_A, decPage_B…)
@@ -2628,6 +2632,7 @@ const DEC_RTL_ONLY = { vdl2: "VDL2", dab: "DAB", ism: "ISM" };
 
 /** Why the decoder of the page cannot run on the receiver of the active VFO ("" = it can). */
 function decUnavailable(key) {
+  if ((key === "hfdl" || key === "ais") && st && st.chain_owner) return `${key.toUpperCase()} needs its own dongle: ${active ? `VFO ${active.name}` : "this VFO"} shares the dongle of VFO ${st.chain_owner}.`;
   const name = DEC_RTL_ONLY[key];
   if (!name || !st) return "";
   const vfo = active ? `VFO ${active.name}` : "this VFO";
@@ -2694,7 +2699,21 @@ function renderMemKey() {
   $("memTab").hidden = !on;
 }
 $("memKey").addEventListener("click", () => setMemOn(!memTabShown()));
-for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "packetOn", "acarsOn", "vdl2On"]) {
+/** RECS key (AUDIO group): the RECORDINGS tab (the MP3 files of REC / REC SQ) is there only while it is on; one switch for all VFOs. */
+function recsTabShown() { return recall("recsOn") === "1"; }
+function setRecsOn(on) {
+  store("recsOn", on ? "1" : "0");
+  if (on) setBodyTab("recs");
+  else if (bodyTab === "recs") setBodyTab("scope");
+  else renderRecsKey();
+}
+function renderRecsKey() {
+  const on = recsTabShown();
+  $("recsKey").classList.toggle("on", on);
+  $("recsTab").hidden = !on;
+}
+$("recsKey").addEventListener("click", () => setRecsOn(!recsTabShown()));
+for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "packetOn", "acarsOn", "vdl2On", "hfdlOn", "aisOn"]) {
   $(id).addEventListener("change", () => renderDecTab());
 }
 setBodyTab(bodyTab, false);
@@ -5622,6 +5641,943 @@ $("ismClear").addEventListener("click", () => {
   renderIsmInfo({ count: 0 });
 });
 
+// ---------- HFDL: aircraft data link on HF (dumphfdl; all HFDL channels inside the received band) ----------
+
+const HFDL_MAX_ROWS = 500;
+const HFDL_TITLE = $("hfdlOn").parentElement.title;   // tooltip from index.html (replaced on a chained VFO)
+let hfdlLast = {};       // the status sends only on/off and the error; the rest comes from hfdlstate
+let hfdlBands = [];      // [{lo, hi, center, tune, n}] from /api/state
+let hfdlStations = [];   // [{id, name, lat, lon, freqs_khz}] from the system table
+
+const fmtKhz0 = (hz) => (hz / 1000).toFixed(0);
+
+function hfdlKind(m) {
+  if (m.kind === "ACARS") return "acars";
+  if (/log ?on|log ?off/i.test(m.kind)) return "logon";
+  return "";
+}
+
+function hfdlVisible(tr) {
+  const show = $("hfdlShow").value, q = $("hfdlFilter").value.trim().toLowerCase();
+  if (show === "acars" && tr.dataset.kind !== "acars") return false;
+  if (show === "pos" && tr.dataset.pos !== "1") return false;
+  if (show === "logon" && tr.dataset.kind !== "logon") return false;
+  return !q || tr.dataset.search.includes(q);
+}
+
+function addHfdl(m) {
+  const tb = $("hfdlRows");
+  const tr = document.createElement("tr");
+  const up = m.dir === "up";
+  const pos = m.lat != null
+    ? `<a href="https://www.openstreetmap.org/?mlat=${m.lat}&mlon=${m.lon}#map=5/${m.lat}/${m.lon}" target="_blank" rel="noopener">${m.lat.toFixed(2)}, ${m.lon.toFixed(2)}</a>` : "";
+  const sig = m.sig == null ? "-" : `${m.sig.toFixed(0)} dB`;
+  const text = m.text || "";
+  tr.dataset.id = m.id;
+  tr.dataset.kind = hfdlKind(m);
+  tr.dataset.pos = m.lat != null ? "1" : "";
+  tr._msg = m;
+  if (!m.crc_ok) tr.classList.add("bad");
+  tr.innerHTML = `<td>${new Date(m.time * 1000).toISOString().slice(11, 19)}</td><td>${fmtKhz0(m.freq_hz)}</td>` +
+    `<td title="${m.noise != null ? `noise ${m.noise.toFixed(0)} dB` : ""}">${sig}${m.bitrate ? `<span class="sub">${m.bitrate} bit/s</span>` : ""}</td>` +
+    `<td class="${up ? "up" : "down"}">${up ? "↑" : "↓"}</td>` +
+    `<td class="gs" title="${escHtml(m.gs_id != null ? `${up ? "sent by" : "addressed to"} ground station ID ${m.gs_id} (HFDL frame header; name from the system table)` : "")}">${escHtml(m.gs || "-")}</td>` +
+    `<td class="cty"></td><td class="flt"></td><td class="reg"></td><td class="icao"></td>` +
+    `<td class="sqk"></td><td class="act"></td><td class="model"></td><td class="fl"></td><td class="spd"></td>` +
+    `<td>${m.kind === "ACARS" ? '<span class="type-tag t-acars">ACARS</span>' : escHtml(m.kind)}</td>` +
+    `<td title="${escHtml(m.desc || "")}">${escHtml(m.label || "")}</td><td>${pos}</td>` +
+    `<td class="data">${m.desc ? `<span class="desc">${escHtml(m.desc)}</span>` : ""}<div class="msg-text">${escHtml(text)}</div>${m.crc_ok ? "" : ' <span class="bad">✗ CRC</span>'}</td>`;
+  // long message: 3 lines and "▾ more", a click expands it (like ACARS / VDL2)
+  if (text.split("\n").length > 3 || text.length > 240) tr.querySelector("td.data").classList.add("long");
+  renderHfdlAircraft(tr, m.ac);
+  hfdlKeepView(() => {
+    tb.prepend(tr);
+    // while paused the rows under the marked one stay: twice the limit, the rest is trimmed on resume
+    const max = hfdlPausedRow ? HFDL_MAX_ROWS * 2 : HFDL_MAX_ROWS;
+    while (tb.rows.length > max) (tb.lastChild === hfdlPausedRow ? hfdlPausedRow.previousSibling : tb.lastChild).remove();
+  });
+  $("hfdlEmpty").hidden = true;
+  hfdlAcUpdate(m, m.time);
+}
+
+// scroll pause (like ACARS / VDL2): a click on a message marks it and holds the list still, the mouse wheel resumes
+let hfdlPausedRow = null;
+
+function hfdlPause(tr) {
+  hfdlPausedRow?.classList.remove("picked");
+  hfdlPausedRow = tr;
+  tr.classList.add("picked");
+  $("hfdlMsgBox").classList.add("paused");
+  $("hfdlPaused").hidden = false;
+}
+
+function hfdlResume() {
+  if (!hfdlPausedRow) return;
+  hfdlPausedRow.classList.remove("picked");
+  hfdlPausedRow = null;
+  const box = $("hfdlMsgBox");
+  box.classList.remove("paused");
+  $("hfdlPaused").hidden = true;
+  box.scrollTop = 0;
+  const tb = $("hfdlRows");
+  while (tb.rows.length > HFDL_MAX_ROWS) tb.lastChild.remove();
+}
+
+/** Run a change of the table; while paused, the marked row stays at the same place on the screen. */
+function hfdlKeepView(change) {
+  const tr = hfdlPausedRow;
+  if (!tr) { change(); return; }
+  const y = tr.offsetTop;
+  change();
+  if (hfdlPausedRow === tr) $("hfdlMsgBox").scrollTop += tr.offsetTop - y;
+}
+
+$("hfdlMsgBox").addEventListener("wheel", (e) => {
+  if (!hfdlPausedRow) return;
+  e.preventDefault();     // this notch only resumes; the next ones scroll
+  hfdlResume();
+}, { passive: false });
+$("hfdlRows").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr");
+  if (tr && !e.target.closest("a")) hfdlPause(tr);     // links (flight, registration, position) only open the map
+  const td = e.target.closest("td.data.long");
+  if (td && !String(getSelection())) td.classList.toggle("open");
+});
+
+/** Flight, registration and ICAO of an HFDL row; from ADS-B (adsb.fi / adsb.lol, like the ACARS card) country, squawk,
+ *  type, model, flight level and speed. A click on the flight, registration or ICAO opens the map in a new tab:
+ *  registration / ICAO -> globe.adsb.fi, flight -> adsb.lol. */
+function renderHfdlAircraft(tr, ac) {
+  const m = tr._msg;
+  const found = !!(ac && ac.found);
+  const hex = (m.icao || (found ? ac.hex : "") || "").toLowerCase();
+  const reg = m.reg || (found ? ac.reg : "") || "";
+  const flight = m.flight || (found ? ac.callsign : "") || "";
+  const esc = escHtml;
+  const seen = found ? "" : ac ? " (not seen on ADS-B now)" : m.lookup ? " (looking up on ADS-B…)" : "";
+  const link = (url, text, title) => `<a href="${url}" target="_blank" rel="noopener" title="${esc(title + seen)}">${esc(text)}</a>`;
+  const globe = hex ? `https://globe.adsb.fi/?icao=${encodeURIComponent(hex)}` : "";
+  tr.classList.toggle("sqk-alert", found && SQUAWK_ALERT.has(ac.squawk));
+  let regH = reg ? (globe ? link(globe, reg, "Show on the map (adsb.fi)") : esc(reg)) : "";
+  let fltH = flight ? (hex ? link(`https://adsb.lol/?icao=${encodeURIComponent(hex)}`, flight, "Show on the map (adsb.lol)") : esc(flight)) : "";
+  if (found && ac.callsign && m.flight && ac.callsign !== m.flight) fltH += `<div class="ac-sub">${esc(ac.callsign)}</div>`;
+  if (found && !m.reg && ac.reg) regH = `<span class="ext">${regH}</span>`;
+  if (ac && !found && (reg || hex)) regH += `<div class="ac-sub none">not seen on ADS-B now</div>`;
+  const icaoT = m.ac_id != null ? `HFDL aircraft ID ${m.ac_id}` : "";
+  const icaoH = hex ? link(globe, hex.toUpperCase(), `Show on the map (adsb.fi)${icaoT ? ` · ${icaoT}` : ""}`) : "";
+  const src = found ? `from ADS-B (${ac.src || "adsb.fi"}) at the time of the message` : "";
+  const cell = (text, title) => (text ? `<span class="ext" title="${esc(title)}">${esc(text)}</span>` : "");
+  const q = (sel, html) => { tr.querySelector(sel).innerHTML = html; };
+  q("td.flt", fltH);
+  q("td.reg", regH);
+  q("td.icao", icaoH);
+  q("td.sqk", found ? cell(ac.squawk, `transponder squawk code · ${src}`) : "");
+  q("td.act", found ? cell(ac.type, src) : "");
+  q("td.model", found ? cell(ac.desc, src) : "");
+  q("td.fl", found ? cell(ac.ground ? "GND" : ac.alt_ft != null ? `FL${String(Math.round(ac.alt_ft / 100)).padStart(3, "0")}` : "",
+    `${ac.ground ? "on ground" : ac.alt_ft != null ? ac.alt_ft + " ft" : ""} · ${src}`) : "");
+  q("td.spd", found ? cell(ac.gs_kt != null && !ac.ground ? `${Math.round(ac.gs_kt)} kt` : "", `ground speed · ${src}`) : "");
+  const cty = hex ? icaoCountry(hex) : null;
+  q("td.cty", !cty ? ""
+    : cty.cc ? `<span class="cflag" title="${esc(cty.name)}"><img src="${flagUrl(cty.cc)}" alt="${cty.cc.toUpperCase()}"` +
+      ` onerror="this.replaceWith(this.alt)"><span>${cty.cc.toUpperCase()}</span></span>`
+    : `<span class="muted" title="${esc(cty.name)}">—</span>`);
+  tr.dataset.search = [m.gs, flight, reg, hex, m.kind, m.label, m.desc, m.text,
+    found ? [ac.type, ac.desc, ac.squawk, cty && cty.name].join(" ") : ""].join(" ").toLowerCase();
+  tr.hidden = !hfdlVisible(tr);
+}
+
+/** ADS-B data of an HFDL message arrived (hfdl.py looks it up after the message). */
+function onHfdlInfo(d) {
+  const tr = $("hfdlRows").querySelector(`tr[data-id="${d.id}"]`);
+  if (!tr) return;
+  tr._msg.ac = d.ac;
+  tr._msg.lookup = false;
+  hfdlKeepView(() => renderHfdlAircraft(tr, d.ac));
+  hfdlAcUpdate(tr._msg, Date.now() / 1000);   // the ADS-B position is from now
+}
+
+// ----- HFDL aircraft: the newest data of each aircraft (HFDL messages + ADS-B), the AIRCRAFT list and the MAP -----
+
+const hfdlAc = new Map();       // key -> aircraft {hex, reg, flight, ac, first, last, n, gs, pts: [{lat, lon, t, src}]}
+const hfdlAcAlias = new Map();  // "hex:…" / "reg:…" / "flt:…" -> aircraft (the same aircraft arrives with different identifiers)
+let hfdlView = recall("hfdlView") || "msgs";
+let hfdlMap = null, hfdlMapLayers = null, hfdlMapFitted = false, hfdlSel = null, hfdlViewTimer = null;
+const HFDL_OLD_S = 3600;        // older positions: grey aircraft on the map
+
+function hfdlAcUpdate(m, now) {
+  const found = !!(m.ac && m.ac.found);
+  const hex = (m.icao || (found ? m.ac.hex : "") || "").toUpperCase();
+  const reg = m.reg || (found ? m.ac.reg : "") || "";
+  const flight = m.flight || (found ? m.ac.callsign : "") || "";
+  const ids = [hex && `hex:${hex}`, reg && `reg:${reg}`, flight && `flt:${flight}`].filter(Boolean);
+  if (!ids.length) return;
+  let a = ids.map((k) => hfdlAcAlias.get(k)).find(Boolean);
+  if (!a) {
+    a = { key: ids[0], hex: "", reg: "", flight: "", ac: null, first: m.time, last: 0, n: 0, gs: "", ids: new Set(), pts: [] };
+    hfdlAc.set(a.key, a);
+  }
+  for (const k of ids) hfdlAcAlias.set(k, a);
+  if (!a.ids.has(m.id)) { a.ids.add(m.id); a.n++; }
+  a.hex = hex || a.hex;
+  a.reg = reg || a.reg;
+  a.flight = flight || a.flight;
+  if (m.time >= a.last) { a.last = m.time; a.gs = m.gs || a.gs; }
+  if (found) a.ac = m.ac;
+  const add = (lat, lon, t, src) => {
+    if (lat == null || lon == null || a.pts.some((p) => p.lat === lat && p.lon === lon)) return;
+    a.pts.push({ lat, lon, t, src });
+    a.pts.sort((p, q) => p.t - q.t);
+    if (a.pts.length > 200) a.pts.shift();
+  };
+  add(m.lat, m.lon, m.time, "HFDL");
+  if (found) add(m.ac.lat, m.ac.lon, now, m.ac.src || "ADS-B");
+  hfdlViewLater();
+}
+
+/** Positions that make the track: those sent over HFDL; only when the aircraft has none, those from ADS-B. */
+function hfdlTrack(a) {
+  const hf = a.pts.filter((p) => p.src === "HFDL");
+  return hf.length ? hf : a.pts;
+}
+/** Position of the aircraft: the newest one sent over HFDL, the ADS-B one only as a fallback. */
+function hfdlPos(a) {
+  const t = hfdlTrack(a);
+  return t[t.length - 1];
+}
+
+/** Heading: from the last two positions of the track; the ADS-B track when there are not two (or the position is from ADS-B). */
+function hfdlHeading(a) {
+  const t = hfdlTrack(a), p = t[t.length - 1], q = t[t.length - 2];
+  if (p && (p.src !== "HFDL" || !q) && a.ac && a.ac.found && a.ac.track != null) return a.ac.track;
+  if (!p || !q) return null;
+  const r = Math.PI / 180, dl = (p.lon - q.lon) * r;
+  const y = Math.sin(dl) * Math.cos(p.lat * r);
+  const x = Math.cos(q.lat * r) * Math.sin(p.lat * r) - Math.sin(q.lat * r) * Math.cos(p.lat * r) * Math.cos(dl);
+  return (Math.atan2(y, x) / r + 360) % 360;
+}
+
+const hfdlUtc = (t) => new Date(t * 1000).toISOString().slice(11, 19);
+const hfdlAge = (t) => { const s = Date.now() / 1000 - t; return s < 90 ? `${Math.max(0, Math.round(s))} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`; };
+const hfdlFl = (ac) => (!ac || !ac.found ? "" : ac.ground ? "GND" : ac.alt_ft != null ? `FL${String(Math.round(ac.alt_ft / 100)).padStart(3, "0")}` : "");
+const hfdlSpd = (ac) => (ac && ac.found && ac.gs_kt != null && !ac.ground ? `${Math.round(ac.gs_kt)} kt` : "");
+
+function hfdlAcList() {
+  const q = $("hfdlFilter").value.trim().toLowerCase();
+  return [...hfdlAc.values()].sort((a, b) => b.last - a.last).filter((a) => !q ||
+    [a.flight, a.reg, a.hex, a.gs, a.ac && a.ac.type, a.ac && a.ac.desc].join(" ").toLowerCase().includes(q));
+}
+
+function hfdlViewLater() {
+  if (hfdlView === "msgs" || hfdlViewTimer) return;
+  hfdlViewTimer = setTimeout(() => { hfdlViewTimer = null; renderHfdlView(); }, 400);
+}
+
+function renderHfdlView() {
+  if (hfdlView === "aircraft") renderHfdlAcTable();
+  else if (hfdlView === "map") renderHfdlMap();
+}
+
+function renderHfdlAcTable() {
+  const list = hfdlAcList();
+  $("hfdlAcRows").innerHTML = list.map((a) => {
+    const ac = a.ac, p = hfdlPos(a), esc = escHtml;
+    const cty = a.hex ? icaoCountry(a.hex) : null;
+    const ext = (t) => (t ? `<span class="ext">${esc(t)}</span>` : "");
+    return `<tr data-key="${esc(a.key)}"><td>${hfdlUtc(a.last)}</td>` +
+      `<td>${cty && cty.cc ? `<span class="cflag" title="${esc(cty.name)}"><img src="${flagUrl(cty.cc)}" alt="${cty.cc.toUpperCase()}" onerror="this.replaceWith(this.alt)"><span>${cty.cc.toUpperCase()}</span></span>` : ""}</td>` +
+      `<td class="flt">${esc(a.flight)}</td><td class="reg">${esc(a.reg)}</td><td class="icao">${esc(a.hex)}</td>` +
+      `<td>${ext(ac && ac.type)}</td><td class="model">${ext(ac && ac.desc)}</td><td>${ext(hfdlFl(ac))}</td><td>${ext(hfdlSpd(ac))}</td><td>${ext(ac && ac.squawk)}</td>` +
+      `<td>${p ? `<a href="#" class="hfdl-goto" title="Show on the MAP">${p.lat.toFixed(2)}, ${p.lon.toFixed(2)}</a>` : ""}</td>` +
+      `<td>${p ? `${esc(p.src)} · ${hfdlAge(p.t)}` : ""}</td><td>${esc(a.gs || "")}</td><td class="num">${a.n}</td></tr>`;
+  }).join("");
+  $("hfdlAcEmpty").hidden = list.length > 0;
+}
+
+function hfdlPlaneIcon(a, sel) {
+  const hdg = hfdlHeading(a), old = Date.now() / 1000 - a.last > HFDL_OLD_S;
+  const cls = `hfdl-plane${sel ? " sel" : ""}${old ? " old" : ""}`;
+  // always an aircraft; heading not known yet (one position, no ADS-B track): pointing north
+  const svg = `<svg viewBox="0 0 24 24" style="transform: rotate(${Math.round(hdg ?? 0)}deg)"><path d="M12 2c.6 0 1 .9 1 2v5.2l8 4.6v2l-8-2.5v4.9l2.2 1.6V21L12 20.2 8.8 21v-1.2L11 18.2v-4.9l-8 2.5v-2l8-4.6V4c0-1.1.4-2 1-2z"/></svg>`;
+  return L.divIcon({ className: cls, html: svg, iconSize: [22, 22], iconAnchor: [11, 11] });
+}
+
+function hfdlPopup(a) {
+  const ac = a.ac, p = hfdlPos(a), esc = escHtml, hex = a.hex.toLowerCase();
+  const links = hex ? `<a href="https://globe.adsb.fi/?icao=${hex}" target="_blank" rel="noopener">adsb.fi</a> · <a href="https://adsb.lol/?icao=${hex}" target="_blank" rel="noopener">adsb.lol</a>` : "";
+  return `<b>${esc(a.flight || a.reg || a.hex)}</b> ${esc([a.reg, a.hex].filter((x) => x && x !== a.flight).join(" · "))}` +
+    (ac && ac.found ? `<br>${esc([ac.type, ac.desc].filter(Boolean).join(" · "))}<br>${esc([hfdlFl(ac), hfdlSpd(ac), ac.squawk && `squawk ${ac.squawk}`].filter(Boolean).join(" · "))}` : "") +
+    (p ? `<br>position ${p.lat.toFixed(3)}, ${p.lon.toFixed(3)} (${esc(p.src)}, ${hfdlAge(p.t)} ago)` : "") +
+    `<br>last message ${hfdlUtc(a.last)} UTC via ${esc(a.gs || "?")} · ${a.n} msgs` + (links ? `<br>${links}` : "");
+}
+
+async function hfdlMapOpen() {
+  try {
+    await Promise.all([satAsset("/static/leaflet/leaflet.css"), satAsset("/static/leaflet/leaflet.js")]);
+  } catch (e) {
+    $("hfdlMapNote").textContent = e.message;
+    return false;
+  }
+  if (!hfdlMap) {
+    hfdlMap = L.map($("hfdlMap"), { worldCopyJump: true, minZoom: 2 }).setView([45, 0], 3);
+    // the same OpenStreetMap tiles as the PACKET map, darkened by CSS (.hfdl-dark) so the white aircraft stand out
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 12, className: "hfdl-dark",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+    }).addTo(hfdlMap);
+    hfdlMapLayers = { gs: L.layerGroup().addTo(hfdlMap), tracks: L.layerGroup().addTo(hfdlMap), planes: L.layerGroup().addTo(hfdlMap), marks: new Map() };
+    try {
+      const s = (await satFetch("/api/sat/setup")).setup;
+      if (s && Number.isFinite(s.lat) && Number.isFinite(s.lon))
+        L.circleMarker([s.lat, s.lon], { radius: 6, color: "#000", weight: 2, fillColor: "#ff5a3c", fillOpacity: 1 }).bindTooltip("QTH").addTo(hfdlMap);
+    } catch { /* no sattrack */ }
+  }
+  return true;
+}
+
+async function renderHfdlMap() {
+  if (!(await hfdlMapOpen())) return;
+  hfdlMap.invalidateSize();
+  const lay = hfdlMapLayers;
+  // ground stations: green = heard, grey = not heard
+  const heard = new Set((hfdlLast.heard || []).map((h) => h.id));
+  lay.gs.clearLayers();
+  for (const s of hfdlStations) {
+    if (s.lat == null || s.lon == null) continue;
+    const h = heard.has(s.id);
+    L.marker([s.lat, s.lon], { icon: L.divIcon({ className: `hfdl-gs-mark${h ? " heard" : ""}`, html: "▲", iconSize: [14, 14], iconAnchor: [7, 7] }), zIndexOffset: -1000 })
+      .bindTooltip(`${escHtml(s.name)}${h ? " · heard" : ""}<br>${s.freqs_khz.map(Math.round).join(" ")} kHz`, { direction: "top" }).addTo(lay.gs);
+  }
+  // aircraft with a position: icon turned to the heading, label = flight + type, white track of the known positions
+  lay.tracks.clearLayers();
+  const list = hfdlAcList().filter((a) => a.pts.length);
+  const keep = new Set();
+  for (const a of list) {
+    const p = hfdlPos(a), track = hfdlTrack(a);
+    keep.add(a.key);
+    if (track.length > 1) L.polyline(track.map((q) => [q.lat, q.lon]), { color: a.key === hfdlSel ? "#ff4b3c" : "#fff", weight: a.key === hfdlSel ? 2.5 : 1.5, opacity: 0.7 }).addTo(lay.tracks);
+    let mk = lay.marks.get(a.key);
+    const label = `${escHtml(a.flight || a.reg || a.hex)}${a.ac && a.ac.found && a.ac.type ? `<br>${escHtml(a.ac.type)}` : ""}`;
+    if (!mk) {
+      mk = L.marker([p.lat, p.lon]).bindPopup("").bindTooltip("", { permanent: true, direction: "bottom", offset: [0, 8], className: "hfdl-label" }).addTo(lay.planes);
+      mk.on("click", () => hfdlSelect(a.key, false));
+      lay.marks.set(a.key, mk);
+    }
+    mk.setLatLng([p.lat, p.lon]);
+    mk.setIcon(hfdlPlaneIcon(a, a.key === hfdlSel));
+    mk.setTooltipContent(label);
+    mk.setPopupContent(hfdlPopup(a));
+  }
+  for (const [k, mk] of lay.marks) if (!keep.has(k)) { mk.remove(); lay.marks.delete(k); }
+  if (!hfdlMapFitted && lay.marks.size) {
+    hfdlMapFitted = true;
+    hfdlMap.fitBounds(L.featureGroup([...lay.marks.values()]).getBounds().pad(0.3), { maxZoom: 5 });
+  }
+  // list next to the map
+  $("hfdlMapList").innerHTML = `<div class="hfdl-ml-head">Tracking ${list.length} aircraft${hfdlAc.size > list.length ? ` (${hfdlAc.size - list.length} without a position)` : ""}</div>` +
+    list.map((a) => {
+      const cty = a.hex ? icaoCountry(a.hex) : null, ac = a.ac && a.ac.found ? a.ac : null;
+      return `<div class="hfdl-ml${a.key === hfdlSel ? " sel" : ""}${Date.now() / 1000 - a.last > HFDL_OLD_S ? " old" : ""}" data-key="${escHtml(a.key)}">` +
+        `${cty && cty.cc ? `<img src="${flagUrl(cty.cc)}" alt="" title="${escHtml(cty.name)}">` : "<span class=\"noflag\"></span>"}` +
+        `<b>${escHtml(a.flight || "-")}</b><span>${escHtml(a.reg)}</span><span class="icao">${escHtml(a.hex)}</span>` +
+        `<span class="ext">${escHtml(ac ? ac.type : "")}</span><span class="ext">${escHtml(hfdlFl(ac))}</span><span class="age">${hfdlAge(a.last)}</span></div>`;
+    }).join("");
+  $("hfdlMapNote").textContent = `${list.length} aircraft with a position · ▲ HFDL ground stations (green = heard) · white trail = positions sent over HFDL · red = selected · grey = no message for an hour · map © OpenStreetMap`;
+}
+
+/** Selects an aircraft (map list, AIRCRAFT position link, click on its icon): yellow, popup, centred. */
+function hfdlSelect(key, pan = true) {
+  hfdlSel = key;
+  renderHfdlMap().then(() => {
+    const mk = hfdlMapLayers && hfdlMapLayers.marks.get(key);
+    if (!mk) return;
+    if (pan) hfdlMap.setView(mk.getLatLng(), Math.max(hfdlMap.getZoom(), 4));
+    mk.openPopup();
+  });
+}
+
+function setHfdlView(v) {
+  hfdlView = v;
+  store("hfdlView", v);
+  for (const b of $("hfdlViews").children) b.classList.toggle("on", b.dataset.view === v);
+  $("hfdlMsgBox").hidden = v !== "msgs";
+  $("hfdlAcBox").hidden = v !== "aircraft";
+  $("hfdlMapBox").hidden = v !== "map";
+  $("hfdlShow").parentElement.hidden = v !== "msgs";
+  renderHfdlView();
+}
+
+/** INFO key: the description of the decoder, hidden by default so the table or map has the room; remembered in the browser. */
+function setHfdlInfo(on) {
+  store("hfdlInfo", on ? "1" : "0");
+  $("hfdlInfoKey").classList.toggle("on", on);
+  $("hfdlNote").hidden = !on;
+  if (hfdlMap) setTimeout(() => hfdlMap.invalidateSize());
+}
+$("hfdlInfoKey").addEventListener("click", () => setHfdlInfo($("hfdlNote").hidden));
+setHfdlInfo(recall("hfdlInfo") === "1");
+$("hfdlViews").addEventListener("click", (e) => { const b = e.target.closest("button[data-view]"); if (b) setHfdlView(b.dataset.view); });
+$("hfdlMapList").addEventListener("click", (e) => { const r = e.target.closest("[data-key]"); if (r) hfdlSelect(r.dataset.key); });
+$("hfdlAcRows").addEventListener("click", (e) => {
+  if (!e.target.closest(".hfdl-goto")) return;
+  e.preventDefault();
+  const key = e.target.closest("tr").dataset.key;
+  setHfdlView("map");
+  hfdlSelect(key);
+});
+setTimeout(() => setHfdlView(hfdlView));   // after the declarations below
+
+function hfdlAcClear() {
+  hfdlAc.clear();
+  hfdlAcAlias.clear();
+  hfdlSel = null;
+  hfdlMapFitted = false;
+  if (hfdlMapLayers) { hfdlMapLayers.planes.clearLayers(); hfdlMapLayers.tracks.clearLayers(); hfdlMapLayers.marks.clear(); }
+  renderHfdlView();
+}
+
+function hfdlReset() {
+  hfdlLast = {};
+  $("hfdlRows").innerHTML = "";
+  $("hfdlEmpty").hidden = false;
+  $("hfdlChannels").textContent = "";
+  $("hfdlHeard").innerHTML = "";
+  hfdlResume();
+  hfdlAcClear();
+}
+
+async function hfdlLoad() {
+  const v = active;
+  try {
+    const d = await fetch(vbase + "/api/hfdl").then((r) => r.json());
+    if (v !== active) return;
+    $("hfdlRows").innerHTML = "";
+    for (const m of d.messages) addHfdl(m);
+    $("hfdlEmpty").hidden = d.messages.length > 0;
+    renderHfdlInfo(d);
+  } catch { /* an older receiver without HFDL */ }
+}
+
+/** Band buttons and the table of ground stations and their channels (from the system table of dumphfdl). */
+function renderHfdlBands(bands, stations) {
+  hfdlBands = bands;
+  hfdlStations = stations;
+  $("hfdlBands").innerHTML = bands.map((b, i) => {
+    const range = b.lo === b.hi ? `${fmtKhz0(b.lo)} kHz` : `${fmtKhz0(b.lo)}–${fmtKhz0(b.hi)} kHz`;
+    return `<button data-i="${i}" title="HFDL ${range}, ${b.n} channel${b.n === 1 ? "" : "s"}: centre the VFO on ${fmtMHz(b.center, 3)} MHz">${(b.lo / 1e6).toFixed(b.lo < 10e6 ? 1 : 0)}M</button>`;
+  }).join("");
+  renderHfdlStations();
+}
+
+function renderHfdlStations() {
+  const ch = new Set((hfdlLast.enabled && hfdlLast.channels || []).map((f) => Math.round(f / 1000)));
+  const heard = new Map((hfdlLast.heard || []).map((h) => [h.id, new Set(h.freqs.map(Math.round))]));
+  const rows = hfdlStations.map((s) => {
+    const fs = s.freqs_khz.map((f) => {
+      const k = Math.round(f), cls = heard.get(s.id)?.has(k) ? "heard" : ch.has(k) ? "lis" : "";
+      const tip = cls === "heard" ? "received from this station" : cls === "lis" ? "inside the received band: listened to, nothing received from this station yet" : "";
+      return `<span class="${cls}"${tip ? ` title="${tip}"` : ""}>${k}</span>`;
+    }).join(" ");
+    const h = heard.has(s.id);
+    return `<tr${h ? ' class="heard-row"' : ""}><td>${s.id}</td><td>${escHtml(s.name)}${h ? ' <span class="heard">✓</span>' : ""}</td><td class="fq">${fs}</td></tr>`;
+  }).join("");
+  $("hfdlStations").innerHTML = hfdlStations.length
+    ? `<table class="hfdl-st"><thead><tr><th>ID</th><th>Ground station</th><th>Channels (kHz): <span class="lis">listening (in the band, not heard yet)</span> · <span class="heard">✓ heard</span></th></tr></thead><tbody>${rows}</tbody></table>`
+    : '<span class="muted">The system table (lib\\hfdl\\systable.conf) is missing.</span>';
+}
+
+function renderHfdlInfo(d) {
+  const i = (hfdlLast = { ...hfdlLast, ...d });
+  const el = $("hfdlInfo");
+  el.classList.toggle("err", !!i.error);
+  if (i.error) el.textContent = `HFDL: ${i.error}`;
+  else el.textContent = !i.enabled ? "" : !i.running ? "waiting for the VFO…"
+    : `${i.count || 0} messages · ${i.squitters || 0} squitters${i.dropped ? ` · ${i.dropped} blocks dropped` : ""}`;
+  const chs = i.enabled && i.channels ? i.channels : [];
+  $("hfdlChannels").textContent = chs.length
+    ? `Listening on ${chs.length} channel${chs.length === 1 ? "" : "s"} inside the received band (kHz): ${chs.map(fmtKhz0).join(" ")}` : "";
+  $("hfdlHeard").innerHTML = i.enabled && i.running && !(i.heard || []).length ? '<span class="muted">Heard: no ground station yet</span>'
+    : (i.heard || []).length
+    ? "Heard: " + i.heard.map((h) => `<span class="hfdl-gs" title="${escHtml(h.name)} (ID ${h.id}), last ${new Date(h.last * 1000).toISOString().slice(11, 19)} UTC${h.sig != null ? `, ${h.sig.toFixed(0)} dB` : ""}">` +
+      `${escHtml(h.name.split(",")[0])} <small>${h.freqs.map(Math.round).join(", ")}</small></span>`).join("") : "";
+  renderHfdlStations();
+  if (hfdlView === "map" && d.heard) hfdlViewLater();
+}
+
+function renderHfdl(s) {
+  const on = !!s.hfdl;
+  $("hfdlOn").checked = on;
+  $("hfdlCard").hidden = !on;
+  const no = !!s.chain_owner;
+  $("hfdlOn").disabled = no;
+  $("hfdlOn").parentElement.classList.toggle("disabled", no);
+  $("hfdlOn").parentElement.title = no ? `HFDL needs its own dongle (this VFO shares the dongle of VFO ${s.chain_owner})` : HFDL_TITLE;
+  for (const b of $("hfdlBands").children) {
+    const band = hfdlBands[Number(b.dataset.i)];
+    b.classList.toggle("active", on && !!band && s.center_hz === band.center);
+  }
+  renderHfdlInfo({ enabled: on, error: s.hfdl_error });
+}
+
+$("hfdlOn").addEventListener("change", () => {
+  st.hfdl = $("hfdlOn").checked;
+  $("hfdlCard").hidden = !st.hfdl;
+  send({ hfdl: st.hfdl });
+  renderHfdlInfo({ enabled: st.hfdl });
+});
+$("hfdlBands").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-i]");
+  if (!b || !st) return;
+  const band = hfdlBands[Number(b.dataset.i)];
+  if (!band) return;
+  await ensureVfoFor(band.center);   // HF: e.g. to a VFO with an upconverter or a V4
+  if (!st) return;
+  if (st.acars || st.vdl2 || st.dab || st.ism) { st.acars = st.vdl2 = st.dab = st.ism = false; $("acarsOn").checked = $("vdl2On").checked = false; }
+  st.hfdl = true;
+  $("hfdlOn").checked = true;
+  send({ hfdl_band: Number(b.dataset.i) });
+  setDecPage("hfdl");
+  renderDecTab();
+});
+$("hfdlShow").addEventListener("change", hfdlRefilter);
+function hfdlRefilter() {
+  for (const tr of $("hfdlRows").rows) tr.hidden = !hfdlVisible(tr);
+  if (hfdlPausedRow?.hidden) hfdlResume();     // the marked message was filtered out
+}
+$("hfdlFilter").addEventListener("input", () => { hfdlRefilter(); renderHfdlView(); });
+$("hfdlClear").addEventListener("click", () => {
+  fetch(vbase + "/api/hfdl", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"action":"clear"}' });
+  hfdlResume();
+  $("hfdlRows").innerHTML = "";
+  $("hfdlEmpty").hidden = false;
+  hfdlAcClear();
+  renderHfdlInfo({ count: 0, squitters: 0, heard: [] });
+});
+
+// ---------- AIS: ships on 161.975 / 162.025 MHz (ais.py: both channels from the raw samples of the VFO) ----------
+
+const AIS_MAX_ROWS = 500;
+const AIS_TITLE = $("aisOn").parentElement.title;   // tooltip from index.html (replaced on a chained VFO)
+let aisLast = {};        // the status sends only on/off and the error; the rest comes from aisstate
+let aisCenter = 162000000;
+let aisChannelList = [];
+
+const AIS_STATIC = new Set([5, 19, 21, 24]);
+const aisUtc = (t) => new Date(t * 1000).toISOString().slice(11, 19);
+const aisAge = (t) => { const s = Date.now() / 1000 - t; return s < 90 ? `${Math.max(0, Math.round(s))} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`; };
+const aisMt = (mmsi) => `https://www.marinetraffic.com/en/ais/details/ships/mmsi:${mmsi}`;
+const aisVf = (mmsi) => `https://www.vesselfinder.com/?mmsi=${mmsi}`;
+const aisDeg = (v) => (v == null ? "" : `${Math.round(v)}°`);
+const aisKt = (v) => (v == null ? "" : `${v.toFixed(1)} kt`);
+
+/** Kind of a message for SHOW: pos / static / base / other. */
+function aisKind(m) {
+  if (m.type === 4 || m.type === 11) return "base";
+  if (AIS_STATIC.has(m.type) && m.lat == null) return "static";
+  if (m.lat != null) return "pos";
+  return "other";
+}
+
+/** Short tag of the message type: coloured for base stations, aids to navigation, SAR aircraft and static data. */
+function aisTypeTag(m) {
+  const t = m.type, name = escHtml(m.type_name || `Message ${t}`);
+  const tip = `title="${name} (type ${t}, ${m.bits} bits)&#10;${escHtml(m.nmea || "")}"`;
+  if (t === 4 || t === 11) return `<span class="type-tag t-base" ${tip}>BASE</span> ${t === 4 ? "report" : "UTC response"}`;
+  if (t === 21) return `<span class="type-tag t-aton" ${tip}>AtoN</span> report`;
+  if (t === 9) return `<span class="type-tag t-sar" ${tip}>SAR</span> aircraft position`;
+  if (t === 5 || t === 24) return `<span class="type-tag t-static" ${tip}>STATIC</span> ${t === 5 ? "class A" : `class B${m.part ? ` part ${m.part}` : ""}`}`;
+  if (t === 19) return `<span class="type-tag t-static" ${tip}>STATIC</span> + position (class B)`;
+  if (t <= 3) return `<span ${tip}>Position class A${t === 2 ? " (assigned)" : t === 3 ? " (response)" : ""}</span>`;
+  if (t === 18) return `<span ${tip}>Position class B</span>`;
+  if (t === 27) return `<span ${tip}>Long-range position</span>`;
+  return `<span ${tip}>${name}</span>`;
+}
+
+function aisFlag(m) {
+  if (!m.cc) return m.country ? `<span class="muted" title="${escHtml(m.country)}">—</span>` : "";
+  return `<span class="cflag" title="${escHtml(m.country)}"><img src="${flagUrl(m.cc)}" alt="${m.cc.toUpperCase()}" onerror="this.replaceWith(this.alt)"><span>${m.cc.toUpperCase()}</span></span>`;
+}
+
+function aisVisible(tr) {
+  const show = $("aisShow").value, q = $("aisFilter").value.trim().toLowerCase();
+  if (show !== "all" && tr.dataset.kind !== show) return false;
+  return !q || tr.dataset.search.includes(q);
+}
+
+function addAis(m) {
+  const tb = $("aisRows");
+  const tr = document.createElement("tr");
+  const ship = m.ship || {};
+  const name = m.name || ship.name || "", call = m.callsign || ship.callsign || "", stype = m.shiptype || ship.shiptype || "";
+  const dest = m.dest || ship.dest || "";
+  const pos = m.lat != null
+    ? `<a href="https://www.openstreetmap.org/?mlat=${m.lat}&mlon=${m.lon}#map=10/${m.lat}/${m.lon}" target="_blank" rel="noopener">${m.lat.toFixed(4)}, ${m.lon.toFixed(4)}</a>` : "";
+  const ext = (own, v, what) => (v ? (own ? escHtml(v) : `<span class="ext" title="${what} from an earlier message of this station">${escHtml(v)}</span>`) : "");
+  tr.dataset.id = m.id;
+  tr.dataset.kind = aisKind(m);
+  tr.dataset.search = [m.mmsi, name, call, stype, m.type_name, m.status, dest, m.country, m.station, m.text].join(" ").toLowerCase();
+  tr._msg = m;
+  tr.innerHTML = `<td>${aisUtc(m.time)}</td><td class="ch-${(m.channel || "a").toLowerCase()}" title="${fmtMHz(m.freq_hz, 3)} MHz">${escHtml(m.channel || "")}</td>` +
+    `<td>${m.level == null ? "-" : `${m.level.toFixed(0)} dB`}</td><td class="cty">${aisFlag(m)}</td>` +
+    `<td class="mmsi" title="${escHtml(m.station)}${m.country ? `, ${escHtml(m.country)}` : ""} · MarineTraffic"><a href="${aisMt(m.mmsi)}" target="_blank" rel="noopener">${m.mmsi}</a></td>` +
+    `<td class="name">${name ? `<a href="${aisVf(m.mmsi)}" target="_blank" rel="noopener" title="VesselFinder">${ext(!!m.name, name, "name")}</a>` : `<span class="muted">${escHtml(m.station !== "ship" ? m.station : "")}</span>`}</td>` +
+    `<td>${ext(!!m.callsign, call, "call sign")}</td><td>${ext(!!m.shiptype, stype, "type")}</td>` +
+    `<td>${aisTypeTag(m)}</td><td>${escHtml(m.status || "")}</td><td>${pos}</td>` +
+    `<td class="num">${aisKt(m.sog)}</td><td class="num">${aisDeg(m.cog)}</td><td class="num">${m.hdg == null ? "" : `${m.hdg}°`}</td>` +
+    `<td class="dest">${ext(!!m.dest, dest, "destination")}</td><td class="data">${escHtml(m.text || "")}</td>`;
+  tr.hidden = !aisVisible(tr);
+  aisKeepView(() => {
+    tb.prepend(tr);
+    const max = aisPausedRow ? AIS_MAX_ROWS * 2 : AIS_MAX_ROWS;
+    while (tb.rows.length > max) (tb.lastChild === aisPausedRow ? aisPausedRow.previousSibling : tb.lastChild).remove();
+  });
+  $("aisEmpty").hidden = true;
+  aisShipUpdate(m);
+}
+
+// scroll pause (like HFDL / ACARS): a click on a message marks it and holds the list still, the mouse wheel resumes
+let aisPausedRow = null;
+
+function aisPause(tr) {
+  aisPausedRow?.classList.remove("picked");
+  aisPausedRow = tr;
+  tr.classList.add("picked");
+  $("aisMsgBox").classList.add("paused");
+  $("aisPaused").hidden = false;
+}
+
+function aisResume() {
+  if (!aisPausedRow) return;
+  aisPausedRow.classList.remove("picked");
+  aisPausedRow = null;
+  const box = $("aisMsgBox");
+  box.classList.remove("paused");
+  $("aisPaused").hidden = true;
+  box.scrollTop = 0;
+  const tb = $("aisRows");
+  while (tb.rows.length > AIS_MAX_ROWS) tb.lastChild.remove();
+}
+
+function aisKeepView(change) {
+  const tr = aisPausedRow;
+  if (!tr) { change(); return; }
+  const y = tr.offsetTop;
+  change();
+  if (aisPausedRow === tr) $("aisMsgBox").scrollTop += tr.offsetTop - y;
+}
+
+$("aisMsgBox").addEventListener("wheel", (e) => {
+  if (!aisPausedRow) return;
+  e.preventDefault();
+  aisResume();
+}, { passive: false });
+$("aisRows").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr");
+  if (tr && !e.target.closest("a")) aisPause(tr);
+});
+
+// ----- AIS ships: the newest data of each station (from the server), their tracks, the SHIPS list and the MAP -----
+
+const aisShips = new Map();     // mmsi -> {…ship from the server, pts: [{lat, lon, t}]}
+let aisView = recall("aisView") || "msgs";
+let aisMap = null, aisMapLayers = null, aisMapFitted = false, aisSel = null, aisViewTimer = null;
+const AIS_OLD_S = 1800;         // no message for 30 min: grey on the map
+
+function aisShipUpdate(m) {
+  if (!m.ship) return;
+  let s = aisShips.get(m.mmsi);
+  if (!s) {
+    s = { pts: [] };
+    aisShips.set(m.mmsi, s);
+  }
+  Object.assign(s, m.ship);
+  if (m.lat != null && !s.pts.some((p) => p.lat === m.lat && p.lon === m.lon)) {
+    s.pts.push({ lat: m.lat, lon: m.lon, t: m.time });
+    if (s.pts.length > 300) s.pts.shift();
+  }
+  aisViewLater();
+}
+
+function aisShipList() {
+  const q = $("aisFilter").value.trim().toLowerCase();
+  return [...aisShips.values()].sort((a, b) => b.last - a.last).filter((s) => !q ||
+    [s.mmsi, s.name, s.callsign, s.shiptype, s.dest, s.country, s.station, s.status].join(" ").toLowerCase().includes(q));
+}
+
+function aisViewLater() {
+  if (aisView === "msgs" || aisViewTimer) return;
+  aisViewTimer = setTimeout(() => { aisViewTimer = null; renderAisView(); }, 400);
+}
+
+function renderAisView() {
+  if (aisView === "ships") renderAisShipTable();
+  else if (aisView === "map") renderAisMap();
+}
+
+const aisLabel = (s) => s.name || (s.station !== "ship" ? s.station : "") || String(s.mmsi);
+const aisStopped = (s) => (s.sog != null && s.sog < 0.3) || /moored|at anchor|aground/.test(s.status || "");
+
+function renderAisShipTable() {
+  const list = aisShipList();
+  $("aisShipRows").innerHTML = list.map((s) => {
+    const esc = escHtml;
+    return `<tr data-mmsi="${s.mmsi}"><td>${aisUtc(s.last)}</td><td class="cty">${aisFlag(s)}</td>` +
+      `<td class="mmsi" title="${esc(s.station)}"><a href="${aisMt(s.mmsi)}" target="_blank" rel="noopener">${s.mmsi}</a></td>` +
+      `<td class="name">${s.name ? `<a href="${aisVf(s.mmsi)}" target="_blank" rel="noopener">${esc(s.name)}</a>` : `<span class="muted">${esc(s.station !== "ship" ? s.station : "")}</span>`}</td>` +
+      `<td>${esc(s.callsign || "")}</td><td>${esc(s.shiptype || "")}</td><td>${esc(s.status || "")}</td>` +
+      `<td>${s.lat != null ? `<a href="#" class="ais-goto" title="Show on the MAP">${s.lat.toFixed(4)}, ${s.lon.toFixed(4)}</a> <span class="muted">${aisAge(s.pos_time)}</span>` : ""}</td>` +
+      `<td class="num">${aisKt(s.sog)}</td><td class="num">${aisDeg(s.cog)}</td><td class="num">${s.hdg == null ? "" : `${s.hdg}°`}</td>` +
+      `<td class="dest">${esc(s.dest || "")}</td><td>${esc(s.eta || "")}</td>` +
+      `<td>${esc([s.size, s.draught ? `draught ${s.draught} m` : ""].filter(Boolean).join(", "))}</td><td class="num">${s.n}</td></tr>`;
+  }).join("");
+  $("aisShipEmpty").hidden = list.length > 0;
+}
+
+/** Map icon: a ship turned to its heading (COG when the heading is unknown), a circle for a stopped ship,
+ *  ▲ base station, ◆ aid to navigation, an aircraft for SAR. */
+function aisIcon(s, sel) {
+  const old = Date.now() / 1000 - s.last > AIS_OLD_S;
+  let kind = "", svg;
+  if (s.station === "base station") {
+    kind = "base";
+    svg = '<svg viewBox="0 0 24 24"><path d="M12 3l9 18H3z"/></svg>';
+  } else if (s.station === "aid to navigation") {
+    kind = "aton";
+    svg = '<svg viewBox="0 0 24 24"><path d="M12 2l10 10-10 10L2 12z"/></svg>';
+  } else if (s.station === "SAR aircraft") {
+    kind = "sar";
+    const hdg = s.cog ?? 0;
+    svg = `<svg viewBox="0 0 24 24" style="transform: rotate(${Math.round(hdg)}deg)"><path d="M12 2c.6 0 1 .9 1 2v5.2l8 4.6v2l-8-2.5v4.9l2.2 1.6V21L12 20.2 8.8 21v-1.2L11 18.2v-4.9l-8 2.5v-2l8-4.6V4c0-1.1.4-2 1-2z"/></svg>`;
+  } else if (aisStopped(s)) {
+    kind = "stop";
+    svg = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6"/></svg>';
+  } else {
+    const hdg = s.hdg ?? s.cog ?? 0;
+    svg = `<svg viewBox="0 0 24 24" style="transform: rotate(${Math.round(hdg)}deg)"><path d="M12 2l7 18-7-4-7 4z"/></svg>`;
+  }
+  return L.divIcon({ className: `ais-ship ${kind}${sel ? " sel" : ""}${old ? " old" : ""}`, html: svg, iconSize: [20, 20], iconAnchor: [10, 10] });
+}
+
+function aisPopup(s) {
+  const esc = escHtml;
+  const lines = [`<b>${esc(aisLabel(s))}</b> ${esc([s.callsign, s.mmsi !== undefined ? `MMSI ${s.mmsi}` : ""].filter(Boolean).join(" · "))}`];
+  const what = [s.country, s.station !== "ship" ? s.station : s.shiptype].filter(Boolean).join(" · ");
+  if (what) lines.push(esc(what));
+  const nav = [s.status, aisKt(s.sog), s.cog != null ? `COG ${aisDeg(s.cog)}` : "", s.hdg != null ? `HDG ${s.hdg}°` : ""].filter(Boolean).join(" · ");
+  if (nav) lines.push(esc(nav));
+  if (s.dest || s.eta) lines.push(esc(`to ${s.dest || "?"}${s.eta ? `, ETA ${s.eta}` : ""}`));
+  if (s.size || s.draught || s.imo) lines.push(esc([s.imo ? `IMO ${s.imo}` : "", s.size, s.draught ? `draught ${s.draught} m` : ""].filter(Boolean).join(" · ")));
+  if (s.lat != null) lines.push(`position ${s.lat.toFixed(4)}, ${s.lon.toFixed(4)} (${aisAge(s.pos_time)} ago)`);
+  lines.push(`last message ${aisUtc(s.last)} UTC · ${s.n} msgs · <a href="${aisMt(s.mmsi)}" target="_blank" rel="noopener">MarineTraffic</a> · <a href="${aisVf(s.mmsi)}" target="_blank" rel="noopener">VesselFinder</a>`);
+  return lines.join("<br>");
+}
+
+async function aisMapOpen() {
+  try {
+    await Promise.all([satAsset("/static/leaflet/leaflet.css"), satAsset("/static/leaflet/leaflet.js")]);
+  } catch (e) {
+    $("aisMapNote").textContent = e.message;
+    return false;
+  }
+  if (!aisMap) {
+    aisMap = L.map($("aisMap"), { worldCopyJump: true, minZoom: 2 }).setView([50, 10], 5);
+    // the same OpenStreetMap tiles as the HFDL map, darkened by CSS (.hfdl-dark) so the ships stand out
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 16, className: "hfdl-dark",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+    }).addTo(aisMap);
+    aisMapLayers = { tracks: L.layerGroup().addTo(aisMap), ships: L.layerGroup().addTo(aisMap), marks: new Map() };
+    try {
+      const s = (await satFetch("/api/sat/setup")).setup;
+      if (s && Number.isFinite(s.lat) && Number.isFinite(s.lon)) {
+        L.circleMarker([s.lat, s.lon], { radius: 6, color: "#000", weight: 2, fillColor: "#ff5a3c", fillOpacity: 1 }).bindTooltip("QTH").addTo(aisMap);
+        aisMap.setView([s.lat, s.lon], 8);
+      }
+    } catch { /* no sattrack */ }
+  }
+  return true;
+}
+
+async function renderAisMap() {
+  if (!(await aisMapOpen())) return;
+  aisMap.invalidateSize();
+  const lay = aisMapLayers;
+  lay.tracks.clearLayers();
+  const list = aisShipList().filter((s) => s.lat != null);
+  const keep = new Set();
+  for (const s of list) {
+    keep.add(s.mmsi);
+    const sel = s.mmsi === aisSel;
+    if (s.pts.length > 1) L.polyline(s.pts.map((q) => [q.lat, q.lon]), { color: sel ? "#ff4b3c" : "#fff", weight: sel ? 2.5 : 1.5, opacity: 0.7 }).addTo(lay.tracks);
+    let mk = lay.marks.get(s.mmsi);
+    const label = `${escHtml(aisLabel(s))}${s.sog != null && s.sog >= 0.3 ? `<br>${aisKt(s.sog)}` : ""}`;
+    if (!mk) {
+      mk = L.marker([s.lat, s.lon]).bindPopup("").bindTooltip("", { permanent: true, direction: "bottom", offset: [0, 8], className: "ais-label" }).addTo(lay.ships);
+      mk.on("click", () => aisSelect(s.mmsi, false));
+      lay.marks.set(s.mmsi, mk);
+    }
+    mk.setLatLng([s.lat, s.lon]);
+    mk.setIcon(aisIcon(s, sel));
+    mk.setTooltipContent(label);
+    mk.setPopupContent(aisPopup(s));
+  }
+  for (const [k, mk] of lay.marks) if (!keep.has(k)) { mk.remove(); lay.marks.delete(k); }
+  if (!aisMapFitted && lay.marks.size) {
+    aisMapFitted = true;
+    aisMap.fitBounds(L.featureGroup([...lay.marks.values()]).getBounds().pad(0.3), { maxZoom: 11 });
+  }
+  $("aisMapList").innerHTML = `<div class="ais-ml-head">${list.length} station${list.length === 1 ? "" : "s"} with a position${aisShips.size > list.length ? ` (${aisShips.size - list.length} without)` : ""}</div>` +
+    list.map((s) =>
+      `<div class="ais-ml${s.mmsi === aisSel ? " sel" : ""}${Date.now() / 1000 - s.last > AIS_OLD_S ? " old" : ""}" data-mmsi="${s.mmsi}">` +
+      `${s.cc ? `<img src="${flagUrl(s.cc)}" alt="" title="${escHtml(s.country)}">` : "<span></span>"}` +
+      `<b>${escHtml(aisLabel(s))}</b><span class="mmsi">${s.mmsi}</span><span class="stype">${escHtml(s.station !== "ship" ? s.station : s.shiptype || "")}</span>` +
+      `<span>${aisKt(s.sog)}</span><span class="age">${aisAge(s.last)}</span></div>`).join("");
+  $("aisMapNote").textContent = `${list.length} with a position · yellow = ship (circle = stopped) · ▲ base station · ◆ aid to navigation · red = selected · grey = no message for 30 min · white trail = reported positions · map © OpenStreetMap`;
+}
+
+function aisSelect(mmsi, pan = true) {
+  aisSel = mmsi;
+  renderAisMap().then(() => {
+    const mk = aisMapLayers && aisMapLayers.marks.get(mmsi);
+    if (!mk) return;
+    if (pan) aisMap.setView(mk.getLatLng(), Math.max(aisMap.getZoom(), 9));
+    mk.openPopup();
+  });
+}
+
+function setAisView(v) {
+  aisView = v;
+  store("aisView", v);
+  for (const b of $("aisViews").children) b.classList.toggle("on", b.dataset.view === v);
+  $("aisMsgBox").hidden = v !== "msgs";
+  $("aisShipBox").hidden = v !== "ships";
+  $("aisMapBox").hidden = v !== "map";
+  $("aisShow").parentElement.hidden = v !== "msgs";
+  renderAisView();
+}
+
+function setAisInfo(on) {
+  store("aisInfo", on ? "1" : "0");
+  $("aisInfoKey").classList.toggle("on", on);
+  $("aisNote").hidden = !on;
+  if (aisMap) setTimeout(() => aisMap.invalidateSize());
+}
+$("aisInfoKey").addEventListener("click", () => setAisInfo($("aisNote").hidden));
+setAisInfo(recall("aisInfo") === "1");
+$("aisViews").addEventListener("click", (e) => { const b = e.target.closest("button[data-view]"); if (b) setAisView(b.dataset.view); });
+$("aisMapList").addEventListener("click", (e) => { const r = e.target.closest("[data-mmsi]"); if (r) aisSelect(Number(r.dataset.mmsi)); });
+$("aisShipRows").addEventListener("click", (e) => {
+  if (!e.target.closest(".ais-goto")) return;
+  e.preventDefault();
+  const mmsi = Number(e.target.closest("tr").dataset.mmsi);
+  setAisView("map");
+  aisSelect(mmsi);
+});
+setTimeout(() => setAisView(aisView));   // after the declarations below
+
+function aisShipsClear() {
+  aisShips.clear();
+  aisSel = null;
+  aisMapFitted = false;
+  if (aisMapLayers) { aisMapLayers.ships.clearLayers(); aisMapLayers.tracks.clearLayers(); aisMapLayers.marks.clear(); }
+  renderAisView();
+}
+
+function aisReset() {
+  aisLast = {};
+  $("aisRows").innerHTML = "";
+  $("aisEmpty").hidden = false;
+  $("aisChannels").textContent = "";
+  aisResume();
+  aisShipsClear();
+}
+
+async function aisLoad() {
+  const v = active;
+  try {
+    const d = await fetch(vbase + "/api/ais").then((r) => r.json());
+    if (v !== active) return;
+    $("aisRows").innerHTML = "";
+    aisShips.clear();
+    for (const s of d.ships || []) aisShips.set(s.mmsi, { ...s, pts: s.lat != null ? [{ lat: s.lat, lon: s.lon, t: s.pos_time }] : [] });
+    for (const m of d.messages) {
+      m.ship = null;              // the ship data came with the list above; only the track point is added
+      addAis(m);
+      const s = aisShips.get(m.mmsi);
+      if (s && m.lat != null && !s.pts.some((p) => p.lat === m.lat && p.lon === m.lon)) s.pts.push({ lat: m.lat, lon: m.lon, t: m.time });
+    }
+    for (const s of aisShips.values()) s.pts.sort((p, q) => p.t - q.t);
+    $("aisEmpty").hidden = d.messages.length > 0;
+    renderAisInfo(d);
+    renderAisView();
+  } catch { /* an older receiver without AIS */ }
+}
+
+/** The 162.000 button: both channels at once. */
+function renderAisBands(center, channels) {
+  aisCenter = center || 162000000;
+  aisChannelList = channels || [];
+  $("aisBands").innerHTML = `<button data-f="${aisCenter}" title="Centre the VFO on ${fmtMHz(aisCenter, 3)} MHz (FM), between the AIS channels ${aisChannelList.map((f) => fmtMHz(f, 3)).join(" and ")} MHz: both are decoded">${fmtMHz(aisCenter, 3)}</button>`;
+}
+
+function renderAisInfo(d) {
+  const i = (aisLast = { ...aisLast, ...d });
+  const el = $("aisInfo");
+  el.classList.toggle("err", !!i.error);
+  if (i.error) el.textContent = `AIS: ${i.error}`;
+  else el.textContent = !i.enabled ? "" : !i.running ? "waiting for the VFO…"
+    : `${i.count || 0} messages · ${i.ships || 0} stations${i.bad ? ` · ${i.bad} bad CRC` : ""}${i.dropped ? ` · ${i.dropped} blocks dropped` : ""}`;
+  const chs = i.enabled && i.channels ? i.channels : [];
+  const lv = i.levels || {};
+  $("aisChannels").textContent = chs.length
+    ? `Listening on ${chs.map((f) => { const ch = f === 161975000 ? "A" : "B"; return `${ch} ${fmtMHz(f, 3)} MHz${lv[ch] != null ? ` (${lv[ch].toFixed(0)} dB)` : ""}`; }).join(" · ")}` : "";
+}
+
+function renderAis(s) {
+  const on = !!s.ais;
+  $("aisOn").checked = on;
+  $("aisCard").hidden = !on;
+  const no = !!s.chain_owner;
+  $("aisOn").disabled = no;
+  $("aisOn").parentElement.classList.toggle("disabled", no);
+  $("aisOn").parentElement.title = no ? `AIS needs its own dongle (this VFO shares the dongle of VFO ${s.chain_owner})` : AIS_TITLE;
+  for (const b of $("aisBands").children) b.classList.toggle("active", on && s.center_hz === Number(b.dataset.f));
+  renderAisInfo({ enabled: on, error: s.ais_error });
+}
+
+$("aisOn").addEventListener("change", () => {
+  st.ais = $("aisOn").checked;
+  $("aisCard").hidden = !st.ais;
+  send({ ais: st.ais });
+  renderAisInfo({ enabled: st.ais });
+});
+$("aisBands").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-f]");
+  if (!b || !st) return;
+  await ensureVfoFor(Number(b.dataset.f));
+  if (!st) return;
+  if (st.acars || st.vdl2 || st.dab || st.ism || st.hfdl) { st.acars = st.vdl2 = st.dab = st.ism = st.hfdl = false; $("acarsOn").checked = $("vdl2On").checked = $("hfdlOn").checked = false; }
+  st.ais = true;
+  $("aisOn").checked = true;
+  send({ ais_center: true });
+  setDecPage("ais");
+  renderDecTab();
+});
+$("aisShow").addEventListener("change", aisRefilter);
+function aisRefilter() {
+  for (const tr of $("aisRows").rows) tr.hidden = !aisVisible(tr);
+  if (aisPausedRow?.hidden) aisResume();
+}
+$("aisFilter").addEventListener("input", () => { aisRefilter(); renderAisView(); });
+$("aisClear").addEventListener("click", () => {
+  fetch(vbase + "/api/ais", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"action":"clear"}' });
+  aisResume();
+  $("aisRows").innerHTML = "";
+  $("aisEmpty").hidden = false;
+  aisShipsClear();
+  renderAisInfo({ count: 0, ships: 0, bad: 0 });
+});
+
 // ---------- DSD: digital voice (a mode, not a DECODE key: it replaces the audio) ----------
 
 const DSD_MAX_ROWS = 300;
@@ -6396,7 +7352,7 @@ $("memSort").addEventListener("change", () => { store("memSort", $("memSort").va
 
 const RECORD_NAMES = { off: "OFF", on: "ON", sq: "SQ", asq: "ASQ" };   // RECORD of a memory: recording at recall
 const DECODER_NAMES = { "": "—", ft8: "FT8", wefax: "WEFAX", cw: "CW", rtty: "RTTY", sstv: "SSTV", packet: "PACKET",
-  acars: "ACARS", vdl2: "VDL2", ism: "ISM" };
+  acars: "ACARS", vdl2: "VDL2", hfdl: "HFDL", ais: "AIS", ism: "ISM" };
 const NO_GROUP = "\u0000none";   // value of "(no group)" in the group filters
 let memGroupList = [];           // [{name, note, count}] from /api/memory_groups
 let medTab = recall("medTab") || "list";
@@ -7219,7 +8175,7 @@ function onStatus(s) {
   const rateChanged = st && st.audio_rate !== s.audio_rate;
   // Shortly after a local change, do not let an older state from the server overwrite tuning and selection.
   if (st && Date.now() - localChangeAt < 700) {
-    for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "smart_agc", "dc_remove", "dc_hz", "dc_db", "spur_on", "spur_hz", "spur_edge", "spur_shift", "spur_db", "spur_learning", "stereo_on", "notch", "autotune", "ft8", "wefax", "cw", "rtty", "sstv", "packet", "acars", "cpdlc", "dab", "dab_channel", "dab_sids", "logs", "upconv", "device", "squelch_levels", "auto_sql", "auto_sql_on", "auto_sql_level"]) s[k] = st[k];
+    for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "smart_agc", "dc_remove", "dc_hz", "dc_db", "spur_on", "spur_hz", "spur_edge", "spur_shift", "spur_db", "spur_learning", "stereo_on", "notch", "autotune", "ft8", "wefax", "cw", "rtty", "sstv", "packet", "hfdl", "ais", "acars", "cpdlc", "dab", "dab_channel", "dab_sids", "logs", "upconv", "device", "squelch_levels", "auto_sql", "auto_sql_on", "auto_sql_level"]) s[k] = st[k];
   }
   s.sample_rates = sampleRates;
   st = s;
@@ -7242,6 +8198,8 @@ function onStatus(s) {
   $("rttyCard").hidden = !s.rtty;
   $("packetOn").checked = !!s.packet;
   $("packetCard").hidden = !s.packet;
+  renderHfdl(s);
+  renderAis(s);
   renderLogs(s.logs);
   $("sstvOn").checked = !!s.sstv;
   $("sstvCard").hidden = !s.sstv;
@@ -7335,6 +8293,11 @@ function connectEvents(v) {
   on("dabstate", (d) => { if (st) renderDabInfo(d); });
   on("ism", (m) => { addIsm(m); if (m.n === 1) decActivity("ism"); });
   on("ismstate", (d) => { if (st) renderIsmInfo(d); });
+  on("hfdl", (m) => { addHfdl(m); decActivity("hfdl"); });
+  on("hfdlstate", (d) => { if (st) renderHfdlInfo(d); });
+  on("hfdlinfo", onHfdlInfo);
+  on("ais", (m) => { addAis(m); decActivity("ais"); });
+  on("aisstate", (d) => { if (st) renderAisInfo(d); });
   on("acarsinfo", onAcarsInfo);
   on("ft8cycle", (d) => renderFt8Info(`cycle ${d.time} · decoding…`));
   es.onerror = () => {
@@ -7407,10 +8370,12 @@ function renderVfoInfo(row, s) {
     a(kind).querySelector("b").textContent = passText(hz);
     a(kind).title = `${PASS[kind].text} ${hz} Hz: ${on ? "on" : "off"}`;
   }
-  // ST: lit with the pilot, grey in WFM without it, dark in other modes
+  // ST: lit while stereo is decoded (pilot + S/M on), grey in WFM without a pilot or with S/M off, dark in other modes
   const wfm = s.mode === "WFM";
   a("st").classList.toggle("on", wfm && !!s.stereo);
   a("st").classList.toggle("set", wfm && !s.stereo);
+  a("st").title = !wfm ? "Stereo (WFM only)" : s.stereo ? "Stereo: 19 kHz pilot, L−R decoded"
+    : s.pilot ? "Mono: 19 kHz pilot present, stereo switched off (S/M)" : "Mono: no 19 kHz pilot";
   // SQL: lit while the squelch is open, grey while closed, dark without squelch
   const levels = s.squelch_levels || {};
   const sqOk = s.mode in levels;
@@ -7495,7 +8460,7 @@ function renderVfoDisplays() {
       // one dark window: VFO-x, name and state on top, the frequency, the annunciators, RF and SQL bars
       row.innerHTML = `<div class="vfo-top">` + (v.name ? `<button class="vfo-key">VFO-${v.name}</button>` : "<span></span>") +
         `<div class="vfo-memname"></div><div class="vfo-ind"><span class="rec-tag"></span>` +
-        `<span class="mute-tag" title="Audio muted while the ACARS, VDL2 or ISM decoder runs" hidden></span>` +
+        `<span class="mute-tag" title="Audio muted while the ACARS, VDL2, HFDL or ISM decoder runs" hidden></span>` +
         (v.name ? `<span class="vfo-stat"></span>` : "") + `</div></div>` +
         `<div class="vfo-disp"><div class="freq"></div></div>` +
         (v.name ? vfoInfoHtml() + vfoAnnsHtml() + `<div class="vfo-foot"><label class="vfo-rf"><span>RF</span>` +
@@ -7693,6 +8658,8 @@ async function selectVfo(v) {
   $("acarsRows").innerHTML = ""; $("acarsEmpty").hidden = false; renderAcarsFilter();
   dsdReset();
   ismReset();
+  hfdlReset();
+  aisReset();
   $("convWarn").hidden = true;
   if (v.st) {
     onStatus(v.st);
@@ -7722,6 +8689,8 @@ async function loadDecoders() {
   await sstvLoad();
   await dsdLoad();
   await ismLoad();
+  await hfdlLoad();
+  await aisLoad();
   await packetLoad();
   const cwi = await fetch(vbase + "/api/cw").then((r) => r.json());
   if (v !== active) return;
@@ -7951,6 +8920,129 @@ for (const b of REC_BUTTONS) {
 }
 renderRec();
 
+// ---------- RECORDINGS tab (RECS key): the files of data\recordings, played in the browser ----------
+// The folder is shared by all VFOs, so the list is the same on every receiver. A click on a row plays the file
+// with the <audio> element (its own volume, not through MAIN); NEXT continues with the row below (the older file).
+let recordings = [];          // from the server, newest first
+let recsPlaying = "";         // file name in the player
+let recsWriting = "";         // files being written when the list was read (a change = read again)
+let recsLoading = false;
+
+function recsSecs(s) { return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }
+function recsSize(b) { return b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.round(b / 1024) + " kB"; }
+
+async function loadRecordings() {
+  if (recsLoading) return;
+  recsLoading = true;
+  try {
+    const r = await fetch(vbase + "/api/recordings");
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    recordings = await r.json();
+    recsWriting = recordings.filter((f) => f.writing).map((f) => f.name).join("\n");
+    $("recsInfo").classList.remove("error");
+  } catch (e) {
+    recordings = [];
+    $("recsInfo").classList.add("error");
+    $("recsInfo").textContent = `Recordings: ${e.message}`;
+  } finally {
+    recsLoading = false;
+  }
+  renderRecordings();
+}
+
+/** The rows that pass the filter (name, memory, frequency in kHz, mode, start). */
+function recsShown() {
+  const q = $("recsFilter").value.trim().toLowerCase();
+  if (!q) return recordings;
+  return recordings.filter((f) => `${f.name} ${f.memory} ${f.hz / 1e3} ${f.mode} ${f.start}`.toLowerCase().includes(q));
+}
+
+function renderRecordings() {
+  const shown = recsShown();
+  const playing = recsPlaying && !$("recsAudio").paused;
+  const rows = shown.map((f) => {
+    const tr = document.createElement("tr");
+    tr.dataset.name = f.name;
+    tr.classList.toggle("playing", f.name === recsPlaying);
+    tr.title = f.writing ? "Being written now: plays what is saved so far" : "Click to play";
+    const cells = [
+      ["play", f.name === recsPlaying && playing ? "▮▮" : "▶", ""],
+      ["", f.start || "—", ""], ["", f.memory, ""], ["num", f.hz ? `${(f.hz / 1e6).toFixed(6)} MHz` : "", ""], ["", f.mode, ""],
+      ["num", recsSecs(f.secs), ""], ["num", recsSize(f.size), ""], ["file", f.name, f.name], ["del", f.writing ? "" : "✕", f.writing ? "" : "Delete the file"],
+    ];
+    for (const [cls, text, title] of cells) {
+      const td = document.createElement("td");
+      if (cls) td.className = cls;
+      td.textContent = text;
+      if (title) td.title = title;
+      tr.append(td);
+    }
+    if (f.writing) { const m = document.createElement("span"); m.className = "rec-mark"; m.textContent = " ●"; tr.children[7].append(m); }
+    return tr;
+  });
+  $("recsRows").replaceChildren(...rows);
+  $("recsEmpty").hidden = recordings.length > 0;
+  if (!$("recsInfo").classList.contains("error")) {
+    const total = recordings.reduce((a, f) => a + f.size, 0), secs = recordings.reduce((a, f) => a + f.secs, 0);
+    const n = shown.length === recordings.length ? `${recordings.length}` : `${shown.length} of ${recordings.length}`;
+    $("recsInfo").textContent = recordings.length ? `${n} recordings, ${recsSecs(secs)}, ${recsSize(total)}` : "";
+  }
+  $("recsNow").textContent = recsPlaying;
+  $("recsPlayKey").textContent = playing ? "▮▮ PAUSE" : "▶ PLAY";
+}
+
+function playRecording(name) {
+  const a = $("recsAudio");
+  if (name === recsPlaying) {
+    if (a.paused) a.play().catch((e) => adError(`Play: ${e.message}`));
+    else a.pause();
+    return;
+  }
+  recsPlaying = name;
+  a.src = `${vbase}/api/recordings/${encodeURIComponent(name)}`;
+  a.play().catch((e) => adError(`Play: ${e.message}`));
+  renderRecordings();
+  $("recsRows").querySelector("tr.playing")?.scrollIntoView({ block: "nearest" });
+}
+
+async function deleteRecording(name) {
+  if (!confirm(`Delete the recording?\n${name}`)) return;
+  const r = await fetch(`${vbase}/api/recordings/${encodeURIComponent(name)}`, { method: "DELETE" });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { adError(j.error || `Delete: HTTP ${r.status}`); return; }
+  if (name === recsPlaying) { $("recsAudio").pause(); $("recsAudio").removeAttribute("src"); recsPlaying = ""; }
+  loadRecordings();
+}
+
+$("recsRows").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr[data-name]");
+  if (!tr) return;
+  if (e.target.closest("td.del") && e.target.textContent) deleteRecording(tr.dataset.name);
+  else playRecording(tr.dataset.name);
+});
+$("recsPlayKey").addEventListener("click", () => {
+  const first = recsShown()[0];
+  if (recsPlaying) playRecording(recsPlaying);
+  else if (first) playRecording(first.name);
+});
+$("recsReload").addEventListener("click", loadRecordings);
+$("recsFilter").addEventListener("input", renderRecordings);
+$("recsNext").checked = recall("recsNext") !== "0";
+$("recsNext").addEventListener("change", () => store("recsNext", $("recsNext").checked ? "1" : "0"));
+for (const ev of ["play", "pause", "ended"]) $("recsAudio").addEventListener(ev, renderRecordings);
+$("recsAudio").addEventListener("ended", () => {
+  if (!$("recsNext").checked) return;
+  const shown = recsShown(), i = shown.findIndex((f) => f.name === recsPlaying);
+  if (i >= 0 && i + 1 < shown.length) playRecording(shown[i + 1].name);
+});
+$("recsAudio").addEventListener("error", () => { if (recsPlaying) adError(`Cannot play ${recsPlaying}`); });
+// a running recording changes the list (new files, a growing size): read it again every 10 s while the tab is open
+setInterval(() => {
+  if (bodyTab !== "recs" || document.hidden) return;
+  const writing = Object.values((st && st.recording) || {}).filter((r) => r && r.open && r.file).map((r) => r.file).join("\n");
+  if (writing || writing !== recsWriting) loadRecordings();
+}, 10000);
+
 // ---------- stereo level meter next to the sliders ----------
 // LEDs from the bottom up: 10 green up to 0 dB, then yellow (+3 dB) and red (+6 dB = 0 dBFS, clipping).
 // 0 dB of the meter = −6 dBFS, so yellow and red warn before clipping.
@@ -8133,6 +9225,8 @@ async function init() {
   renderFt8Bands(info.ft8_freqs);
   dabChannelList = info.dab_channels || [];
   $("dabChannel").innerHTML = (info.dab_channels || []).map(([n, f]) => `<option value="${n}">${n} · ${fmtMHz(f, 3)}</option>`).join("");
+  renderHfdlBands(info.hfdl_bands || [], info.hfdl_stations || []);
+  renderAisBands(info.ais_center, info.ais_channels);
   $("ismBands").innerHTML = (info.ism_freqs || []).map((f) => `<button data-f="${f}" title="Centre the VFO on ${fmtMHz(f, 2)} MHz">${fmtMHz(f, 2)}</button>`).join("");
   linkFreqs = { acars: info.acars_freqs || [], vdl2Center: info.vdl2_center || 136500000,
     vdl2Rate: info.vdl2_rate || 2100000,

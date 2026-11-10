@@ -19,6 +19,8 @@ All components and how the signals flow between them, from the hardware at the b
 | `ft8.py`, `wefax.py`, `cw.py`, `rtty.py`, `sstv.py`, `acars.py`, `cpdlc.py`, `adsc.py` | decoders (`adsc.py`: ADS-C reports inside ACARS) |
 | `packet.py`, `aprs.py` | PACKET decoder: AX.25 link layer, 1200 / 9600 Bd demodulators; APRS parse |
 | `vdl2.py` | VDL2: runs `lib\vdl2\dumpvdl2.exe`, feeds it the raw samples, turns its messages into ACARS / CPDLC records |
+| `hfdl.py` | HFDL: runs `lib\hfdl\dumphfdl.exe` with the HFDL channels inside the band of the VFO (from `lib\hfdl\systable.conf`), feeds it the raw samples, turns its messages into table rows |
+| `ais.py` | AIS decoder: both channels (161.975 / 162.025 MHz) out of the raw samples (band-pass, polyphase decimation, FM, bit clock and HDLC of `packet.py`), message types 1–27, MMSI countries, NMEA |
 | `ism.py` | ISM decoder: runs `lib\ism\rtl_433.exe`, gives it the raw samples through a local rtl_tcp server, reads its messages |
 | `recorder.py` | audio recording to MP3 files in `data\recordings` (REC, REC SQ) |
 | `rotor.py` | antenna rotor (K3NG, GS-232): position checks, azimuth calibration, the K3NG 0–450 azimuth |

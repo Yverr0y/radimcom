@@ -84,7 +84,7 @@ def make_upgrade(full_zip):
     print(f"{out}: {n + 2} files, {os.path.getsize(out) / 1e6:.1f} MB")
 
 
-CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "autotune.py", "lime.py", "airspy.py", "rds.py", "cw.py", "rtty.py", "packet.py", "aprs.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py", "cpdlc.py", "cpdlc_schema.py", "adsc.py", "vdl2.py", "airports.py", "dab.py", "ism.py", "dsd.py", "recorder.py", "install_dsd.py", "install_dsd.bat",
+CODE = ["app.py", "launcher.py", "paths.py", "sdr.py", "autotune.py", "lime.py", "airspy.py", "rds.py", "cw.py", "rtty.py", "packet.py", "aprs.py", "daylog.py", "ft8.py", "wefax.py", "sstv.py", "acars.py", "cpdlc.py", "cpdlc_schema.py", "adsc.py", "vdl2.py", "hfdl.py", "ais.py", "airports.py", "dab.py", "ism.py", "dsd.py", "recorder.py", "install_dsd.py", "install_dsd.bat",
         "memories.py", "satellites.py", "update_check.py", "upgrade_helper.py", "sattrack.py", "satplan.py", "sysload.py", "rotor.py", "iqshare.py", "eeprom_tool.py", "setup_sdr.py", "start.bat", "setup.bat", "README.md", "CHANGELOG.md",
         "LICENSE", "NOTICE.md", "API/API.md"]
 LIBS = ["lib/librtlsdr.dll", "lib/libusb-1.0.dll"]
@@ -97,6 +97,9 @@ LIBS += sorted("lib/dab/" + f for f in os.listdir(os.path.join(ROOT, "lib", "dab
                if f.lower().endswith((".exe", ".dll"))) if os.path.isdir(os.path.join(ROOT, "lib", "dab")) else []
 # ISM: the static rtl_433 of its release (see installer/ISM.txt), no DLLs needed
 LIBS += ["lib/ism/rtl_433.exe"]
+# HFDL: dumphfdl built with MSYS2 (installer/build_hfdl.sh, see installer/HFDL.txt) with its DLLs and ground station table
+LIBS += sorted("lib/hfdl/" + f for f in os.listdir(os.path.join(ROOT, "lib", "hfdl"))
+               if f.lower().endswith((".exe", ".dll", ".conf"))) if os.path.isdir(os.path.join(ROOT, "lib", "hfdl")) else []
 FROM_INSTALLER = ["install.bat", "requirements.txt", "config.json", "DRIVERS.txt", "INSTALL.txt", "VDL2_Ground_Stations.txt"]
 # files from this PC that are bundled (target in the package: source)
 EXTERNAL = {
@@ -133,6 +136,7 @@ def main():
         copy(os.path.join(HERE, "VDL2.txt"), "lib/vdl2/README.txt", build)   # licences and sources of dumpvdl2
         copy(os.path.join(HERE, "DAB.txt"), "lib/dab/README.txt", build)     # licences and sources of welle-cli
         copy(os.path.join(HERE, "ISM.txt"), "lib/ism/README.txt", build)     # licences and sources of rtl_433
+        copy(os.path.join(HERE, "HFDL.txt"), "lib/hfdl/README.txt", build)   # licences and sources of dumphfdl
         shutil.copytree(os.path.join(ROOT, "static"), os.path.join(build, "static"))
         for dst, src in EXTERNAL.items():
             copy(src, dst, build)

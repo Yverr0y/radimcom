@@ -35,12 +35,12 @@ squelch gets a green underline, a transmitting one turns red.
 
 - **Top row:** VFO-x (boxed and yellow on the active VFO, green on an inactive one with an open squelch), the name of the
   memory / band plan / satellite transponder (lit on the active VFO; a memory with its own tag colour shows its name in that colour), a red dot while recording, a red struck-through speaker
-  when a decoder (ACARS, VDL2 or ISM) has muted the audio of this VFO, and the connection state as a USB icon: green = SDR running,
+  when a decoder (ACARS, VDL2, HFDL, AIS or ISM) has muted the audio of this VFO, and the connection state as a USB icon: green = SDR running,
   blinking orange = connecting (waiting, opening the dongle, LimeSDR calibration), grey = disconnected or error
   (hover for details). A chained VFO shows CHAIN, one out of the range of its dongle owner OOR.
 - **Frequency** in the middle.
 - **Info row** under it (each item has a fixed place): RX / TX (red while transmitting), the filter width, the audio
-  **HPF** and **LPF** with their cutoffs (lit when on), **ST** (WFM: lit with the stereo pilot, grey without it),
+  **HPF** and **LPF** with their cutoffs (lit when on), **ST** (WFM: lit while stereo is decoded, grey without the 19 kHz pilot or with S/M set to mono),
   **SQL** (squelch on: grey while closed, green while open) and **CONV / BYPASS**, the required position of the manual
   upconverter switch (VFOs with upconverter mode auto; BYPASS in amber).
 - **Annunciators** under it, lit when on and dark when off or not used in the current mode: the mode, AGC / AGC+
@@ -99,6 +99,10 @@ squelch gets a green underline, a transmitting one turns red.
     ![ACARS card on 131.725 MHz: ADS-C position reports with route, track and speed, and plain ACARS messages, aircraft type and position from ADS-B](images/decoders_acars_legacy.png)
 
   - ISM: see [ISM decoder](decoders/ism.md).
+  - HFDL (aircraft data link on HF, 2.9–22 MHz): band buttons centre the VFO on an HFDL band; all HFDL channels
+    inside the band of the VFO are decoded at once and the audio of the VFO is muted. See [HFDL decoder](decoders/hfdl.md).
+  - AIS (ships, 161.975 / 162.025 MHz): the 162.000 button centres the VFO between the two channels, both are decoded
+    at once from the raw samples and the audio of the VFO is muted; MESSAGES / SHIPS / MAP. See [AIS decoder](decoders/ais.md).
   - VDL2 (VDL Mode 2, digital): one centre button 136.500 MHz (re-centres the VFO at 2.1 MS/s; all channels of the region
     are decoded at once), EU and US region buttons, the number of channels (list in the tooltip) and frame count, CLR. Plain ACARS, CPDLC, ADS-C
     and European ATN CPDLC in one table, see [Aircraft data link](decoders/aircraft.md).
@@ -123,6 +127,8 @@ squelch gets a green underline, a transmitting one turns red.
     of the VFO window follows the level in use; so does the yellow mark on the S-meter.
   - ALC: automatic audio level in AM/LSB/USB/CW; off = fixed gain.
   - CUE: keep hearing this VFO (at the CUE level) when another VFO is selected.
+  - RECS: the **RECORDINGS** tab in the bottom part (beside SPECTRUM, DECODERS, SATELLITES), see [Recordings](#recordings) below. Like MEM, the key
+    shows or hides the tab for all VFOs and is remembered in the browser.
 - **SAT**: the satellite key switches to the SATELLITES tab and back, see [Satellite tracking](satellites.md).
 - **Volume** (top right): vertical MAIN (active VFO) and CUE faders, stereo L/R level meter. Below them the speaker button
   is MUTE (green = sound on, red = muted). Under it are two recording keys for the active VFO, which work independently of each other and go on with the page closed:
@@ -130,6 +136,14 @@ squelch gets a green underline, a transmitting one turns red.
   - **REC SQ** records only while there is audio (open squelch), each session in its own file. A session ends when the squelch stays closed for 1 s; that silence is not saved, and a burst shorter than 0.3 s is dropped. In modes without a squelch, or with the squelch off, one session runs until the key is switched off, with no length limit.
 
   Files go to `data\recordings` as MP3, 128 kbps, named by the frequency and mode at the start of the file and its start time: `145.500000MHz_FM_20261105_155300.mp3`. If that frequency is in the memories, the name of the memory comes first, with `_` instead of spaces: `Piestany_TWR_118.575000MHz_AM_20261105_155300.mp3`. Retuning during a recording does not start a new file; a change of the sample rate does. A key shows the time of the current file while writing, and it is lit without a time while waiting for audio. A red dot in the corner of the VFO display shows the same for each VFO: blinking while writing, steady while waiting for audio. Like the audio of the VFO, recording pauses while ACARS, VDL2 or ISM runs, and DAB is not recorded.
+
+  <a id="recordings"></a>**RECORDINGS tab** (AUDIO → RECS): every MP3 file of `data\recordings` (the folder is shared by all VFOs), newest first: start time,
+  memory name, frequency, mode, length (from the size, 128 kbps), size and the file name. A file being written has a blinking red dot; its length grows
+  while the tab is open (the list is read again every 10 s while a recording runs, ⟳ reads it at once). A click on a row plays the file in the browser
+  with the player in the head of the tab: ▶ / ▮▮ (also the PLAY key), seeking in the bar, the player's own volume (not MAIN, so the live audio keeps
+  playing; MUTE it if you want). A file being written plays what is saved so far. **NEXT** (on by default) continues with the next older file when one
+  ends, so the short sessions of REC SQ play one after another; the filter box narrows the list to rows whose name, memory, kHz, mode or date contains
+  the text (NEXT follows the filtered list). ✕ at the end of a row deletes the file after a question; a file being written cannot be deleted.
 - **MENU → SET (gear)**: settings of the active VFO. While the gear key is lit, the bottom part has a **SETTINGS** tab
   (beside SPECTRUM, DECODERS and SATELLITES) with page keys like SATELLITES; the open page is remembered in the browser.
   The gear is one switch for all VFOs; switching it off hides the tab. The pages:

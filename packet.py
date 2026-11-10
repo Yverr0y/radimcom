@@ -61,8 +61,13 @@ class HdlcDeframer:
     (only counted, never returned; random bits between flags in noise are not counted).
     """
 
-    def __init__(self, nrzi=True):
+    def __init__(self, nrzi=True, min_frame=MIN_FRAME, max_frame=MAX_FRAME, header_ok=None):
+        """min_frame / max_frame: length limits with the FCS (AX.25 by default); header_ok(frame): a frame with a
+        wrong FCS counts as bad only when it passes this test (AX.25 addresses by default; AIS gives its own)."""
         self.nrzi = nrzi
+        self.min_frame = min_frame
+        self.max_frame = max_frame
+        self.header_ok = header_ok or _header_ok
         self.ok = 0
         self.bad = 0
         self.reset()
@@ -78,7 +83,7 @@ class HdlcDeframer:
     def feed(self, bits):
         out = []
         prev, pat, acc, nbits, buf, inframe = self.prev, self.pat, self.acc, self.nbits, self.buf, self.inframe
-        nrzi = self.nrzi
+        nrzi, min_frame, max_frame, header_ok = self.nrzi, self.min_frame, self.max_frame, self.header_ok
         for lv in bits:
             if nrzi:
                 b = 1 if lv == prev else 0
@@ -87,12 +92,12 @@ class HdlcDeframer:
                 b = lv
             pat = (pat >> 1) | (0x80 if b else 0)
             if pat == 0x7E:                         # flag: end of the previous frame, start of the next one
-                if inframe and nbits == 7 and MIN_FRAME <= len(buf) <= MAX_FRAME:
+                if inframe and nbits == 7 and min_frame <= len(buf) <= max_frame:
                     frame = bytes(buf)
                     if fcs_ok(frame):
                         self.ok += 1
                         out.append(frame[:-2])
-                    elif _header_ok(frame):             # noise makes flags too: only a real damaged frame counts
+                    elif header_ok(frame):              # noise makes flags too: only a real damaged frame counts
                         self.bad += 1
                 buf = bytearray()
                 acc = nbits = 0
@@ -107,7 +112,7 @@ class HdlcDeframer:
                 acc = (acc >> 1) | (0x80 if b else 0)
                 nbits += 1
                 if nbits == 8:
-                    if len(buf) < MAX_FRAME:
+                    if len(buf) < max_frame:
                         buf.append(acc)
                     else:                           # too long: noise, wait for the next flag
                         inframe = False

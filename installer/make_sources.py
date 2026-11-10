@@ -20,6 +20,10 @@ MINGW = "https://repo.msys2.org/mingw/sources/{}.src.tar.zst"
 # component, licence, file name in the zip, url
 SOURCES = [
     ("dumpvdl2 2.7.0", "GPL v3", "dumpvdl2-2.7.0.tar.gz", GITHUB.format("szpajder/dumpvdl2", "v2.7.0")),
+    ("dumphfdl 1.7.0", "GPL v3", "dumphfdl-1.7.0.tar.gz", GITHUB.format("szpajder/dumphfdl", "v1.7.0")),
+    ("liquid-dsp 1.8.3 (for dumphfdl)", "MIT", "liquid-dsp-1.8.3.tar.gz", GITHUB.format("jgaeddert/liquid-dsp", "v1.8.3")),
+    ("libconfig 1.7.3 (for dumphfdl)", "LGPL v2.1+", "libconfig-1.7.3.tar.gz", GITHUB.format("hyperrealm/libconfig", "v1.7.3")),
+    ("FFTW 3.3.10 (single precision, for dumphfdl)", "GPL v2+", "fftw-3.3.10.tar.gz", "https://www.fftw.org/fftw-3.3.10.tar.gz"),
     ("libacars 2.2.1", "MIT", "libacars-2.2.1.tar.gz", GITHUB.format("szpajder/libacars", "v2.2.1")),
     ("welle.io 2.7 (welle-cli, before our patch, welle_radimcom.patch is in the build folder)", "GPL v2+", "welle.io-2.7.tar.gz", GITHUB.format("AlbrechtL/welle.io", "v2.7")),
     ("rtl_433 25.12", "GPL v2+", "rtl_433-25.12.tar.gz", GITHUB.format("merbanan/rtl_433", "25.12")),
@@ -37,7 +41,7 @@ SOURCES = [
     ("mpg123 1.33.7", "LGPL v2.1", "mingw-w64-mpg123-1.33.7-1.src.tar.zst", MINGW.format("mingw-w64-mpg123-1.33.7-1")),
     ("LAME 4.0", "LGPL v2", "mingw-w64-lame-4.0-1.src.tar.zst", MINGW.format("mingw-w64-lame-4.0-1")),
 ]
-BUILD_FILES = ["VDL2.txt", "DAB.txt", "ISM.txt", "build_dab.sh", "welle_radimcom.patch"]
+BUILD_FILES = ["VDL2.txt", "DAB.txt", "ISM.txt", "HFDL.txt", "build_hfdl.sh", "build_dab.sh", "welle_radimcom.patch"]
 NOT_INCLUDED = """Not in this zip:
 - librtlsdr (GPL v2+): the exact source of lib\\librtlsdr.dll is still being confirmed. Ask at radim.mutina@gmail.com.
 - GCC runtime libraries: covered by the GCC Runtime Library Exception. Sources: https://github.com/msys2/MSYS2-packages

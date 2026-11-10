@@ -17,6 +17,8 @@ Decoders:
 | Page | Contents |
 |---|---|
 | [Aircraft data link](decoders/aircraft.md) | ACARS, VDL2, CPDLC, ADS-C |
+| [HFDL](decoders/hfdl.md) | aircraft data link on HF (2.9–22 MHz) via dumphfdl |
+| [AIS](decoders/ais.md) | ships on 161.975 / 162.025 MHz, own GMSK decoder, map |
 | [DAB / DAB+](decoders/dab.md) | digital broadcast radio via welle-cli |
 | [DSD](decoders/dsd.md) | digital voice (DMR, P25, D-Star, YSF, NXDN, …) via DSD-FME |
 | [ISM](decoders/ism.md) | 433 / 868 MHz devices via rtl_433 |

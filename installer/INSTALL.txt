@@ -19,7 +19,8 @@ Features
 - CUE: keep listening to other VFOs at a separate CUE level while one VFO is selected;
   MAIN and CUE volume faders, stereo level meter, MUTE.
 - REC and REC SQ: record the audio of the selected VFO to MP3 files in data\recordings:
-  everything, or only while the squelch is open.
+  everything, or only while the squelch is open. RECS: the RECORDINGS tab lists the files and
+  plays them in the browser.
 - Decoders: FT8, WEFAX (radio fax), CW (Morse), RTTY (auto shift/speed), SSTV (14 modes),
   PACKET (AX.25 1200 / 9600 Bd, APRS with a station list and map), ACARS (aircraft data link, VHF airband), CPDLC (controller-pilot messages in ACARS);
   optional daily log for each.
@@ -96,9 +97,22 @@ Main Features
   free connected dongles; the dongle being set is highlighted
 - Memory import (Brano): one LOAD FILE... key recognises the format by the content: RADIMCOM JSON / CSV, SDR#
   frequencies.xml, SDR++ frequency manager, gqrx bookmarks.csv, CHIRP CSV (LOAD SDR# removed).
+- RECORDINGS tab (RECS key in the AUDIO group): the MP3 files of REC / REC SQ in a table (start, memory,
+  frequency, mode, length, size), a click plays the file in the browser, NEXT continues with the next older
+  file, filter, delete; the file being written is marked. HTTP API: /api/recordings.
 - Waterfall keeps the history of the whole SDR band: after zooming out or dragging the section, the parts
   hidden before are shown at once (coarser), not an empty background.
+- HFDL decoder (aircraft data link on HF, 2.9-22 MHz, dumphfdl): DECODERS > HFDL, all HFDL channels inside
+  the band of the VFO at once, band buttons, heard ground stations, table of stations and frequencies, LOG;
+  aircraft data from ADS-B (adsb.fi / adsb.lol) like ACARS, a click on flight / registration opens the map;
+  MESSAGES / AIRCRAFT / MAP views (aircraft positions, tracks and ground stations on a map), scroll pause.
+- AIS decoder (ships, 161.975 / 162.025 MHz, own GMSK decoder, no external program): DECODERS > AIS, the
+  162.000 button centres the VFO so both channels are decoded at once, audio muted; MMSI with country flag and
+  MarineTraffic / VesselFinder links, name, type, status, position, speed, course, destination, NMEA sentence;
+  MESSAGES / SHIPS / MAP views (ships turned to their heading, tracks, base stations, aids to navigation), LOG.
 Minor Fixes
+- ST in the VFO window is lit only while stereo is really decoded (pilot and S/M on), grey with S/M set
+  to mono; before it stayed lit with the pilot, so S/M looked as if it did nothing
 - Damaged VFO settings (config_X.json full of zeros after a power cut) no longer stop the VFO: saving flushes
   to disk and keeps a .bak, the launcher restores it (or creates new settings), the damaged file stays as .broken
 - AD window has a fixed height: an error, the rotor AZ / EL or RDS no longer change it

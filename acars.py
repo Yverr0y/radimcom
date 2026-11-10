@@ -559,7 +559,7 @@ class AcarsDecoder:
                 "found": True, "hex": a.get("hex", ""), "reg": a.get("r", ""), "type": a.get("t", ""), "desc": a.get("desc", ""),
                 "callsign": (a.get("flight") or "").strip(), "lat": a.get("lat"), "lon": a.get("lon"),
                 "alt_ft": alt if isinstance(alt, (int, float)) else None, "ground": alt == "ground",
-                "gs_kt": a.get("gs"), "squawk": a.get("squawk", ""), "src": "adsb.fi" if "adsb.fi" in url else "adsb.lol",
+                "gs_kt": a.get("gs"), "track": a.get("track", a.get("true_heading")), "squawk": a.get("squawk", ""), "src": "adsb.fi" if "adsb.fi" in url else "adsb.lol",
             }
         return None
 

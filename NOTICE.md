@@ -18,7 +18,11 @@ does not contain the binaries; the release packages do, except where noted.
 | Component | Used for | Licence | Source |
 |---|---|---|---|
 | dumpvdl2 2.7.0 | VDL2 decoder (separate program) | GPL v3 | <https://github.com/szpajder/dumpvdl2> |
-| libacars 2.2.1 | used by dumpvdl2 | MIT | <https://github.com/szpajder/libacars> |
+| libacars 2.2.1 | used by dumpvdl2 and dumphfdl | MIT | <https://github.com/szpajder/libacars> |
+| dumphfdl 1.7.0 (with its ground station table `systable.conf`) | HFDL decoder (separate program) | GPL v3 | <https://github.com/szpajder/dumphfdl> |
+| liquid-dsp 1.8.3 | used by dumphfdl | MIT | <https://github.com/jgaeddert/liquid-dsp> |
+| FFTW 3.3.10 | used by dumphfdl | GPL v2 or later | <https://www.fftw.org> |
+| libconfig 1.7.3 | used by dumphfdl | LGPL v2.1 or later | <https://github.com/hyperrealm/libconfig> |
 | welle-cli (welle.io 2.7), **modified** (`installer/welle_radimcom.patch`) | DAB / DAB+ decoder (separate program) | GPL v2 or later | <https://github.com/AlbrechtL/welle.io> |
 | rtl_433 25.12 (release build of its author, not changed) | ISM decoder, 433 / 868 MHz (separate program) | GPL v2 or later | <https://github.com/merbanan/rtl_433> |
 | rtl-sdr 2.0.2, libusb 1.0.29 | linked into `rtl_433.exe` | GPL v2 or later; LGPL v2.1 or later | <https://github.com/osmocom/rtl-sdr>, <https://github.com/libusb/libusb> |

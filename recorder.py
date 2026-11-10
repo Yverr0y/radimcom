@@ -6,6 +6,7 @@ Two independent recordings, each with its own button:
 
 The receiver thread only puts the blocks in a queue; encoding and writing to disk run in their own thread.
 File name: [<memory name>_]<frequency>MHz_<mode>_<YYYYMMDD_HHMMSS of the start>.mp3
+The RECORDINGS tab lists the files (Recorder.files) and plays them in the browser.
 """
 import os
 import queue
@@ -31,6 +32,7 @@ SESSION_HOLD_S = 1.0  # squelch: a closed squelch ends the session after this lo
 SESSION_MIN_S = 0.3   # squelch: a shorter session is a noise burst, its file is deleted
 SILENCE_PEAK = 1      # 16-bit samples: a block up to this level is silence (a closed squelch gives exactly 0)
 QUEUE_BLOCKS = 256    # about 16 s of audio
+NAME_RE = re.compile(r"^(?:(?P<memory>.+?)_)?(?P<mhz>\d+\.\d{6})MHz_(?P<mode>[A-Z0-9]+)_(?P<start>\d{8}_\d{6})(?:_\d+)?\.mp3$")
 
 
 def has_audio(pcm):
@@ -46,6 +48,17 @@ def memory_prefix(hz, mode):
         return ""
     name = re.sub(r'[\s\\/:*?"<>|\x00-\x1f]+', "_", name).strip("_.")    # also characters Windows forbids in a file name
     return name + "_" if name else ""
+
+
+def parse_name(name):
+    """Frequency, mode, start and memory name from a file name of a recording (empty for a foreign file)."""
+    m = NAME_RE.match(name)
+    if not m:
+        return {"memory": "", "hz": 0, "mode": "", "start": ""}
+    memory = m.group("memory") or ""
+    s = m.group("start")
+    return {"memory": memory.replace("_", " "), "hz": int(round(float(m.group("mhz")) * 1e6)), "mode": m.group("mode"),
+            "start": f"{s[:4]}-{s[4:6]}-{s[6:8]} {s[9:11]}:{s[11:13]}:{s[13:15]}"}
 
 
 class Track:
@@ -150,6 +163,7 @@ class Track:
 
 class Recorder:
     def __init__(self, folder=FOLDER):
+        self.folder = folder
         self.tracks = {"cont": Track(False, folder), "squelch": Track(True, folder)}
         self.q = queue.Queue(maxsize=QUEUE_BLOCKS)
         self.dropped = 0
@@ -200,3 +214,34 @@ class Recorder:
 
     def state(self):
         return dict({kind: t.state() for kind, t in self.tracks.items()}, dropped=self.dropped)
+
+    def writing(self):
+        """Names of the files being written now."""
+        return {t.file for t in self.tracks.values() if t.enc is not None and t.file}
+
+    def files(self):
+        """The MP3 files in the recordings folder, newest first: name, size, time of the last change, length
+        (from the size, CBR), the frequency / mode / start / memory name from the file name, and whether it is being written."""
+        try:
+            names = [n for n in os.listdir(self.folder) if n.lower().endswith(".mp3")]
+        except OSError:
+            return []
+        writing, out = self.writing(), []
+        for name in names:
+            try:
+                stat = os.stat(os.path.join(self.folder, name))
+            except OSError:
+                continue
+            out.append(dict(parse_name(name), name=name, size=stat.st_size, mtime=int(stat.st_mtime),
+                            secs=int(stat.st_size * 8 / (BITRATE * 1000)), writing=name in writing))
+        out.sort(key=lambda f: (f["mtime"], f["name"]), reverse=True)
+        return out
+
+    def delete(self, name):
+        """Deletes one recording; ValueError if it does not exist or is being written."""
+        if name in self.writing():
+            raise ValueError("The file is being written: stop the recording first")
+        path = os.path.join(self.folder, name)
+        if os.sep in name or "/" in name or not os.path.isfile(path):
+            raise ValueError("No such recording")
+        os.remove(path)

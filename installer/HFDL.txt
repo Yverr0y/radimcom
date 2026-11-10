@@ -1,0 +1,26 @@
+HFDL decoder (lib\hfdl)
+=======================
+
+RADIMCOM decodes HFDL (High Frequency Data Link, 2.9-22 MHz) with dumphfdl, which runs as a separate program.
+RADIMCOM sends it the raw I/Q samples of the VFO on its standard input and reads the decoded messages (JSON)
+from its standard output.
+
+Programs and libraries in this folder:
+
+- dumphfdl.exe 1.7.0 - Copyright (c) Tomasz Lemiech, GNU General Public License v3.
+  Source: https://github.com/szpajder/dumphfdl (tag v1.7.0), built without changes.
+- systable.conf - HFDL ground station table from dumphfdl 1.7.0 (etc/systable.conf), GPL v3 like dumphfdl.
+- msys-liquid*.dll = liquid-dsp 1.8.3 - Copyright (c) Joseph Gaeddert, MIT licence.
+  Source: https://github.com/jgaeddert/liquid-dsp (tag v1.8.3), built without changes.
+- msys-fftw3f*.dll = FFTW 3.3.10 (single precision) - Copyright (c) Matteo Frigo and MIT, GNU GPL v2+.
+  Source: https://www.fftw.org/fftw-3.3.10.tar.gz, built without changes.
+- msys-config*.dll = libconfig 1.7.3 - Copyright (c) Mark Lindner, GNU LGPL v2.1+.
+  Source: https://github.com/hyperrealm/libconfig (tag v1.7.3), built without changes.
+- msys-acars-2-2.dll = libacars 2.2.1 - Copyright (c) Tomasz Lemiech, MIT licence (see lib\vdl2\README.txt).
+- msys-2.0.dll, msys-glib-2.0-0.dll, msys-gcc_s-seh-1.dll, msys-stdc++-6.dll and the other msys-*.dll -
+  MSYS2 runtime and packages (licences as in lib\vdl2\README.txt), sources at https://github.com/msys2/MSYS2-packages
+
+How it was built (MSYS2, "MSYS" environment, gcc 16.2): installer\build_hfdl.sh
+  FFTW, libconfig and liquid-dsp are not MSYS packages; the script builds them with CMake and installs them into
+  /usr, then builds dumphfdl with -DSOAPYSDR=OFF -DETSY_STATSD=OFF -DSQLITE=OFF -DZMQ=OFF -DRDKAFKA=OFF and copies
+  the DLLs it needs (ldd) from C:\msys64\usr\bin.

@@ -47,10 +47,11 @@ Up to four SDRs at once, each assigned to a VFO by its serial number; one dongle
 - **ATU (autotune, experimental)**: a click on an AM signal moves the tuning onto its carrier, on an SSB signal it puts the signal edge on the red line. → [TUNE keys](docs/controls.md#function-keys)
 - **Shortwave (HF)** through an upconverter, always showing the real frequency. → [HF upconverter](docs/hf-upconverter.md)
 - **Digital-mode decoders:** FT8, WEFAX, CW, RTTY, SSTV and PACKET (AX.25 1200 / 9600 Bd, APRS with map). → [DECODE](docs/controls.md#function-keys)
-- **Aircraft data link:** ACARS and VDL2 with CPDLC and ADS-C decoded to plain text. → [Aircraft](docs/decoders/aircraft.md)
+- **Aircraft data link:** ACARS and VDL2 with CPDLC and ADS-C decoded to plain text, and **HFDL** on HF (2.9–22 MHz, all channels of a band at once). → [Aircraft](docs/decoders/aircraft.md) · [HFDL](docs/decoders/hfdl.md)
+- **AIS** ships on 161.975 / 162.025 MHz (own decoder, both channels at once) with a map of ships, base stations and aids to navigation. → [AIS](docs/decoders/ais.md)
 - **DAB / DAB+ radio**, **digital voice** (DMR, P25, D-Star, YSF, …; test version) and **ISM** 433 / 868 MHz devices. → [DAB](docs/decoders/dab.md) · [DSD](docs/decoders/dsd.md) · [ISM](docs/decoders/ism.md)
 - **Satellite tracking:** passes, world map, Doppler correction and a K3NG rotor, no other program needed. → [Satellites](docs/satellites.md)
-- **MP3 recording** (REC / REC SQ), daily decoder logs, **HTTP API**, optional **TX with LimeSDR**. → [Configuration](docs/configuration.md)
+- **MP3 recording** (REC / REC SQ) with a RECORDINGS tab to play the files in the browser, daily decoder logs, **HTTP API**, optional **TX with LimeSDR**. → [Configuration](docs/configuration.md)
 
 ### User interface
 

@@ -50,6 +50,10 @@ from vdl2 import VDL2_CENTER, VDL2_RATE, VDL2_REGIONS, Vdl2Decoder, region_freqs
 from dsd import PROTOCOLS as DSD_PROTOCOLS, SLOTS as DSD_SLOTS, DsdDecoder
 from dab import CHANNEL_HZ, DAB_CHANNELS, DAB_DEFAULT, DAB_RATE, DabDecoder
 from ism import ISM_DEFAULT, ISM_FREQS, ISM_RATE, IsmDecoder
+import hfdl as hfdl_mod
+from hfdl import HfdlDecoder
+import ais as ais_mod
+from ais import AisDecoder
 from sdr import (AFI_MAX_HZ, AFI_MIN_HZ, ASQ_MAX_DB, ASQ_MIN_DB, DECIM, DSD_MODE, HPF_MAX_HZ, HPF_MIN_HZ, LPF_MAX_HZ, LPF_MIN_HZ, MODES, SQUELCH_OFF,
                  SAGC_PARAMS, UPCONV_MAX_HZ, ZOOMS, Receiver, list_devices, lowpass, sagc_params)
 
@@ -187,9 +191,9 @@ def save_config_later():
 
 # ---------- daily decoder logs (turned on with LOG in the decoder card) ----------
 
-LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism", "packet")
+LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism", "packet", "hfdl", "ais")
 _tag = cfg.get("vfo") or ""
-logs = {"ft8": DayLog("ft8", _tag), "wefax": DayLog("wefax", _tag), "sstv": DayLog("sstv", _tag), "dsd": DayLog("dsd", _tag), "ism": DayLog("ism", _tag), "packet": DayLog("packet", _tag),
+logs = {"ft8": DayLog("ft8", _tag), "wefax": DayLog("wefax", _tag), "sstv": DayLog("sstv", _tag), "dsd": DayLog("dsd", _tag), "ism": DayLog("ism", _tag), "packet": DayLog("packet", _tag), "hfdl": DayLog("hfdl", _tag), "ais": DayLog("ais", _tag),
         "cw": TextLog("cw", _tag), "rtty": TextLog("rtty", _tag)}
 _saved_logged = {"wefax": None, "sstv": None}
 
@@ -219,6 +223,22 @@ def decoder_event(kind, data):
             ch = f" ch {data['channel']}" if data["channel"] else ""
             rssi = f" {data['rssi']} dB" if data["rssi"] is not None else ""
             logs["ism"].write(f"{_mhz(data['freq_hz'])}{rssi} {data['model']}{dev}{ch} | {data['text']}")
+        elif kind == "hfdl" and log_on("hfdl"):
+            who = " ".join(x for x in (data["flight"], data["reg"], data["icao"] and f"ICAO {data['icao']}") if x)
+            pos = f" pos {data['lat']:.3f} {data['lon']:.3f}" if data["lat"] is not None else ""
+            lbl = f" label {data['label']}" if data["label"] else ""
+            sig = f" {data['sig']} dB" if data["sig"] is not None else ""
+            text = data["text"].replace("\n", " / ")
+            logs["hfdl"].write(f"{_mhz(data['freq_hz'])}{sig} {'↓' if data['dir'] == 'down' else '↑'} {data['gs'] or '?'} "
+                               f"{who or '-'} {data['kind']}{lbl}{pos}" + (f" | {text}" if text else ""))
+        elif kind == "ais" and log_on("ais"):
+            who = " ".join(x for x in (f"MMSI {data['mmsi']}", data["name"] and f"'{data['name']}'", data["callsign"]) if x)
+            pos = f" pos {data['lat']:.4f} {data['lon']:.4f}" if data["lat"] is not None else ""
+            nav = " ".join(x for x in (data["sog"] is not None and f"{data['sog']} kt", data["cog"] is not None and f"COG {data['cog']}°",
+                                       data["hdg"] is not None and f"HDG {data['hdg']}°") if x)
+            lvl = f" {data['level']} dB" if data["level"] is not None else ""
+            logs["ais"].write(f"{_mhz(data['freq_hz'])}{lvl} ch {data['channel']} {who} {data['type_name']}{pos}"
+                              f"{' ' + nav if nav else ''}{' | ' + data['text'] if data['text'] else ''} | {data['nmea']}")
         elif kind == "packet" and log_on("packet"):
             logs["packet"].write(f"{_mhz(data['freq_hz'])} {data['baud']} Bd | {data['tnc2']}")
         elif kind == "cwtext" and log_on("cw"):
@@ -299,6 +319,8 @@ def dab_tune(hz):
 
 dab = DabDecoder(on_tune=dab_tune, on_state=lambda i: hub.event("dabstate", i))
 ism = IsmDecoder(on_event=decoder_event, on_state=lambda i: hub.event("ismstate", i))
+hfdl = HfdlDecoder(on_event=decoder_event, on_state=lambda i: hub.event("hfdlstate", i))
+ais = AisDecoder(on_event=decoder_event, on_state=lambda i: hub.event("aisstate", i))
 _saved_logged.update(wefax=getattr(wefax, "saved", None), sstv=getattr(sstv, "saved", None))
 
 
@@ -311,14 +333,14 @@ def tx_capable():
 
 def audio_muted():
     """These decoders work on the raw samples or the baseband; the audio of their VFO would only be noise."""
-    return acars.enabled or vdl2.enabled or ism.enabled
+    return acars.enabled or vdl2.enabled or ism.enabled or hfdl.enabled or ais.enabled
 
 
 def state():
     capable = tx_capable()
     return dict(receiver.state(), ft8=ft8.enabled, ft8_error=ft8.error, wefax=wefax.enabled, cw=cw.enabled, rtty=rtty.enabled, packet=packet.enabled,
                 sstv=sstv.enabled, acars=acars.enabled, vdl2=vdl2.enabled, vdl2_error=vdl2.error, vdl2_region=vdl2.region, cpdlc=acars.cpdlc_on,
-                dsd=dsd.info(), dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, dab_sids=cfg.get("dab_sids") or {}, ism=ism.enabled, ism_error=ism.error, ism_hz=cfg.get("ism_hz", ISM_DEFAULT), audio_muted=audio_muted(), recording=recorder.state(), logs={k: log_on(k) for k in LOG_KEYS},
+                dsd=dsd.info(), dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, dab_sids=cfg.get("dab_sids") or {}, ism=ism.enabled, ism_error=ism.error, hfdl=hfdl.enabled, hfdl_error=hfdl.error, ais=ais.enabled, ais_error=ais.error, ism_hz=cfg.get("ism_hz", ISM_DEFAULT), audio_muted=audio_muted(), recording=recorder.state(), logs={k: log_on(k) for k in LOG_KEYS},
                 **doppler_trsp(),
                 tx_capable=capable, tx_enabled=bool(cfg.get("tx_enabled", False)),
                 can_tx=capable and bool(cfg.get("tx_enabled", False)) and hasattr(receiver.sdr, "tx_start"))
@@ -402,6 +424,8 @@ def on_raw(raw, fs, center_hz):
     vdl2.feed_raw(raw, fs, center_hz)
     dab.feed_raw(raw, fs, center_hz, receiver.lo)
     ism.feed_raw(raw, fs, center_hz)
+    hfdl.feed_raw(raw, fs, center_hz)
+    ais.feed_raw(raw, fs, center_hz)
 
 
 receiver.on_raw = on_raw
@@ -415,6 +439,10 @@ if cfg.get("dab") and RTL_DONGLE and not OWNER:
     dab.set_enabled(True, cfg.get("dab_channel", DAB_DEFAULT))
 if cfg.get("ism") and RTL_DONGLE and not OWNER:
     ism.set_enabled(True)
+if cfg.get("hfdl") and not OWNER:
+    hfdl.set_enabled(True)
+if cfg.get("ais") and not OWNER:
+    ais.set_enabled(True)
 
 
 def sync_cpdlc():
@@ -469,7 +497,8 @@ def api_update():
 def api_state():
     return jsonify(dict(state(), sample_rates=SAMPLE_RATES, modes=MODES, ft8_freqs=FT8_FREQS, acars_freqs=ACARS_FREQS,
                         vdl2_freqs=region_freqs(vdl2.region), vdl2_region_freqs={r: region_freqs(r) for r in VDL2_REGIONS}, vdl2_center=VDL2_CENTER, vdl2_rate=VDL2_RATE, tx_bands=TX_BANDS,
-                        dab_channels=DAB_CHANNELS, ism_freqs=ISM_FREQS))
+                        dab_channels=DAB_CHANNELS, ism_freqs=ISM_FREQS, hfdl_bands=hfdl_mod.BANDS,
+                        hfdl_stations=hfdl_mod.STATIONS, ais_center=ais_mod.CENTER_HZ, ais_channels=sorted(ais_mod.CHANNELS)))
 
 
 # ---------- transmitting (PTT) ----------
@@ -850,6 +879,48 @@ def set_ism(on, changes):
     ism.set_enabled(on)
 
 
+@app.route("/api/hfdl", methods=["GET"])
+def api_hfdl():
+    return jsonify(dict(hfdl.info(), messages=hfdl.messages()))
+
+
+@app.route("/api/hfdl", methods=["POST"])
+def api_hfdl_cmd():
+    if request.get_json(force=True).get("action") == "clear":
+        hfdl.clear()
+    return jsonify(hfdl.info())
+
+
+def set_hfdl(on):
+    """HFDL on: dumphfdl decodes all HFDL channels inside the band the VFO receives and the audio of the VFO is muted
+    (like ACARS / VDL2: the decoder does not use it). The sample rate and centre stay; the band buttons set the centre.
+    Not on a chained VFO: the owner VFO decides its centre."""
+    on = bool(on) and not OWNER
+    cfg["hfdl"] = on
+    hfdl.set_enabled(on)
+
+
+@app.route("/api/ais", methods=["GET"])
+def api_ais():
+    return jsonify(dict(ais.info(), messages=ais.messages(), ships=ais.ship_list()))
+
+
+@app.route("/api/ais", methods=["POST"])
+def api_ais_cmd():
+    if request.get_json(force=True).get("action") == "clear":
+        ais.clear()
+    return jsonify(ais.info())
+
+
+def set_ais(on):
+    """AIS on: the AIS channels (161.975 / 162.025 MHz) inside the band the VFO receives are decoded from the raw samples
+    and the audio of the VFO is muted (like HFDL). The sample rate and centre stay; the 162.000 button centres the VFO
+    between the two channels. Not on a chained VFO: the owner VFO decides its centre."""
+    on = bool(on) and not OWNER
+    cfg["ais"] = on
+    ais.set_enabled(on)
+
+
 @app.route("/api/ism", methods=["GET"])
 def api_ism():
     return jsonify(dict(ism.info(), messages=ism.messages()))
@@ -1065,6 +1136,28 @@ def api_memory_add():
     except (AttributeError, KeyError, TypeError, ValueError, OverflowError) as e:
         return jsonify({"error": str(e) or "invalid entry"}), 400
     return jsonify(memories.add(m))
+
+
+@app.route("/api/recordings", methods=["GET"])
+def api_recordings():
+    """The MP3 recordings in data
+ecordings (RECORDINGS tab), newest first."""
+    return jsonify(recorder.files())
+
+
+@app.route("/api/recordings/<name>", methods=["GET"])
+def api_recording_file(name):
+    """One recording; Range requests work, so the browser can seek while playing."""
+    return send_from_directory(recorder.folder, name, mimetype="audio/mpeg", conditional=True)
+
+
+@app.route("/api/recordings/<name>", methods=["DELETE"])
+def api_recording_delete(name):
+    try:
+        recorder.delete(name)
+    except (ValueError, OSError) as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"deleted": name})
 
 
 @app.route("/api/memory_groups", methods=["GET"])
@@ -1457,6 +1550,53 @@ def api_set():
     if "ism" in body:
         set_ism(bool(body["ism"]), changes)
     if "ism" in body or "ism_hz" in body:
+        save_config_later()
+        hub.event("status", state())
+    if any(body.get(k) for k in ("acars", "vdl2", "dab", "ism", "ais")) and hfdl.enabled:
+        set_hfdl(False)                       # those take the dongle to VHF / UHF: no HFDL channel there
+        save_config_later()
+        hub.event("status", state())
+    if any(body.get(k) for k in ("vdl2", "dab", "ism", "hfdl")) and ais.enabled:
+        set_ais(False)                        # those move the dongle away from 162 MHz
+        save_config_later()
+        hub.event("status", state())
+    if "hfdl_band" in body:
+        try:
+            band = hfdl_mod.BANDS[int(body["hfdl_band"])]
+        except (TypeError, ValueError, IndexError):
+            return jsonify({"error": "unknown HFDL band"}), 400
+        set_vdl2(False, changes)
+        set_dab(False, changes)
+        set_ism(False, changes)
+        if cfg.get("acars"):
+            cfg["acars"] = False
+            acars.set_enabled(False)
+        sync_cpdlc()
+        changes.update(center_hz=float(band["center"]), tune_hz=float(band["center"]), mode="USB")   # the audio is muted: the whole band is decoded
+        if "hfdl" not in body:
+            set_hfdl(True)
+        save_config_later()
+        hub.event("status", state())
+    if "hfdl" in body:
+        set_hfdl(body["hfdl"])
+        save_config_later()
+        hub.event("status", state())
+    if body.get("ais_center"):
+        set_vdl2(False, changes)
+        set_dab(False, changes)
+        set_ism(False, changes)
+        if cfg.get("acars"):
+            cfg["acars"] = False
+            acars.set_enabled(False)
+        sync_cpdlc()
+        set_hfdl(False)
+        changes.update(center_hz=float(ais_mod.CENTER_HZ), tune_hz=float(ais_mod.CENTER_HZ), mode="FM")   # between the channels: both are decoded
+        if "ais" not in body:
+            set_ais(True)
+        save_config_later()
+        hub.event("status", state())
+    if "ais" in body:
+        set_ais(body["ais"])
         save_config_later()
         hub.event("status", state())
     try:

@@ -30,7 +30,7 @@ from paths import data
 PATH = data("memories.json")
 GROUPS_PATH = data("memory_groups.json")
 MODES = ("AM", "FM", "WFM", "LSB", "USB", "CW", "DSD")
-DECODERS = ("", "ft8", "wefax", "cw", "rtty", "sstv", "packet", "acars", "vdl2", "ism")
+DECODERS = ("", "ft8", "wefax", "cw", "rtty", "sstv", "packet", "acars", "vdl2", "hfdl", "ais", "ism")
 RECORDS = ("off", "on", "sq", "asq")
 DETECTORS = {"AM": "AM", "DSB": "AM", "NFM": "FM", "WFM": "WFM", "LSB": "LSB", "USB": "USB", "CW": "CW"}
 NAME_MAX, GROUP_MAX, NOTE_MAX = 80, 40, 200

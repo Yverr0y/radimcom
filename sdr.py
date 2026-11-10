@@ -1557,7 +1557,8 @@ class Receiver:
         if not isinstance(wfm, Wfm):                # after FM -> WFM it stays WideFm until the thread's next block
             wfm = None
         return {
-            "stereo": bool(wfm and wfm.stereo),
+            "stereo": bool(wfm and wfm.stereo and c.get("stereo_on", True)),   # L-R really decoded
+            "pilot": bool(wfm and wfm.stereo),                                    # 19 kHz pilot locked
             "stereo_on": bool(c.get("stereo_on", True)),
             "notch": bool(c.get("notch", False)),
             "audio_agc": bool(c.get("audio_agc", True)),
