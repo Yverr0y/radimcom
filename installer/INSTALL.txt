@@ -90,6 +90,9 @@ Change log
 
 Ver. 0.113beta2
 (changes since 0.113beta1)
+Minor Fixes
+- Memory editor: sort by a click on a column header, fixed column widths with tooltips, Rec as text,
+  groups of a channel as a list, the bar above the table acts on the open channel when none is ticked.
 
 Ver. 0.113beta1
 Main Features
