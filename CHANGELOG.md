@@ -14,6 +14,7 @@ Changes since 0.113beta1 (GitHub branch `0.113beta1`).
 
 - **AD window has a fixed height** (as with RDS), so an error message, the rotor AZ / EL or RDS no longer make it higher or lower.
 - **Memory editor** (Brano, brjanicek): the CHANNELS table sorts by a click on a column header (again = reversed; by Groups with a section per group), the Sort select is gone. Table columns have fixed widths, a longer text is cut and shown whole as the tooltip. The Rec column shows OFF / ON / SQ / ASQ as text. The groups in the channel form are a list, one per line, with a scroll bar. With no channel ticked, the bar above the table (tag colour SET / DEFAULT, star, tag on / off, groups, export, delete) acts on the channel open in the form. A small gap under the LIST / CHANNELS / GROUPS / IMPORT / EXPORT keys.
+- **Recording started by a memory stops when you leave it** (Brano, brjanicek). A recording (and ASQ) that recalling a memory with RECORD ON / SQ / ASQ switched on now stops as soon as the VFO leaves that memory (tuning, another mode or DAB channel), not only when another memory is recalled. A recording switched on with REC / REC SQ by hand keeps running while tuning; pressing REC, REC SQ or ASQ during a memory recording takes it over by hand too.
 
 ## Ver. 0.113beta1
 

@@ -100,6 +100,8 @@ Minor Fixes
 - AD window has a fixed height: an error, the rotor AZ / EL or RDS no longer change it
 - Memory editor (Brano): sort by a click on a column header, fixed column widths with tooltips, Rec as text,
   groups of a channel as a list, the bar above the table acts on the open channel when none is ticked.
+- Recording (Brano): a recording or ASQ started by recalling a memory with RECORD stops when the VFO
+  leaves the memory; REC / REC SQ switched on by hand keep running while tuning.
 
 Ver. 0.113beta1
 Main Features
