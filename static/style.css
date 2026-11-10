@@ -1621,3 +1621,44 @@ html[data-ink="dark"] .r-top, html[data-ink="dark"] .r-keys { border-bottom-colo
 .med-groups legend { font-size: 11px; color: var(--muted); padding: 0 4px; }
 .med-groups #medFormGroups { display: flex; flex-wrap: wrap; max-height: 120px; overflow: auto; margin-bottom: 6px; }
 .med-form .key { width: 100%; }
+
+/* ===== memory editor: sub-tab spacing, fixed table columns, header sorting, group list in the form ===== */
+#medTabs { margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line2); }
+.med-table { table-layout: fixed; }
+.med-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.med-table td.groups { overflow: hidden; }
+.med-table .c-chk { width: 28px; }
+.med-table .c-star { width: 30px; }
+.med-table .c-name { width: 200px; }
+.med-table .c-freq { width: 110px; }
+.med-table .c-mode { width: 76px; }
+.med-table .c-bw { width: 72px; }
+.med-table .c-dec { width: 84px; }
+.med-table .c-rec { width: 56px; }
+.med-table .c-groups { width: 190px; }
+.med-table .c-tag { width: 44px; }
+.med-table .c-note { width: auto; }
+.med-table .c-status { width: 170px; }
+.med-table .c-inc { width: 76px; }
+.med-table .c-del { width: 40px; }
+.med-table .c-gname { width: 220px; }
+.med-table .c-count { width: 80px; }
+.med-table .c-gnote { width: auto; }
+.med-table .c-acts { width: 130px; }
+.med-table th.sortable { cursor: pointer; user-select: none; overflow: hidden; text-overflow: ellipsis; }
+.med-table th.sortable:hover { color: var(--text, #dfe6ee); }
+.med-table th.sorted { color: var(--yellow); }
+.med-table th .sort-dir { font-style: normal; font-size: 9px; margin-left: 4px; }
+.med-table td.med-rec { color: var(--muted); font-family: ui-monospace, Consolas, monospace; }
+.med-table td.med-rec.on { color: var(--rec-red, #ff4b3e); font-weight: 600; }
+.med-table input:not([type=checkbox]), .med-table select { min-width: 0; }
+.med-table input.short { width: 100%; min-width: 0; }
+.med-groups #medFormGroups { display: flex; flex-direction: column; flex-wrap: nowrap; max-height: 180px; overflow-y: auto;
+  border: 1px solid var(--line); border-radius: 4px; padding: 2px 6px; background: rgba(0, 0, 0, .18); }
+.med-groups #medFormGroups .chip-check { display: flex; margin: 0; padding: 3px 0; border-bottom: 1px solid #1a1f26;
+  overflow: hidden; text-overflow: ellipsis; }
+.med-groups #medFormGroups .chip-check:last-child { border-bottom: none; }
+.med-edit-table .c-rec { width: 74px; }
+.med-edit-table .c-dec { width: 96px; }
+#medBulk .med-starbtn { font-size: 18px; line-height: 1; padding-top: 0; padding-bottom: 0; min-width: 32px; }
+#medBulk .med-starbtn.fill { color: var(--amber, #ffb02e); }
