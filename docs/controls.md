@@ -181,15 +181,12 @@ squelch gets a green underline, a transmitting one turns red.
 - **MENU → MEM**: frequency memories. While the MEM key is lit, the bottom part has a **MEMORIES** tab (beside DECODERS,
   SATELLITES and SETTINGS) that covers the spectrum and waterfall like the other tabs; the MEM key is one switch for all VFOs,
   switching it off hides the tab, and the open page is remembered in the browser. The pages:
-  - **LIST**: the memories to recall them: a click tunes the memory (frequency, mode, width; a DAB memory turns DAB on with
-    its channel, and the decoder and recording of a memory are switched on). On the left: search the name, group or kHz,
-    show one group, sort by frequency, name or group, or only the starred ones (★); on the right the memories in columns.
-    ☆ on a row stars the memory, ✎ opens it in CHANNELS. The memory the VFO is tuned to is highlighted, and the list scrolls to
-    it (the order stays) when the page opens and when the VFO moves to another memory. ⧉ marks a memory on the same frequency
-    and mode as another one. **＋ SAVE CURRENT** opens CHANNELS with the tuned frequency, mode and width (and DAB channel)
-    filled in, **＋ NEW** with an empty channel.
-  - **CHANNELS**, **GROUPS**, **IMPORT**, **EXPORT**: the [memory editor](#memory-editor): adding, editing, deleting, groups,
-    import and export.
+  - **CHANNELS**, **GROUPS**, **IMPORT**, **EXPORT**: the [memory editor](#memory-editor). CHANNELS is also the list to
+    recall memories from: a click on a row selects it (Ctrl+click adds or removes rows), a double click tunes the memory
+    (frequency, mode, width; a DAB memory turns DAB on with its channel, and the decoder and recording of a memory are
+    switched on), and ✎ at the start of the row opens it in the form. The memory the VFO is
+    tuned to is highlighted, and the table scrolls to it (the order stays) when the page opens and when the VFO moves to
+    another memory.
   Memories in the visible part of the spectrum show their name on a tag at the top of the spectrum (green, or the colour
   chosen in the editor; a red ● before the name = recalling it starts a recording); click a tag to recall the memory.
 
@@ -210,14 +207,15 @@ The page is laid out for at least 1920 × 820 px and scaled to the browser windo
 ## Memory editor
 
 The memory editor was written by **Brano ([brjanicek](https://github.com/brjanicek))**. It is the pages **CHANNELS**, **GROUPS**, **IMPORT** and
-**EXPORT** of the MEMORIES tab (beside **LIST**). Changes are saved at once (except the IMPORT and EXPORT lists).
+**EXPORT** of the MEMORIES tab. Changes are saved at once (except the IMPORT and EXPORT lists).
 
 - **CHANNELS**: every memory in a table: star, name, frequency, mode, bandwidth, decoder, record, groups, tag and note. Show one group
   or `(no group)`, search name, note, group or kHz, and click a **column header** to sort by it (again = the other way round;
   by **Groups** the table has a section per group, a channel in two groups is listed under both, with the note of the
   group). The columns have fixed widths; a text that does not fit is cut and shown whole as the tooltip. **⧉ duplicates** shows only the channels on the same
   frequency (within 50 Hz) and mode as another one; ⧉ marks them in the list too.
-  A click on a row opens it in the form on the right; a double click recalls it. The form edits the name, frequency, mode,
+  A click on a row selects it (Ctrl+click adds or removes more rows), a double click recalls the channel, and ✎ at the start of the row opens it in the form on the right (✎ is hidden while more rows are selected; while the form is open the tick boxes are hidden and a click on a row opens that channel in the form). **★ only** shows only the starred channels;
+  **＋ SAVE CURRENT** fills a new channel with the tuned frequency, mode and width (and DAB channel), **＋ NEW** an empty one. The form edits the name, frequency, mode,
   bandwidth, **decoder** (switched on when the channel is recalled, and its page shown in DECODERS: FT8, WEFAX, CW, RTTY,
   SSTV, PACKET, ACARS, VDL2 or ISM), **record** (a recording to MP3 started when the channel is recalled: **ON** = REC,
   everything; **SQ** = REC SQ, only while the squelch is open; **ASQ** = REC SQ with the auto squelch switched on, AM, FM
@@ -225,8 +223,7 @@ The memory editor was written by **Brano ([brjanicek](https://github.com/brjanic
   the channel (another frequency, mode or channel); one switched on by hand, or a key pressed by hand meanwhile, stays), DAB channel, the **groups** (a list, one per line, scrolls when long: tick any number, or type a new one and press Enter),
   a **note**, the **tag in the spectrum** (shown or hidden, default shown) with its **colour** (↺ = the default green) and
   the star. It warns when another channel is on the same frequency and mode. **＋ NEW** fills it from the tuner.
-  Tick channels for the bar above the table (with none ticked, it acts on the channel open in the form, e.g. opened with
-  ✎ from LIST): add them to a group (**＋ TO GROUP**, they stay in their other groups),
+  Select or tick channels for the bar above the table (with none selected, it acts on the channel open in the form): pick a group in the list (or **＋ new group…** and type its name) and add them to it (**＋ TO GROUP**, they stay in their other groups),
   remove them from it, **MOVE** them to one group only, star or unstar them, show or hide their tags, set or reset their
   colour (**SET** / **DEFAULT**), put them on the export list (**⇩ TO EXPORT**) or delete them.
 - **GROUPS**: every group with the number of its channels and its **note** (saved when you leave the field). **＋ ADD GROUP**

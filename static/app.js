@@ -7089,36 +7089,13 @@ const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<":
 async function loadMems() {
   mems = await fetch(vbase + "/api/memories").then((r) => r.json());
   await loadMemGroups();
-  renderMemGroups();
   renderMems();
 }
 
-// LIST page of the MEMORIES tab: only the list to recall memories from; adding, editing, groups, import and export are in the
-// editor pages (CHANNELS, GROUPS, IMPORT, EXPORT; memory editor by Brano, brjanicek).
+// MEMORIES tab: the memory editor (CHANNELS, GROUPS, IMPORT, EXPORT; by Brano, brjanicek). A click on a row of CHANNELS
+// recalls the channel, so the table is also the list to tune from.
 const MEM_MODES = ["AM", "FM", "WFM", "LSB", "USB", "CW", "DSD"];
 let dabChannelList = [];     // [[channel, centre Hz]] from /api/state
-
-function renderMemGroups() {
-  const groups = memAllGroups();
-  const sel = $("memGroup");
-  const cur = sel.value || recall("memGroup") || "";
-  sel.innerHTML = `<option value="">All</option>` + groups.map((g) => `<option>${escHtml(g)}</option>`).join("");
-  sel.value = groups.includes(cur) ? cur : "";
-}
-
-function memFiltered() {
-  const q = $("memSearch").value.trim().toLowerCase();
-  const group = $("memGroup").value;
-  const favOnly = $("memFav").checked;
-  const sort = $("memSort").value;
-  const byFreq = (a, b) => a.freq_hz - b.freq_hz;
-  const byName = (a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || byFreq(a, b);
-  const cmp = sort === "name" ? byName : sort === "group" ? (a, b) => (a.group || "").localeCompare(b.group || "", "en") || byFreq(a, b) : byFreq;
-  return mems.filter((m) => (!group || memGroupsOf(m).includes(group)) && (!favOnly || m.fav) &&
-    (!q || m.name.toLowerCase().includes(q) || memGroupsOf(m).some((g) => g.toLowerCase().includes(q)) ||
-      fmtKHz(m.freq_hz, 3).replace(/\s/g, "").includes(q.replace(/\s/g, ""))))
-    .sort(cmp);
-}
 
 /** id -> names of the other memories on the same frequency (within 50 Hz) and mode, or the same DAB channel. */
 function memDuplicates() {
@@ -7134,35 +7111,11 @@ function memDuplicates() {
   return dups;
 }
 
+/** After a change of the memories: tags in the spectrum, names above the VFOs and the editor pages. */
 function renderMems() {
   drawOverlays();   // memory tags in the spectrum
   renderVfoDisplays();   // memory name above each VFO
   renderMed();
-  const group = $("memGroup").value;
-  const sort = $("memSort").value;
-  const list = memFiltered();
-  $("memCount").textContent = `${list.length} / ${mems.length}`;
-  if (!list.length) {
-    $("memList").innerHTML = `<div class="mem-empty">${mems.length ? "Nothing matches the filter." : "No memories yet: ＋ SAVE CURRENT or ＋ NEW."}</div>`;
-    return;
-  }
-  const dups = memDuplicates();
-  // Headings: by band (MHz) when sorted by frequency and all groups are shown, by group when sorted by group.
-  let html = "";
-  let last = null;
-  for (const m of list) {
-    const head = sort === "group" ? m.group || "(no group)" : sort === "freq" && !group ? `${Math.floor(m.freq_hz / 1e6)} MHz` : null;
-    if (head !== null && head !== last) { html += `<div class="mem-group">${escHtml(head)}</div>`; last = head; }
-    const dup = dups.get(m.id);
-    html += `<div class="mem" data-id="${m.id}" title="${escHtml(m.name)} · ${escHtml(memGroupsOf(m).join(", "))} · ${fmtBw(m.bw)}` +
-      `${m.decoder ? ` · ${DECODER_NAMES[m.decoder] || m.decoder}` : ""}${m.record && m.record !== "off" ? ` · REC ${RECORD_NAMES[m.record]}` : ""}${m.note ? ` · ${escHtml(m.note)}` : ""}">` +
-      `<button class="star${m.fav ? " on" : ""}" data-star aria-label="Favourite" title="Star">${m.fav ? "★" : "☆"}</button>` +
-      `<span class="name">${escHtml(m.name)}${dup ? `<i class="dup" title="Same frequency and mode as: ${escHtml(dup.join(", "))}">⧉</i>` : ""}</span>` +
-      `<span class="meta">${m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} M` : fmtKHz(m.freq_hz, 2)}<b>${m.dab_channel ? `DAB ${escHtml(m.dab_channel)}` : m.mode}</b></span>` +
-      `<button class="edit" data-edit aria-label="Edit" title="Open in CHANNELS">✎</button></div>`;
-  }
-  $("memList").innerHTML = html;
-  markActiveMem();
 }
 
 /** Memory on the frequency of a VFO (same tolerance as the MEM list). More on one frequency: same mode first, then favourite. */
@@ -7176,46 +7129,27 @@ function memAt(hz, mode) {
   return best;
 }
 
-let memActiveKey = null;   // ids of the highlighted memories, to scroll the list only when they change
+let memActiveKey = null;   // ids of the highlighted memories, to scroll the table only when they change
+/** The channels the VFO is tuned to are highlighted in the CHANNELS table, and the first one is scrolled into the middle
+ *  of it (the order stays) when it changes or the page opens, so scrolling by hand is not undone. */
 function markActiveMem(scroll = false) {
   if (!st) return;
-  const list = $("memList");
-  let first = null, key = "";
-  for (const el of list.querySelectorAll(".mem")) {
-    const m = mems.find((x) => x.id === el.dataset.id);
-    const on = !!m && (m.dab_channel ? !!st.dab && st.dab_channel === m.dab_channel
-      : !st.dab && Math.abs(m.freq_hz - st.tune_hz) < 50 && m.mode === st.mode);
-    el.classList.toggle("active", on);
-    if (on) { key += el.dataset.id + " "; first = first || el; }
+  const on = (m) => !!m && (m.dab_channel ? !!st.dab && st.dab_channel === m.dab_channel
+    : !st.dab && Math.abs(m.freq_hz - st.tune_hz) < 50 && m.mode === st.mode);
+  const key = mems.filter(on).map((m) => m.id).join(" ");
+  let first = null;
+  for (const tr of $("medTable").querySelectorAll("tr[data-id]")) {
+    const a = key.includes(tr.dataset.id);
+    tr.classList.toggle("active", a);
+    if (a) first = first || tr;
   }
-  // The memory the VFO is on is scrolled into the middle of the list (the order stays), once when it changes
-  // or the page opens, so scrolling by hand is not undone.
-  if (first && bodyTab === "mem" && medTab === "list" && (scroll || key !== memActiveKey)) {
-    const top = first.offsetTop - list.clientHeight / 2 + first.offsetHeight / 2;
-    list.scrollTop = Math.max(0, top);
+  const wrap = $("medTable").closest(".med-table-wrap");
+  if (first && bodyTab === "mem" && medTab === "channels" && (scroll || key !== memActiveKey)) {
+    wrap.scrollTop = Math.max(0, first.offsetTop - wrap.clientHeight / 2 + first.offsetHeight / 2);
   }
   memActiveKey = key;
   memRecFollow();
 }
-
-$("memList").addEventListener("click", async (e) => {   // a click recalls the memory; ☆ stars it, ✎ opens it in the editor
-  const row = e.target.closest(".mem");
-  const m = row && mems.find((x) => x.id === row.dataset.id);
-  if (!m) return;
-  if (e.target.closest("[data-star]")) {
-    const r = await memApi(`/api/memories/${m.id}`, { fav: !m.fav }, "PATCH");
-    if (r.ok) { mems = mems.map((x) => (x.id === m.id ? r.data : x)); renderMems(); }
-    return;
-  }
-  if (e.target.closest("[data-edit]")) {
-    await memOpenEditor();
-    showMedTab("channels");
-    medOpenForm(m);
-    $("medTable").querySelector(`tr[data-id="${m.id}"]`)?.scrollIntoView({ block: "nearest" });
-    return;
-  }
-  if (st) recallMem(m);
-});
 
 /** Recall a memory: frequency, mode and bandwidth (on a VFO that can receive the frequency). A DAB memory: DAB on with its channel. */
 async function recallMem(m) {
@@ -7326,27 +7260,17 @@ function memStartDecoder(key) {
 async function memOpenEditor(template) {
   await loadMemGroups();
   if (bodyTab !== "mem") setMemOn(true);
-  showMedTab(template ? "channels" : medTab === "list" ? "channels" : medTab);
+  showMedTab(template ? "channels" : medTab);
   if (template) medOpenForm(null, template);
 }
-$("memSave").addEventListener("click", () => {   // the tuned frequency, mode, width (and DAB channel) in the editor form
+$("medSaveCur").addEventListener("click", () => {   // the tuned frequency, mode, width (and DAB channel) in the form
   if (!st) return;
   const dabName = st.dab ? ["DAB", st.dab_channel, dabLastInfo.ensemble].filter(Boolean).join(" ") : "";
-  const group = $("memGroup").value;
+  const group = $("medGroup").value && $("medGroup").value !== NO_GROUP ? $("medGroup").value : "";
   memOpenEditor({ name: dabName || `${fmtKHz(st.tune_hz, 2)} kHz ${st.mode}`, groups: group ? [group] : [],
     freq_hz: st.tune_hz, mode: MEM_MODES.includes(st.mode) ? st.mode : "AM", bw: st.bandwidth[st.mode] || 3000,
     ...(st.dab ? { dab_channel: st.dab_channel } : {}) });
 });
-$("memNew").addEventListener("click", () => {   // an empty form: frequency, mode and width typed in by hand
-  const group = $("memGroup").value;
-  memOpenEditor({ name: "", groups: group ? [group] : [], freq_hz: null, mode: st && MEM_MODES.includes(st.mode) ? st.mode : "AM",
-    bw: st && st.bandwidth ? st.bandwidth[st.mode] || 3000 : 3000 });
-});
-$("memSearch").addEventListener("input", renderMems);
-$("memGroup").addEventListener("change", () => { store("memGroup", $("memGroup").value); renderMems(); });
-$("memFav").addEventListener("change", renderMems);
-$("memSort").value = recall("memSort") || "freq";
-$("memSort").addEventListener("change", () => { store("memSort", $("memSort").value); renderMems(); });
 
 // ---------- memory editor (MEM → ✎ EDITOR): channels, groups with notes, import and export with a list ----------
 
@@ -7355,7 +7279,8 @@ const DECODER_NAMES = { "": "—", ft8: "FT8", wefax: "WEFAX", cw: "CW", rtty: "
   acars: "ACARS", vdl2: "VDL2", hfdl: "HFDL", ais: "AIS", ism: "ISM" };
 const NO_GROUP = "\u0000none";   // value of "(no group)" in the group filters
 let memGroupList = [];           // [{name, note, count}] from /api/memory_groups
-let medTab = recall("medTab") || "list";
+let medTab = recall("medTab") || "channels";
+if (medTab === "list") medTab = "channels";   // the LIST page of 0.113beta1–2 is now CHANNELS
 const medSel = new Set();        // ids of the channels ticked in CHANNELS
 let medEditId = null;            // channel in the form: id, "new" or null
 let medFormGroups = [];          // groups ticked in the form (with new ones typed there)
@@ -7400,9 +7325,7 @@ async function memChanged(newMems) {
   if (newMems) mems = newMems;
   else mems = await fetch(vbase + "/api/memories").then((r) => r.json());
   await loadMemGroups();
-  renderMemGroups();
   renderMems();
-  renderMed();
 }
 
 function medMsg(text, error) {
@@ -7425,7 +7348,7 @@ $("medTabs").addEventListener("click", (e) => { const b = e.target.closest("[dat
 /** The MEMORIES tab was opened: the shown page filled, the list scrolled to the tuned memory. */
 function memPaneOpened() {
   showMedTab(medTab);
-  if (medTab === "list") markActiveMem(true);
+  if (medTab === "channels") markActiveMem(true);
 }
 
 function renderMed() {
@@ -7434,7 +7357,6 @@ function renderMed() {
   $("medGroupNames").innerHTML = names.map((g) => `<option value="${escHtml(g)}">`).join("");
   $("medCount").textContent = `${mems.length} channels · ${names.length} groups`;
   $("medExpCount").textContent = medExp.rows.length ? `(${medExp.rows.length})` : "";
-  if (medTab === "list") return;   // the LIST page is kept up to date by renderMems()
   if (medTab === "channels") renderMedChannels();
   else if (medTab === "groups") renderMedGroups();
   else if (medTab === "import") renderMedImport();
@@ -7451,16 +7373,41 @@ function medFilterSelect(sel, withAll) {
   sel.value = [...sel.options].some((o) => o.value === cur) ? cur : sel.options[0]?.value || "";
 }
 
+// the group for the bar above the table: a list of the groups, or "＋ new group…" with a name field
+const medBulkIsNew = () => !!$("medBulkGroupSel").selectedOptions[0]?.dataset.new;
+function medBulkGroupSelect() {
+  const sel = $("medBulkGroupSel"), cur = sel.value;
+  sel.innerHTML = `<option value="">Group…</option>` + memAllGroups().map((g) => `<option value="${escHtml(g)}">${escHtml(g)}</option>`).join("") +
+    `<option data-new="1">＋ new group…</option>`;
+  const wasNew = $("medBulkGroup").hidden === false;
+  if (wasNew) sel.value = "＋ new group…";
+  else sel.value = [...sel.options].some((o) => o.value === cur && !o.dataset.new) ? cur : "";
+  $("medBulkGroup").hidden = !medBulkIsNew();
+}
+$("medBulkGroupSel").addEventListener("change", () => {
+  const isNew = medBulkIsNew();
+  $("medBulkGroup").hidden = !isNew;
+  if (isNew) { $("medBulkGroup").value = ""; $("medBulkGroup").focus(); }
+});
+$("medBulkGroup").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); $("medBulk").querySelector("[data-bulk=add]").click(); }
+});
+function medBulkGroupName() {
+  return medBulkIsNew() ? $("medBulkGroup").value.trim() : $("medBulkGroupSel").value;
+}
+
 function medVisible() {
   const q = $("medSearch").value.trim().toLowerCase();
   const qf = q.replace(/\s/g, "");
   const group = $("medGroup").value;
   const dupsOnly = $("medDups").checked;
+  const favOnly = $("medFav").checked;
   const dups = memDuplicates();
   return mems.filter((m) => {
     const gs = memGroupsOf(m);
     if (group === NO_GROUP ? gs.length : group && !gs.includes(group)) return false;
     if (dupsOnly && !dups.has(m.id)) return false;
+    if (favOnly && !m.fav) return false;
     return !q || m.name.toLowerCase().includes(q) || (m.note || "").toLowerCase().includes(q) ||
       gs.some((g) => g.toLowerCase().includes(q)) || fmtKHz(m.freq_hz, 3).replace(/\s/g, "").includes(qf);
   });
@@ -7487,6 +7434,7 @@ if (!MED_COLS.some(([k]) => k === medSortKey)) medSortKey = "groups";
 
 function renderMedChannels() {
   medFilterSelect($("medGroup"), true);
+  medBulkGroupSelect();
   const sort = medSortKey, dir = medSortDir;
   const group = $("medGroup").value;
   const dups = memDuplicates();
@@ -7507,9 +7455,9 @@ function renderMedChannels() {
     sections = [[null, list, ""]];
   }
   const allSel = list.length && list.every((m) => medSel.has(m.id));
-  const n = MED_COLS.length + 1;
-  let html = `<colgroup><col class="c-chk">${MED_COLS.map(([, , c]) => `<col class="${c.split(" ")[0]}">`).join("")}</colgroup>` +
-    `<thead><tr><th><input type="checkbox" data-selall ${allSel ? "checked" : ""} title="Select all in the list"></th>` +
+  const n = MED_COLS.length + 2;
+  let html = `<colgroup><col class="c-chk"><col class="c-edit">${MED_COLS.map(([, , c]) => `<col class="${c.split(" ")[0]}">`).join("")}</colgroup>` +
+    `<thead><tr><th><input type="checkbox" data-selall ${allSel ? "checked" : ""} title="Select all in the list"></th><th class="c-edit"></th>` +
     MED_COLS.map(([k, label, c]) => `<th class="sortable ${c}${k === sort ? " sorted" : ""}" data-sort="${k}" title="Sort by ${k === "fav" ? "star" : label.toLowerCase()}">` +
       `${label}${k === sort ? `<i class="sort-dir">${dir > 0 ? "▲" : "▼"}</i>` : ""}</th>`).join("") + `</tr></thead><tbody>`;
   for (const [title, rows, note] of sections) {
@@ -7524,6 +7472,7 @@ function renderMedChannels() {
       const rec = RECORD_NAMES[m.record || "off"] || m.record;
       html += `<tr class="med-ch${medSel.has(m.id) ? " sel" : ""}${m.id === medEditId ? " editing" : ""}" data-id="${m.id}">` +
         `<td><input type="checkbox" data-pick ${medSel.has(m.id) ? "checked" : ""}></td>` +
+        `<td><button class="med-pen" data-edit title="Edit this channel">✎</button></td>` +
         `<td><button class="star${m.fav ? " on" : ""}" data-star>${m.fav ? "★" : "☆"}</button></td>` +
         `<td class="name" title="${escHtml(m.name)}">${dup ? `<i class="dup" title="Same frequency and mode as: ${escHtml(dup.join(", "))}">⧉</i> ` : ""}${escHtml(m.name)}</td>` +
         `<td class="num mono">${fmtMemFreq(m.freq_hz)}</td>` +
@@ -7540,6 +7489,7 @@ function renderMedChannels() {
   $("medTable").innerHTML = html + "</tbody>";
   medRenderBulk();
   renderMedForm();
+  markActiveMem();
 }
 
 /** Channels the bar above the table acts on: the ticked ones, or (none ticked) the channel open in the form. */
@@ -7548,6 +7498,7 @@ function medBulkIds() {
   return medEditId && mems.some((m) => m.id === medEditId) ? [medEditId] : [];
 }
 function medRenderBulk() {
+  $("medTable").classList.toggle("multi", medSel.size > 1);   // several rows selected: no ✎ (the editor takes one channel)
   const open = !medSel.size && medBulkIds().length ? mems.find((m) => m.id === medEditId) : null;
   $("medSelCount").textContent = open ? "open channel" : `${medSel.size} selected`;
   $("medSelCount").title = open ? `No channel ticked: the keys act on the channel open in the form (${open.name})` : "";
@@ -7555,7 +7506,7 @@ function medRenderBulk() {
   for (const b of $("medBulk").querySelectorAll("button")) b.disabled = none;
 }
 
-for (const id of ["medSearch", "medDups"]) $(id).addEventListener("input", renderMedChannels);
+for (const id of ["medSearch", "medDups", "medFav"]) $(id).addEventListener("input", renderMedChannels);
 $("medGroup").addEventListener("change", renderMedChannels);
 
 $("medTable").addEventListener("click", (e) => {
@@ -7587,13 +7538,34 @@ $("medTable").addEventListener("click", (e) => {
     memApi(`/api/memories/${m.id}`, { fav: !m.fav }, "PATCH").then((r) => r.ok ? memChanged(mems.map((x) => (x.id === m.id ? r.data : x))) : medMsg(r.error, true));
     return;
   }
-  medOpenForm(m);
+  if (e.target.closest("[data-edit]")) { medOpenForm(m); return; }
+  // a click selects the row (Ctrl/Cmd+click adds it to the selection or removes it); the table is not
+  // redrawn here, so a double click still lands on the same row
+  if (medEditId) { medOpenForm(m); return; }   // the form is open: a click moves it to the clicked channel
+  if (e.ctrlKey || e.metaKey) { if (medSel.has(m.id)) medSel.delete(m.id); else medSel.add(m.id); }
+  else { medSel.clear(); medSel.add(m.id); }
+  medSyncSel();
 });
+// a double click on a row tunes to the channel (recall, as the old LIST page did)
 $("medTable").addEventListener("dblclick", (e) => {
+  if (e.target.closest("th, input, button")) return;
   const row = e.target.closest("tr[data-id]");
   const m = row && mems.find((x) => x.id === row.dataset.id);
-  if (m && !e.target.closest("input, button")) recallMem(m);
+  if (m && st) recallMem(m);
 });
+/** Shows medSel on the drawn table (row colour, tick boxes) without redrawing it. */
+function medSyncSel() {
+  for (const tr of $("medTable").querySelectorAll("tr[data-id]")) {
+    const on = medSel.has(tr.dataset.id);
+    tr.classList.toggle("sel", on);
+    const cb = tr.querySelector("[data-pick]");
+    if (cb) cb.checked = on;
+  }
+  const all = $("medTable").querySelector("[data-selall]");
+  const list = medVisible();
+  if (all) all.checked = !!list.length && list.every((m) => medSel.has(m.id));
+  medRenderBulk();
+}
 
 // bulk actions on the ticked channels
 $("medBulk").addEventListener("click", async (e) => {
@@ -7601,8 +7573,13 @@ $("medBulk").addEventListener("click", async (e) => {
   const ids = medBulkIds();
   if (!b || !ids.length) return;
   const act = b.dataset.bulk;
-  const group = $("medBulkGroup").value.trim();
-  if (["add", "remove", "move"].includes(act) && !group) { $("medBulkGroup").focus(); medMsg("Enter a group name first.", true); return; }
+  const group = medBulkGroupName();
+  if (["add", "remove", "move"].includes(act) && !group) {
+    ($("medBulkGroup").hidden ? $("medBulkGroupSel") : $("medBulkGroup")).focus();
+    medMsg($("medBulkGroup").hidden ? "Choose a group first." : "Enter the name of the new group first.", true);
+    return;
+  }
+  if (act === "remove" && !memAllGroups().includes(group)) { medMsg(`There is no group ${group}.`, true); return; }
   if (act === "export") { medExportAdd(mems.filter((m) => ids.includes(m.id))); showMedTab("export"); return; }
   if (act === "delete" && !confirm(`Delete ${ids.length} selected channel${ids.length === 1 ? "" : "s"}?`)) return;
   const changes = { add: { groups_add: [group] }, remove: { groups_remove: [group] }, move: { groups: [group] },
@@ -7612,6 +7589,11 @@ $("medBulk").addEventListener("click", async (e) => {
   if (!r.ok) { medMsg(r.error, true); return; }
   if (act === "delete") { medSel.clear(); if (ids.includes(medEditId)) medEditId = null; }
   medMsg(act === "delete" ? `Deleted ${r.data.deleted}.` : `Changed ${r.data.changed.length}.`);
+  if (["add", "move"].includes(act) && medBulkIsNew()) {
+    // the new group now exists: pick it in the list (filled again by memChanged) instead of the name field
+    const o = document.createElement("option"); o.value = group; $("medBulkGroupSel").append(o); $("medBulkGroupSel").value = group;
+    $("medBulkGroup").hidden = true;
+  }
   await memChanged();
 });
 
@@ -7646,7 +7628,8 @@ function medOpenForm(m, template) {
   f.hidden = false;
   // only the marks of the rows change: drawing the table again would break a double click (recall) on a row
   for (const tr of $("medTable").querySelectorAll("tr[data-id]")) tr.classList.toggle("editing", tr.dataset.id === medEditId);
-  medRenderBulk();
+  medSel.clear();   // the form takes one channel: no multi-selection while it is open
+  medSyncSel();
   renderMedForm();
   if (!m) f.elements.name.focus();
 }
@@ -7655,6 +7638,7 @@ function renderMedForm() {
   const f = $("medForm");
   if (medEditId && medEditId !== "new" && !mems.some((m) => m.id === medEditId)) medEditId = null;
   f.hidden = !medEditId;
+  $("medTable").classList.toggle("form-open", !!medEditId);   // tick boxes hidden while the form is open
   if (!medEditId) return;
   const names = [...new Set([...memAllGroups(), ...medFormGroups])].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
   $("medFormGroups").innerHTML = names.length ? names.map((g) => `<label class="chip-check"><input type="checkbox" value="${escHtml(g)}"` +

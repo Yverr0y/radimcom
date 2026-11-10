@@ -1854,3 +1854,14 @@ html[data-ink="dark"] .r-top, html[data-ink="dark"] .r-keys { border-bottom-colo
 .leaflet-tooltip.ais-label { background: rgba(20, 24, 30, .85); color: #fff; border: 1px solid #444; box-shadow: none; padding: 0 4px;
   font-size: 10px; line-height: 12px; white-space: nowrap; }
 .leaflet-tooltip.ais-label::before { display: none; }
+/* the channel the VFO is tuned to (CHANNELS is also the list to recall from) */
+.med-table tr.med-ch.active { background: rgba(126, 224, 168, .12); box-shadow: inset 3px 0 0 var(--green); }
+.med-table tr.med-ch.active td.name { color: var(--yellow); }
+.med-table tr.med-ch.active.editing { box-shadow: inset 3px 0 0 var(--yellow); }
+.med-table .c-edit { width: 30px; }
+.med-table .med-pen { background: none; border: 1px solid transparent; border-radius: 4px; color: var(--muted, #8a96a8); cursor: pointer; font-size: 15px; line-height: 1; padding: 1px 4px; }
+.med-table .med-pen:hover { color: var(--yellow); border-color: var(--line2); }
+.med-table tr.med-ch { user-select: none; }
+.med-table.multi .med-pen { visibility: hidden; pointer-events: none; }
+.med-table.form-open [data-pick], .med-table.form-open [data-selall] { visibility: hidden; pointer-events: none; }
+#medBulkGroupSel { min-width: 140px; max-width: 200px; } #medBulkGroup { width: 150px; }

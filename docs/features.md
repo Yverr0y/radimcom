@@ -84,7 +84,7 @@ and the country flag from the ICAO address; a click on a message pauses the list
 - **DECODERS tab** with a page for each decoder, and the **SATELLITES** tab (also the **SAT** key), which shows the active linear, FM, image and other satellites from AMSAT, with clickable links.
 - **AD (additional display)** under the S-meter: error messages (red, accepted by OK, the frame blinks), the rotor AZ / EL (MONITOR) or RDS, by this priority.
 - **Rotor page** in SETTINGS: ON / OFF per VFO, polar plot and elevation column 0–180° with the antenna and its target, a click moves the antenna; STOP, RESET, MONITOR.
-- **SETTINGS tab** (gear key) with pages SDR DONGLE (BASIC, ADVANCED with the list of dongles and their VFOs), AUDIO, UI (SKINS, S-METER, TOUCHPAD), ROTOR, TX; **MEMORIES tab** (MEM key) with the pages LIST, CHANNELS, GROUPS, IMPORT, EXPORT.
+- **SETTINGS tab** (gear key) with pages SDR DONGLE (BASIC, ADVANCED with the list of dongles and their VFOs), AUDIO, UI (SKINS, S-METER, TOUCHPAD), ROTOR, TX; **MEMORIES tab** (MEM key) with the pages CHANNELS (also the list to recall from), GROUPS, IMPORT, EXPORT.
 - **Clock** in local time or UTC (a click switches).
 - **The page scales with the browser window** (laid out for at least 1920 × 820 px), so the layout does not reflow in small windows.
 

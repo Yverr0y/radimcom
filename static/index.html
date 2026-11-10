@@ -203,7 +203,7 @@ ecordings), play them in the browser">RECS</button>
     </div></div>
     <div class="kgroup"><span class="klabel">MENU</span><div class="keys">
       <button id="setKey" class="key set-key" aria-label="Settings" aria-controls="settingsCard" title="Settings: the SETTINGS tab (SDR dongle, audio, UI, rotor)"><svg class="gear-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.7h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
-      <button id="memKey" class="key mem-key" aria-controls="memPane" title="Memories: the MEMORIES tab (list to recall, editor, import, export)">MEM</button>
+      <button id="memKey" class="key mem-key" aria-controls="memPane" title="Memories: the MEMORIES tab (channels to recall and edit, groups, import, export)">MEM</button>
       <button id="bandKey" class="key" aria-controls="bandGroups" title="BAND: show / hide the row of band keys (HF HAM, HF BROADCAST, VHF / UHF HAM, OTHER)">BAND</button>
     </div></div>
   </div>
@@ -719,13 +719,12 @@ ecordings, played in the browser -->
 ecordings.</p>
       </div>
     </div>
-    <!-- MEMORIES tab (MEM key): LIST to recall memories, and the memory editor (CHANNELS, GROUPS, IMPORT, EXPORT);
+    <!-- MEMORIES tab (MEM key): the memory editor (CHANNELS, where a double click also recalls a memory, GROUPS, IMPORT, EXPORT);
          memory editor by Brano (brjanicek) -->
     <div class="set-pane mem-pane" id="memPane" hidden aria-label="Memories">
       <div class="amsat-head">
         <div class="amsat-pages" id="medTabs" role="tablist">
-          <button class="key small on" data-med-tab="list" role="tab">LIST</button>
-          <button class="key small" data-med-tab="channels" role="tab">CHANNELS</button>
+          <button class="key small on" data-med-tab="channels" role="tab">CHANNELS</button>
           <button class="key small" data-med-tab="groups" role="tab">GROUPS</button>
           <button class="key small" data-med-tab="import" role="tab">IMPORT</button>
           <button class="key small" data-med-tab="export" role="tab">EXPORT <span id="medExpCount" class="dec-count"></span></button>
@@ -733,39 +732,23 @@ ecordings.</p>
         <span class="amsat-info" id="medCount"></span>
       </div>
       <div class="med-body">
-        <!-- LIST: a click recalls the memory -->
-        <section class="med-panel mem-listpage" data-med-panel="list">
-          <div class="mem-side">
-            <div class="mem-add">
-              <button id="memSave" class="key accent" title="Opens CHANNELS with the tuned frequency, mode and bandwidth (and DAB channel) to save">＋ SAVE CURRENT</button>
-              <button id="memNew" class="key" title="Opens CHANNELS with an empty channel to fill in">＋ NEW</button>
-            </div>
-            <div class="mem-filter">
-              <input id="memSearch" type="search" placeholder="Search name, group or kHz…" autocomplete="off">
-              <select id="memGroup" aria-label="Group"></select>
-              <select id="memSort" aria-label="Sort" title="Sort the list">
-                <option value="freq">by frequency</option><option value="name">by name</option><option value="group">by group</option>
-              </select>
-              <label class="switch small" title="Only the starred memories"><input id="memFav" type="checkbox"><span></span> ★</label>
-            </div>
-            <span id="memCount" class="muted"></span>
-          </div>
-          <div class="mem-list" id="memList"></div>
-        </section>
-
         <p id="medNote" class="note" hidden></p>
 
         <!-- CHANNELS -->
         <section class="med-panel" data-med-panel="channels">
+          <!-- a click on a row recalls the channel (tunes the VFO) and opens it in the form; the tuned channel is highlighted -->
           <div class="med-bar">
             <input id="medSearch" type="search" placeholder="Search name, note, group or kHz…" autocomplete="off">
             <select id="medGroup" aria-label="Group" title="Show one group"></select>
+            <label class="switch small" title="Only the starred channels"><input id="medFav" type="checkbox"><span></span> ★ only</label>
             <label class="switch small" title="Only memories on the same frequency and mode as another one"><input id="medDups" type="checkbox"><span></span> ⧉ duplicates</label>
-            <button id="medNew" class="key small accent" title="New channel (filled in from the tuner)">＋ NEW</button>
+            <button id="medSaveCur" class="key small accent" title="A new channel with the tuned frequency, mode and bandwidth (and DAB channel) in the form">＋ SAVE CURRENT</button>
+            <button id="medNew" class="key small" title="An empty new channel in the form">＋ NEW</button>
           </div>
           <div class="med-bar med-bulk" id="medBulk">
             <span id="medSelCount" class="muted">0 selected</span>
-            <input id="medBulkGroup" placeholder="Group" maxlength="40" list="medGroupNames" autocomplete="off">
+            <select id="medBulkGroupSel" title="The group for ＋ TO GROUP, − FROM GROUP and MOVE"></select>
+            <input id="medBulkGroup" placeholder="New group name" maxlength="40" autocomplete="off" hidden>
             <button class="key small" data-bulk="add" title="Adds the selected channels to this group (they stay in their other groups)">＋ TO GROUP</button>
             <button class="key small" data-bulk="remove" title="Removes the selected channels from this group">− FROM GROUP</button>
             <button class="key small" data-bulk="move" title="Moves the selected channels to this group only">MOVE</button>
