@@ -640,35 +640,34 @@
           <div class="med-split">
             <div class="med-table-wrap"><table class="med-table" id="medTable"></table></div>
             <form class="med-form" id="medForm" autocomplete="off" hidden>
+              <!-- three columns, so the whole form fits the height of the tab: fields | settings | groups -->
               <h4 id="medFormTitle">Channel</h4>
-              <label>Name<input name="name" maxlength="80" required></label>
-              <div class="med-row2">
-                <label>Frequency<input name="freq" spellcheck="false" title="MHz, or with a unit: 7100k, 145.5M, 7100000Hz"></label>
-                <label>Mode<select name="mode"></select></label>
+              <div class="med-fcol">
+                <label>Name<input name="name" maxlength="80" required></label>
+                <div class="med-row2">
+                  <label>Frequency<input name="freq" spellcheck="false" title="MHz, or with a unit: 7100k, 145.5M, 7100000Hz"></label>
+                  <label>Mode<select name="mode"></select></label>
+                </div>
+                <div class="med-row2">
+                  <label>Bandwidth, kHz<input name="bw" title="Clamped to the range of the mode"></label>
+                  <label>DAB channel<select name="dab" title="Recalling the channel turns DAB on with this channel"></select></label>
+                </div>
+                <label>Note<textarea name="note" maxlength="200" rows="2"></textarea></label>
               </div>
-              <div class="med-row2">
-                <label>Bandwidth, kHz<input name="bw" title="Clamped to the range of the mode"></label>
+              <div class="med-fcol">
                 <label>Decoder<select name="decoder" title="Switched on when the channel is recalled"></select></label>
-              </div>
-              <div class="med-row2">
                 <label>Record<select name="record" title="Recording to MP3 started when the channel is recalled: ON = REC (everything), SQ = REC SQ (while the squelch is open), ASQ = REC SQ with the auto squelch (AM, FM, WFM)"></select></label>
-                <label>DAB channel<select name="dab" title="Recalling the channel turns DAB on with this channel"></select></label>
+                <label class="switch small"><input name="fav" type="checkbox"><span></span> ★ favourite</label>
+                <label class="switch small"><input name="tag" type="checkbox" checked><span></span> tag in spectrum</label>
+                <label class="med-color">colour <input name="color" type="color" value="#7ee0a8"><button type="button" class="key small" data-act="nocolor" title="Default colour (green)">↺</button></label>
+                <p class="note warn" id="medFormDup" hidden></p>
+                <p class="note error" id="medFormErr" hidden></p>
               </div>
               <fieldset class="med-groups"><legend>Groups</legend><div id="medFormGroups"></div>
                 <input id="medFormNewGroup" placeholder="＋ new group, Enter" maxlength="40"></fieldset>
-              <label>Note<textarea name="note" maxlength="200" rows="2"></textarea></label>
-              <div class="med-row2 med-tagrow">
-                <label class="switch small"><input name="tag" type="checkbox" checked><span></span> tag in spectrum</label>
-                <label class="med-color">colour <input name="color" type="color" value="#7ee0a8"><button type="button" class="key small" data-act="nocolor" title="Default colour (green)">↺</button></label>
-              </div>
-              <label class="switch small"><input name="fav" type="checkbox"><span></span> ★ favourite</label>
-              <p class="note warn" id="medFormDup" hidden></p>
-              <p class="note error" id="medFormErr" hidden></p>
-              <div class="med-row2">
+              <div class="med-fbtns">
                 <button type="submit" class="key accent" id="medFormSave">SAVE</button>
                 <button type="button" class="key" data-act="cancel">CLOSE</button>
-              </div>
-              <div class="med-row2">
                 <button type="button" class="key" data-act="recall" title="Tunes the receiver to the saved channel">▶ RECALL</button>
                 <button type="button" class="key danger" data-act="delete">DELETE</button>
               </div>
