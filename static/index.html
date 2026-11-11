@@ -915,31 +915,37 @@ ecordings, played in the browser -->
               <div id="medMap"></div>
             </div>
             <form class="med-form" id="medForm" autocomplete="off" hidden>
-              <!-- three columns, so the whole form fits the height of the tab: fields | settings | groups -->
+              <!-- two columns: the channel (basic fields, ADVANCED below them) | groups; ADVANCED only adds or removes its part
+                   under the basic fields, nothing else moves -->
               <h4 id="medFormTitle">Channel</h4>
               <div class="med-fcol">
                 <label>Name<input name="name" maxlength="80" required></label>
                 <div class="med-row2">
-                  <label>Frequency<input name="freq" spellcheck="false" title="MHz, or with a unit: 7100k, 145.5M, 7100000Hz"></label>
                   <label>Mode<select name="mode"></select></label>
+                  <label class="med-freq">Frequency<input name="freq" spellcheck="false" title="MHz, or with a unit: 7100k, 145.5M, 7100000Hz"></label>
+                  <label class="med-dab" hidden>DAB channel<select name="dab" title="Recalling the memory turns DAB on with this channel"></select></label>
                 </div>
-                <div class="med-row2">
-                  <label>Bandwidth, kHz<input name="bw" title="Clamped to the range of the mode"></label>
-                  <label>DAB channel<select name="dab" title="Mode DAB: the DAB channel; recalling the memory turns DAB on with this channel"></select></label>
+                <button type="button" class="key small med-advkey" id="medFormAdvKey" data-act="adv" aria-controls="medFormAdv" title="Shows or hides the other settings of the channel (remembered)">ADVANCED</button>
+                <div class="med-adv" id="medFormAdv" hidden>
+                  <div class="med-row2">
+                    <label>Bandwidth, kHz<input name="bw" title="Clamped to the range of the mode; fixed for DAB and DSD"></label>
+                    <label>Decoder<select name="decoder" title="Switched on when the channel is recalled"></select></label>
+                  </div>
+                  <div class="med-row2">
+                    <label>Record<select name="record" title="Recording to MP3 started when the channel is recalled: ON = REC (everything), SQ = REC SQ (while the squelch is open), ASQ = REC SQ with the auto squelch (AM, FM, WFM)"></select></label>
+                    <label class="med-color">colour <input name="color" type="color" value="#7ee0a8"><button type="button" class="key small" data-act="nocolor" title="Default colour (green)">↺</button></label>
+                  </div>
+                  <div class="med-row2">
+                    <label class="switch small"><input name="fav" type="checkbox"><span></span> ★ favourite</label>
+                    <label class="switch small"><input name="tag" type="checkbox" checked><span></span> tag in spectrum</label>
+                  </div>
+                  <div class="med-row2">
+                    <label>LAT (48.123456)<input name="lat" spellcheck="false" title="Latitude of the station on the channel, decimal degrees (north +, south −); empty = no location"></label>
+                    <label>LON (17.123456)<input name="lon" spellcheck="false" title="Longitude of the station on the channel, decimal degrees (east +, west −); empty = no location"></label>
+                  </div>
+                  <button type="button" class="key small" data-act="map" title="Choose the place of the station on an OpenStreetMap map beside the form (needs internet)">CHOOSE ON MAP</button>
+                  <label>Note<textarea name="note" maxlength="200" rows="2"></textarea></label>
                 </div>
-                <div class="med-row2">
-                  <label>LAT (48.123456)<input name="lat" spellcheck="false" title="Latitude of the station on the channel, decimal degrees (north +, south −); empty = no location"></label>
-                  <label>LON (17.123456)<input name="lon" spellcheck="false" title="Longitude of the station on the channel, decimal degrees (east +, west −); empty = no location"></label>
-                </div>
-                <button type="button" class="key small" data-act="map" title="Choose the place of the station on an OpenStreetMap map beside the form (needs internet)">CHOOSE ON MAP</button>
-                <label>Note<textarea name="note" maxlength="200" rows="2"></textarea></label>
-              </div>
-              <div class="med-fcol">
-                <label>Decoder<select name="decoder" title="Switched on when the channel is recalled"></select></label>
-                <label>Record<select name="record" title="Recording to MP3 started when the channel is recalled: ON = REC (everything), SQ = REC SQ (while the squelch is open), ASQ = REC SQ with the auto squelch (AM, FM, WFM)"></select></label>
-                <label class="switch small"><input name="fav" type="checkbox"><span></span> ★ favourite</label>
-                <label class="switch small"><input name="tag" type="checkbox" checked><span></span> tag in spectrum</label>
-                <label class="med-color">colour <input name="color" type="color" value="#7ee0a8"><button type="button" class="key small" data-act="nocolor" title="Default colour (green)">↺</button></label>
                 <p class="note warn" id="medFormDup" hidden></p>
                 <p class="note error" id="medFormErr" hidden></p>
               </div>

@@ -268,8 +268,10 @@ The memory editor was written by **Brano ([brjanicek](https://github.com/brjanic
   group). The columns have fixed widths; a text that does not fit is cut and shown whole as the tooltip. **⧉ duplicates** shows only the channels on the same
   frequency (within 50 Hz) and mode as another one; ⧉ marks them in the list too.
   A click on a row selects it (Ctrl+click adds or removes more rows), a double click recalls the channel, and ✎ at the start of the row opens it in the form on the right (✎ is hidden while more rows are selected; while the form is open the tick boxes are hidden and a click on a row opens that channel in the form; with unsaved changes in the form it asks first). **★ only** shows only the starred channels;
-  **＋ SAVE CURRENT** fills a new channel with the tuned frequency, mode and width (and DAB channel), **＋ NEW** an empty one. The form edits the name, frequency, mode,
-  bandwidth, **decoder** (switched on when the channel is recalled, and its page shown in DECODERS: FT8, WEFAX, CW, RTTY,
+  **＋ SAVE CURRENT** fills a new channel with the tuned frequency, mode and width (and DAB channel), **＋ NEW** an empty one. The form shows the basics: the **name**, the **mode** (AM, FM, WFM, LSB,
+  USB, CW, DAB, DSD), the **frequency** – or for the mode **DAB** a dropdown of the **DAB channels** in its place (the
+  frequency is the centre of the channel) – and the **groups**. **ADVANCED** shows the other settings under them (the
+  basics stay where they are; shown or hidden is remembered in the browser): bandwidth (fixed for DAB and DSD), **decoder** (switched on when the channel is recalled, and its page shown in DECODERS: FT8, WEFAX, CW, RTTY,
   SSTV, PACKET, ACARS, VDL2 or ISM), **record** (a recording to MP3 started when the channel is recalled: **ON** = REC,
   everything; **SQ** = REC SQ, only while the squelch is open; **ASQ** = REC SQ with the auto squelch switched on, AM, FM
   and WFM; **OFF** = none, the default; a recording or ASQ that recalling a channel started stops when the VFO leaves

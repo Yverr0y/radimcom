@@ -8572,6 +8572,13 @@ function medMapClose() {
 $("medMapClose").addEventListener("click", medMapClose);
 
 // the form of one channel
+let medFormAdv = recall("medFormAdv") === "1";   // ADVANCED part of the form shown (remembered in the browser)
+function medFormAdvShow() {
+  $("medFormAdv").hidden = !medFormAdv;
+  $("medFormAdvKey").classList.toggle("on", medFormAdv);
+  $("medFormAdvKey").setAttribute("aria-expanded", medFormAdv);
+}
+medFormAdvShow();
 let medFormDirty = false;        // the form was changed and not saved yet
 /** Before the form is filled with another channel: asks whether unsaved changes may be dropped. */
 function medFormLeaveOk() {
@@ -8639,6 +8646,8 @@ function medFormModeFields() {
   if (!dab) f.elements.dab.value = "";
   f.elements.dab.disabled = !dab;
   f.elements.freq.disabled = dab;
+  f.querySelector(".med-freq").hidden = dab;    // one place: the frequency, or for DAB the DAB channel
+  f.querySelector(".med-dab").hidden = !dab;
   if (dab) {
     const hz = (dabChannelList.find(([n]) => n === f.elements.dab.value) || [])[1];
     if (hz) f.elements.freq.value = fmtMHz(hz, 6);
@@ -8689,6 +8698,7 @@ $("medForm").addEventListener("click", async (e) => {
   else if (act === "cancel") { medEditId = null; renderMedChannels(); }
   else if (act === "recall" && m) recallMem(m);
   else if (act === "map") medMapOpen();
+  else if (act === "adv") { medFormAdv = !medFormAdv; store("medFormAdv", medFormAdv ? "1" : "0"); medFormAdvShow(); }
   else if (act === "delete" && m && confirm(`Delete channel "${m.name}"?`)) {
     const r = await memApi(`/api/memories/${m.id}`, undefined, "DELETE");
     if (!r.ok) { medMsg(r.error, true); return; }
@@ -8847,11 +8857,13 @@ function medRow(m) {
   const num = (v) => (typeof v === "number" ? v : parseFloat(String(v).replace(",", ".")));
   const hz = num(m.freq_hz);
   const bw = num(m.bw);
-  return { name: String(m.name ?? ""), freq: Number.isFinite(hz) ? fmtMHz(hz, 6) : String(m.freq_hz ?? ""),
+  const r = { name: String(m.name ?? ""), freq: Number.isFinite(hz) ? fmtMHz(hz, 6) : String(m.freq_hz ?? ""),
     mode: m.dab_channel ? "DAB" : String(m.mode || "").toUpperCase(), bw: Number.isFinite(bw) ? kHzText(bw) : String(m.bw ?? ""),
     decoder: m.decoder || "", record: String(m.record || "off").toLowerCase(), groups: (Array.isArray(m.groups) ? m.groups : m.group ? [m.group] : []).filter(Boolean).join(" | "),
     note: m.note || "", color: m.color || "", tag: m.tag !== false && m.tag !== "0", fav: !!m.fav, dab: m.dab_channel || "",
     lat: m.lat ?? "", lon: m.lon ?? "", sel: true, err: m.error || "" };
+  if (r.mode === "DAB") medRowModeChanged(r, false);   // a DAB entry without a channel: the channel at its frequency
+  return r;
 }
 
 /** LAT / LON as typed -> a number, null when empty; a text that is not a number stays text (the server says why). */
@@ -8864,16 +8876,17 @@ function medCoord(v) {
 /** Row -> entry for the server; throws Error with the reason when a field is wrong. */
 function medRowEntry(r) {
   const dab = r.mode === "DAB" ? r.dab : "";   // another mode chosen in the list ends the DAB channel
-  const hz = dab ? null : parseFreq(r.freq);
+  const hz = dab ? (dabChannelList.find(([n]) => n === dab) || [])[1] : parseFreq(r.freq);
   const bw = parseFloat(String(r.bw).replace(",", ".")) * 1000;
   if (!r.name.trim()) throw new Error("name is missing");
+  if (r.mode === "DAB" && !dab) throw new Error("choose the DAB channel");
   if (!dab && !hz) throw new Error("bad frequency");
   if (!MEM_MODES.includes(r.mode)) throw new Error("unknown mode");
   if (!(bw > 0)) throw new Error("bad bandwidth");
   return { name: r.name.trim(), groups: r.groups.split("|").map((g) => g.trim()).filter(Boolean), mode: r.mode, bw: Math.round(bw),
     decoder: r.decoder, record: r.record, note: r.note.trim(), color: r.color, tag: r.tag, fav: r.fav,
     lat: medCoord(r.lat), lon: medCoord(r.lon),
-    ...(dab ? { dab_channel: dab } : { freq_hz: Math.round(hz) }) };   // DAB without a channel: the server finds it by the frequency
+    ...(dab ? { dab_channel: dab } : {}), ...(hz ? { freq_hz: Math.round(hz) } : {}) };   // DAB: the frequency is the centre of the channel
 }
 
 function medRowDup(r) {
@@ -8885,10 +8898,38 @@ function medRowDup(r) {
 }
 
 /** Cells of an editable row (both lists); extra = cells added at the end. */
+/** Frequency cell of an editable row: the frequency, or for the mode DAB a dropdown of the DAB channels. */
+function medFreqCell(r) {
+  if (r.mode !== "DAB") return `<input data-f="freq" class="mono" value="${escHtml(r.freq)}">`;
+  const known = dabChannelList.some(([n]) => n === r.dab);
+  return `<select data-f="dab" class="mono">${known ? "" : `<option value="" selected>?</option>`}` +
+    dabChannelList.map(([n, hz]) => `<option value="${escHtml(n)}"${n === r.dab ? " selected" : ""} title="${fmtMHz(hz, 3)} MHz">${escHtml(n)}</option>`).join("") + `</select>`;
+}
+
+/** The mode of an editable row changed: DAB takes the channel at the frequency (or the tuned one), another mode the
+ *  centre of the DAB channel as its frequency; DAB and DSD get their fixed width. */
+function medRowModeChanged(r, fallback = true) {
+  if (r.mode === "DAB") {
+    if (!dabChannelList.some(([n]) => n === r.dab)) {
+      const hz = parseFreq(r.freq);
+      const near = hz ? dabChannelList.find(([, c]) => Math.abs(c - hz) <= 10000) : null;
+      r.dab = near ? near[0] : fallback ? (st && st.dab_channel) || (dabChannelList[0] || [])[0] || "" : "";
+    }
+  } else if (r.dab) {
+    const hz = (dabChannelList.find(([n]) => n === r.dab) || [])[1];
+    if (hz) r.freq = fmtMHz(hz, 6);
+    r.dab = "";
+  }
+  if (MEM_FIXED_BW[r.mode]) r.bw = kHzText(MEM_FIXED_BW[r.mode]);
+  else if (Object.values(MEM_FIXED_BW).map(kHzText).includes(String(r.bw)) && st && st.bandwidth && st.bandwidth[r.mode]) {
+    r.bw = kHzText(st.bandwidth[r.mode]);   // the fixed width of DAB / DSD left: the width of the VFO in that mode
+  }
+}
+
 function medEditCells(r, i, extra = "") {
   return `<tr data-i="${i}" class="${r.sel ? "sel" : ""}${r.err ? " bad" : ""}"><td><input type="checkbox" data-f="sel" ${r.sel ? "checked" : ""}></td>` +
     `<td><input data-f="name" value="${escHtml(r.name)}" maxlength="80"></td>` +
-    `<td><input data-f="freq" class="mono" value="${escHtml(r.freq)}" ${r.dab && r.mode === "DAB" ? `disabled title="DAB ${escHtml(r.dab)}"` : ""}></td>` +
+    `<td data-freqcell>${medFreqCell(r)}</td>` +
     `<td><select data-f="mode">${MEM_MODES.map((x) => `<option${x === r.mode ? " selected" : ""}>${x}</option>`).join("")}` +
     `${MEM_MODES.includes(r.mode) ? "" : `<option selected value="${escHtml(r.mode)}">${escHtml(r.mode) || "?"}</option>`}</select></td>` +
     `<td><input data-f="bw" class="mono short" value="${escHtml(r.bw)}"></td>` +
@@ -8921,7 +8962,11 @@ function medBindEditList(table, list, after) {
     if (f !== "sel") r.err = "";
     tr.classList.toggle("sel", !!r.sel);
     tr.classList.remove("bad");
-    if (f === "mode") tr.querySelector("[data-f=freq]").disabled = !!r.dab && r.mode === "DAB";   // DAB: the frequency is the channel
+    if (f === "mode") {   // DAB: a DAB channel instead of the frequency
+      medRowModeChanged(r);
+      tr.querySelector("[data-freqcell]").innerHTML = medFreqCell(r);
+      tr.querySelector("[data-f=bw]").value = r.bw;
+    }
     after(r, tr, f);
   };
   table.addEventListener("input", onEdit);
