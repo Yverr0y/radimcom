@@ -109,6 +109,8 @@ Main Features
   DEFAULT = data\recordings); one folder for all VFOs, used by REC / REC SQ and the RECORDINGS tab. data\recordings.json.
 Minor Fixes
 - WFM filters 50, 75, 150 and 200 kHz (default 200 kHz).
+- Memory channel location: LAT / LON (decimal degrees) in the channel form, saved in memories.json and
+  in the JSON / CSV export and import.
 - Default S-meter layout: amber needle.
 
 Ver. 0.113

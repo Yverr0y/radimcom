@@ -8325,6 +8325,8 @@ function medOpenForm(m, template) {
   f.elements.record.value = src.record || "off";
   f.elements.dab.value = src.dab_channel || "";
   f.elements.note.value = src.note || "";
+  f.elements.lat.value = src.lat ?? "";
+  f.elements.lon.value = src.lon ?? "";
   f.elements.tag.checked = src.tag !== false;
   f.elements.fav.checked = !!src.fav;
   medFormColor = src.color || "";
@@ -8423,7 +8425,8 @@ $("medForm").addEventListener("submit", async (e) => {
   const isNew = medEditId === "new";
   const body = { name: f.elements.name.value.trim(), groups: medFormGroups, mode: f.elements.mode.value, bw: Math.round(bw),
     decoder: f.elements.decoder.value, record: f.elements.record.value, note: f.elements.note.value.trim(), color: medFormColor, tag: f.elements.tag.checked,
-    fav: f.elements.fav.checked, ...(dab ? { dab_channel: dab } : { freq_hz: Math.round(freq), ...(isNew ? {} : { dab_channel: null }) }) };
+    fav: f.elements.fav.checked, lat: f.elements.lat.value.trim() || null, lon: f.elements.lon.value.trim() || null,
+    ...(dab ? { dab_channel: dab } : { freq_hz: Math.round(freq), ...(isNew ? {} : { dab_channel: null }) }) };
   const r = await memApi(isNew ? "/api/memories" : `/api/memories/${medEditId}`, body, isNew ? "POST" : "PATCH");
   if (!r.ok) return err(r.error);
   $("medFormErr").hidden = true;
@@ -8556,9 +8559,16 @@ function medRow(m) {
     mode: String(m.mode || "").toUpperCase(), bw: Number.isFinite(bw) ? kHzText(bw) : String(m.bw ?? ""),
     decoder: m.decoder || "", record: String(m.record || "off").toLowerCase(), groups: (Array.isArray(m.groups) ? m.groups : m.group ? [m.group] : []).filter(Boolean).join(" | "),
     note: m.note || "", color: m.color || "", tag: m.tag !== false && m.tag !== "0", fav: !!m.fav, dab: m.dab_channel || "",
-    sel: true, err: m.error || "" };
+    lat: m.lat ?? "", lon: m.lon ?? "", sel: true, err: m.error || "" };
 }
 
+/** LAT / LON as typed -> a number, null when empty; a text that is not a number stays text (the server says why). */
+function medCoord(v) {
+  const t = String(v ?? "").trim();
+  if (!t) return null;
+  const n = Number(t.replace(",", "."));
+  return Number.isFinite(n) ? n : t;
+}
 /** Row -> entry for the server; throws Error with the reason when a field is wrong. */
 function medRowEntry(r) {
   const hz = r.dab ? null : parseFreq(r.freq);
@@ -8569,6 +8579,7 @@ function medRowEntry(r) {
   if (!(bw > 0)) throw new Error("bad bandwidth");
   return { name: r.name.trim(), groups: r.groups.split("|").map((g) => g.trim()).filter(Boolean), mode: r.mode, bw: Math.round(bw),
     decoder: r.decoder, record: r.record, note: r.note.trim(), color: r.color, tag: r.tag, fav: r.fav,
+    lat: medCoord(r.lat), lon: medCoord(r.lon),
     ...(r.dab ? { dab_channel: r.dab } : { freq_hz: Math.round(hz) }) };
 }
 
@@ -8842,9 +8853,9 @@ $("medExpGo").addEventListener("click", () => {
   const name = ($("medExpName").value.trim() || "radimcom-memories").replace(/[^\w.-]+/g, "_");
   let blob;
   if (fmt === "csv") {
-    const cols = ["name", "frequency_hz", "mode", "bandwidth_hz", "groups", "decoder", "record", "dab_channel", "favourite", "note", "color", "show_tag"];
+    const cols = ["name", "frequency_hz", "mode", "bandwidth_hz", "groups", "decoder", "record", "dab_channel", "favourite", "note", "color", "show_tag", "lat", "lon"];
     const lines = [cols.join(";")].concat(out.map((e) => [e.name, e.freq_hz ?? "", e.mode, e.bw, e.groups.join("|"), e.decoder, e.record,
-      e.dab_channel || "", e.fav ? 1 : 0, e.note ?? "", e.color ?? "", e.tag === undefined ? "" : e.tag ? 1 : 0].map(csvCell).join(";")));
+      e.dab_channel || "", e.fav ? 1 : 0, e.note ?? "", e.color ?? "", e.tag === undefined ? "" : e.tag ? 1 : 0, e.lat ?? "", e.lon ?? ""].map(csvCell).join(";")));
     blob = new Blob(["﻿" + lines.join("\r\n") + "\r\n"], { type: "text/csv" });   // BOM: Excel reads it as UTF-8
   } else {
     const groups = [...new Set(out.flatMap((e) => e.groups))].sort().map((g) =>
