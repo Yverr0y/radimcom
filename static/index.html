@@ -811,6 +811,12 @@ ecordings, played in the browser -->
           <datalist id="medGroupNames"></datalist>
           <div class="med-split">
             <div class="med-table-wrap"><table class="med-table" id="medTable"></table></div>
+            <!-- CHOOSE ON MAP of the channel form: in place of the table, the full height of the page -->
+            <div class="med-map" id="medMapBox" hidden>
+              <div class="med-bar"><span class="note" id="medMapNote"></span>
+                <button type="button" class="key small" id="medMapClose" title="Back to the table">✕ CLOSE MAP</button></div>
+              <div id="medMap"></div>
+            </div>
             <form class="med-form" id="medForm" autocomplete="off" hidden>
               <!-- three columns, so the whole form fits the height of the tab: fields | settings | groups -->
               <h4 id="medFormTitle">Channel</h4>
@@ -828,6 +834,7 @@ ecordings, played in the browser -->
                   <label>LAT (48.123456)<input name="lat" spellcheck="false" title="Latitude of the station on the channel, decimal degrees (north +, south −); empty = no location"></label>
                   <label>LON (17.123456)<input name="lon" spellcheck="false" title="Longitude of the station on the channel, decimal degrees (east +, west −); empty = no location"></label>
                 </div>
+                <button type="button" class="key small" data-act="map" title="Choose the place of the station on an OpenStreetMap map beside the form (needs internet)">CHOOSE ON MAP</button>
                 <label>Note<textarea name="note" maxlength="200" rows="2"></textarea></label>
               </div>
               <div class="med-fcol">

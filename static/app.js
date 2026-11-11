@@ -8331,6 +8331,64 @@ $("medBulk").addEventListener("click", async (e) => {
   await memChanged();
 });
 
+// CHOOSE ON MAP of the channel form: an OpenStreetMap map in place of the table (as in SETTINGS › GENERAL › LOCATION);
+// a click puts its place into LAT / LON of the form, SAVE keeps it. Red = the station location, yellow = the channel.
+let medMap = null, medMapMark = null, medMapQth = null;
+async function medMapOpen() {
+  $("medMapBox").hidden = false;
+  $("medTable").closest(".med-table-wrap").hidden = true;
+  $("medMapNote").textContent = "Loading the map…";
+  try {
+    await Promise.all([satAsset("/static/leaflet/leaflet.css"), satAsset("/static/leaflet/leaflet.js")]);
+  } catch (e) {
+    $("medMapNote").textContent = e.message;
+    return;
+  }
+  if (medQth === undefined) await medLoadQth();
+  if (!medMap) {
+    medMap = L.map($("medMap"), { worldCopyJump: true });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+    }).addTo(medMap);
+    medMapMark = L.circleMarker([0, 0], { radius: 7, color: "#000", weight: 2, fillColor: "#ffd84a", fillOpacity: 1 });
+    medMap.on("click", (ev) => {
+      const p = ev.latlng.wrap(), f = $("medForm");
+      f.elements.lat.value = p.lat.toFixed(6);
+      f.elements.lon.value = p.lng.toFixed(6);
+      medFormDirty = true;
+      medMapShow(false);
+    });
+  }
+  if (medMapQth) medMapQth.remove();
+  medMapQth = medQth ? L.circleMarker([medQth.lat, medQth.lon], { radius: 6, color: "#000", weight: 2, fillColor: "#ff5a3c", fillOpacity: 1,
+    interactive: false }).addTo(medMap) : null;
+  medMap.invalidateSize();
+  medMapShow();
+}
+/** Marker and note from LAT / LON of the form; center: move the view to it (or to the station). */
+function medMapShow(center = true) {
+  if (!medMap) return;
+  const f = $("medForm");
+  const lat = parseFloat(String(f.elements.lat.value).replace(",", ".")), lon = parseFloat(String(f.elements.lon.value).replace(",", "."));
+  const ok = Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+  if (ok) medMapMark.setLatLng([lat, lon]).addTo(medMap); else medMapMark.remove();
+  if (center) {
+    if (ok) medMap.setView([lat, lon], Math.max(medMap.getZoom() || 0, 9));
+    else if (medQth) medMap.setView([medQth.lat, medQth.lon], 7);
+    else medMap.setView([49, 18], 5);
+  }
+  const ak = ok && medQth ? rcBearing(medQth, { lat, lon }) : null;
+  $("medMapNote").textContent = (ok ? `${lat.toFixed(6)}, ${lon.toFixed(6)}` + (ak ? ` · AZ ${Math.round(ak[0])}° · ${rcKm(ak[1])} from the station` : "") +
+    " · SAVE keeps it" : "Click the place of the station on the channel") + (medQth ? "" : " · station location not set (SETTINGS › GENERAL › LOCATION)");
+}
+function medMapClose() {
+  if ($("medMapBox").hidden) return;
+  $("medMapBox").hidden = true;
+  $("medTable").closest(".med-table-wrap").hidden = false;
+}
+$("medMapClose").addEventListener("click", medMapClose);
+
 // the form of one channel
 let medFormDirty = false;        // the form was changed and not saved yet
 /** Before the form is filled with another channel: asks whether unsaved changes may be dropped. */
@@ -8359,6 +8417,7 @@ function medOpenForm(m, template) {
   f.elements.note.value = src.note || "";
   f.elements.lat.value = src.lat ?? "";
   f.elements.lon.value = src.lon ?? "";
+  if (medMap) medMapShow();
   f.elements.tag.checked = src.tag !== false;
   f.elements.fav.checked = !!src.fav;
   medFormColor = src.color || "";
@@ -8381,6 +8440,7 @@ function renderMedForm() {
   const f = $("medForm");
   if (medEditId && medEditId !== "new" && !mems.some((m) => m.id === medEditId)) medEditId = null;
   f.hidden = !medEditId;
+  if (!medEditId) medMapClose();   // the map belongs to the form
   $("medTable").classList.toggle("form-open", !!medEditId);   // tick boxes hidden while the form is open
   if (!medEditId) return;
   const names = [...new Set([...memAllGroups(), ...medFormGroups])].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
@@ -8415,6 +8475,7 @@ $("medFormNewGroup").addEventListener("keydown", (e) => {
 $("medForm").addEventListener("input", (e) => {
   const f = $("medForm");
   medFormDirty = true;
+  if ((e.target === f.elements.lat || e.target === f.elements.lon) && medMap) medMapShow(false);
   if (e.target === f.elements.color) medFormColor = e.target.value;
   if (e.target === f.elements.dab) f.elements.freq.disabled = !!f.elements.dab.value;
   if ([f.elements.freq, f.elements.mode, f.elements.dab].includes(e.target)) medFormDupNote();
@@ -8430,6 +8491,7 @@ $("medForm").addEventListener("click", async (e) => {
   if (act === "nocolor") { medFormColor = ""; f.elements.color.value = MEM_COLOR; medFormDirty = true; }
   else if (act === "cancel") { medEditId = null; renderMedChannels(); }
   else if (act === "recall" && m) recallMem(m);
+  else if (act === "map") medMapOpen();
   else if (act === "delete" && m && confirm(`Delete channel "${m.name}"?`)) {
     const r = await memApi(`/api/memories/${m.id}`, undefined, "DELETE");
     if (!r.ok) { medMsg(r.error, true); return; }
