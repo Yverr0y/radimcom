@@ -61,7 +61,14 @@ let vbase = ""; // receiver address of the active VFO ("" = server of this page,
 let vfos = []; // [{name, port, serial, note, base, st, rows, online}]
 let active = null; // active VFO
 
-function store(key, value) { try { localStorage.setItem(key, value); } catch (e) { /* no storage */ } }
+// "?map=packet|hfdl|ais&vfo=A": this tab shows only that map (opened by the □ key of the map) – no audio,
+// no spectrum, and it saves nothing to the browser, so the settings of the main window stay as they are
+const MAP_ONLY = (() => {
+  const m = new URLSearchParams(location.search).get("map");
+  return ["packet", "hfdl", "ais"].includes(m) ? m : null;
+})();
+
+function store(key, value) { if (MAP_ONLY) return; try { localStorage.setItem(key, value); } catch (e) { /* no storage */ } }
 function recall(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
 
 // ---------- helpers ----------
@@ -2527,7 +2534,7 @@ function restoreBodyTab() {
   decPageSaved = DEC_PAGES.some((p) => p.key === page);
   decPage = decPageSaved ? page : "ft8";
   renderAmsatTab();
-  const saved = recall(tabKey());
+  const saved = MAP_ONLY ? "scope" : recall(tabKey());
   bodyTabGuess = !["dec", "scope", "sat", "set", "mem", "recs"].includes(saved);
   setBodyTab((saved === "dec" && decTabShown()) || (saved === "sat" && amsatTabShown()) || (saved === "set" && setTabShown()) || (saved === "mem" && memTabShown()) || (saved === "recs" && recsTabShown()) ? saved : "scope", !bodyTabGuess);
 }
@@ -5154,6 +5161,7 @@ async function pktMapOpen() {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
     }).addTo(pktMap);
     L.circleMarker(qth, { radius: 7, color: "#000", weight: 2, fillColor: "#ff5a3c", fillOpacity: 1 }).bindTooltip("QTH").addTo(pktMap);
+    mapPopout(pktMap, "packet");
   }
   pktMap.invalidateSize();
   for (const s of pktStations.values()) pktMark(s);
@@ -5243,7 +5251,7 @@ setPktView(pktView, false);   // filled by packetLoad()
 let pktGraph = recall("packetGraph") === "eye" ? "eye" : "spec";
 let pktEyeRate = recall("packetEyeRate") === "1200" ? 1200 : 9600;
 let pktEyeAt = 0;   // time of the last graph data
-const pktEyeShown = () => bodyTab === "dec" && decPage === "packet" && !!(st && st.packet);
+const pktEyeShown = () => !MAP_ONLY && bodyTab === "dec" && decPage === "packet" && !!(st && st.packet);
 
 function pktEyeAsk() {
   if (!pktEyeShown()) return;
@@ -5930,6 +5938,7 @@ async function hfdlMapOpen() {
       maxZoom: 12, className: "hfdl-dark",
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
     }).addTo(hfdlMap);
+    mapPopout(hfdlMap, "hfdl");
     hfdlMapLayers = { gs: L.layerGroup().addTo(hfdlMap), tracks: L.layerGroup().addTo(hfdlMap), planes: L.layerGroup().addTo(hfdlMap), marks: new Map() };
     try {
       const s = (await satFetch("/api/sat/setup")).setup;
@@ -6391,6 +6400,7 @@ async function aisMapOpen() {
       maxZoom: 16, className: "hfdl-dark",
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
     }).addTo(aisMap);
+    mapPopout(aisMap, "ais");
     aisMapLayers = { tracks: L.layerGroup().addTo(aisMap), ships: L.layerGroup().addTo(aisMap), marks: new Map() };
     try {
       const s = (await satFetch("/api/sat/setup")).setup;
@@ -8272,7 +8282,7 @@ function connectEvents(v) {
     const ev = JSON.parse(e.data);
     v.rows.push(ev);
     if (v.rows.length > VFO_ROWS_MAX) v.rows.splice(0, v.rows.length - VFO_ROWS_MAX);
-    if (v === active) onRow(ev.c, ev.span, ev.row, false, wfFullOf(ev));
+    if (v === active && !MAP_ONLY) onRow(ev.c, ev.span, ev.row, false, wfFullOf(ev));
   });
   on("meter", (d) => { meterTarget = d.db; });
   on("ft8", (d) => {
@@ -8641,7 +8651,7 @@ function renderTx() {
   }
 }
 
-const isSpace = (e) => e.code === "Space" && !e.target.closest("input, select, textarea");
+const isSpace = (e) => !MAP_ONLY && e.code === "Space" && !e.target.closest("input, select, textarea");
 document.addEventListener("keydown", (e) => {
   if (!isSpace(e)) return;
   e.preventDefault();               // the space bar must not press the focused button or scroll the page
@@ -8819,6 +8829,7 @@ function stopStream(h) {
 }
 
 function startAudio() {
+  if (MAP_ONLY) return;
   stopAudio();
   const h = audio = playStream(vbase, true, () => { if (audio === h) { audio = null; startAudio(); } });
   syncCue();
@@ -9212,8 +9223,41 @@ async function updStart(u) {
   setTimeout(poll, 1000);
 }
 
+/** "?map=…" tab: the map box alone over the whole window, the map view of its decoder. */
+function mapOnlySetup() {
+  const box = $(`${MAP_ONLY}MapBox`);
+  document.body.append(box);
+  box.classList.add("map-only-box");
+  document.body.classList.add("map-only");
+  document.title = `${MAP_ONLY === "packet" ? "APRS" : MAP_ONLY.toUpperCase()} map${active && active.name ? ` · VFO ${active.name}` : ""} · RADIMCOM`;
+  ({ packet: setPktView, hfdl: setHfdlView, ais: setAisView })[MAP_ONLY]("map");
+}
+
+/** □ key in the top right corner of a map: the same map in a new browser tab. */
+function mapPopout(map, kind) {
+  if (MAP_ONLY) return;
+  const Ctl = L.Control.extend({
+    onAdd() {
+      const bar = L.DomUtil.create("div", "leaflet-bar map-popout");
+      const a = L.DomUtil.create("a", "", bar);
+      a.href = "#";
+      a.title = "Open the map in a new tab";
+      a.setAttribute("role", "button");
+      a.innerHTML = '<svg viewBox="0 0 16 16"><path d="M9 2h5v5M14 2 7.5 8.5M12 9.5V14H2V4h4.5"/></svg>';
+      L.DomEvent.disableClickPropagation(bar);
+      L.DomEvent.on(a, "click", (e) => {
+        L.DomEvent.preventDefault(e);
+        const q = `?map=${kind}${active && active.name ? `&vfo=${encodeURIComponent(active.name)}` : ""}`;
+        window.open(location.pathname + q, "_blank", "noopener");
+      });
+      return bar;
+    },
+  });
+  new Ctl({ position: "topright" }).addTo(map);
+}
+
 async function init() {
-  checkUpdate();
+  if (!MAP_ONLY) checkUpdate();
   // With the VFO launcher the page gets the VFO list; a standalone receiver has no list (one VFO without the bar).
   let list = null;
   try {
@@ -9224,9 +9268,11 @@ async function init() {
     ? list.map((x) => ({ ...x, base: `${location.protocol}//${location.hostname}:${x.port}`, st: null, rows: [], online: false,
         cue: recall("cue_" + x.name) === "1", cueAudio: null }))
     : [{ name: null, base: "", st: null, rows: [], online: false }];
-  active = vfos.find((v) => v.name === recall("vfo")) || vfos[0];
+  const want = MAP_ONLY ? new URLSearchParams(location.search).get("vfo") : recall("vfo");
+  active = vfos.find((v) => v.name === want) || vfos[0];
   vbase = active.base;
   restoreBodyTab();
+  if (MAP_ONLY) mapOnlySetup();
   renderVfoDisplays();
   if (list && list.length) { renderSpareVfos(); renderVfoKeys(); }
   renderCueKey();

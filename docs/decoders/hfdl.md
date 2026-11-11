@@ -67,7 +67,8 @@ Best by day on 8–22 MHz, at night on 3–11 MHz (like the HF ham bands).
   PACKET map, darkened; needs internet) with every aircraft that has a position, turned to its heading (ADS-B track, or from its
   last two positions; pointing north while the heading is not known yet), in yellow, labelled with flight and type, with a white trail through the positions it sent over HFDL;
   the selected aircraft and its trail are red, an aircraft without a message for an hour grey; ▲ HFDL ground stations (green = heard) and your QTH. The list beside the map
-  selects an aircraft (red, centred, popup with details and adsb.fi / adsb.lol links).
+  selects an aircraft (red, centred, popup with details and adsb.fi / adsb.lol links). The □ key in the top right corner of the
+  map opens the map with its list alone in a new browser tab (live; no audio there).
 - **LOG** writes `data\logs\hfdl_YYYY-MM-DD.txt` (UTC, one line per message, no squitters).
 
 ## Hardware

@@ -1864,3 +1864,11 @@ html[data-ink="dark"] .r-top, html[data-ink="dark"] .r-keys { border-bottom-colo
 .med-table.multi .med-pen { visibility: hidden; pointer-events: none; }
 .med-table.form-open [data-pick], .med-table.form-open [data-selall] { visibility: hidden; pointer-events: none; }
 #medBulkGroupSel { min-width: 140px; max-width: 200px; } #medBulkGroup { width: 150px; }
+/* □ key in the top right corner of the PACKET, HFDL and AIS maps: the map in a new tab */
+.map-popout a { display: flex !important; align-items: center; justify-content: center; }
+.map-popout svg { width: 15px; height: 15px; fill: none; stroke: #222; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+/* that tab (?map=…): only the map box, over the whole window */
+body.map-only > :not(.map-only-box) { display: none !important; }
+body.map-only .map-only-box { position: fixed; inset: 0; padding: 6px; display: flex; gap: 8px; }
+body.map-only .map-only-box[hidden] { display: none; }
+body.map-only .pkt-map.map-only-box { flex-direction: column; gap: 4px; }

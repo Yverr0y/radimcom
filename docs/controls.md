@@ -88,7 +88,7 @@ squelch gets a green underline, a transmitting one turns red.
     least 1.536 MS/s). SCRAMBLER Auto tries 9600 Bd with and without the G3RUH scrambler. AFC shows the tuning error of
     the last 9600 Bd frame. Views: FRAMES (APRS meaning in blue over the raw text, binary telemetry as hex),
     STATIONS (APRS stations with the distance and bearing from the station set in SATELLITES › SETUP) and MAP
-    (OpenStreetMap); the filter field narrows both. Frames with a wrong checksum are only counted.
+    (OpenStreetMap; the □ key in its top right corner opens it alone in a new browser tab); the filter field narrows both. Frames with a wrong checksum are only counted.
     Graph on the right: SPECTRUM of the signal around the tuned frequency (averaged, MAX hold; S/N, 99 % bandwidth,
     live 9600 Bd AFC as a green line) or EYE, the eye diagram in real time (9600 / 1200 Bd), with the eye opening now
     and in the last good frame, and at 9600 Bd the deviation and the live AFC.

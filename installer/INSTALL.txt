@@ -112,6 +112,8 @@ Main Features
   162.000 button centres the VFO so both channels are decoded at once, audio muted; MMSI with country flag and
   MarineTraffic / VesselFinder links, name, type, status, position, speed, course, destination, NMEA sentence;
   MESSAGES / SHIPS / MAP views (ships turned to their heading, tracks, base stations, aids to navigation), LOG.
+- PACKET, HFDL and AIS maps: the square key in the top right corner opens the map alone in a new browser tab
+  (live, no audio, the main window keeps its settings).
 Minor Fixes
 - ST in the VFO window is lit only while stereo is really decoded (pilot and S/M on), grey with S/M set
   to mono; before it stayed lit with the pilot, so S/M looked as if it did nothing

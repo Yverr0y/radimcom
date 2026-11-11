@@ -46,7 +46,8 @@ nothing to hear away from navigable water. A ship under way sends a position rep
   (moored, at anchor, SOG below 0.3 kt) as a circle, ▲ base station (blue), ◆ aid to navigation (green), SAR aircraft
   (orange); label = name (or MMSI) and speed; a white trail through the reported positions; the selected station and its
   trail red, a station without a message for 30 min grey; your QTH as a red dot (the map opens there). The list beside the
-  map selects a station (centred, popup with all its data and MarineTraffic / VesselFinder links).
+  map selects a station (centred, popup with all its data and MarineTraffic / VesselFinder links). The □ key in the top
+  right corner of the map opens the map with its list alone in a new browser tab (live; no audio there).
 - **CLR** clears the list, the stations and the counters; **LOG** writes `data\logs\ais_YYYY-MM-DD.txt`
   (UTC, one line per message: frequency, level, channel, MMSI, name, message type, position, speed, course, details and
   the NMEA sentence).
