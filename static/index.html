@@ -887,7 +887,7 @@ ecordings.</p>
           <div class="set-subpanel" id="dongleBasic" data-set-subpanel="dongle:basic" role="tabpanel">
             <!-- block diagram of the receive chain: each numbered block = the card with the same number; a click shows it -->
             <div class="setting blk-diagram" id="blkDiagram">
-              <svg viewBox="0 0 1000 190" role="img" aria-label="Block diagram of the SDR dongle receive chain">
+              <svg viewBox="0 0 1110 212" role="img" aria-label="Block diagram of the SDR dongle receive chain">
                 <defs><marker id="blkArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="blk-arrowhead"/></marker></defs>
                 <!-- antenna -->
                 <path class="blk-wire" d="M30 40V95M16 40L30 62L44 40Z"/>
@@ -943,19 +943,36 @@ ecordings.</p>
                 <!-- USB to the PC -->
                 <line class="blk-wire" x1="690" y1="95" x2="758" y2="95" marker-end="url(#blkArrow)"/>
                 <text class="blk-sub" x="728" y="86">USB</text>
-                <text class="blk-sub" x="870" y="40">PC · RADIMCOM</text>
+                <text class="blk-sub" x="930" y="40">PC · RADIMCOM</text>
                 <!-- 8 DC removal -->
                 <g class="blk" data-blk-for="dcSetting" tabindex="0">
-                  <rect x="760" y="68" width="100" height="54" rx="6"/>
-                  <text class="blk-title" x="810" y="90">DC</text>
-                  <text class="blk-sub" x="810" y="108">peak removal</text>
+                  <rect x="760" y="68" width="90" height="54" rx="6"/>
+                  <text class="blk-title" x="805" y="90">DC</text>
+                  <text class="blk-sub" x="805" y="108">peak removal</text>
                   <g class="blk-num"><circle cx="760" cy="68" r="10"/><text x="760" y="68">8</text></g>
                 </g>
-                <line class="blk-wire" x1="860" y1="95" x2="878" y2="95" marker-end="url(#blkArrow)"/>
-                <rect class="blk-end" x="880" y="62" width="112" height="66" rx="6"/>
-                <text class="blk-sub" x="936" y="82">spectrum</text>
-                <text class="blk-sub" x="936" y="99">waterfall</text>
-                <text class="blk-sub" x="936" y="116">VFO · decoders</text>
+                <line class="blk-wire" x1="850" y1="95" x2="868" y2="95" marker-end="url(#blkArrow)"/>
+                <!-- 10 SP spurs removal (ADVANCED): learned spur lines out of the spectrum and the VFO channel -->
+                <g class="blk" data-blk-for="spurSetting" tabindex="0">
+                  <rect x="870" y="68" width="96" height="54" rx="6"/>
+                  <text class="blk-title" x="918" y="90">SP</text>
+                  <text class="blk-sub" x="918" y="108">spurs removal</text>
+                  <g class="blk-num"><circle cx="870" cy="68" r="10"/><text x="870" y="68">10</text></g>
+                </g>
+                <line class="blk-wire" x1="966" y1="95" x2="984" y2="95" marker-end="url(#blkArrow)"/>
+                <rect class="blk-end" x="986" y="62" width="116" height="66" rx="6"/>
+                <text class="blk-sub" x="1044" y="82">spectrum</text>
+                <text class="blk-sub" x="1044" y="99">waterfall</text>
+                <text class="blk-sub" x="1044" y="116">VFO · decoders</text>
+                <!-- 11 AGC+ (ADVANCED): reads the raw A/D samples, sets the tuner gain -->
+                <path class="blk-ctl" d="M726 95V157H750" marker-end="url(#blkArrow)"/>
+                <g class="blk" data-blk-for="sagcSetting" tabindex="0">
+                  <rect x="752" y="142" width="118" height="30" rx="6"/>
+                  <text class="blk-title" x="811" y="162">AGC+</text>
+                  <g class="blk-num"><circle cx="752" cy="142" r="10"/><text x="752" y="142">11</text></g>
+                </g>
+                <path class="blk-ctl" d="M811 172V194H384V124" marker-end="url(#blkArrow)"/>
+                <text class="blk-sub" x="600" y="208">AGC+ sets the tuner gain from the A/D level</text>
               </svg>
               <p class="note">Path of the signal from the antenna to the screen. A number in the diagram = the card with the same number; click a block to find it.
                 Grey block: not for this dongle or VFO.</p>
@@ -1020,14 +1037,14 @@ ecordings.</p>
             </div>
             </div>
           </div>
-          <div class="set-subpanel set-grid2" data-set-subpanel="dongle:adv" role="tabpanel" hidden>
+          <div class="set-subpanel set-grid2" id="dongleAdv" data-set-subpanel="dongle:adv" role="tabpanel" hidden>
             <div class="setting dongle-list-box">
               <div class="row"><span>Dongles and VFOs</span><button id="dongleListRefresh" class="key small" title="Search for connected dongles again">⟳</button></div>
               <table class="dongle-list" id="dongleList"></table>
               <p class="note">Highlighted: the dongle these settings apply to. Assignment is in <code>data\vfos.json</code>;
                 a change needs a full server restart. State ✓ = the VFO receiver has the dongle open and running; <i>free</i> = connected RTL dongle without a VFO.</p>
             </div>
-            <div class="setting">
+            <div class="setting" id="spurSetting" data-blk="10">
               <label class="switch"><input id="spurOn" type="checkbox"><span></span> SP – Spurs removal</label>
               <div class="row"><button id="spurLearn" class="key small" title="Learn the spurs in the band received now (5 s)">LEARN</button><span id="spurInfo" class="value"></span><button id="spurClear" class="key small" title="Forget all learned spurs of this VFO">CLEAR</button></div>
               <div class="set-cols">
@@ -1050,7 +1067,7 @@ ecordings.</p>
                 Cleans the waterfall and the channel you listen to (not WFM and wide FM). A signal on a spur is removed with it, so a clean waterfall does not mean it can be received there.
                 The SP key does the same in one press: it forgets the lines, learns and switches the removal on.</p>
             </div>
-            <div class="setting" id="sagcSetting">
+            <div class="setting" id="sagcSetting" data-blk="11">
               <div class="row"><span>AGC+</span><span id="sagcNow" class="value"></span></div>
               <div id="sagcRows"></div>
               <button id="sagcDefaults" class="key small">DEFAULTS</button>

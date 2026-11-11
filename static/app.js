@@ -1969,6 +1969,7 @@ function renderSettings() {
   const rtl = !noRtlDongle(st);
   $("blkDiagram").hidden = !rtl;
   $("dongleBasic").classList.toggle("no-blk", !rtl);
+  $("dongleAdv").classList.toggle("no-blk", !rtl);
   syncBlkDiagram();
   $("txSetting").hidden = !st.tx_capable;
   $("setTabTx").hidden = !st.tx_capable;
@@ -6752,6 +6753,9 @@ for (const g of document.querySelectorAll(".blk-diagram .blk")) {
   const go = () => {
     const cards = blkCards(g);
     if (!cards.length) return;
+    // SP and AGC+ (10, 11) are on the ADVANCED page: switch to it first
+    const sub = cards[0].closest("[data-set-subpanel]");
+    if (sub && sub.hidden) { showSetSub(sub.dataset.setSubpanel); store("setSub_dongle", sub.dataset.setSubpanel); }
     cards[0].scrollIntoView({ block: "nearest", behavior: "smooth" });
     for (const c of cards) { c.classList.remove("blk-flash"); void c.offsetWidth; c.classList.add("blk-flash"); }
   };

@@ -149,9 +149,10 @@ squelch gets a green underline, a transmitting one turns red.
   The gear is one switch for all VFOs; switching it off hides the tab. The pages:
   - **SDR DONGLE**, with two sub-pages:
     - **BASIC**
-      - **Block diagram** at the top: the path of the signal antenna → upconverter → bias-tee → tuner → A/D (RTL2832) → USB → DC removal → spectrum / VFOs,
-        with the crystal (ppm) clocking the tuner and the A/D. Each block has a number, and the card of its setting has the same number;
-        a click on a block highlights its card. A grey block has no setting for this dongle or VFO (a VFO with a fixed dongle). Shown for RTL-SDR dongles only, not for LimeSDR or Airspy.
+      - **Block diagram** at the top: the path of the signal antenna → upconverter → bias-tee → tuner → A/D (RTL2832) → USB → DC removal → SP spurs removal → spectrum / VFOs,
+        with the crystal (ppm) clocking the tuner and the A/D, and AGC+, which reads the A/D level and sets the tuner gain (green dashed loop).
+        Each block has a number, and the card of its setting has the same number (SP = 10 and AGC+ = 11 on the ADVANCED page);
+        a click on a block highlights its card, switching to ADVANCED for SP and AGC+. A grey block has no setting for this dongle or VFO (a VFO with a fixed dongle). Shown for RTL-SDR dongles only, not for LimeSDR or Airspy.
       - Without `vfos.json` (single receiver) the dongle selection and the upconverter mode (auto / on / off).
       - **Bandwidth**: the width of the band the dongle receives (sample rate) = the width of the spectrum and waterfall.
       - **Correction (ppm)** and **Upconverter LO (MHz)**.
