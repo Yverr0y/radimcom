@@ -28,10 +28,10 @@ does not contain the binaries; the release packages do, except where noted.
 | rtl-sdr 2.0.2, libusb 1.0.29 | linked into `rtl_433.exe` | GPL v2 or later; LGPL v2.1 or later | <https://github.com/osmocom/rtl-sdr>, <https://github.com/libusb/libusb> |
 | FFTW, FAAD2 | used by welle-cli | GPL v2 or later | MSYS2 packages |
 | mpg123, LAME | used by welle-cli | LGPL | MSYS2 packages |
-| MSYS2 runtime | runs dumpvdl2 | LGPL v3 | <https://github.com/msys2/msys2-runtime> |
-| GLib, libiconv, gettext (libintl) | used by dumpvdl2 | LGPL | MSYS2 packages |
-| libxml2, PCRE2, zlib, winpthreads | used by dumpvdl2 and welle-cli | MIT, BSD, zlib | MSYS2 packages |
-| GCC runtime libraries | used by dumpvdl2 and welle-cli | GPL with GCC Runtime Library Exception | MSYS2 packages |
+| MSYS2 runtime | runs dumpvdl2 and dumphfdl | LGPL v3 | <https://github.com/msys2/msys2-runtime> |
+| GLib, libiconv, gettext (libintl) | used by dumpvdl2 and dumphfdl | LGPL | MSYS2 packages |
+| libxml2, PCRE2, zlib, winpthreads | used by dumpvdl2, dumphfdl and welle-cli | MIT, BSD, zlib | MSYS2 packages |
+| GCC runtime libraries | used by dumpvdl2, dumphfdl and welle-cli | GPL with GCC Runtime Library Exception | MSYS2 packages |
 | librtlsdr | RTL-SDR access | GPL v2 or later | see the note below |
 | libusb 1.0.29 | USB access for librtlsdr | LGPL v2.1 or later | <https://github.com/libusb/libusb> |
 | Zadig 2.4 | installs the WinUSB driver | GPL v3 | <https://github.com/pbatard/libwdi> (tag `b721`) |

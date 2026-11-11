@@ -89,47 +89,8 @@ Change log
 ----------
 (also in CHANGELOG.md)
 
-Ver. 0.113beta2
-(changes since 0.113beta1)
-Main Features
-- RTL-SDR Blog V4 tunes from 0.5 MHz (HF through its built-in upconverter, no external converter)
-- SETTINGS > SDR DONGLE > ADVANCED: list of dongles and the VFOs they serve (from data\vfos.json), their state,
-  free connected dongles; the dongle being set is highlighted
-- Memory import (Brano): one LOAD FILE... key recognises the format by the content: RADIMCOM JSON / CSV, SDR#
-  frequencies.xml, SDR++ frequency manager, gqrx bookmarks.csv, CHIRP CSV (LOAD SDR# removed).
-- RECORDINGS tab (RECS key in the AUDIO group): the MP3 files of REC / REC SQ in a table (start, memory,
-  frequency, mode, length, size), a click plays the file in the browser, NEXT continues with the next older
-  file, filter, delete; the file being written is marked. HTTP API: /api/recordings.
-- SETTINGS > SDR DONGLE > BASIC: block diagram of the receive chain (antenna, upconverter, bias-tee, tuner,
-  A/D, ppm crystal, DC removal); numbered blocks match numbered setting cards, a click highlights the card (RTL-SDR only).
-- Waterfall keeps the history of the whole SDR band: after zooming out or dragging the section, the parts
-  hidden before are shown at once (coarser), not an empty background.
-- HFDL decoder (aircraft data link on HF, 2.9-22 MHz, dumphfdl): DECODERS > HFDL, all HFDL channels inside
-  the band of the VFO at once, band buttons, heard ground stations, table of stations and frequencies, LOG;
-  aircraft data from ADS-B (adsb.fi / adsb.lol) like ACARS, a click on flight / registration opens the map;
-  MESSAGES / AIRCRAFT / MAP views (aircraft positions, tracks and ground stations on a map), scroll pause.
-- AIS decoder (ships, 161.975 / 162.025 MHz, own GMSK decoder, no external program): DECODERS > AIS, the
-  162.000 button centres the VFO so both channels are decoded at once, audio muted; MMSI with country flag and
-  MarineTraffic / VesselFinder links, name, type, status, position, speed, course, destination, NMEA sentence;
-  MESSAGES / SHIPS / MAP views (ships turned to their heading, tracks, base stations, aids to navigation), LOG.
-- PACKET, HFDL and AIS maps: the square key in the top right corner opens the map alone in a new browser tab
-  (live, no audio, the main window keeps its settings).
-Minor Fixes
-- ST in the VFO window is lit only while stereo is really decoded (pilot and S/M on), grey with S/M set
-  to mono; before it stayed lit with the pilot, so S/M looked as if it did nothing
-- MEMORIES tab: the LIST page is gone, CHANNELS: click selects a row, double click
-  recalls the channel, the pencil opens it in the form, the tuned channel is highlighted;
-  ★ only filter and + SAVE CURRENT there; the group for TO GROUP / FROM GROUP (MOVE is gone) is a list of all
-  groups plus "+ new group"; opening another channel asks before dropping unsaved changes in the form.
-- Damaged VFO settings (config_X.json full of zeros after a power cut) no longer stop the VFO: saving flushes
-  to disk and keeps a .bak, the launcher restores it (or creates new settings), the damaged file stays as .broken
-- AD window has a fixed height: an error, the rotor AZ / EL or RDS no longer change it
-- Memory editor (Brano): sort by a click on a column header, fixed column widths with tooltips, Rec as text,
-  groups of a channel as a list, the bar above the table acts on the open channel when none is ticked.
-- Recording (Brano): a recording or ASQ started by recalling a memory with RECORD stops when the VFO
-  leaves the memory; REC / REC SQ switched on by hand keep running while tuning.
-
-Ver. 0.113beta1
+Ver. 0.113
+(after the test betas 0.113beta1 and 0.113beta2; memory editor by Brano, github.com/brjanicek)
 Main Features
 - New look: brushed black anodized aluminium panel, displays milled into it (sharp edges, glass), 3D keys
   that stay pressed with an LED line when on, spectrum / waterfall as a display sunk behind glass.
@@ -160,17 +121,47 @@ Main Features
   wheel / drag tuning starts ATU from a 150 Hz move (was 250 Hz).
 - Memory editor (contributed by Brano, github.com/brjanicek): channels in several groups, with a decoder
   switched on at recall, a recording started at recall (OFF, ON = REC, SQ = REC SQ, ASQ = REC SQ with auto squelch),
-  a red dot on the tag of a recording channel, a note, their own tag colour or a hidden tag; sort by group, frequency, name, mode or decoder; duplicates shown.
-  Groups with notes: add, rename, copy, merge, delete. Import from SDR#, JSON or CSV and export to JSON or CSV,
+  a red dot on the tag of a recording channel, a note, their own tag colour or a hidden tag; sort by a click on a column header, duplicates shown;
+  channel form in three columns, asks before unsaved changes are dropped.
+  Groups with notes: add, rename, copy, merge, delete. Import (one LOAD FILE... key recognises RADIMCOM JSON / CSV, SDR#,
+  SDR++, gqrx and CHIRP files) and export to JSON or CSV,
   both through a list to edit and choose from first. New file data\memory_groups.json; memories.json is copied
   to memories.json.bak before the first change.
 - MEMORIES tab instead of the floating MEM window: while the MEM key is lit, the bottom part has a MEMORIES tab with the pages
-  LIST (recall), CHANNELS, GROUPS, IMPORT and EXPORT (the memory editor). SAVE CURRENT and NEW open the new
-  channel in CHANNELS.
+  CHANNELS, GROUPS, IMPORT and EXPORT (the memory editor). CHANNELS is the list to recall from (Brano): click selects,
+  double click recalls, the pencil opens the form, the tuned channel is highlighted, * only filter, + SAVE CURRENT / + NEW;
+  TO GROUP / FROM GROUP pick from a list of all groups or + new group.
+- RTL-SDR Blog V4 tunes from 0.5 MHz (HF through its built-in upconverter, no external converter)
+- SETTINGS > SDR DONGLE > ADVANCED: list of dongles and the VFOs they serve (from data\vfos.json), their state,
+  free connected dongles; the dongle being set is highlighted
+- RECORDINGS tab (RECS key in the AUDIO group): the MP3 files of REC / REC SQ in a table (start, memory,
+  frequency, mode, length, size), a click plays the file in the browser, NEXT continues with the next older
+  file, filter, delete; the file being written is marked. HTTP API: /api/recordings.
+- SETTINGS > SDR DONGLE > BASIC: block diagram of the receive chain (antenna, upconverter, bias-tee, tuner,
+  A/D, ppm crystal, DC removal); numbered blocks match numbered setting cards, a click highlights the card (RTL-SDR only).
+- Waterfall keeps the history of the whole SDR band: after zooming out or dragging the section, the parts
+  hidden before are shown at once (coarser), not an empty background.
+- HFDL decoder (aircraft data link on HF, 2.9-22 MHz, dumphfdl): DECODERS > HFDL, all HFDL channels inside
+  the band of the VFO at once, band buttons, heard ground stations, table of stations and frequencies, LOG;
+  aircraft data from ADS-B (adsb.fi / adsb.lol) like ACARS, a click on flight / registration opens the map;
+  MESSAGES / AIRCRAFT / MAP views (aircraft positions, tracks and ground stations on a map), scroll pause.
+- AIS decoder (ships, 161.975 / 162.025 MHz, own GMSK decoder, no external program): DECODERS > AIS, the
+  162.000 button centres the VFO so both channels are decoded at once, audio muted; MMSI with country flag and
+  MarineTraffic / VesselFinder links, name, type, status, position, speed, course, destination, NMEA sentence;
+  MESSAGES / SHIPS / MAP views (ships turned to their heading, tracks, base stations, aids to navigation), LOG.
+- PACKET, HFDL and AIS maps: the square key in the top right corner opens the map alone in a new browser tab
+  (live, no audio, the main window keeps its settings).
 Minor Fixes
 - Speaker / REC / REC SQ as raised keys with LED lines; faders with a metal knob.
 - RADIMCOM logo: raised white letters, raised ring LED; the version under the logo instead of the author line.
 - Lighter grey texts on the panel.
+- ST in the VFO window is lit only while stereo is really decoded (pilot and S/M on), grey with S/M set
+  to mono; before it stayed lit with the pilot, so S/M looked as if it did nothing
+- Damaged VFO settings (config_X.json full of zeros after a power cut) no longer stop the VFO: saving flushes
+  to disk and keeps a .bak, the launcher restores it (or creates new settings), the damaged file stays as .broken
+- AD window has a fixed height: an error, the rotor AZ / EL or RDS no longer change it
+- Recording (Brano): a recording or ASQ started by recalling a memory with RECORD stops when the VFO
+  leaves the memory; REC / REC SQ switched on by hand keep running while tuning.
 
 Ver. 0.112
 Main Features

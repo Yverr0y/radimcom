@@ -23,7 +23,7 @@ Details, drivers and running from the git sources: [Installation](docs/installat
 
 | | RTL-SDR | RTL-SDR Blog V4 | LimeSDR Mini \* | Airspy R2 |
 |---|---|---|---|---|
-| Receive range | 24–1766 MHz | 0.5–1766 MHz (from 0.113beta2, testing) | 1–3500 MHz | 24–1750 MHz |
+| Receive range | 24–1766 MHz | 0.5–1766 MHz (from 0.113) | 1–3500 MHz | 24–1750 MHz |
 | Receiver bandwidth (sample rate) in RADIMCOM | up to 2.4 MS/s | up to 2.4 MS/s, on the [roadmap](ROADMAP.md) | up to 2.4 MS/s | 2.5 MS/s (fixed) |
 | HF through an upconverter | yes | built-in upconverter, used by its driver below 28.8 MHz | yes | yes |
 | Transmit | – | – | yes (optional, off by default) | – |
