@@ -31,6 +31,7 @@ Test beta (GitHub branch `0.114beta1`).
 
 ### Minor Fixes
 
+- **MEMORIES › CHANNELS: the form of an existing channel is titled "Edit channel"** (Brano, brjanicek; was "Channel"), so it reads apart from **New channel**.
 - **WFM filters 50, 75, 150 and 200 kHz** (were 100, 150 and 200 kHz), default 200 kHz (the full broadcast signal: least distortion, best stereo and RDS). 150 kHz is a compromise, 50–75 kHz only for a weak station next to a strong one (distorted, usually without stereo and RDS); any width up to 250 kHz can still be set by dragging the filter edge.
 - **Location of a memory channel** (Brano, brjanicek): a channel can keep the location of its station, **LAT** / **LON** in decimal degrees in the channel form (both or neither; empty = none), or **CHOOSE ON MAP** (an OpenStreetMap map in place of the table, a click fills them). Saved as `lat` / `lon` in `memories.json` (`null` without a location), in the JSON and CSV export (**LAT/LON** column to include it) and import, and in the memories API. The CHANNELS table shows LAT, LON and the **azimuth** and **distance** from the station location of SETTINGS › GENERAL › LOCATION (sortable). The channel form takes the full height of the CHANNELS page.
 - **Fewer STEP keys** (the key rows overflowed into a second line after TSQ-C / TSQ-D): AM, FM, SSB and CW have 10 Hz, 100 Hz, 1 kHz and 10 kHz; WFM keeps 10 Hz, 100 Hz, 500 Hz, 1 kHz, 5 kHz, 9 kHz and 10 kHz. Each set remembers its own step in the browser; a step saved before that is not in the short set becomes the nearest one.

@@ -8597,7 +8597,7 @@ function medOpenForm(m, template) {
   medFormColor = src.color || "";
   f.elements.color.value = medFormColor || MEM_COLOR;
   medFormGroups = [...memGroupsOf(src)];
-  $("medFormTitle").textContent = m ? "Channel" : "New channel";
+  $("medFormTitle").textContent = m ? "Edit channel" : "New channel";
   $("medFormSave").textContent = m ? "SAVE" : "＋ ADD";
   f.querySelector("[data-act=recall]").hidden = f.querySelector("[data-act=delete]").hidden = !m;
   $("medFormErr").hidden = true;
