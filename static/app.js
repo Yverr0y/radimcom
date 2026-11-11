@@ -8037,8 +8037,8 @@ async function recallMem(m) {
   await ensureVfoFor(m.freq_hz);
   if (!st) return;
   if (m.dab_channel || m.mode === "DAB") {
+    if (rcHasLoc(m)) rctrlAimMem(m);   // the rotor turns to it; DAB on below opens the DAB tab, which stays in front
     dabRecall(m.dab_channel || st.dab_channel);
-    if (rcHasLoc(m)) rctrlAimMem(m);   // after DAB on, which opens the DAB tab: ROTOR CONTROL stays in front
     markActiveMem();
     return;
   }
