@@ -1984,3 +1984,22 @@ body.map-only .pkt-map.map-only-box { flex-direction: column; gap: 4px; }
   border-radius: 4px; background: #0b0e12; color: var(--text); font-size: 12px; }
 .rc-edit-tab input.rc-loc { border-color: #4cff7a; }
 .rc-edit-tab .note { padding: 6px 8px; margin: 0; }
+.med-table .c-lat, .med-table .c-lon { width: 74px; }
+.med-table .c-az { width: 44px; }
+.med-table .c-dist { width: 64px; }
+.med-table .c-incloc { width: 84px; }
+.med-map { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.med-map[hidden], .med-table-wrap[hidden] { display: none; }
+.med-map .med-bar { justify-content: space-between; }
+.med-map .note { margin: 0; font-size: 12px; }
+#medMap { flex: 1; min-height: 200px; border: 1px solid var(--line); border-radius: 6px; background: #10151c; }
+#medMap.leaflet-container { font: 12px system-ui, sans-serif; }
+/* CHANNELS: the channel form takes the full height of the page, beside the bars, the table and the map */
+.med-panel[data-med-panel=channels]:not([hidden]) { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 8px 0; }
+.med-panel[data-med-panel=channels] > .med-bar { grid-column: 1; }
+.med-panel[data-med-panel=channels] .med-split { display: contents; }
+.med-panel[data-med-panel=channels] .med-table-wrap, .med-panel[data-med-panel=channels] .med-map { grid-column: 1; grid-row: 3; }
+.med-panel[data-med-panel=channels] .med-form { grid-column: 2; grid-row: 1 / 4; margin-left: 10px; }
+.med-panel[data-med-panel=channels] .med-form[hidden], .med-panel[data-med-panel=channels] .med-map[hidden],
+.med-panel[data-med-panel=channels] .med-table-wrap[hidden] { display: none; }

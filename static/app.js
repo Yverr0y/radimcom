@@ -8364,6 +8364,7 @@ $("medTabs").addEventListener("click", (e) => { const b = e.target.closest("[dat
 
 /** The MEMORIES tab was opened: the shown page filled, the list scrolled to the tuned memory. */
 function memPaneOpened() {
+  medLoadQth();   // the station location may have changed in SETTINGS meanwhile
   showMedTab(medTab);
   if (medTab === "channels") markActiveMem(true);
 }
@@ -8442,9 +8443,29 @@ const MED_COLS = [   // [key, header, class of the column (its fixed width), com
   ["record", "Rec", "c-rec", (a, b) => RECORD_ORDER.indexOf(a.record || "off") - RECORD_ORDER.indexOf(b.record || "off")],
   ["groups", "Groups", "c-groups", null],
   ["tag", "Tag", "c-tag", (a, b) => (a.tag === false) - (b.tag === false) || memTagColor(a).localeCompare(memTagColor(b))],
+  ["lat", "LAT", "c-lat num", (a, b) => medNum(a.lat) - medNum(b.lat)],
+  ["lon", "LON", "c-lon num", (a, b) => medNum(a.lon) - medNum(b.lon)],
+  ["az", "AZ", "c-az num", (a, b) => medNum(medAzKm(a)?.[0]) - medNum(medAzKm(b)?.[0])],
+  ["dist", "Dist", "c-dist num", (a, b) => medNum(medAzKm(a)?.[1]) - medNum(medAzKm(b)?.[1])],
   ["note", "Note", "c-note", (a, b) => (a.note || "~").localeCompare(b.note || "~", "en", { sensitivity: "base" })],
 ];
 const RECORD_ORDER = ["on", "sq", "asq", "off"];
+// Azimuth and distance of a channel from the station location of SETTINGS › GENERAL › LOCATION (/api/location,
+// data\location.json), not from the browser. medQth: {lat, lon}, null = not set (0 / 0), undefined = not read yet.
+let medQth;
+const medNum = (v) => (v == null || v === "" ? Infinity : Number(v));   // channels without a value sort last
+async function medLoadQth() {
+  try {
+    const s = await satFetch("/api/location");
+    medQth = Number.isFinite(s.lat) && Number.isFinite(s.lon) && !(s.lat === 0 && s.lon === 0) ? { lat: s.lat, lon: s.lon } : null;
+  } catch { medQth = null; }
+  if (bodyTab === "mem" && medTab === "channels") renderMedChannels();
+}
+/** [azimuth °, distance km] from the station to the channel, or null (no location of the channel or the station). */
+function medAzKm(m) {
+  if (!medQth || m.lat == null || m.lon == null) return null;
+  return rcBearing(medQth, { lat: m.lat, lon: m.lon });
+}
 let medSortKey = recall("medSortKey") || "groups";
 let medSortDir = recall("medSortDir") === "-1" ? -1 : 1;
 if (!MED_COLS.some(([k]) => k === medSortKey)) medSortKey = "groups";
@@ -8499,6 +8520,7 @@ function renderMedChannels() {
         `<td class="med-rec${m.record && m.record !== "off" ? " on" : ""}">${escHtml(rec)}</td>` +
         `<td class="groups" title="${escHtml(groups.join(", "))}">${groups.map((g) => `<span class="chip">${escHtml(g)}</span>`).join("")}</td>` +
         `<td><span class="swatch${m.tag === false ? " off" : ""}" style="--c:${memTagColor(m)}" title="${m.tag === false ? "tag hidden" : "tag shown"}"></span></td>` +
+        medLocCells(m) +
         `<td class="note-cell" title="${escHtml(m.note || "")}">${escHtml(m.note || "")}</td></tr>`;
     }
   }
@@ -8507,6 +8529,16 @@ function renderMedChannels() {
   medRenderBulk();
   renderMedForm();
   markActiveMem();
+}
+
+/** LAT, LON, AZ and Dist cells of a channel row. */
+function medLocCells(m) {
+  const has = m.lat != null && m.lon != null;
+  const ak = medAzKm(m);
+  const azT = ak ? `${Math.round(ak[0])}°` : "", kmT = ak ? rcKm(ak[1]) : "";
+  const why = has && !medQth ? ` title="Set the station location in SETTINGS › GENERAL › LOCATION"` : "";
+  return `<td class="num mono">${has ? m.lat.toFixed(4) : ""}</td><td class="num mono">${has ? m.lon.toFixed(4) : ""}</td>` +
+    `<td class="num mono"${why}>${azT}</td><td class="num mono"${why}>${kmT}</td>`;
 }
 
 /** Channels the bar above the table acts on: the ticked ones, or (none ticked) the channel open in the form. */
@@ -8620,6 +8652,64 @@ $("medBulk").addEventListener("click", async (e) => {
   await memChanged();
 });
 
+// CHOOSE ON MAP of the channel form: an OpenStreetMap map in place of the table (as in SETTINGS › GENERAL › LOCATION);
+// a click puts its place into LAT / LON of the form, SAVE keeps it. Red = the station location, yellow = the channel.
+let medMap = null, medMapMark = null, medMapQth = null;
+async function medMapOpen() {
+  $("medMapBox").hidden = false;
+  $("medTable").closest(".med-table-wrap").hidden = true;
+  $("medMapNote").textContent = "Loading the map…";
+  try {
+    await Promise.all([satAsset("/static/leaflet/leaflet.css"), satAsset("/static/leaflet/leaflet.js")]);
+  } catch (e) {
+    $("medMapNote").textContent = e.message;
+    return;
+  }
+  if (medQth === undefined) await medLoadQth();
+  if (!medMap) {
+    medMap = L.map($("medMap"), { worldCopyJump: true });
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+    }).addTo(medMap);
+    medMapMark = L.circleMarker([0, 0], { radius: 7, color: "#000", weight: 2, fillColor: "#ffd84a", fillOpacity: 1 });
+    medMap.on("click", (ev) => {
+      const p = ev.latlng.wrap(), f = $("medForm");
+      f.elements.lat.value = p.lat.toFixed(6);
+      f.elements.lon.value = p.lng.toFixed(6);
+      medFormDirty = true;
+      medMapShow(false);
+    });
+  }
+  if (medMapQth) medMapQth.remove();
+  medMapQth = medQth ? L.circleMarker([medQth.lat, medQth.lon], { radius: 6, color: "#000", weight: 2, fillColor: "#ff5a3c", fillOpacity: 1,
+    interactive: false }).addTo(medMap) : null;
+  medMap.invalidateSize();
+  medMapShow();
+}
+/** Marker and note from LAT / LON of the form; center: move the view to it (or to the station). */
+function medMapShow(center = true) {
+  if (!medMap) return;
+  const f = $("medForm");
+  const lat = parseFloat(String(f.elements.lat.value).replace(",", ".")), lon = parseFloat(String(f.elements.lon.value).replace(",", "."));
+  const ok = Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+  if (ok) medMapMark.setLatLng([lat, lon]).addTo(medMap); else medMapMark.remove();
+  if (center) {
+    if (ok) medMap.setView([lat, lon], Math.max(medMap.getZoom() || 0, 9));
+    else if (medQth) medMap.setView([medQth.lat, medQth.lon], 7);
+    else medMap.setView([49, 18], 5);
+  }
+  const ak = ok && medQth ? rcBearing(medQth, { lat, lon }) : null;
+  $("medMapNote").textContent = (ok ? `${lat.toFixed(6)}, ${lon.toFixed(6)}` + (ak ? ` · AZ ${Math.round(ak[0])}° · ${rcKm(ak[1])} from the station` : "") +
+    " · SAVE keeps it" : "Click the place of the station on the channel") + (medQth ? "" : " · station location not set (SETTINGS › GENERAL › LOCATION)");
+}
+function medMapClose() {
+  if ($("medMapBox").hidden) return;
+  $("medMapBox").hidden = true;
+  $("medTable").closest(".med-table-wrap").hidden = false;
+}
+$("medMapClose").addEventListener("click", medMapClose);
+
 // the form of one channel
 let medFormDirty = false;        // the form was changed and not saved yet
 /** Before the form is filled with another channel: asks whether unsaved changes may be dropped. */
@@ -8646,6 +8736,9 @@ function medOpenForm(m, template) {
   f.elements.record.value = src.record || "off";
   f.elements.dab.value = src.dab_channel || "";
   f.elements.note.value = src.note || "";
+  f.elements.lat.value = src.lat ?? "";
+  f.elements.lon.value = src.lon ?? "";
+  if (medMap) medMapShow();
   f.elements.tag.checked = src.tag !== false;
   f.elements.fav.checked = !!src.fav;
   medFormColor = src.color || "";
@@ -8668,6 +8761,7 @@ function renderMedForm() {
   const f = $("medForm");
   if (medEditId && medEditId !== "new" && !mems.some((m) => m.id === medEditId)) medEditId = null;
   f.hidden = !medEditId;
+  if (!medEditId) medMapClose();   // the map belongs to the form
   $("medTable").classList.toggle("form-open", !!medEditId);   // tick boxes hidden while the form is open
   if (!medEditId) return;
   const names = [...new Set([...memAllGroups(), ...medFormGroups])].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
@@ -8702,6 +8796,7 @@ $("medFormNewGroup").addEventListener("keydown", (e) => {
 $("medForm").addEventListener("input", (e) => {
   const f = $("medForm");
   medFormDirty = true;
+  if ((e.target === f.elements.lat || e.target === f.elements.lon) && medMap) medMapShow(false);
   if (e.target === f.elements.color) medFormColor = e.target.value;
   if (e.target === f.elements.dab) f.elements.freq.disabled = !!f.elements.dab.value;
   if ([f.elements.freq, f.elements.mode, f.elements.dab].includes(e.target)) medFormDupNote();
@@ -8717,6 +8812,7 @@ $("medForm").addEventListener("click", async (e) => {
   if (act === "nocolor") { medFormColor = ""; f.elements.color.value = MEM_COLOR; medFormDirty = true; }
   else if (act === "cancel") { medEditId = null; renderMedChannels(); }
   else if (act === "recall" && m) recallMem(m);
+  else if (act === "map") medMapOpen();
   else if (act === "delete" && m && confirm(`Delete channel "${m.name}"?`)) {
     const r = await memApi(`/api/memories/${m.id}`, undefined, "DELETE");
     if (!r.ok) { medMsg(r.error, true); return; }
@@ -8744,7 +8840,8 @@ $("medForm").addEventListener("submit", async (e) => {
   const isNew = medEditId === "new";
   const body = { name: f.elements.name.value.trim(), groups: medFormGroups, mode: f.elements.mode.value, bw: Math.round(bw),
     decoder: f.elements.decoder.value, record: f.elements.record.value, note: f.elements.note.value.trim(), color: medFormColor, tag: f.elements.tag.checked,
-    fav: f.elements.fav.checked, ...(dab ? { dab_channel: dab } : { freq_hz: Math.round(freq), ...(isNew ? {} : { dab_channel: null }) }) };
+    fav: f.elements.fav.checked, lat: f.elements.lat.value.trim() || null, lon: f.elements.lon.value.trim() || null,
+    ...(dab ? { dab_channel: dab } : { freq_hz: Math.round(freq), ...(isNew ? {} : { dab_channel: null }) }) };
   const r = await memApi(isNew ? "/api/memories" : `/api/memories/${medEditId}`, body, isNew ? "POST" : "PATCH");
   if (!r.ok) return err(r.error);
   $("medFormErr").hidden = true;
@@ -8877,9 +8974,16 @@ function medRow(m) {
     mode: String(m.mode || "").toUpperCase(), bw: Number.isFinite(bw) ? kHzText(bw) : String(m.bw ?? ""),
     decoder: m.decoder || "", record: String(m.record || "off").toLowerCase(), groups: (Array.isArray(m.groups) ? m.groups : m.group ? [m.group] : []).filter(Boolean).join(" | "),
     note: m.note || "", color: m.color || "", tag: m.tag !== false && m.tag !== "0", fav: !!m.fav, dab: m.dab_channel || "",
-    sel: true, err: m.error || "" };
+    lat: m.lat ?? "", lon: m.lon ?? "", sel: true, err: m.error || "" };
 }
 
+/** LAT / LON as typed -> a number, null when empty; a text that is not a number stays text (the server says why). */
+function medCoord(v) {
+  const t = String(v ?? "").trim();
+  if (!t) return null;
+  const n = Number(t.replace(",", "."));
+  return Number.isFinite(n) ? n : t;
+}
 /** Row -> entry for the server; throws Error with the reason when a field is wrong. */
 function medRowEntry(r) {
   const hz = r.dab ? null : parseFreq(r.freq);
@@ -8890,6 +8994,7 @@ function medRowEntry(r) {
   if (!(bw > 0)) throw new Error("bad bandwidth");
   return { name: r.name.trim(), groups: r.groups.split("|").map((g) => g.trim()).filter(Boolean), mode: r.mode, bw: Math.round(bw),
     decoder: r.decoder, record: r.record, note: r.note.trim(), color: r.color, tag: r.tag, fav: r.fav,
+    lat: medCoord(r.lat), lon: medCoord(r.lon),
     ...(r.dab ? { dab_channel: r.dab } : { freq_hz: Math.round(hz) }) };
 }
 
@@ -9054,7 +9159,7 @@ function medExportAdd(list) {
   const have = new Set(medExp.rows.map((r) => r.src));
   for (const m of list) {
     if (have.has(m.id)) continue;
-    medExp.rows.push({ ...medRow(m), src: m.id, inColor: true, inTag: true, inNote: true });
+    medExp.rows.push({ ...medRow(m), src: m.id, inColor: true, inTag: true, inNote: true, inLoc: true });
     have.add(m.id);
   }
   for (const r of medExp.rows) {
@@ -9085,15 +9190,17 @@ function renderMedExport() {
     `<th class="inc c-inc"><label title="Export the tag colour of every channel"><input type="checkbox" data-all="inColor" ${all("inColor") ? "checked" : ""}> colour</label></th>` +
     `<th class="inc c-inc"><label title="Export whether the tag is shown"><input type="checkbox" data-all="inTag" ${all("inTag") ? "checked" : ""}> tag</label></th>` +
     `<th class="inc c-inc"><label title="Export the note of every channel"><input type="checkbox" data-all="inNote" ${all("inNote") ? "checked" : ""}> note</label></th>` +
+    `<th class="inc c-incloc"><label title="Export the location (LAT / LON) of every channel"><input type="checkbox" data-all="inLoc" ${all("inLoc") ? "checked" : ""}> LAT/LON</label></th>` +
     `<th class="c-del"></th></tr></thead><tbody>`;
   rows.forEach((r, i) => {
     html += medEditCells(r, i,
       `<td class="inc"><label><input type="checkbox" data-f="inColor" ${r.inColor ? "checked" : ""}><span class="swatch" style="--c:${r.color || MEM_COLOR}"></span></label></td>` +
       `<td class="inc"><label><input type="checkbox" data-f="inTag" ${r.inTag ? "checked" : ""}> ${r.tag ? "on" : "off"}</label></td>` +
       `<td class="inc"><input type="checkbox" data-f="inNote" ${r.inNote ? "checked" : ""}></td>` +
+      `<td class="inc" title="${escHtml(String(r.lat ?? "") && `${r.lat}, ${r.lon}`)}"><label><input type="checkbox" data-f="inLoc" ${r.inLoc ? "checked" : ""}> ${String(r.lat ?? "") !== "" ? "✓" : "—"}</label></td>` +
       `<td><button class="key small" data-del title="Remove from the list">×</button></td>`);
   });
-  if (!rows.length) html += `<tr><td colspan="13" class="mem-empty">Add groups, the starred channels or all of them above, or tick channels in CHANNELS and press ⇩ TO EXPORT.</td></tr>`;
+  if (!rows.length) html += `<tr><td colspan="14" class="mem-empty">Add groups, the starred channels or all of them above, or tick channels in CHANNELS and press ⇩ TO EXPORT.</td></tr>`;
   $("medExpTable").innerHTML = html + "</tbody>";
   medExpCountNote();
 }
@@ -9154,6 +9261,7 @@ $("medExpGo").addEventListener("click", () => {
       if (!r.inColor) delete e.color;
       if (!r.inTag) delete e.tag;
       if (!r.inNote) delete e.note;
+      if (!r.inLoc) { delete e.lat; delete e.lon; }
       e.group = e.groups[0] || "";
       out.push(e);
     } catch (err) { r.err = err.message; bad++; }
@@ -9163,9 +9271,9 @@ $("medExpGo").addEventListener("click", () => {
   const name = ($("medExpName").value.trim() || "radimcom-memories").replace(/[^\w.-]+/g, "_");
   let blob;
   if (fmt === "csv") {
-    const cols = ["name", "frequency_hz", "mode", "bandwidth_hz", "groups", "decoder", "record", "dab_channel", "favourite", "note", "color", "show_tag"];
+    const cols = ["name", "frequency_hz", "mode", "bandwidth_hz", "groups", "decoder", "record", "dab_channel", "favourite", "note", "color", "show_tag", "lat", "lon"];
     const lines = [cols.join(";")].concat(out.map((e) => [e.name, e.freq_hz ?? "", e.mode, e.bw, e.groups.join("|"), e.decoder, e.record,
-      e.dab_channel || "", e.fav ? 1 : 0, e.note ?? "", e.color ?? "", e.tag === undefined ? "" : e.tag ? 1 : 0].map(csvCell).join(";")));
+      e.dab_channel || "", e.fav ? 1 : 0, e.note ?? "", e.color ?? "", e.tag === undefined ? "" : e.tag ? 1 : 0, e.lat ?? "", e.lon ?? ""].map(csvCell).join(";")));
     blob = new Blob(["﻿" + lines.join("\r\n") + "\r\n"], { type: "text/csv" });   // BOM: Excel reads it as UTF-8
   } else {
     const groups = [...new Set(out.flatMap((e) => e.groups))].sort().map((g) =>

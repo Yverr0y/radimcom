@@ -116,6 +116,9 @@ Main Features
   right corner opens the map alone in a new browser tab.
 Minor Fixes
 - WFM filters 50, 75, 150 and 200 kHz (default 200 kHz).
+- Memory channel location: LAT / LON (decimal degrees) or CHOOSE ON MAP in the channel form, saved in memories.json and
+  in the JSON / CSV export and import; the CHANNELS table shows LAT, LON, azimuth and distance from the
+  station location (SETTINGS -> GENERAL -> LOCATION).
 - STEP keys: 10 Hz / 100 Hz / 1 kHz / 10 kHz in AM, FM, SSB, CW; WFM keeps all seven steps (each set remembers its own).
 - Default S-meter layout: amber needle.
 

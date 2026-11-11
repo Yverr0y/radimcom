@@ -5,7 +5,8 @@ A memory: {"id", "name", "group", "groups", "freq_hz", "mode", "bw", "fav", "dec
 first of them, so the file stays readable for older versions. "decoder" is switched on when the memory is recalled
 ("" = none). "record" starts a recording when the memory is recalled: "off", "on" (no squelch), "sq" (with the
 squelch) or "asq" (with the auto squelch). "color" is the colour of its tag in the spectrum ("" = default green),
-"tag" false hides the tag.
+"tag" false hides the tag. "lat" / "lon" is the location of the station on the channel (decimal degrees, WGS84,
+north / east positive), both or neither (null).
 
 Groups are the names used by the memories plus the groups in memory_groups.json ([{"name", "note"}]), which keeps
 the note of each group and groups without memories.
@@ -37,9 +38,9 @@ NAME_MAX, GROUP_MAX, NOTE_MAX = 80, 40, 200
 DEFAULT_GROUP = "Moje"
 DUP_HZ = 50          # memories closer than this (same mode) are duplicates, as on the VFO display
 FIELDS = ("name", "group", "groups", "freq_hz", "mode", "bw", "fav", "dab_channel", "decoder", "record", "note",
-          "color", "tag")
+          "color", "tag", "lat", "lon")
 CSV_COLUMNS = ("name", "frequency_hz", "mode", "bandwidth_hz", "groups", "decoder", "record", "dab_channel",
-               "favourite", "note", "color", "show_tag")
+               "favourite", "note", "color", "show_tag", "lat", "lon")
 
 _lock = threading.RLock()
 
@@ -47,7 +48,8 @@ _lock = threading.RLock()
 # ---------- files ----------
 
 def _normalize(m):
-    """Fills the fields added after 0.111 (groups, decoder, record, note, color, tag) in an entry read from the file."""
+    """Fills the fields added after 0.111 (groups, decoder, record, note, color, tag, lat, lon) in an entry read from
+    the file."""
     groups = m.get("groups")
     if not isinstance(groups, list):
         groups = [m["group"]] if m.get("group") else []
@@ -59,6 +61,8 @@ def _normalize(m):
     m.setdefault("color", "")
     m.setdefault("tag", True)
     m.setdefault("fav", False)
+    m.setdefault("lat", None)
+    m.setdefault("lon", None)
     return m
 
 
@@ -133,8 +137,24 @@ def _bool(value):
     return bool(value)
 
 
+def _coord(value, limit, what):
+    """Latitude / longitude in decimal degrees (a number or text, "," as the decimal point too) or None when empty;
+    ValueError out of -limit..limit."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    try:
+        v = float(str(value).strip().replace(",", ".")) if isinstance(value, str) else float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} is not a number") from None
+    if v != v:
+        raise ValueError(f"{what} is not a number")
+    if not -limit <= v <= limit:
+        raise ValueError(f"{what} out of range (-{limit}..{limit})")
+    return round(v, 6)
+
+
 def make(name, group, freq_hz, mode, bw, fav=False, groups=None, decoder="", note="", color="", tag=True,
-         record="off"):
+         record="off", lat=None, lon=None):
     """Validates and creates an entry; ValueError on invalid data. groups (list) wins over group (one name)."""
     name = " ".join(str(name).split())[:NAME_MAX]
     freq_hz = int(round(float(freq_hz)))
@@ -154,9 +174,13 @@ def make(name, group, freq_hz, mode, bw, fav=False, groups=None, decoder="", not
     lo, hi = {"WFM": (50000, 250000), "FM": (500, 50000)}.get(mode, (100, 18000))
     bw = int(min(max(float(bw), lo), hi))
     groups = _groups(groups) if groups is not None else [(" ".join(str(group).split()) or DEFAULT_GROUP)[:GROUP_MAX]]
+    lat, lon = _coord(lat, 90, "latitude"), _coord(lon, 180, "longitude")
+    if (lat is None) != (lon is None):
+        raise ValueError("location needs both latitude and longitude")
     return {"id": uuid.uuid4().hex[:12], "name": name, "group": groups[0] if groups else "", "groups": groups,
             "freq_hz": freq_hz, "mode": mode, "bw": bw, "fav": _bool(fav), "decoder": decoder,
-            "record": record, "note": str(note or "").strip()[:NOTE_MAX], "color": _color(color), "tag": _bool(tag)}
+            "record": record, "note": str(note or "").strip()[:NOTE_MAX], "color": _color(color), "tag": _bool(tag),
+            "lat": lat, "lon": lon}
 
 
 def from_dict(e, dab_channels):
@@ -168,7 +192,7 @@ def from_dict(e, dab_channels):
     m = make(e.get("name", ""), e.get("group", ""), dab_channels[ch] if ch else e["freq_hz"], e["mode"],
              e.get("bw", 3000), e.get("fav", False), groups=groups, decoder=e.get("decoder", ""),
              note=e.get("note", ""), color=e.get("color", ""), tag=e.get("tag", True),
-             record=e.get("record", "off"))
+             record=e.get("record", "off"), lat=e.get("lat"), lon=e.get("lon"))
     if ch:
         m["dab_channel"] = ch
     return m
@@ -438,7 +462,8 @@ def parse_csv(text):
                     "freq_hz": f, "mode": r.get("mode", ""), "bw": bw, "decoder": r.get("decoder", ""),
                     "record": r.get("record", ""),
                     "dab_channel": r.get("dab_channel", ""), "fav": r.get("favourite", ""), "note": r.get("note", ""),
-                    "color": r.get("color", ""), "tag": r.get("show_tag", "1") or "1"})
+                    "color": r.get("color", ""), "tag": r.get("show_tag", "1") or "1",
+                    "lat": r.get("lat", ""), "lon": r.get("lon", "")})
     return out
 
 

@@ -244,7 +244,10 @@ The memory editor was written by **Brano ([brjanicek](https://github.com/brjanic
   and WFM; **OFF** = none, the default; a recording or ASQ that recalling a channel started stops when the VFO leaves
   the channel (another frequency, mode or channel); one switched on by hand, or a key pressed by hand meanwhile, stays), DAB channel, the **groups** (a list, one per line, scrolls when long: tick any number, or type a new one and press Enter),
   a **note**, the **tag in the spectrum** (shown or hidden, default shown) with its **colour** (↺ = the default green) and
-  the star. It warns when another channel is on the same frequency and mode. **＋ NEW** fills it from the tuner.
+  the star, and the **location** of the station on the channel: **LAT** / **LON** in decimal degrees (north and east
+  positive, both or neither, empty = none; **CHOOSE ON MAP** opens an OpenStreetMap map in place of the table: a click
+  fills LAT / LON, the note shows the azimuth and distance from the station (red dot), SAVE keeps it; the table shows LAT, LON and the **AZ**imuth and **Dist**ance from the
+  station location of SETTINGS › GENERAL › LOCATION, empty while that is not set). It warns when another channel is on the same frequency and mode. **＋ NEW** fills it from the tuner.
   Select or tick channels for the bar above the table (with none selected, it acts on the channel open in the form): pick a group in the list (or **＋ new group…** and type its name) and add them to it (**＋ TO GROUP**, they stay in their other groups),
   remove them from it (the group list and both keys are off with no channel selected and while the form is open: the groups of that channel are set in the form), star or unstar them, show or hide their tags, set or reset their
   colour (**SET** / **DEFAULT**), put them on the export list (**⇩ TO EXPORT**) or delete them.
@@ -264,7 +267,7 @@ The memory editor was written by **Brano ([brjanicek](https://github.com/brjanic
   edit and import them later. Groups of a JSON file are shown with their notes, which are imported with the channels.
 - **EXPORT**: put channels on the list: a whole group (**＋ GROUP**), the starred ones, all, or ticked channels and groups from the
   other pages. Changes in the list only go into the file. Untick a channel to leave it out, and choose per channel (or for
-  all in the header) whether its tag **colour**, its **tag** shown / hidden and its **note** are exported. The groups of the
+  all in the header) whether its tag **colour**, its **tag** shown / hidden, its **note** and its location (**LAT/LON**) are exported. The groups of the
   list are shown above it with their notes, each with a tick whether its note is exported. **JSON** keeps everything,
   **CSV** (`;`, UTF-8, opens in Excel) has the columns `name;frequency_hz;mode;bandwidth_hz;groups;decoder;record;dab_channel;favourite;note;color;show_tag`
   (groups separated by `|`) and is read back by IMPORT; group notes go only into JSON.
