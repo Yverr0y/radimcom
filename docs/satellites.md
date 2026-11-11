@@ -91,4 +91,5 @@ broadcast transmitter or a repeater, taken from the channels of **MEMORIES** tha
 - **GROUPS** (beside the map): one row with a checkbox per group of the channels with a location (with the number of channels; channels
   without a group are under *(no group)*); **ALL** / **NONE** switch them all. A channel in several groups is shown while any of its
   groups is on. The choice is remembered in the browser. The list under the groups has the shown channels, nearest first, with
-  azimuth and distance, and a filter (name, frequency, group, note). A change in MEMORIES shows on the map at once.
+  azimuth and distance, and a filter (name, frequency, group, note); a click on a point scrolls the list to its row. The channel
+  aimed at last is selected and scrolled into view in **MEMORIES › CHANNELS** when that tab opens next. A change in MEMORIES shows on the map at once.

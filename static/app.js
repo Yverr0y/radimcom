@@ -7532,6 +7532,7 @@ $("rotElHit").addEventListener("click", (e) => {
 const RC_EARTH_KM = 6371;
 const RC_ANT_KM = 250;          // length of the antenna sector without a target
 let rcMap = null, rcLay = null, rcQth = null, rcListShown = [];
+let rcMemPick = null;           // id of the channel last aimed at: selected and scrolled to when MEMORIES opens next
 let rcTarget = (() => {
   try {
     const t = JSON.parse(recall("rcTarget") || "null");
@@ -7629,6 +7630,7 @@ function rcAim(t) {
   if (!rcQth) { rcSay("Set the station location first (SETTINGS › GENERAL › LOCATION)", true); return; }
   const [az, km] = rcBearing(rcQth, t);
   rcTarget = { lat: t.lat, lon: t.lon, name: t.name || "", az, km };
+  rcMemPick = t.id || null;
   store("rcTarget", JSON.stringify(rcTarget));
   rcDrawTarget();
   rcDrawAntenna(rotorInfo);
@@ -8154,8 +8156,24 @@ $("medTabs").addEventListener("click", (e) => { const b = e.target.closest("[dat
 /** The MEMORIES tab was opened: the shown page filled, the list scrolled to the tuned memory. */
 function memPaneOpened() {
   medLoadQth();   // the station location may have changed in SETTINGS meanwhile
+  // a channel picked on the ROTOR CONTROL map: CHANNELS with that row selected and scrolled into view (once per pick)
+  const pick = rcMemPick && mems.some((m) => m.id === rcMemPick) ? rcMemPick : null;
+  rcMemPick = null;
+  if (pick) {
+    medTab = "channels";
+    if (!medEditId) { medSel.clear(); medSel.add(pick); }
+  }
   showMedTab(medTab);
   if (medTab === "channels") markActiveMem(true);
+  if (pick) medScrollTo(pick);
+}
+
+/** Scrolls the CHANNELS table so that the row of the channel id is in the middle (if the filters show it). */
+function medScrollTo(id) {
+  const tr = $("medTable").querySelector(`tr[data-id="${CSS.escape(id)}"]`);
+  if (!tr) return;
+  const wrap = $("medTable").closest(".med-table-wrap");
+  wrap.scrollTop = Math.max(0, tr.offsetTop - wrap.clientHeight / 2 + tr.offsetHeight / 2);
 }
 
 function renderMed() {
