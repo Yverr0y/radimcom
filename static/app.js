@@ -24,7 +24,7 @@ window.addEventListener("resize", fitStage);   // before the other resize handle
 const BANDWIDTHS = {
   AM: [4000, 6000, 8000, 10000],
   FM: [500, 3000, 6000, 12000, 25000, 50000],
-  WFM: [50000, 75000, 150000],
+  WFM: [50000, 75000, 150000, 200000],
   LSB: [1800, 2400, 2700, 3000],
   USB: [1800, 2400, 2700, 3000],
   CW: [300, 500, 800, 1200],
@@ -1973,7 +1973,7 @@ function renderSettings() {
   syncBlkDiagram();
   $("txSetting").hidden = !st.tx_capable;
   $("setTabTx").hidden = !st.tx_capable;
-  if (!st.tx_capable && $("setTabTx").classList.contains("on")) showSetTab("dongle");
+  if (!st.tx_capable && $("setTabTx").classList.contains("on")) showSetSub("vfo:dongle");
   $("txEnabled").checked = !!st.tx_enabled;
   renderSquelch();
   renderWfLabels();
@@ -2033,7 +2033,7 @@ function renderRds() {
   $("asqKey").disabled = !asqMode;
   $("asqKey").classList.toggle("on", asqMode && !!st.auto_sql_on);
   $("asqKey").title = (asqMode && st.auto_sql_on && !st.auto_sql ? "ASQ: on by AGC+ with the squelch set. " : "")
-    + "ASQ: auto squelch in AM/FM/WFM – the level follows the noise floor (margin in SETTINGS, AUDIO page). Also on by itself with AGC+ and the squelch set";
+    + "ASQ: auto squelch in AM/FM/WFM – the level follows the noise floor (margin in SETTINGS › VFO › AUDIO). Also on by itself with AGC+ and the squelch set";
   renderPassKeys();
   // The RDS frame is always in place (the waterfall does not move); without RDS it is empty and dark.
   const has = !!r && (r.ps || r.rt || r.pi);
@@ -2046,7 +2046,7 @@ function renderRds() {
 }
 
 // ---------- AD = additional display under the S-meter: one thing at a time, by priority ----------
-// 1. error messages (red, the frame blinks, OK accepts them), 2. rotor AZ / EL (MONITOR on the ROTOR page), 3. RDS.
+// 1. error messages (red, the frame blinks, OK accepts them), 2. rotor AZ / EL (MONITOR in SETTINGS › GENERAL › ROTOR), 3. RDS.
 const adErrors = [];       // messages not accepted yet, oldest first
 let adRotInfo = null;      // the last rotor state of the active VFO while its MONITOR is on
 
@@ -2528,16 +2528,16 @@ let bodyTab = "scope";   // the saved tab is restored in init(), once the active
 let bodyTabGuess = false;
 
 /** Tab saved for the active VFO, called after a VFO switch. */
-function restoreBodyTab() {
+function restoreBodyTab(keepTab) {
   $("decNew").hidden = true;
   decNewPages.clear();
   const page = recall(decPageKey());
   decPageSaved = DEC_PAGES.some((p) => p.key === page);
   decPage = decPageSaved ? page : "ft8";
   renderAmsatTab();
-  const saved = MAP_ONLY ? "scope" : recall(tabKey());
-  bodyTabGuess = !["dec", "scope", "sat", "set", "mem", "recs"].includes(saved);
-  setBodyTab((saved === "dec" && decTabShown()) || (saved === "sat" && amsatTabShown()) || (saved === "set" && setTabShown()) || (saved === "mem" && memTabShown()) || (saved === "recs" && recsTabShown()) ? saved : "scope", !bodyTabGuess);
+  const saved = MAP_ONLY ? "scope" : keepTab || recall(tabKey());
+  bodyTabGuess = !["dec", "scope", "sat", "set", "mem", "recs", "rot"].includes(saved);
+  setBodyTab((saved === "dec" && decTabShown()) || (saved === "sat" && amsatTabShown()) || (saved === "set" && setTabShown()) || (saved === "mem" && memTabShown()) || (saved === "recs" && recsTabShown()) || (saved === "rot" && rotTabShown()) ? saved : "scope", !bodyTabGuess);
 }
 
 /** First state of a VFO without a saved tab: if a decoder runs on it, opens DECODERS. */
@@ -2557,12 +2557,14 @@ function setBodyTab(tab, save = true) {
   if (tab === "set" && save) store("setOn", "1");       // the SETTINGS tab open → the gear key on
   if (tab === "mem" && save) store("memOn", "1");       // the MEMORIES tab open → the MEM key on
   if (tab === "recs" && save) store("recsOn", "1");     // the RECORDINGS tab open → the RECS key on
+  if (tab === "rot" && save) store("rotOn", "1");       // the ROTOR CONTROL tab open → the RCTRL key on
   for (const b of $("bodyTabs").querySelectorAll("button")) b.classList.toggle("on", b.dataset.tab === tab);
   $("decPane").hidden = tab !== "dec";
   $("amsatPane").hidden = tab !== "sat";
   $("settingsCard").hidden = tab !== "set";
   $("memPane").hidden = tab !== "mem";
   $("recsPane").hidden = tab !== "recs";
+  $("rotPane").hidden = tab !== "rot";
   if (tab === "dec") { $("decNew").hidden = true; decNewPages.delete(decPage); }
   renderDecKey();
   renderDecTab();
@@ -2571,9 +2573,12 @@ function setBodyTab(tab, save = true) {
   renderSetKey();
   renderMemKey();
   renderRecsKey();
+  renderRotKey();
   if (tab === "mem") setTimeout(memPaneOpened);    // declared further down
   if (tab === "recs") setTimeout(loadRecordings);  // declared further down
-  if (tab === "set") setTimeout(pollRotor);    // the ROTOR page fills at once (later: declared further down)
+  // the open settings page fills at once (ROTOR, LOCATION, the dongle list; declared further down)
+  if (tab === "set") setTimeout(() => setSubOpened(openSetSub($("settingsCard").querySelector("[data-set-panel]:not([hidden])").dataset.setPanel)));
+  if (tab === "rot") setTimeout(rctrlOpened);  // the map of ROTOR CONTROL (declared further down)
   hoverHide();
 }
 
@@ -2726,6 +2731,20 @@ function renderRecsKey() {
   $("recsTab").hidden = !on;
 }
 $("recsKey").addEventListener("click", () => setRecsOn(!recsTabShown()));
+/** RCTRL key (TRACKING group): the ROTOR CONTROL tab (map to aim the rotor) is there only while it is on; one switch for all VFOs. */
+function rotTabShown() { return recall("rotOn") === "1"; }
+function setRotOn(on) {
+  store("rotOn", on ? "1" : "0");
+  if (on) setBodyTab("rot");
+  else if (bodyTab === "rot") setBodyTab("scope");
+  else renderRotKey();
+}
+function renderRotKey() {
+  const on = rotTabShown();
+  $("rctrlKey").classList.toggle("on", on);
+  $("rotTab").hidden = !on;
+}
+$("rctrlKey").addEventListener("click", () => setRotOn(!rotTabShown()));
 for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "packetOn", "acarsOn", "vdl2On", "hfdlOn", "aisOn"]) {
   $(id).addEventListener("change", () => renderDecTab());
 }
@@ -2876,8 +2895,9 @@ function satUntil(t) {
   return h ? `in ${h} h ${m} min` : `in ${m} min`;
 }
 
-async function satFetch(url, opts) {
-  const r = await fetch(vbase + url, opts);
+/** base: another receiver than the active VFO (the rotor tracking goes to rotorBase()). */
+async function satFetch(url, opts, base = vbase) {
+  const r = await fetch(base + url, opts);
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(body.error || `HTTP ${r.status}`);
   return body;
@@ -3405,7 +3425,7 @@ async function satRotPoll() {
   if (satRotBusy) return;
   satRotBusy = true;
   try {
-    satRot = await satFetch("/api/sat/rotor");
+    satRot = await satFetch("/api/sat/rotor", undefined, rotorBase());
     renderSatRot();
   } catch (e) {
     const box = $("satRotBox");
@@ -3436,7 +3456,7 @@ function renderSatRot() {
     return;
   }
   if (!d.on) {
-    box.innerHTML = `<p><b>Tracking with the rotor is off.</b> <span class="muted">TRACK plans the next pass and moves the rotor${d.rotor_on ? "" : " (it turns the rotor link on, with the port chosen in SETTINGS, ROTOR page)"}.</span>
+    box.innerHTML = `<p><b>Tracking with the rotor is off.</b> <span class="muted">TRACK plans the next pass and moves the rotor${d.rotor_on ? "" : " (it turns the rotor link on, with the port chosen in SETTINGS › GENERAL › ROTOR)"}.</span>
       ${d.stopped ? `<span class="${d.stopped === "stopped by hand" ? "muted" : "error"}">Stopped: ${escHtml(d.stopped)}</span>` : ""}</p>`;
     return;
   }
@@ -3457,7 +3477,7 @@ function renderSatRot() {
 
 async function satRotSend(body) {
   try {
-    satRot = await satFetch("/api/sat/rotor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    satRot = await satFetch("/api/sat/rotor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }, rotorBase());
     amsatInfo(satRot.on ? `Rotor tracking: ${satShort(satRot.name)}` : "Rotor tracking off");
   } catch (e) {
     if (body.start && !body.start.force && /days old/.test(e.message) && confirm(`${e.message}\n\nTrack anyway?`)) {
@@ -3552,8 +3572,8 @@ function renderSatSetup() {
   body.innerHTML = `<div class="sats-setup">
     <section><h4>Station</h4>
       <div class="sats-row"><span>${escHtml(s.locator)} · ${s.lat.toFixed(4)}°, ${s.lon.toFixed(4)}° · ${Math.round(s.alt_m)} m</span>
-        <span class="muted small">set in MENU › SETUP › LOCATION (shared with packet, HFDL and AIS)</span>
-        <button class="key small" id="satLocGo" title="Open SETUP › LOCATION">LOCATION…</button></div>
+        <span class="muted small">set in SETTINGS › GENERAL › LOCATION (shared with packet, HFDL and AIS)</span>
+        <button class="key small" id="satLocGo" title="Open SETTINGS › GENERAL › LOCATION">LOCATION…</button></div>
       ${s.lat === 0 && s.lon === 0 ? `<p class="error small">The station location is not set yet (0.0 / 0.0): passes and Doppler are computed for that point.</p>` : ""}
       <div class="sats-row"><label>Passes from <input id="satMinEl" type="number" min="0" max="60" step="1" value="${s.min_el}">° of elevation</label>
         <button class="key small" id="satSaveQth">SAVE</button></div></section>
@@ -4039,7 +4059,7 @@ window.addEventListener("resize", () => {
   if (bodyTab === "sat" && amsatPage === "map" && satMapData) satMapDraw();
 });
 
-// ---------- SETUP › LOCATION: station locator / latitude, longitude, altitude (location.py), shared by all VFOs ----------
+// ---------- SETTINGS › GENERAL › LOCATION: station locator / latitude, longitude, altitude (location.py), shared by all VFOs ----------
 
 let locPick = null;          // Leaflet map of CHOOSE ON MAP
 let locMode = "latlon";      // which fields SAVE uses: "loc" after typing a locator, else latitude and longitude
@@ -4071,11 +4091,10 @@ async function locLoad(body) {
   }
 }
 
-/** Opens MENU › SETUP › LOCATION (from the SATELLITES › SETUP page). */
+/** Opens SETTINGS › GENERAL › LOCATION (from the SATELLITES › SETUP page). */
 function openLocationSetup() {
   setBodyTab("set");
-  showSetTab("location");
-  store("setTab", "location");
+  openSetPage("location");
 }
 
 $("locSave").addEventListener("click", async () => {
@@ -5181,7 +5200,7 @@ async function pktMapOpen() {
     return;
   }
   if (!pktMap) {
-    let qth = [48.6, 17.9];   // until the station of SETUP › LOCATION is known
+    let qth = [48.6, 17.9];   // until the station of SETTINGS › GENERAL › LOCATION is known
     try {
       const s = await satFetch("/api/location");
       if (s && Number.isFinite(s.lat) && Number.isFinite(s.lon)) qth = [s.lat, s.lon];
@@ -6760,7 +6779,9 @@ $("wefaxSave").addEventListener("click", () => {
 
 // ---------- clock, CW row ----------
 
-// Pages of the SETTINGS tab and their sub-pages ("page:sub"); the open ones are remembered in the browser.
+// Pages of the SETTINGS tab: GENERAL (gen:skins, gen:meter, gen:wheel, gen:location, gen:rotor, gen:recs – the whole station)
+// and VFO (vfo:dongle, vfo:adv, vfo:audio, vfo:tx – the VFO chosen by the keys on its left).
+// The open ones are remembered in the browser.
 function showSetTab(name) {
   for (const b of document.querySelectorAll("[data-set-tab]")) {
     const on = b.dataset.setTab === name;
@@ -6768,10 +6789,70 @@ function showSetTab(name) {
     b.setAttribute("aria-selected", on);
   }
   for (const p of document.querySelectorAll("[data-set-panel]")) p.hidden = p.dataset.setPanel !== name;
-  if (name === "rotor") setTimeout(pollRotor);      // the ROTOR page fills at once
-  if (name === "location") setTimeout(() => locLoad());
-  if (name === "dongle") setTimeout(loadDongleList);   // ADVANCED: dongles and VFOs
+  setSubOpened(openSetSub(name));
 }
+/** The open sub-page of a page ("gen" -> "gen:rotor"). */
+function openSetSub(page) {
+  const b = document.querySelector(`[data-set-sub^="${page}:"].on`);
+  return b ? b.dataset.setSub : "";
+}
+/** A sub-page was opened: the ones that load something fill at once. */
+function setSubOpened(name) {
+  if (bodyTab !== "set") return;      // setBodyTab("set") calls it again
+  if (name === "gen:rotor") setTimeout(pollRotor);
+  if (name === "gen:location") setTimeout(() => locLoad());
+  if (name === "gen:recs") setTimeout(() => recDirLoad());
+  if (name === "vfo:dongle" || name === "vfo:adv") setTimeout(loadDongleList);   // ADVANCED: dongles and VFOs
+}
+/** The ROTOR page of GENERAL is on the screen. */
+function rotorPageOpen() {
+  return bodyTab === "set" && !document.hidden && !$("settingsCard").hidden
+    && !document.querySelector('[data-set-panel="gen"]').hidden && !document.querySelector('[data-set-subpanel="gen:rotor"]').hidden;
+}
+/** Opens a settings page by its old short name (location, rotor, ui, dongle, adv, audio, tx) and remembers it. */
+function openSetPage(name) {
+  const sub = SET_PAGE_OF[name];
+  if (!sub) return;
+  const page = sub.split(":")[0];
+  showSetSub(sub);
+  store(`setSub_${page}`, sub);
+  showSetTab(page);
+  store("setTab", page);
+}
+const SET_PAGE_OF = { ui: "gen:skins", display: "gen:skins", skins: "gen:skins", meter: "gen:meter", wheel: "gen:wheel", location: "gen:location", rotor: "gen:rotor", recs: "gen:recs",
+  dongle: "vfo:dongle", adv: "vfo:adv", audio: "vfo:audio", tx: "vfo:tx" };
+
+// SETTINGS › VFO: one key per VFO window, like the VFO keys beside the S-meter; the lit one (= the active VFO)
+// is joined to the card with its settings. A press switches the VFO and SETTINGS stays open.
+function renderSetVfoKeys() {
+  const box = $("setVfoKeys");
+  const named = vfos.filter((v) => v.name);
+  box.hidden = !named.length;           // a receiver without VFOs: only the card
+  $("setVfoCard").classList.toggle("solo", !named.length);
+  const src = [...$("vfoKeys").children];
+  if (box.children.length !== src.length) box.innerHTML = src.map(() => `<button class="key set-vfo-key" role="tab"></button>`).join("");
+  src.forEach((s, i) => {
+    const b = box.children[i];
+    if (b.textContent !== s.textContent) b.textContent = s.textContent;
+    b.dataset.vfo = s.dataset.vfo;
+    b.disabled = s.disabled;
+    const on = s.classList.contains("on");
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", on);
+    b.title = s.disabled ? s.title : `Settings of ${s.textContent.replace("-", " ")}`;
+  });
+  const v = active && active.name ? `VFO-${active.name}` : "";
+  if ($("setVfoName").textContent !== v) $("setVfoName").textContent = v;
+  $("setVfoName").title = active && active.note ? active.note : "";
+}
+$("setVfoKeys").addEventListener("click", async (e) => {
+  const b = e.target.closest(".set-vfo-key");
+  if (!b || b.disabled) return;
+  const v = vfos.find((x) => String(x.name) === b.dataset.vfo);
+  if (!v || v === active) return;
+  await selectVfo(v, "set");
+  setSubOpened(openSetSub("vfo"));
+});
 // SDR DONGLE › BASIC block diagram: a block names its cards in data-blk-for; a click flashes the first shown one.
 // A block whose cards are all hidden (LimeSDR without bias-tee or RTL AGC, VFO with fixed dongle) is grey.
 function blkCards(g) {
@@ -6786,7 +6867,7 @@ for (const g of document.querySelectorAll(".blk-diagram .blk")) {
     if (!cards.length) return;
     // SP and AGC+ (10, 11) are on the ADVANCED page: switch to it first
     const sub = cards[0].closest("[data-set-subpanel]");
-    if (sub && sub.hidden) { showSetSub(sub.dataset.setSubpanel); store("setSub_dongle", sub.dataset.setSubpanel); }
+    if (sub && sub.hidden) { showSetSub(sub.dataset.setSubpanel); store("setSub_vfo", sub.dataset.setSubpanel); }
     cards[0].scrollIntoView({ block: "nearest", behavior: "smooth" });
     for (const c of cards) { c.classList.remove("blk-flash"); void c.offsetWidth; c.classList.add("blk-flash"); }
   };
@@ -6801,7 +6882,7 @@ function showSetSub(name) {
     b.setAttribute("aria-selected", on);
   }
   for (const p of document.querySelectorAll(`[data-set-subpanel^="${page}:"]`)) p.hidden = p.dataset.setSubpanel !== name;
-  if (name === "dongle:adv") setTimeout(loadDongleList);
+  setSubOpened(name);
 }
 for (const b of document.querySelectorAll("[data-set-tab]")) {
   b.addEventListener("click", () => { showSetTab(b.dataset.setTab); store("setTab", b.dataset.setTab); });
@@ -6809,20 +6890,34 @@ for (const b of document.querySelectorAll("[data-set-tab]")) {
 for (const b of document.querySelectorAll("[data-set-sub]")) {
   b.addEventListener("click", () => { showSetSub(b.dataset.setSub); store(`setSub_${b.dataset.setSub.split(":")[0]}`, b.dataset.setSub); });
 }
-for (const page of ["dongle", "ui"]) {
-  const sub = recall(`setSub_${page}`);
-  if (sub && document.querySelector(`[data-set-sub="${sub}"]`)) showSetSub(sub);
-}
-// TX is left out here: its key is hidden until the state says the dongle can transmit.
-// DISPLAY and SKINS of older versions are on the UI page now.
+// The open pages from the last time. Up to 0.114beta1 the pages were SDR DONGLE (dongle:basic / dongle:adv), AUDIO,
+// UI (ui:skins / ui:meter / ui:wheel), LOCATION, ROTOR and TX side by side: their saved names lead to the new place.
 {
-  const t = { display: "ui", skins: "ui" }[recall("setTab")] || recall("setTab");
-  if (["audio", "ui", "location", "rotor"].includes(t)) showSetTab(t);
+  const oldDongle = { "dongle:basic": "vfo:dongle", "dongle:adv": "vfo:adv" }[recall("setSub_dongle")];
+  const oldTab = SET_PAGE_OF[recall("setTab")];
+  const vfoSub = recall("setSub_vfo") || oldDongle || (oldTab && oldTab.startsWith("vfo:") ? oldTab : "");
+  const oldUi = { "ui:skins": "gen:skins", "ui:meter": "gen:meter", "ui:wheel": "gen:wheel" }[recall("setSub_ui")];
+  const savedGen = recall("setSub_gen");
+  const genSub = (savedGen === "gen:ui" ? oldUi || "gen:skins" : savedGen)
+    || (oldTab === "gen:skins" ? oldUi || oldTab : oldTab && oldTab.startsWith("gen:") ? oldTab : "");
+  // TX is left out here: its key is hidden until the state says the dongle can transmit.
+  if (vfoSub && vfoSub !== "vfo:tx" && document.querySelector(`[data-set-sub="${vfoSub}"]`)) showSetSub(vfoSub);
+  if (genSub && document.querySelector(`[data-set-sub="${genSub}"]`)) showSetSub(genSub);
+  const t = recall("setTab");
+  showSetTab(t === "vfo" || (oldTab && oldTab.startsWith("vfo:")) ? "vfo" : "gen");
 }
 
-// ---------- ROTOR page of SETTINGS: K3NG rotor (rotor.py) ----------
+// ---------- SETTINGS › GENERAL › ROTOR: K3NG rotor (rotor.py) ----------
+// One rotor for the whole station, not tied to the active VFO: its serial port is held by the receiver of the first
+// VFO (/api/vfos: "rotor": true), so all rotor commands and the rotor tracking of the satellites go there.
 
-let rotorPortsFor = null;     // the address of the VFO the port list belongs to
+/** Address of the receiver that runs the rotor ("" = the server of this page, receiver without VFOs). */
+function rotorBase() {
+  const v = vfos.find((x) => x.rotor) || vfos[0];
+  return v ? v.base : "";
+}
+
+let rotorPortsFor = null;     // the address the port list belongs to
 let rotorHoldUntil = 0;       // a message from a click stays this long, the regular update does not clear it
 
 function rotorShowError(text, hold) {
@@ -6838,7 +6933,7 @@ function rotorShowError(text, hold) {
 
 async function rotorPost(body) {
   try {
-    const res = await fetch(vbase + "/api/rotor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const res = await fetch(rotorBase() + "/api/rotor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const info = await res.json();
     if (!res.ok) { rotorShowError(info.error || "Error", true); return; }
     rotorHoldUntil = 0;
@@ -6863,11 +6958,15 @@ function fillRotorPorts(info) {
 }
 
 let rotorPendingOn = false;   // ON pressed without a chosen port: the page opens, the link starts with the port picked
-let rotorInfo = null;         // the last rotor state of the active VFO (ROTOR page)
+let rotorInfo = null;         // the last rotor state (ROTOR page)
 
-/** MONITOR of the rotor (AZ / EL in the AD), per VFO, remembered in this browser. */
-function rotorMonKey() { return `rotorMon_${(active && active.name) || ""}`; }
-function rotorMonOn() { return recall(rotorMonKey()) === "1"; }
+/** MONITOR of the rotor (AZ / EL in the AD), one for all VFOs, remembered in this browser
+ *  (up to 0.114beta1 per VFO: the setting of the active VFO is taken over). */
+function rotorMonKey() { return "rotorMon"; }
+function rotorMonOn() {
+  const v = recall("rotorMon");
+  return v != null ? v === "1" : recall(`rotorMon_${(active && active.name) || ""}`) === "1";
+}
 
 // Position readings of K3NG jitter by about 1 % of the range: the shown position is averaged (EMA) and moves only
 // when the average leaves a dead band, so the numbers and the crosses do not flicker. A real move passes at once.
@@ -6877,9 +6976,9 @@ const azDiff = (a, b) => ((a - b + 540) % 360) - 180;
 
 function rotorFilter(info) {
   if (!info.connected || info.az == null || info.el == null) { rotFilt = null; return; }
-  const f = rotFilt && rotFilt.base === vbase ? rotFilt : null;
+  const f = rotFilt && rotFilt.base === rotorBase() ? rotFilt : null;
   if (!f) {
-    rotFilt = { base: vbase, az: info.az, el: info.el, azS: info.az, elS: info.el };
+    rotFilt = { base: rotorBase(), az: info.az, el: info.el, azS: info.az, elS: info.el };
   } else {
     const dAz = azDiff(info.az, f.az), dEl = info.el - f.el;
     // while the rotor turns (target away from the reading) or on a big step the reading is taken at once,
@@ -6907,7 +7006,6 @@ function renderRotor(info) {
   const on = info.on || rotorPendingOn;
   $("rotorOnKey").textContent = on ? "ON" : "OFF";
   $("rotorOnKey").classList.toggle("on", on);
-  $("rotorOffNote").textContent = `The rotor configuration for ${active && active.name ? `VFO ${active.name}` : "this receiver"} is off.`;
   $("rotorOffNote").hidden = on;
   $("rotorPortBox").hidden = !on;
   $("rotorOnBox").hidden = !on;
@@ -6931,6 +7029,7 @@ function renderRotor(info) {
     }
   }
   renderSat(info);
+  rctrlRotor(info);
 }
 
 // ---------- rotor control on the TRACK page: STOP and the error line ----------
@@ -6947,7 +7046,7 @@ let satInfo = null;     // the last rotor state, for the clicks
 // -> why the plots do not take a click now, "" if they do
 function satDialRefusal(info) {
   if (!info || !info.connected) return "Rotor is not connected";
-  if (info.fault) return "Reset the fault in SETTINGS, ROTOR page";
+  if (info.fault) return "Reset the fault in SETTINGS › GENERAL › ROTOR";
   if (info.tracker) return "Satellite tracking moves the rotor (SATELLITES tab, TRACK): stop it to set the position by hand";
   if (info.az == null) return "Rotor position is not known yet";
   return "";
@@ -6963,30 +7062,30 @@ $("satStop").addEventListener("click", async () => {
 
 let rotorPollBusy = false;
 async function pollRotor() {
-  const panel = document.querySelector('[data-set-panel="rotor"]');
-  const setOpen = !panel.hidden && bodyTab === "set" && !document.hidden;
+  const setOpen = rotorPageOpen();
   if (!setOpen) rotorPortsFor = null;
   const trackOpen = bodyTab === "sat" && amsatPage === "track" && !document.hidden;     // the antenna on the polar plot
   const mon = rotorMonOn() && !document.hidden;                                       // AZ / EL in the AD
+  const rcOpen = bodyTab === "rot" && !document.hidden;                               // the antenna on the ROTOR CONTROL map
   if (!mon && adRotInfo) { adRotInfo = null; renderAd(); }
-  if ((!setOpen && !trackOpen && !mon) || rotorPollBusy) return;
-  const needPorts = setOpen && rotorPortsFor !== vbase;
-  const base = vbase;
+  if ((!setOpen && !trackOpen && !mon && !rcOpen) || rotorPollBusy) return;
+  const base = rotorBase();
+  const needPorts = setOpen && rotorPortsFor !== base;
   rotorPollBusy = true;
   try {
     const info = await fetch(base + `/api/rotor${needPorts ? "?ports=1" : ""}`).then((r) => r.json());
-    if (base !== vbase) return;     // the VFO changed meanwhile
     if (needPorts) { fillRotorPorts(info); rotorPortsFor = base; }
     renderRotor(info);
     if (rotorMonOn()) { adRotInfo = info; renderAd(); }
   } catch (e) {
     rotorShowError("Receiver is not reachable");
+    if (bodyTab === "rot") rctrlRotor(null);
   } finally {
     rotorPollBusy = false;
   }
 }
 
-/** Turns the rotor link of this VFO on with the port chosen in the list (off: closes the port). */
+/** Turns the rotor link on with the port chosen in the list (off: closes the port). */
 function rotorLink(on) {
   const opt = $("rotorPort").selectedOptions[0];
   if (on && !opt?.value) {
@@ -7102,6 +7201,535 @@ $("rotElHit").addEventListener("click", (e) => {
   const az = info.target ? info.target[0] : info.az;     // the azimuth stays
   rotorPost({ goto: [Math.round(az), el] });
 });
+
+// ---------- ROTOR CONTROL tab (RCTRL key): a map to aim the rotor at a place ----------
+// A click on the map, on an overlay point or on a row of the list: azimuth from the QTH (great circle), elevation 0.
+// The dashed line is the wanted azimuth (to the target, remembered in this browser until CLEAR); the green sector
+// (BEAM °) is where the antenna points now and turns with the rotor. The rotor belongs to the station: its commands
+// go to the VFO that holds it (rotorBase), so the map works from every VFO.
+const RC_EARTH_KM = 6371;
+const RC_ANT_KM = 250;          // length of the antenna sector without a target
+let rcMap = null, rcLay = null, rcQth = null, rcOv = null, rcOvBusy = false, rcListShown = [];
+let rcEdit = null;              // the group being edited on the OVERLAYS page: a working copy {id, name, color, points}
+let rcTab = recall("rcTab") === "overlays" ? "overlays" : "map";
+let rcTarget = (() => {
+  try {
+    const t = JSON.parse(recall("rcTarget") || "null");
+    return t && Number.isFinite(t.lat) && Number.isFinite(t.lon) ? t : null;
+  } catch { return null; }
+})();
+let rcMsg = "", rcMsgUntil = 0, rcMsgWarn = false;
+const rcBeam = () => Math.min(Math.max(Number(recall("rcBeam")) || 30, 1), 360);
+const rcOvOn = (id) => recall(`rcOv_${id}`) !== "0";
+const rcRad = (d) => (d * Math.PI) / 180, rcDeg = (r) => (r * 180) / Math.PI;
+const rcKm = (km) => (km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`);
+const RC_NOTE = "dashed = wanted azimuth (target) · green sector = antenna now · red = QTH · map © OpenStreetMap";
+
+/** Great circle from a to b: [initial azimuth 0–360, distance km]. */
+function rcBearing(a, b) {
+  const f1 = rcRad(a.lat), f2 = rcRad(b.lat), dl = rcRad(b.lon - a.lon);
+  const az = (rcDeg(Math.atan2(Math.sin(dl) * Math.cos(f2), Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl))) + 360) % 360;
+  const h = Math.sin((f2 - f1) / 2) ** 2 + Math.cos(f1) * Math.cos(f2) * Math.sin(dl / 2) ** 2;
+  return [az, 2 * RC_EARTH_KM * Math.asin(Math.min(1, Math.sqrt(h)))];
+}
+
+/** The point at a distance of km in the azimuth az from a (great circle): [lat, lon]. */
+function rcDest(a, az, km) {
+  const d = km / RC_EARTH_KM, f1 = rcRad(a.lat), t = rcRad(az);
+  const f2 = Math.asin(Math.sin(f1) * Math.cos(d) + Math.cos(f1) * Math.sin(d) * Math.cos(t));
+  const l2 = rcRad(a.lon) + Math.atan2(Math.sin(t) * Math.sin(d) * Math.cos(f1), Math.cos(d) - Math.sin(f1) * Math.sin(f2));
+  return [rcDeg(f2), ((rcDeg(l2) + 540) % 360) - 180];
+}
+
+/** Great circle line from a in the azimuth az, km long, in steps (a long line bends on the map). */
+function rcPath(a, az, km) {
+  const n = Math.max(2, Math.min(64, Math.ceil(km / 50)));
+  return Array.from({ length: n + 1 }, (_, i) => rcDest(a, az, (km * i) / n));
+}
+
+/** QTH locator (4, 6 or 8 characters) → the centre of its square {lat, lon}, or null. */
+function rcLocator(s) {
+  const m = /^([A-R]{2})(\d{2})([A-X]{2})?(\d{2})?$/i.exec(String(s).trim());
+  if (!m) return null;
+  const L = m[1].toUpperCase(), A = "A".charCodeAt(0);
+  let lon = (L.charCodeAt(0) - A) * 20 - 180 + Number(m[2][0]) * 2, lat = (L.charCodeAt(1) - A) * 10 - 90 + Number(m[2][1]);
+  let w = 2, h = 1;
+  if (m[3]) {
+    const S = m[3].toUpperCase();
+    w /= 24; h /= 24;
+    lon += (S.charCodeAt(0) - A) * w; lat += (S.charCodeAt(1) - A) * h;
+    if (m[4]) { w /= 10; h /= 10; lon += Number(m[4][0]) * w; lat += Number(m[4][1]) * h; }
+  }
+  return { lat: +(lat + h / 2).toFixed(5), lon: +(lon + w / 2).toFixed(5) };
+}
+
+function rcSay(text, warn = false) {
+  rcMsg = text;
+  rcMsgWarn = warn;
+  rcMsgUntil = Date.now() + 6000;
+  rcRenderInfo();
+}
+
+async function rcLoadQth() {
+  try {
+    const s = await satFetch("/api/location");
+    rcQth = s && Number.isFinite(s.lat) && Number.isFinite(s.lon) && !(s.lat === 0 && s.lon === 0)
+      ? { lat: s.lat, lon: s.lon, locator: s.locator || "" } : null;
+  } catch { /* server unreachable: keep the last one */ }
+}
+
+async function rcLoadOverlays(force = false) {
+  if ((rcOv && !force) || rcOvBusy) return;
+  rcOvBusy = true;
+  try {
+    rcOv = (await satFetch("/api/overlays")).groups || [];
+  } catch (e) {
+    rcSay(`Overlays: ${e.message}`, true);
+  } finally {
+    rcOvBusy = false;
+  }
+}
+
+const rcGroup = (id) => (rcOv || []).find((g) => g.id === id);
+
+/** The tab opened (RCTRL key, tab, page switch): the QTH may have changed in SETTINGS › GENERAL › LOCATION, read it again. */
+async function rctrlOpened() {
+  setRcTab(rcTab, false);
+  await rcLoadQth();
+  await rcLoadOverlays();
+  if (rcTab === "map") await rcMapOpen();
+  rcRenderAll();
+}
+
+async function rcMapOpen() {
+  try {
+    await Promise.all([satAsset("/static/leaflet/leaflet.css"), satAsset("/static/leaflet/leaflet.js")]);
+  } catch (e) {
+    $("rcNote").textContent = e.message;
+    return false;
+  }
+  if (!rcMap) {
+    rcMap = L.map($("rcMap"), { worldCopyJump: true, minZoom: 3 }).setView(rcQth ? [rcQth.lat, rcQth.lon] : [49, 18], 7);
+    // the same darkened OpenStreetMap tiles as the AIS and HFDL maps
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 16, className: "hfdl-dark",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+    }).addTo(rcMap);
+    rcLay = { ant: L.layerGroup().addTo(rcMap), tgt: L.layerGroup().addTo(rcMap), ov: L.layerGroup().addTo(rcMap), qth: L.layerGroup().addTo(rcMap) };
+    rcMap.on("click", (e) => rcAim({ lat: e.latlng.lat, lon: ((e.latlng.lng + 540) % 360) - 180, name: "" }));
+    rcMap.on("mousemove", (e) => {
+      if (!rcQth) return;
+      const [az, km] = rcBearing(rcQth, { lat: e.latlng.lat, lon: e.latlng.lng });
+      $("rcNote").textContent = `+ click: rotor to AZ ${Math.round(az)}° EL 0° · ${rcKm(km)} · ${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)}`;
+    });
+    rcMap.on("mouseout", () => { $("rcNote").textContent = RC_NOTE; });
+  }
+  setTimeout(() => rcMap.invalidateSize());
+  return true;
+}
+
+/** Aim at a place: draws the target and sends the rotor there (when it can take a hand command). */
+function rcAim(t) {
+  if (!rcQth) { rcSay("Set the station location first (SETTINGS › GENERAL › LOCATION)", true); return; }
+  const [az, km] = rcBearing(rcQth, t);
+  rcTarget = { lat: t.lat, lon: t.lon, name: t.name || "", az, km };
+  store("rcTarget", JSON.stringify(rcTarget));
+  rcDrawTarget();
+  rcDrawAntenna(rotorInfo);
+  rcRenderList();
+  const refusal = satDialRefusal(rotorInfo);
+  if (refusal) { rcSay(`Target AZ ${Math.round(az)}° drawn, rotor not moved: ${refusal}`, true); return; }
+  rcPost({ goto: [Math.round(az) % 360, 0] }, `Rotor → AZ ${Math.round(az)}° EL 0°${t.name ? ` (${t.name})` : ""}`);
+}
+
+async function rcPost(body, ok) {
+  try {
+    const res = await fetch(rotorBase() + "/api/rotor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const info = await res.json();
+    if (!res.ok) { rcSay(`Rotor: ${info.error || "error"}`, true); return; }
+    rcSay(ok);
+    renderRotor(info);
+  } catch {
+    rcSay("The receiver with the rotor is not reachable", true);
+  }
+}
+
+function rcDrawQth() {
+  if (!rcLay) return;
+  rcLay.qth.clearLayers();
+  if (rcQth) {
+    L.circleMarker([rcQth.lat, rcQth.lon], { radius: 6, color: "#000", weight: 2, fillColor: "#ff5a3c", fillOpacity: 1, bubblingMouseEvents: false })
+      .bindTooltip(`QTH ${escHtml(rcQth.locator)}`, { className: "ais-label" }).addTo(rcLay.qth);
+  }
+}
+
+/** The wanted azimuth: a dashed line from the QTH (great circle) to the target point, with its label. */
+function rcDrawTarget() {
+  if (!rcLay) return;
+  rcLay.tgt.clearLayers();
+  if (!rcTarget || !rcQth) return;
+  const [az, km] = rcBearing(rcQth, rcTarget);
+  rcTarget.az = az;
+  rcTarget.km = km;
+  L.polyline(rcPath(rcQth, az, km), { color: "#ffe066", weight: 2, dashArray: "8 7", opacity: 0.95, interactive: false }).addTo(rcLay.tgt);
+  L.circleMarker([rcTarget.lat, rcTarget.lon], { radius: 5, color: "#ffe066", weight: 2, fillColor: "#0b0e12", fillOpacity: 1, interactive: false })
+    .bindTooltip(`${rcTarget.name ? `${escHtml(rcTarget.name)} · ` : ""}AZ ${Math.round(az)}° · ${rcKm(km)}`,
+      { className: "ais-label", direction: "right", offset: [8, 0], permanent: true })
+    .addTo(rcLay.tgt);
+}
+
+/** The antenna now: the beam sector ±BEAM/2 around the azimuth the rotor reports, out to the target distance.
+ *  Redrawn with every rotor reading, so it turns with the rotor. */
+function rcDrawAntenna(info) {
+  if (!rcLay) return;
+  rcLay.ant.clearLayers();
+  if (!rcQth || !info || !info.connected || info.azShow == null) return;
+  const az = info.azShow, bw = rcBeam(), len = Math.max(rcTarget && rcTarget.km ? rcTarget.km : RC_ANT_KM, 5);
+  const style = { color: "#4cff7a", weight: 1, opacity: 0.7, fillColor: "#4cff7a", fillOpacity: 0.16, interactive: false };
+  if (bw < 360) {
+    const n = Math.max(8, Math.ceil(bw / 2)), arc = [];
+    for (let i = 0; i <= n; i++) arc.push(rcDest(rcQth, az - bw / 2 + (bw * i) / n, len));
+    L.polygon([[rcQth.lat, rcQth.lon], ...arc], style).addTo(rcLay.ant);
+  } else {
+    L.circle([rcQth.lat, rcQth.lon], { ...style, radius: len * 1000 }).addTo(rcLay.ant);
+  }
+  L.polyline(rcPath(rcQth, az, len), { color: "#4cff7a", weight: 2, opacity: 0.9, interactive: false }).addTo(rcLay.ant);
+}
+
+/** Rotor state (from renderRotor): the antenna sector and the head line. */
+function rctrlRotor(info) {
+  if (bodyTab !== "rot") return;
+  rcRenderInfo();
+  rcDrawAntenna(info);
+}
+
+function rcRenderInfo() {
+  const i = rotorInfo, parts = [];
+  if (!rcQth) parts.push("QTH not set (SETTINGS › GENERAL › LOCATION)");
+  if (rcTarget && rcTarget.az != null) parts.push(`target ${rcTarget.name ? `${rcTarget.name} ` : ""}AZ ${Math.round(rcTarget.az)}° · ${rcKm(rcTarget.km)}`);
+  parts.push(!i ? "rotor: no answer yet" : i.error && !i.on ? `rotor: ${i.error}` : !i.on ? "rotor off (SETTINGS › GENERAL › ROTOR)" : !i.connected ? "rotor connecting…"
+    : i.fault ? `rotor fault: ${i.fault}`
+    : `antenna AZ ${i.azShow != null ? Math.round(i.azShow) : "–"}° EL ${i.elShow != null ? Math.round(i.elShow) : "–"}°${rotorMoving(i) ? " (turning)" : ""}`);
+  const msg = Date.now() < rcMsgUntil ? rcMsg : "";
+  $("rcInfo").textContent = (msg ? `${msg} · ` : "") + parts.join(" · ");
+  $("rcInfo").classList.toggle("warn", !!msg && rcMsgWarn);
+}
+
+/** All points of the groups that are on, with the azimuth and distance from the QTH. */
+function rcPoints() {
+  const out = [];
+  for (const g of rcOv || []) {
+    if (!rcOvOn(g.id)) continue;
+    for (const p of g.points || []) {
+      const [az, km] = rcQth ? rcBearing(rcQth, p) : [null, null];
+      out.push({ ...p, group: g.id, color: g.color, az, km });
+    }
+  }
+  return out;
+}
+
+function rcRenderOverlays() {
+  if (!rcLay) return;
+  rcLay.ov.clearLayers();
+  for (const p of rcPoints()) {
+    const tip = `<b>${escHtml(p.name)}</b>${p.info ? `<br>${escHtml(p.info)}` : ""}${p.detail ? `<br><span class="rc-tip-d">${escHtml(p.detail)}</span>` : ""}` +
+      (p.az != null ? `<br>AZ ${Math.round(p.az)}° · ${rcKm(p.km)} · click: turn the rotor` : "");
+    L.circleMarker([p.lat, p.lon], { radius: p.group === "ham" ? 4 : 5, color: "#000", weight: 1, fillColor: p.color, fillOpacity: 0.95, bubblingMouseEvents: false })
+      .bindTooltip(tip, { className: "ais-label rc-tip" })
+      .on("click", () => rcAim(p))
+      .addTo(rcLay.ov);
+  }
+}
+
+function rcRenderToggles() {
+  $("rcOvs").innerHTML = (rcOv || []).map((g) =>
+    `<label class="rc-ov" title="${escHtml(g.source ? `Source: ${g.source}` : "")}"><input type="checkbox" data-rc-ov="${escHtml(g.id)}"${rcOvOn(g.id) ? " checked" : ""}>` +
+    `<i style="background:${escHtml(g.color)}"></i>${escHtml(g.name)} <span class="muted">(${(g.points || []).length}${g.builtin && g.custom ? ", edited" : ""})</span></label>`).join("") ||
+    '<span class="muted">No groups of points</span>';
+  const sel = $("rcAddGroup"), keep = sel.value || recall("rcAddGroup") || "";
+  sel.innerHTML = (rcOv || []).map((g) => `<option value="${escHtml(g.id)}">${escHtml(g.name)}</option>`).join("");
+  if (rcGroup(keep)) sel.value = keep;
+}
+
+function rcRenderList() {
+  const q = $("rcFilter").value.trim().toLowerCase();
+  const list = rcPoints().filter((p) => !q || `${p.name} ${p.info || ""} ${p.detail || ""} ${p.freq || ""}`.toLowerCase().includes(q))
+    .sort((a, b) => (a.km ?? 0) - (b.km ?? 0));
+  const isSel = (p) => rcTarget && Math.abs(p.lat - rcTarget.lat) < 1e-6 && Math.abs(p.lon - rcTarget.lon) < 1e-6;
+  rcListShown = list.slice(0, 1500);
+  $("rcList").innerHTML = `<div class="ais-ml-head">${list.length} point${list.length === 1 ? "" : "s"}${rcQth ? ", nearest first" : ""} · click: turn the rotor</div>` +
+    rcListShown.map((p, i) =>
+      `<div class="rc-row${isSel(p) ? " sel" : ""}" data-i="${i}">` +
+      `<i style="background:${escHtml(p.color)}"></i><b>${escHtml(p.name)}</b>` +
+      `<span class="rc-az">${p.az != null ? `${Math.round(p.az)}°` : ""}</span><span class="rc-km">${p.km != null ? rcKm(p.km) : ""}</span>` +
+      `<span class="rc-inf">${escHtml(p.info || "")}${p.detail ? ` · ${escHtml(p.detail)}` : ""}</span></div>`).join("");
+}
+
+function rcRenderAll() {
+  if (bodyTab !== "rot") return;
+  rcRenderToggles();
+  rcRenderList();
+  rcDrawQth();
+  rcRenderOverlays();
+  rcDrawTarget();
+  rctrlRotor(rotorInfo);
+  $("rcNote").textContent = RC_NOTE;
+  if (rcTab === "overlays") rcRenderOvCards();
+}
+
+// ----- OVERLAYS page: the groups of points (built-in defaults and own ones), their editor, import / export -----
+function rcRenderOvCards() {
+  $("rcOvCards").innerHTML = (rcOv || []).map((g) => {
+    const state = g.builtin ? (g.custom ? "built-in, edited" : "built-in") : "own group";
+    return `<div class="setting rc-ov-card${rcEdit && rcEdit.id === g.id ? " on" : ""}" data-gid="${escHtml(g.id)}">` +
+      `<div class="rc-ov-title"><i style="background:${escHtml(g.color)}"></i><b>${escHtml(g.name)}</b></div>` +
+      `<p class="note">${(g.points || []).length} points · ${state}${g.updated ? ` · ${escHtml(g.updated)}` : ""}</p>` +
+      (g.source ? `<p class="note">Source: ${escHtml(g.source)}</p>` : "") +
+      (g.error ? `<p class="note error">${escHtml(g.error)}</p>` : "") +
+      `<div class="row"><button class="key small" data-rc-act="edit" title="Rename, recolour, add / change / delete points">EDIT</button>` +
+      `<button class="key small" data-rc-act="import" title="Load a JSON file: it replaces the points of this group">IMPORT</button>` +
+      `<button class="key small" data-rc-act="export" title="Save the group as a JSON file">EXPORT</button>` +
+      (g.builtin
+        ? `<button class="key small" data-rc-act="reset"${g.custom ? "" : " disabled"} title="Forget the changes and use the built-in list again">RESET</button>`
+        : `<button class="key small" data-rc-act="delete" title="Delete this group">DELETE</button>`) +
+      `</div></div>`;
+  }).join("");
+  rcRenderEdit();
+}
+
+const RC_EDIT_COLS = [["name", "Name", "text"], ["lat", "Lat ° / locator", "text"], ["lon", "Lon °", "text"], ["freq", "MHz", "text"], ["info", "Info", "text"]];
+
+function rcRenderEdit() {
+  const box = $("rcEdit");
+  if (!rcEdit) { box.hidden = true; box.innerHTML = ""; return; }
+  box.hidden = false;
+  const g = rcEdit;
+  box.innerHTML =
+    `<div class="rc-edit-head"><b>EDIT GROUP</b>` +
+    `<label>Name <input id="rcEdName" type="text" maxlength="80" value="${escHtml(g.name)}"></label>` +
+    `<label>Colour <input id="rcEdColor" type="color" value="${escHtml(/^#[0-9a-f]{6}$/i.test(g.color) ? g.color : "#888888")}"></label>` +
+    `<span class="muted">${g.points.length} points</span>` +
+    `<button class="key small" data-rc-ed="add" title="Add an empty row for a new point">+ POINT</button>` +
+    `<button class="key small" data-rc-ed="target"${rcTarget ? "" : " disabled"} title="Add the target point of the map (the last click there)">+ MAP TARGET</button>` +
+    `<button class="key small accent" data-rc-ed="save">SAVE</button><button class="key small" data-rc-ed="cancel">CANCEL</button></div>` +
+    `<div class="rc-edit-tab"><table><thead><tr>${RC_EDIT_COLS.map((c) => `<th>${c[1]}</th>`).join("")}<th></th></tr></thead><tbody>` +
+    g.points.map((p, i) => `<tr data-i="${i}">${RC_EDIT_COLS.map(([k]) =>
+      `<td><input data-k="${k}" type="text" value="${escHtml(p[k] ?? "")}"></td>`).join("")}` +
+      `<td><button class="key small" data-rc-ed="del" title="Delete this point">✕</button></td></tr>`).join("") +
+    `</tbody></table>${g.points.length ? "" : '<p class="note">No points yet: + POINT, + MAP TARGET, or + ADD POINT on the MAP page.</p>'}</div>`;
+}
+
+function rcStartEdit(id) {
+  const g = rcGroup(id);
+  if (!g) return;
+  rcEdit = { id: g.id, name: g.name, color: g.color, source: g.source || "", updated: g.updated || "",
+    points: (g.points || []).map((p) => ({ ...p })) };
+  rcRenderOvCards();
+  $("rcEdit").scrollIntoView({ block: "nearest" });
+}
+
+/** The rows of the editor → points; a locator in the latitude field gives both coordinates. Throws on a bad row. */
+function rcEditPoints() {
+  return rcEdit.points.map((p, i) => {
+    const loc = rcLocator(p.lat);
+    const lat = loc ? loc.lat : Number(String(p.lat).replace(",", ".")), lon = loc ? loc.lon : Number(String(p.lon).replace(",", "."));
+    const name = String(p.name || "").trim();
+    if (!name || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180 || p.lat === "" || (!loc && p.lon === "")) {
+      throw new Error(`row ${i + 1}${name ? ` (${name})` : ""}: needs a name and a position (lat, lon or a locator)`);
+    }
+    const q = { ...p, name, lat, lon };
+    const f = Number(String(p.freq ?? "").replace(",", "."));
+    if (p.freq === "" || p.freq == null || !(f > 0)) delete q.freq; else q.freq = f;
+    if (!q.info) delete q.info;
+    return q;
+  });
+}
+
+async function rcSaveGroup(id, body) {
+  const g = await satFetch(`/api/overlays/${encodeURIComponent(id)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  await rcOvReload();
+  return g;
+}
+
+/** + ADD POINT on the map: the target point into the chosen group (asks for its name). */
+async function rcAddTarget(gid) {
+  const g = rcGroup(gid);
+  if (!g) { rcSay("Make a group first (OVERLAYS, + NEW GROUP)", true); return; }
+  if (!rcTarget) { rcSay("Click the place on the map first", true); return; }
+  const name = prompt(`Name of the point in "${g.name}" (AZ ${Math.round(rcTarget.az || 0)}°):`, rcTarget.name || "");
+  if (name == null || !name.trim()) return;
+  const { custom, error, skipped, builtin, id, ...keep } = g;
+  try {
+    await rcSaveGroup(gid, { ...keep, points: [...(g.points || []), { name: name.trim(), lat: +rcTarget.lat.toFixed(6), lon: +rcTarget.lon.toFixed(6) }] });
+    rcTarget.name = name.trim();
+    store("rcTarget", JSON.stringify(rcTarget));
+    store(`rcOv_${gid}`, "1");
+    rcRenderAll();
+    rcSay(`"${name.trim()}" added to ${g.name}`);
+  } catch (e) { rcSay(`Not added: ${e.message}`, true); }
+}
+
+function rcExport(g) {
+  const { custom, error, skipped, builtin, id, created, ...keep } = g;
+  const a = Object.assign(document.createElement("a"), {
+    href: URL.createObjectURL(new Blob([JSON.stringify(keep, null, 1)], { type: "application/json" })),
+    download: `radimcom_overlay_${(g.name || g.id).replace(/[^\w.-]+/g, "_")}.json`,
+  });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+/** Picks a JSON file and hands its content to use(body, fileName). */
+function rcPickJson(use) {
+  const inp = Object.assign(document.createElement("input"), { type: "file", accept: ".json,application/json" });
+  inp.onchange = async () => {
+    const f = inp.files[0];
+    if (!f) return;
+    let body;
+    try { body = JSON.parse(await f.text()); } catch { alert(`${f.name}: not valid JSON`); return; }
+    try { await use(body, f.name); } catch (err) { alert(`${f.name}: ${err.message}`); }
+  };
+  inp.click();
+}
+
+function setRcTab(t, render = true) {
+  rcTab = t;
+  store("rcTab", t);
+  for (const b of $("rcTabs").children) b.classList.toggle("on", b.dataset.rcTab === t);
+  $("rcMapBox").hidden = t !== "map";
+  $("rcOvBox").hidden = t !== "overlays";
+  if (!render) return;
+  if (t === "map" && bodyTab === "rot") rcMapOpen().then(rcRenderAll);
+  if (t === "overlays") rcRenderOvCards();
+}
+
+async function rcOvReload() {
+  await rcLoadOverlays(true);
+  rcRenderAll();
+  if (rcTab === "overlays") rcRenderOvCards();
+}
+
+$("rcTabs").addEventListener("click", (e) => { const b = e.target.closest("button[data-rc-tab]"); if (b) setRcTab(b.dataset.rcTab); });
+$("rcOvs").addEventListener("change", (e) => {
+  const k = e.target.dataset.rcOv;
+  if (!k) return;
+  store(`rcOv_${k}`, e.target.checked ? "1" : "0");
+  rcRenderOverlays();
+  rcRenderList();
+});
+$("rcAddGroup").addEventListener("change", () => store("rcAddGroup", $("rcAddGroup").value));
+$("rcAddBtn").addEventListener("click", () => rcAddTarget($("rcAddGroup").value));
+$("rcFilter").addEventListener("input", () => rcRenderList());
+$("rcList").addEventListener("click", (e) => {
+  const r = e.target.closest(".rc-row");
+  const p = r && rcListShown[Number(r.dataset.i)];
+  if (!p) return;
+  rcAim(p);
+  if (rcMap) rcMap.panTo([p.lat, p.lon]);
+});
+$("rcBeam").value = rcBeam();
+$("rcBeam").addEventListener("change", () => {
+  const v = Math.min(Math.max(Math.round(Number($("rcBeam").value) || 30), 1), 360);
+  $("rcBeam").value = v;
+  store("rcBeam", String(v));
+  rcDrawAntenna(rotorInfo);
+});
+$("rcClear").addEventListener("click", () => {
+  rcTarget = null;
+  store("rcTarget", "");
+  rcDrawTarget();
+  rcDrawAntenna(rotorInfo);
+  rcRenderList();
+  rcRenderInfo();
+});
+$("rcStop").addEventListener("click", () => rcPost({ stop: true }, "Rotor stopped"));
+$("rcNewGroup").addEventListener("click", async () => {
+  const name = prompt("Name of the new group of points:", "");
+  if (name == null) return;
+  try {
+    const g = await satFetch("/api/overlays", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() }) });
+    await rcOvReload();
+    store("rcAddGroup", g.id);
+    rcStartEdit(g.id);
+  } catch (e) { alert(e.message); }
+});
+$("rcImportNew").addEventListener("click", () => rcPickJson(async (body, fname) => {
+  const g = await satFetch("/api/overlays", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(Array.isArray(body) ? { name: fname.replace(/\.json$/i, ""), points: body } : { name: fname.replace(/\.json$/i, ""), ...body }) });
+  await rcOvReload();
+  alert(`${fname}: group "${g.name}" with ${g.points.length} points${g.skipped ? `, ${g.skipped} skipped (no name / lat / lon)` : ""}.`);
+}));
+$("rcOvCards").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-rc-act]");
+  if (!b) return;
+  const id = b.closest("[data-gid]").dataset.gid, g = rcGroup(id);
+  if (!g) return;
+  const act = b.dataset.rcAct;
+  if (act === "edit") rcStartEdit(id);
+  else if (act === "export") rcExport(g);
+  else if (act === "reset" || act === "delete") {
+    if (!confirm(act === "reset" ? `Forget the changes of "${g.name}" and use the built-in list again?` : `Delete the group "${g.name}" with its ${(g.points || []).length} points?`)) return;
+    try { await satFetch(`/api/overlays/${encodeURIComponent(id)}`, { method: "DELETE" }); } catch (err) { alert(err.message); }
+    if (rcEdit && rcEdit.id === id) rcEdit = null;
+    await rcOvReload();
+  } else if (act === "import") {
+    rcPickJson(async (body, fname) => {
+      const pts = Array.isArray(body) ? body : body.points;
+      const { custom, error, skipped, builtin, id: _, ...keep } = g;
+      const merged = Array.isArray(body) ? { ...keep, points: pts } : { ...keep, ...body, name: body.name || g.name };
+      const r = await rcSaveGroup(id, merged);
+      if (rcEdit && rcEdit.id === id) rcEdit = null;
+      alert(`${fname}: ${r.points.length} points in "${r.name}"${r.skipped ? `, ${r.skipped} skipped (no name / lat / lon)` : ""}.`);
+    });
+  }
+});
+// the editor: the inputs change the working copy, SAVE sends the whole group
+$("rcEdit").addEventListener("input", (e) => {
+  if (!rcEdit) return;
+  if (e.target.id === "rcEdName") { rcEdit.name = e.target.value; return; }
+  if (e.target.id === "rcEdColor") { rcEdit.color = e.target.value; return; }
+  const tr = e.target.closest("tr[data-i]"), k = e.target.dataset.k;
+  if (!tr || !k) return;
+  const p = rcEdit.points[Number(tr.dataset.i)];
+  p[k] = e.target.value;
+  if (k === "lat") {
+    const loc = rcLocator(e.target.value);
+    e.target.classList.toggle("rc-loc", !!loc);
+    e.target.title = loc ? `Locator → ${loc.lat}, ${loc.lon}` : "";
+  }
+});
+$("rcEdit").addEventListener("click", async (e) => {
+  const b = e.target.closest("button[data-rc-ed]");
+  if (!b || !rcEdit) return;
+  const act = b.dataset.rcEd;
+  if (act === "add") {
+    rcEdit.points.push({ name: "", lat: "", lon: "" });
+    rcRenderEdit();
+    const rows = $("rcEdit").querySelectorAll("tr[data-i]");
+    rows[rows.length - 1]?.querySelector("input")?.focus();
+  } else if (act === "target" && rcTarget) {
+    rcEdit.points.push({ name: rcTarget.name || "", lat: +rcTarget.lat.toFixed(6), lon: +rcTarget.lon.toFixed(6) });
+    rcRenderEdit();
+    const rows = $("rcEdit").querySelectorAll("tr[data-i]");
+    rows[rows.length - 1]?.querySelector("input")?.focus();
+  } else if (act === "del") {
+    rcEdit.points.splice(Number(b.closest("tr[data-i]").dataset.i), 1);
+    rcRenderEdit();
+  } else if (act === "cancel") {
+    rcEdit = null;
+    rcRenderOvCards();
+  } else if (act === "save") {
+    let points;
+    try { points = rcEditPoints(); } catch (err) { alert(err.message); return; }
+    const { id, ...body } = rcEdit;
+    try {
+      await rcSaveGroup(id, { ...body, name: body.name.trim(), points });
+      rcEdit = null;
+      rcRenderOvCards();
+    } catch (err) { alert(err.message); }
+  }
+});
+document.addEventListener("visibilitychange", () => { if (!document.hidden && bodyTab === "rot") rctrlOpened(); });
 
 // A click on the clock switches UTC / local time (LOC); the choice is remembered.
 let clockLocal = recall("clockLocal") === "1";
@@ -8476,6 +9104,7 @@ function renderVfoKeys() {
     b.classList.toggle("tx", r.classList.contains("tx"));
     b.title = r.classList.contains("spare") ? r.title : `Select ${name.replace("-", " ")}`;
   });
+  renderSetVfoKeys();
 }
 $("vfoKeys").addEventListener("click", (e) => {
   const b = e.target.closest(".vfo-sel");
@@ -8702,7 +9331,8 @@ document.addEventListener("keyup", (e) => { if (isSpace(e)) { e.preventDefault()
 window.addEventListener("blur", pttUp);
 document.addEventListener("visibilitychange", () => { if (document.hidden) pttUp(); });
 
-async function selectVfo(v) {
+/** Makes v the active VFO. keepTab: this tab stays open (SETTINGS › VFO keys), instead of the one saved for v. */
+async function selectVfo(v, keepTab) {
   if (!v || v === active) return;
   pttUp();
   flushSend();
@@ -8711,7 +9341,7 @@ async function selectVfo(v) {
   active = v;
   vbase = v.base;
   store("vfo", v.name);
-  restoreBodyTab();
+  restoreBodyTab(keepTab);
   // Everything shown belongs to the previous VFO: state, waterfall, decoders.
   closeFreqInput();
   st = null; view = null; wfRow = null; spec = null; floor = null; wfFull = null;
@@ -8956,13 +9586,13 @@ function stopAudio() {
   audio = null;
 }
 
-// ---------- recording (MP3, on the server, data\recordings) ----------
+// ---------- recording (MP3, on the server, in the folder of SETTINGS › GENERAL › RECORDINGS) ----------
 // The buttons switch the recording of the active VFO; it goes on without the page, so the state comes from the receiver.
 const REC_BUTTONS = [
   { btn: "recBtn", time: "recTime", key: "cont", send: "rec", label: "REC",
-    title: "Record everything to MP3 until switched off, a new file every 15 min (data\\recordings)" },
+    title: "Record everything to MP3 until switched off, a new file every 15 min (folder: SETTINGS › GENERAL › RECORDINGS)" },
   { btn: "recSqBtn", time: "recSqTime", key: "squelch", send: "rec_sq", label: "REC SQ",
-    title: "Record to MP3 only while the squelch is open, each session in its own file (data\\recordings)" },
+    title: "Record to MP3 only while the squelch is open, each session in its own file (folder: SETTINGS › GENERAL › RECORDINGS)" },
 ];
 const recErrors = {};
 
@@ -8989,7 +9619,39 @@ for (const b of REC_BUTTONS) {
 }
 renderRec();
 
-// ---------- RECORDINGS tab (RECS key): the files of data\recordings, played in the browser ----------
+// ---------- SETTINGS › GENERAL › RECORDINGS: folder of the MP3 recordings (recorder.py), shared by all VFOs ----------
+
+function recDirMsg(text, err) {
+  $("recDirMsg").textContent = text || "";
+  $("recDirMsg").classList.toggle("error", !!err);
+}
+
+async function recDirLoad(body) {
+  try {
+    const r = await fetch(vbase + "/api/recording_folder", body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+    const s = await r.json();
+    if (!r.ok) throw new Error(s.error || `HTTP ${r.status}`);
+    $("recDir").value = s.folder;
+    $("recDirNow").textContent = s.custom ? "own folder" : "default";
+    $("recDirDefaultPath").textContent = s.default;
+    if (body) recordings = [];          // the RECORDINGS tab reads the new folder when it opens
+    recDirMsg("");
+    return true;
+  } catch (e) {
+    recDirMsg(e.message, true);
+    return false;
+  }
+}
+
+$("recDirSave").addEventListener("click", async () => {
+  if (await recDirLoad({ folder: $("recDir").value.trim() })) recDirMsg("Saved");
+});
+$("recDirDefault").addEventListener("click", async () => {
+  if (await recDirLoad({ folder: "" })) recDirMsg("Saved: default folder");
+});
+$("recDir").addEventListener("keydown", (e) => { if (e.key === "Enter") $("recDirSave").click(); });
+
+// ---------- RECORDINGS tab (RECS key): the files of the recordings folder, played in the browser ----------
 // The folder is shared by all VFOs, so the list is the same on every receiver. A click on a row plays the file
 // with the <audio> element (its own volume, not through MAIN); NEXT continues with the row below (the older file).
 let recordings = [];          // from the server, newest first

@@ -31,7 +31,7 @@ Memories (`data\memories.json`) are shared by all VFOs, so `/api/memories` gives
 | Method | Path | Description |
 |---|---|---|
 | GET | `/` | web page |
-| GET | `/api/vfos` | list of VFOs: `[{"name", "port", "serial", "note", "chain"}]`; `chain` = name of the VFO whose dongle a chained VFO uses, otherwise `null` |
+| GET | `/api/vfos` | list of VFOs: `[{"name", "port", "serial", "note", "chain", "rotor"}]`; `chain` = name of the VFO whose dongle a chained VFO uses, otherwise `null`; `rotor` = true on the VFO whose receiver holds the rotor (the first one) |
 | GET | `/api/update` | newer version on GitHub Releases, checked once after start: `{"state": "checking" / "done" / "failed" / "off" / "downloading" / "installing", "current", "latest", "newer", "name", "url", "published", "can_upgrade", "why_not", "zip_url", "zip_size", "got", "upgrade_error"}`. Off with `"update_check": false` in `vfos.json`. A receiver started without `vfos.json` answers it itself (`"update_check"` in its config) |
 | POST | `/api/update` | `{"upgrade": true}`: downloads the upgrade zip of the newer release to `data\update\`, checks it, starts `upgrade_helper.py` and closes RADIMCOM; the helper unzips the program, runs `upgrade.bat` and starts `start.bat`. Only from a page of this RADIMCOM (Origin); 409 when no upgrade is possible (`why_not`) |
 
@@ -56,7 +56,7 @@ Memories (`data\memories.json`) are shared by all VFOs, so `/api/memories` gives
 | GET | `/api/sat/transmitters?norad=` | active transmitters of the satellite with a downlink, from SatNOGS DB (kept in `data\sat_transmitters.json`, downloaded again after 7 days; `&refresh=1` now): `{"transmitters": [{"uuid", "description", "type", "downlink_low", "downlink_high", "uplink_low", "uplink_high", "mode", "rx_mode", "invert", "baud"}], "fetched", "error"}`, transponders first; `rx_mode` is the RADIMCOM mode used to receive it |
 | GET | `/api/sat/doppler` | Doppler correction of this VFO: `{"on", "step" (Hz: the VFO is retuned when it is off by more than this, by the mode), "norad", "name", "label", "uuid", "f_nominal", "f_sat", "span", "last_set", "error", "stopped", "rate", "factor", "az", "el", "f_rx", "shift"}`; `f_sat` is the frequency sent by the satellite (moved by tuning the VFO by hand), `f_rx` the one received now, `shift` = `f_rx − f_sat` (Hz), `rate` the range rate (km/s), `stopped` why it stopped |
 | POST | `/api/sat/doppler` | `{"start": {"norad", "uuid"}}` (a transmitter of `/api/sat/transmitters`; the middle of a transponder) or `{"start": {"norad", "f_hz"}}`, with `"set_mode": false` to keep the mode; `{"stop": true}` stops it. Answers like GET; 409 when the VFO refuses, 400 for a wrong start. |
-| GET | `/api/sat/rotor` | satellite tracking with the rotor on this VFO: `{"on", "norad", "name", "state" (waiting for the pass, moving to the start, tracking), "pass": {"aos", "los", "max_el", ...}, "plan": {"mode" (normal, overlap, flipped, over top), "max_err", "mean_err" (simulated pointing error, degrees), "raw0", "raw1", "raw_min", "raw_max" (K3NG azimuth 0–450), "el_max", "options": [{"mode", "max_err", "raw0", "raw1", "move_s"}], "path": [[t, k3ng_az, el]] every 5 s}, "prep_at" (when the move to the start begins), "now": {"sat_az", "sat_el", "cmd_az", "cmd_el", "cmd_raw", "err"}, "note", "stopped", "control", "rotor_on"}` |
+| GET | `/api/sat/rotor` | satellite tracking with the rotor (only on the receiver that holds the rotor, see `/api/vfos` `rotor`; the others answer 409 `{"error", "host"}`): `{"on", "norad", "name", "state" (waiting for the pass, moving to the start, tracking), "pass": {"aos", "los", "max_el", ...}, "plan": {"mode" (normal, overlap, flipped, over top), "max_err", "mean_err" (simulated pointing error, degrees), "raw0", "raw1", "raw_min", "raw_max" (K3NG azimuth 0–450), "el_max", "options": [{"mode", "max_err", "raw0", "raw1", "move_s"}], "path": [[t, k3ng_az, el]] every 5 s}, "prep_at" (when the move to the start begins), "now": {"sat_az", "sat_el", "cmd_az", "cmd_el", "cmd_raw", "err"}, "note", "stopped", "control", "rotor_on"}` |
 | POST | `/api/sat/rotor` | `{"start": {"norad", "force": false}}` (`force`: orbital elements older than 14 days) or `{"stop": true}`; only from this RADIMCOM page. 409 when the elements are too old. The rotor moves only while the rotor control is on (`/api/rotor` `{"start": true}`; the TRACK key of the page sends both), otherwise it only calculates; while tracking, `goto` in `/api/rotor` is refused |
 | GET | `/api/sat/setup` | station and choice, shared by all VFOs: `{"setup": {"locator", "lat", "lon", "alt_m", "min_el", "sats": [norad], "map_sats": [norad]}, "tle": {"fetched", "error"}, "groups": [{"key", "title"}] (CelesTrak groups downloaded), "sats": [{"norad", "name", "tle_age_days", "groups": [key]}]}` (all satellites of the orbital elements) |
 | POST | `/api/sat/setup` | any of `{"locator"}` or `{"lat", "lon"}`, `{"alt_m"}`, `{"min_el"}` (0–60), `{"sats": [norad]}`, `{"map_sats": [norad]}` (up to 20), `{"refresh_tle": true}` (download the orbital elements now); answers like GET, 400 with `error` for a wrong value, 502 if the download fails |
@@ -235,7 +235,7 @@ when the memory is recalled in the page: `""` (none), `ft8`, `wefax`, `cw`, `rtt
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/rotor` | antenna rotor: `on`, `connected`, `device`, `az`, `el`, `target`, `target_raw` (K3NG azimuth 0–450 given by the satellite tracking, else null), `tracker` (the satellite tracking moves the rotor), `aim` ([az, el] of the tracked satellite while it is above the horizon), `source` (`manual` or `tracker`), `control`, `fault`, `error`, `next_pass` (`{"sat", "event": "AOS" or "LOS", "seconds"}` of the tracked satellite); `k3ng_az` (the K3NG azimuth 0–450 from its left stop, followed by RADIMCOM), `k3ng_guess` (true while it is not yet known whether K3NG is at 0–90 or 360–450), `az_cal` ([true azimuth at K3NG 0, at K3NG 450]); `az`, `target` and `aim` are true azimuths; `?ports=1` adds the serial `ports` |
+| GET | `/api/rotor` | antenna rotor of the station (settings in `data\rotor.json`; only on the receiver that holds the rotor, see `/api/vfos` `rotor`; the others answer 409 `{"error", "host"}`): `on`, `connected`, `device`, `az`, `el`, `target`, `target_raw` (K3NG azimuth 0–450 given by the satellite tracking, else null), `tracker` (the satellite tracking moves the rotor), `aim` ([az, el] of the tracked satellite while it is above the horizon), `source` (`manual` or `tracker`), `control`, `fault`, `error`, `next_pass` (`{"sat", "event": "AOS" or "LOS", "seconds"}` of the tracked satellite); `k3ng_az` (the K3NG azimuth 0–450 from its left stop, followed by RADIMCOM), `k3ng_guess` (true while it is not yet known whether K3NG is at 0–90 or 360–450), `az_cal` ([true azimuth at K3NG 0, at K3NG 450]); `az`, `target` and `aim` are true azimuths; `?ports=1` adds the serial `ports` |
 | POST | `/api/rotor` | any of `{"enabled": true/false, "port", "usb_serial"}` (link on / off, saved), `{"start": true}` (rotor control on: the satellite tracking may move it), `{"stop": true}` (stop the rotor, control off), `{"reset": true}` (clear a fault), `{"goto": [az, el]}` (true azimuth 0–360, elevation 0–180; refused while the satellite tracking moves the rotor), `{"az_cal": [az0, az450]}` (true azimuth at K3NG 0 and at K3NG 450, saved; `[0, 450]` = no correction). **Moves the antenna.** Refused with 403 from a page of another host |
 | GET | `/api/memories` | all memories |
 | POST | `/api/memories` | add: `{"name", "group" or "groups", "freq_hz", "mode", "bw"}` and optionally `"fav"`, `"decoder"`, `"record"` (`"off"` default, `"on"`, `"sq"` or `"asq"`: recording started at recall), `"note"`, `"color"`, `"tag"`; returns the new memory with its `id`. Name up to 80 characters, group up to 40, frequency 0–1766 MHz, `bw` clamped to the mode's range. With `dab_channel` the frequency is the centre of that channel |
@@ -254,13 +254,29 @@ Export (MEMORIES tab → EXPORT) is done in the browser from `GET /api/memories`
 
 ## Recordings
 
-The MP3 files of REC / REC SQ in `data\recordings` (RECORDINGS tab). The folder is shared by all VFOs, so every VFO port gives the same list.
+The MP3 files of REC / REC SQ in the recordings folder (default `data\recordings`, set in SETTINGS › GENERAL › RECORDINGS) (RECORDINGS tab). The folder is shared by all VFOs, so every VFO port gives the same list.
 
 | Method | Path | Meaning |
 |---|---|---|
 | GET | `/api/recordings` | the files, newest first: `[{"name", "size", "mtime", "secs", "hz", "mode", "start", "memory", "writing"}]` (`secs` from the size at 128 kbps; `hz`, `mode`, `start` (`YYYY-MM-DD HH:MM:SS`, local time) and `memory` from the file name, empty for a foreign file; `writing` = being recorded now) |
 | GET | `/api/recordings/<name>` | the file (`audio/mpeg`, Range requests work) |
 | DELETE | `/api/recordings/<name>` | delete; 400 with `error` for a file being written or an unknown name |
+| GET | `/api/recording_folder` | `{"folder", "custom", "default"}`: the folder in use, the one set (`""` = default) and the default `data\recordings` |
+| POST | `/api/recording_folder` | `{"folder": "<full path>"}` sets it (created if missing, must be writable), `""` = back to the default; 400 with `error` for a relative or unusable path; only from this RADIMCOM page (403 otherwise). Saved in `data\recordings.json`, all VFOs use it at once |
+
+## Rotor control overlays
+
+The groups of points of the ROTOR CONTROL map (RCTRL key), shared by all VFOs. `<id>`: `dab`, `fm`, `ham` (built-in defaults)
+or `g1`, `g2`, … (own groups).
+
+| Method | Path | Meaning |
+|---|---|---|
+| GET | `/api/overlays` | `{"groups": [...]}`, built-in first, then own groups in the order they were made; each `{"id", "name", "color", "source", "updated", "builtin", "custom" (edited / own file), "points": [{"name", "lat", "lon", "info", "detail", "freq", "cc"}], "error"}` |
+| POST | `/api/overlays` | new own group `{"name", "color"?, "points"?}`; returns it with its new `id` |
+| PUT (or POST) | `/api/overlays/<id>` | replace the group (edit or import): `{"name", "color", "source", "points": [...]}` or a list of points (`name`, `lat`, `lon` required); saved in `data\overlays\<id>.json`. Returns the group with `skipped` (invalid points); 400 with `error` when points were given but none is valid |
+| DELETE | `/api/overlays/<id>` | built-in group: back to the built-in list (`static/overlays/<id>.json`); own group: deleted |
+
+The changes are refused with 403 from a page of another host.
 
 ## Examples
 

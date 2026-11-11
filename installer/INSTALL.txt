@@ -92,11 +92,23 @@ Change log
 Ver. 0.114beta1
 (test beta, GitHub branch 0.114beta1)
 Main Features
-- Station location moved from SATELLITES -> SETUP to MENU -> SETUP -> LOCATION (locator or lat / lon,
+- Station location moved from SATELLITES -> SETUP to SETTINGS -> GENERAL -> LOCATION (locator or lat / lon,
   CHOOSE ON MAP, altitude); used by the satellites, packet decoder (APRS), HFDL and AIS. data\location.json,
   default 0.0 / 0.0 on a new installation, an older installation keeps its station.
+- SETTINGS split into GENERAL (SKINS, S-METER, TOUCHPAD, LOCATION, ROTOR, RECORDINGS: the whole station) and VFO (keys VFO-A..D on the left,
+  the lit one joined to its card: SDR DONGLE, ADVANCED, AUDIO, TX). S9 calibration moved to VFO -> ADVANCED.
+- One rotor for the whole station: settings in data\rotor.json (moved from config_X.json at the first start),
+  run by the receiver of the first VFO whichever VFO is active; MONITOR is one switch for all VFOs.
+- ROTOR CONTROL tab (new key RCTRL in the key group TRACKING, formerly SAT): a click on the map, on an overlay point
+  or on a list row turns the station rotor (from any VFO) to that azimuth from the QTH (elevation 0); dashed line =
+  wanted azimuth to the target, green sector (BEAM width) = antenna now, turning with the rotor. Groups of points:
+  default DAB+ SR, FM BCAST SK/CZ, HAM repeaters SK/CZ, plus own groups; OVERLAYS page to make, rename, edit
+  (points by lat / lon or QTH locator), IMPORT / EXPORT, RESET or DELETE groups (saved in data\overlays);
+  + ADD POINT puts the map target into a group.
+- Folder of the MP3 recordings selectable: SETTINGS -> GENERAL -> RECORDINGS (full path, created if missing,
+  DEFAULT = data\recordings); one folder for all VFOs, used by REC / REC SQ and the RECORDINGS tab. data\recordings.json.
 Minor Fixes
-- WFM filters 50, 75 and 150 kHz (default 150 kHz).
+- WFM filters 50, 75, 150 and 200 kHz (default 200 kHz).
 - Default S-meter layout: amber needle.
 
 Ver. 0.113

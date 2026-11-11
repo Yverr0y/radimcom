@@ -849,7 +849,7 @@ class Receiver:
     def __init__(self, cfg, on_row, on_audio, on_status, on_baseband=None, on_demod=None, on_meter=None, on_dsd=None):
         self.cfg = cfg
         cfg.setdefault("bandwidth", {}).setdefault("CW", 500)
-        cfg["bandwidth"].setdefault("WFM", 150000)
+        cfg["bandwidth"].setdefault("WFM", 200000)
         cfg["bandwidth"][DSD_MODE] = DSD_BW
         sq = cfg.get("squelch")
         if not isinstance(sq, dict):               # older version: one level for FM and WFM

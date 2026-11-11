@@ -275,7 +275,7 @@ class Tracker:
             az = float(cal.to_true(raw)) % 360.0
             cur.update(cmd_raw=round(raw, 1), cmd_az=round(az, 1), cmd_el=round(el, 1))
             if not self.rotor.running:
-                note = "rotor link off (SET, ROTOR tab): only calculated"
+                note = "rotor link off (SETTINGS › GENERAL › ROTOR): only calculated"
             else:
                 note = self.rotor.goto(az, el, "tracker", raw=raw)
                 note = note or ("" if self.rotor.control else "CTRL is off: the rotor does not move, only calculated")

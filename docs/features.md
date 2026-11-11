@@ -28,7 +28,8 @@
   30 MHz shows a warning whether the converter must be switched on (CONV) or set to BYPASS.
 - **Decoders:** 11 decoders, see [Decoders](#decoders) below.
 - **Satellite tracking:** pass prediction, world map, Doppler correction of the VFO and a K3NG antenna rotor over USB, planned for passes across the north; no other program needed. See [Satellite tracking](satellites.md).
-- **REC and REC SQ:** record the audio of the selected VFO to MP3 files in `data\recordings`: everything, or only while the squelch is open.
+- **ROTOR CONTROL tab (RCTRL key):** a map where a click (or a click on a DAB+, FM or ham repeater point) turns the rotor to that azimuth from the QTH, with the wanted azimuth (dashed line) and the antenna now (beam sector turning with the rotor), from any VFO; editable groups of points (the built-in ones as defaults, own groups, import / export). See [Rotor control map](satellites.md#rotor-control-map).
+- **REC and REC SQ:** record the audio of the selected VFO to MP3 files in `data\recordings` or an own folder (SETTINGS › GENERAL › RECORDINGS): everything, or only while the squelch is open.
 - **RECORDINGS tab (RECS key):** the recorded files in a table (start, memory, frequency, mode, length, size), played in the browser; NEXT plays the next older file, filter, delete. See [RECS](controls.md#function-keys).
 - **Daily logs:** the LOG checkbox in each decoder card writes to `data\logs\<decoder>_YYYY-MM-DD.txt` (UTC, one line per message; WEFAX/SSTV log the names of saved images), classic ACARS to `data\acars\acars_YYYY-MM-DD.txt` and VDL2 to `data\acars\vdl2_YYYY-MM-DD.txt`.
 - **TX with LimeSDR** (optional, off by default), see [Transmitting (LimeSDR)](configuration.md#transmitting-limesdr).
@@ -83,8 +84,8 @@ and the country flag from the ICAO address; a click on a message pauses the list
   MAIN and CUE volume faders, stereo level meter, MUTE.
 - **DECODERS tab** with a page for each decoder, and the **SATELLITES** tab (also the **SAT** key), which shows the active linear, FM, image and other satellites from AMSAT, with clickable links.
 - **AD (additional display)** under the S-meter: error messages (red, accepted by OK, the frame blinks), the rotor AZ / EL (MONITOR) or RDS, by this priority.
-- **Rotor page** in SETTINGS: ON / OFF per VFO, polar plot and elevation column 0–180° with the antenna and its target, a click moves the antenna; STOP, RESET, MONITOR.
-- **SETTINGS tab** (gear key) with pages SDR DONGLE (BASIC with a block diagram of the receive chain, ADVANCED with the list of dongles and their VFOs), AUDIO, UI (SKINS, S-METER, TOUCHPAD), LOCATION (station locator or latitude / longitude, also chosen on a map; used by the satellites, packet, HFDL and AIS), ROTOR, TX; **MEMORIES tab** (MEM key) with the pages CHANNELS (also the list to recall from), GROUPS, IMPORT, EXPORT.
+- **Rotor page** in SETTINGS › GENERAL: one rotor for the whole station (not tied to a VFO, settings in `data\rotor.json`), ON / OFF, polar plot and elevation column 0–180° with the antenna and its target, a click moves the antenna; STOP, RESET, MONITOR.
+- **SETTINGS tab** (gear key) split into **GENERAL** (the whole station: SKINS, S-METER, TOUCHPAD, LOCATION – station locator or latitude / longitude, also chosen on a map, used by the satellites, packet, HFDL and AIS; ROTOR) and **VFO** (keys VFO-A … VFO-D on the left, the lit one joined to its card: SDR DONGLE with a block diagram of the receive chain, ADVANCED with the list of dongles and their VFOs, SP, AGC+ and the S9 calibration, AUDIO, TX); **MEMORIES tab** (MEM key) with the pages CHANNELS (also the list to recall from), GROUPS, IMPORT, EXPORT.
 - **Clock** in local time or UTC (a click switches).
 - **The page scales with the browser window** (laid out for at least 1920 × 820 px), so the layout does not reflow in small windows.
 

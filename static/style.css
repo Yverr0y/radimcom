@@ -21,6 +21,7 @@
   --blue: #2f7dff;
   --ok: #3ddc84;
   --accent: #ffd84a;
+  --set-card: #0e1319;      /* SETTINGS › VFO: the card and the lit VFO key joined to it */
   /* Page scale: app.js (fitStage) sets them by the window size; --vw/--vh is the size of the
      "virtual window" in layout px, --k is the scale to the real window. */
   --k: 1;
@@ -780,6 +781,10 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .set-location .setting input[type=number] { width: 110px; }
 .set-location .sats-pick { height: 420px; }
 .set-location .sats-pick.leaflet-container { background: #10151c; font: 12px system-ui, sans-serif; }
+/* SETTINGS › GENERAL › RECORDINGS: folder of the MP3 files (one wide path field) */
+.set-recs { max-width: 1100px; }
+.set-recs .rec-dir { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.set-recs .rec-dir input { flex: 1; min-width: 0; font-family: ui-monospace, Consolas, monospace; }
 .sats-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 2px 12px; max-height: 360px; overflow: auto; margin-top: 6px; }
 .sats-list label { display: flex; gap: 6px; align-items: baseline; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sats-list label.old b { color: var(--amber); }
@@ -1252,10 +1257,25 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .recs-table .del { width: 20px; color: var(--muted); text-align: center; }
 .recs-table .del:hover { color: var(--red); }
 .set-panel { zoom: 1.1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
-.set-panel[data-set-panel="tx"] { grid-template-columns: minmax(0, 1fr); }
-/* pages with sub-pages (SDR DONGLE, UI): a row of sub-page keys, the open sub-page under it */
+.set-subpanel.set-tx { grid-template-columns: minmax(0, 1fr); }
+/* pages with sub-pages (GENERAL, VFO): a row of sub-page keys, the open sub-page under it */
 .set-panel.has-sub { display: flex; flex-direction: column; gap: 8px; }
-.set-panel.has-sub[hidden], .set-subpanel[hidden] { display: none; }
+.set-panel[hidden], .set-subpanel[hidden] { display: none; }
+/* SETTINGS › VFO: the VFO keys on the left (as beside the S-meter), the lit one joined to the card on the right:
+   same background, no border between them, like an open folder tab */
+.set-panel.set-vfo { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0; align-items: start; }
+.set-vfo-keys { display: grid; gap: 6px; padding-top: 14px; position: relative; z-index: 1; }
+.set-vfo-keys[hidden] { display: none; }
+.set-vfo-key { min-width: 78px; margin-right: 8px; }
+.set-vfo-key.on, .set-vfo-key.on:hover { filter: none; margin-right: -1px; padding-right: 17px; color: var(--yellow); background: var(--set-card);
+  border: 1px solid var(--line2); border-right: 0; border-radius: 6px 0 0 6px;
+  box-shadow: inset 3px 0 0 var(--yellow); }
+.set-vfo-card { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 100%; padding: 10px;
+  border: 1px solid var(--line2); border-radius: 8px; background: var(--set-card); }
+.set-vfo-card.solo, .set-vfo-keys[hidden] + .set-vfo-card { grid-column: 1 / -1; }
+.set-vfo-name { align-self: center; margin-right: 8px; padding-right: 10px; border-right: 1px solid var(--line2);
+  font: 700 13px/1 system-ui, sans-serif; letter-spacing: .06em; color: var(--yellow); }
+.set-vfo-name:empty { display: none; }
 .set-subtabs { display: flex; gap: 4px; flex-wrap: wrap; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
 .set-subpanel { display: grid; gap: 10px; align-items: start; }
 /* BASIC: cards flow down four columns (no holes under short cards) */
@@ -1880,3 +1900,64 @@ body.map-only .map-only-box[hidden] { display: none; }
 body.map-only .pkt-map.map-only-box { flex-direction: column; gap: 4px; }
 .med-bar select:disabled, .med-bar input:disabled { opacity: .4; cursor: default; }
 #medSearch { flex: 0 1 33%; min-width: 180px; }
+
+/* ---------- ROTOR CONTROL tab (RCTRL key): map to aim the rotor, overlays ---------- */
+.rot-pane .rc-beam { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.rot-pane .rc-beam input { width: 56px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: #000; color: var(--text); font-size: 12px; }
+#rcInfo.warn { color: #ff8a65; }
+.rc-body { flex: 1 1 0; min-height: 0; }
+.rc-body[hidden] { display: none; }
+.rc-map { display: flex; gap: 8px; }
+.rc-map-main { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+#rcMap { flex: 1 1 0; min-height: 300px; border: 1px solid var(--line); border-radius: 6px; background: #0e1116; }
+#rcMap.leaflet-container { font: 12px system-ui, sans-serif; cursor: crosshair; }
+#rcMap .leaflet-interactive { cursor: pointer; }
+#rcNote { font-size: 12px; min-height: 16px; }
+.rc-side { width: 360px; flex: none; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.rc-side .recs-filter { width: auto; }
+.rc-ovs { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #000; font-size: 12px; }
+.rc-ov { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.rc-ov i, .rc-row i, .rc-ov-title i { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #000; flex: none; display: inline-block; }
+.rc-list { flex: 1 1 0; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; font-size: 12px; }
+.rc-row { display: grid; grid-template-columns: 12px 1fr 40px 56px; grid-template-rows: auto auto; column-gap: 6px; align-items: center; padding: 3px 8px; cursor: pointer;
+  border-bottom: 1px solid rgba(255, 255, 255, .04); }
+.rc-row:hover { background: rgba(255, 255, 255, .06); }
+.rc-row.sel { background: rgba(76, 255, 122, .16); }
+.rc-row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-row .rc-az { color: #4cff7a; text-align: right; font-variant-numeric: tabular-nums; }
+.rc-row .rc-km { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.rc-row .rc-inf { grid-column: 2 / 5; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+.leaflet-tooltip.rc-tip { white-space: normal; width: max-content; max-width: 340px; padding: 2px 6px; }
+.rc-tip-d { color: #aab4c0; }
+.rc-ovset { overflow: auto; display: flex; flex-direction: column; gap: 8px; }
+.rc-ov-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.rc-ov-card { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .02); font-size: 13px; }
+.rc-ov-card .row { display: flex; gap: 6px; }
+.rc-ov-title { display: flex; align-items: center; gap: 8px; }
+@media (max-width: 900px) {
+  .rc-map { flex-direction: column; }
+  .rc-side { width: auto; max-height: 40%; }
+  .rc-ov-cards { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ROTOR CONTROL: adding the map target to a group, the groups of points and their editor */
+.rc-add { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.rc-add select { flex: 1 1 0; min-width: 0; padding: 3px 4px; border: 1px solid var(--line); border-radius: 4px; background: #000; color: var(--text); font-size: 12px; }
+.rc-ov-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+.rc-ov-card.on { border-color: #4cff7a; }
+.rc-ov-card .row { flex-wrap: wrap; }
+.rc-edit { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid #4cff7a; border-radius: 8px; }
+.rc-edit[hidden] { display: none; }
+.rc-edit-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.rc-edit-head label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+.rc-edit-head input[type="text"] { width: 220px; }
+.rc-edit-head input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid var(--line); background: #000; }
+.rc-edit-tab { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; }
+.rc-edit-tab table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rc-edit-tab th { position: sticky; top: 0; background: #11151b; color: var(--muted); font-weight: normal; text-align: left; padding: 4px 6px; }
+.rc-edit-tab td { padding: 2px 4px; border-top: 1px solid rgba(255, 255, 255, .04); }
+.rc-edit-tab td:last-child { width: 1%; }
+.rc-edit-tab input, .rc-edit-head input[type="text"] { width: 100%; min-width: 60px; box-sizing: border-box; padding: 3px 6px; border: 1px solid var(--line);
+  border-radius: 4px; background: #0b0e12; color: var(--text); font-size: 12px; }
+.rc-edit-tab input.rc-loc { border-color: #4cff7a; }
+.rc-edit-tab .note { padding: 6px 8px; margin: 0; }

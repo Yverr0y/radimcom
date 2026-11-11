@@ -12,7 +12,7 @@ until then the position is read and the tracking's moves are ignored. A fault, a
 off, and only CTRL turns it on.
 
 Azimuth calibration: K3NG counts 0-450 degrees from its left stop, which need not be north. The true azimuth at
-K3NG 0 and at K3NG 450 is set in SET (ROTOR tab); everything outside this class (page, tracking, HTTP API) uses true
+K3NG 0 and at K3NG 450 is set in SETTINGS › GENERAL › ROTOR; everything outside this class (page, tracking, HTTP API) uses true
 azimuths, except the K3NG azimuth the tracking may give with a target. K3NG reports its azimuth modulo 360, so the
 raw 0-450 value is followed here reading by reading.
 """
@@ -414,7 +414,7 @@ class Rotor:
 
 
 class RotorLink:
-    """The rotor of this VFO, turned on and off from SET (ROTOR tab)."""
+    """The rotor of the station, turned on and off in SETTINGS › GENERAL › ROTOR."""
 
     def __init__(self, opener=open_serial):
         self.rotor = Rotor(opener)
@@ -428,3 +428,58 @@ class RotorLink:
 
     def info(self):
         return self.rotor.info()
+
+
+# ---------- rotor settings: one rotor for the whole station (data\rotor.json), not tied to a VFO ----------
+# Versions up to 0.114beta1 kept them in the config of one VFO (config_X.json, key "rotor"); migrate() moves them.
+SETTINGS_KEYS = ("enabled", "port", "usb_serial", "az_cal", "k3ng_az")
+
+
+def load_settings(path):
+    """Rotor settings from data\rotor.json; {} if there are none (or the file is damaged)."""
+    import json
+    try:
+        with open(path, encoding="utf-8") as f:
+            s = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return {k: s[k] for k in SETTINGS_KEYS if k in s} if isinstance(s, dict) else {}
+
+
+def save_settings(path, settings):
+    """Writes the rotor settings (through a temporary file, so a power cut leaves the old file)."""
+    import json
+    import os
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({k: settings[k] for k in SETTINGS_KEYS if k in settings}, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def migrate(path, config_paths):
+    """No rotor.json yet: takes the "rotor" section of the VFO configs (the enabled one first) and removes it there.
+    Returns the name of the config it came from, or None."""
+    import json
+    import os
+    if os.path.exists(path):
+        return None
+    found = []
+    for p in config_paths:
+        try:
+            with open(p, encoding="utf-8") as f:
+                c = json.load(f)
+        except (OSError, ValueError):
+            continue
+        if isinstance(c, dict) and isinstance(c.get("rotor"), dict):
+            found.append((p, c))
+    if not found:
+        return None
+    src_path, src = next(((p, c) for p, c in found if c["rotor"].get("enabled")), found[0])
+    save_settings(path, src["rotor"])
+    for p, c in found:
+        c.pop("rotor", None)
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(c, f, indent=2, ensure_ascii=False)
+    return os.path.basename(src_path)

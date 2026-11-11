@@ -1,0 +1,1475 @@
+{
+ "name": "HAM prevádzače SK/CZ",
+ "color": "#81c784",
+ "updated": "2026-11-11",
+ "source": "przemienniki.net (export RXF, stav WORKING/TESTING) + cq.sk (zoznam VKV/UKV prevádzačov v SR)",
+ "points": [
+  {
+   "name": "OM0OAA",
+   "cc": "SK",
+   "lat": 49.22611,
+   "lon": 18.68194,
+   "freq": 438.625,
+   "info": "438.6250 MHz (in 431.0250, shift -7.6) · FM · CTCSS 67.0",
+   "detail": "70cm · kóta Snoh - Hradisko · JN99IF"
+  },
+  {
+   "name": "OM0OAC",
+   "cc": "SK",
+   "lat": 49.45861,
+   "lon": 18.82139,
+   "freq": 438.225,
+   "info": "438.2250 MHz (in 430.6250, shift -7.6) · FM · CTCSS 118.8",
+   "detail": "70cm · Čadca, Drahošanka · JN99JK"
+  },
+  {
+   "name": "OM0OAD",
+   "cc": "SK",
+   "lat": 49.27083,
+   "lon": 19.20833,
+   "freq": 438.55,
+   "info": "438.5500 MHz (in 430.9500, shift -7.6) · FM · CTCSS 67.0",
+   "detail": "70cm · Kubínska hoľa · JN99OG"
+  },
+  {
+   "name": "OM0OAE",
+   "cc": "SK",
+   "lat": 49.22611,
+   "lon": 18.68194,
+   "freq": 438.925,
+   "info": "438.9250 MHz (in 431.3250, shift -7.6) · FM · CTCSS 67.0",
+   "detail": "70cm · kóta Snoh - Hradisko · JN99IF"
+  },
+  {
+   "name": "OM0OAF",
+   "cc": "SK",
+   "lat": 48.72926,
+   "lon": 19.11277,
+   "freq": 439.125,
+   "info": "439.1250 MHz (in 431.5250, shift -7.6) · FM",
+   "detail": "70cm · Banská Bystrica, SR · JN98NR"
+  },
+  {
+   "name": "OM0OAP",
+   "cc": "SK",
+   "lat": 48.7164,
+   "lon": 21.2611,
+   "freq": 439.15,
+   "info": "439.1500 MHz (in 431.5500, shift -7.6) · FM",
+   "detail": "70cm · Košice · poloha lokality · podľa cq.sk"
+  },
+  {
+   "name": "OM0ODB",
+   "cc": "SK",
+   "lat": 48.14583,
+   "lon": 17.125,
+   "freq": 438.325,
+   "info": "438.3250 MHz (in 430.7250, shift -7.6) · FM",
+   "detail": "70cm · Bratislava, Slavin · JN88ND"
+  },
+  {
+   "name": "OM0ODM",
+   "cc": "SK",
+   "lat": 48.71166,
+   "lon": 21.23199,
+   "freq": 438.225,
+   "info": "438.2250 MHz (in 430.6250, shift -7.6) · FM",
+   "detail": "70cm · Kosice · KN08OR"
+  },
+  {
+   "name": "OM0ODP",
+   "cc": "SK",
+   "lat": 49.14583,
+   "lon": 20.04167,
+   "freq": 438.275,
+   "info": "438.2750 MHz (in 430.6750, shift -7.6) · FM · CTCSS 118.8",
+   "detail": "70cm · Štrbské Pleso · KN09AD"
+  },
+  {
+   "name": "OM0OET",
+   "cc": "SK",
+   "lat": 47.98828,
+   "lon": 18.15251,
+   "freq": 439.225,
+   "info": "439.2250 MHz (in 431.6250, shift -7.6) · FM · CTCSS 77.0",
+   "detail": "70cm · Nové Zámky · JN97BX"
+  },
+  {
+   "name": "OM0OMA",
+   "cc": "SK",
+   "lat": 47.77083,
+   "lon": 18.125,
+   "freq": 145.7625,
+   "info": "145.7625 MHz (in 145.1625, shift -0.6) · FM",
+   "detail": "2m · Komárno · JN97BS · podľa cq.sk"
+  },
+  {
+   "name": "OM0OMK",
+   "cc": "SK",
+   "lat": 47.9375,
+   "lon": 18.625,
+   "freq": 145.7875,
+   "info": "145.7875 MHz (in 145.1875, shift -0.6) · FM",
+   "detail": "2m · Bíňa · JN97HW · podľa cq.sk"
+  },
+  {
+   "name": "OM0OML",
+   "cc": "SK",
+   "lat": 48.35417,
+   "lon": 19.70833,
+   "freq": 145.7,
+   "info": "145.7000 MHz (in 145.1000, shift -0.6) · FM",
+   "detail": "2m · Lučenec · JN98UI · podľa cq.sk"
+  },
+  {
+   "name": "OM0OMM",
+   "cc": "SK",
+   "lat": 49.0811,
+   "lon": 19.6131,
+   "freq": 145.6375,
+   "info": "145.6375 MHz (in 145.0375, shift -0.6) · FM",
+   "detail": "2m · Liptovský Mikuláš · poloha lokality · podľa cq.sk"
+  },
+  {
+   "name": "OM0OMY",
+   "cc": "SK",
+   "lat": 48.4375,
+   "lon": 17.04167,
+   "freq": 145.7375,
+   "info": "145.7375 MHz (in 145.1375, shift -0.6) · FM",
+   "detail": "2m · Malacky · JN88MK · podľa cq.sk"
+  },
+  {
+   "name": "OM0ONM",
+   "cc": "SK",
+   "lat": 48.75566,
+   "lon": 21.92458,
+   "freq": 145.6,
+   "info": "145.6000 MHz (in 145.0000, shift -0.6) · FM",
+   "detail": "2m · Michalovce · KN08XS"
+  },
+  {
+   "name": "OM0OUA",
+   "cc": "SK",
+   "lat": 49.10417,
+   "lon": 18.79167,
+   "freq": 439.1375,
+   "info": "439.1375 MHz (in 431.5375, shift -7.6) · FM · CTCSS 118.8",
+   "detail": "70cm · Martinske Hole - Velka Luka · JN99JC"
+  },
+  {
+   "name": "OM0OUB",
+   "cc": "SK",
+   "lat": 48.18233,
+   "lon": 17.09481,
+   "freq": 439.325,
+   "info": "439.3250 MHz (in 431.7250, shift -7.6) · FM · CTCSS 77.0",
+   "detail": "70cm · Bratislava, Slavin · JN88ND"
+  },
+  {
+   "name": "OM0OUE",
+   "cc": "SK",
+   "lat": 48.74083,
+   "lon": 21.29056,
+   "freq": 439.15,
+   "info": "439.1500 MHz (in 431.5500, shift -7.6) · FM",
+   "detail": "70cm · Kosice · KN08PR"
+  },
+  {
+   "name": "OM0OUG",
+   "cc": "SK",
+   "lat": 48.19349,
+   "lon": 17.72048,
+   "freq": 439.175,
+   "info": "439.1750 MHz (in 431.5750, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Galanta · JN88UE"
+  },
+  {
+   "name": "OM0OUH",
+   "cc": "SK",
+   "lat": 48.72917,
+   "lon": 19.125,
+   "freq": 439.275,
+   "info": "439.2750 MHz (in 431.6750, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Banska Bystrica · JN98NR"
+  },
+  {
+   "name": "OM0OUI",
+   "cc": "SK",
+   "lat": 49.3125,
+   "lon": 20.70833,
+   "freq": 145.6,
+   "info": "145.6000 MHz (in 145.0000, shift -0.6) · FM · CTCSS 88.5",
+   "detail": "2m · Zamek Stará Ľubovňa · KN09IH"
+  },
+  {
+   "name": "OM0OUJ",
+   "cc": "SK",
+   "lat": 48.8575,
+   "lon": 17.68194,
+   "freq": 438.875,
+   "info": "438.8750 MHz (in 431.2750, shift -7.6) · FM · CTCSS 77.0",
+   "detail": "70cm · Veľká Javorina · JN88UU"
+  },
+  {
+   "name": "OM0OUK",
+   "cc": "SK",
+   "lat": 48.77849,
+   "lon": 20.97301,
+   "freq": 439.05,
+   "info": "439.0500 MHz (in 431.4500, shift -7.6) · FM",
+   "detail": "70cm · Kojšovská hoľa · KN08LS"
+  },
+  {
+   "name": "OM0OUL",
+   "cc": "SK",
+   "lat": 48.34161,
+   "lon": 19.65451,
+   "freq": 438.975,
+   "info": "438.9750 MHz (in 431.3750, shift -7.6) · FM",
+   "detail": "70cm · Lučenec · JN98TI"
+  },
+  {
+   "name": "OM0OUN",
+   "cc": "SK",
+   "lat": 48.41,
+   "lon": 18.54056,
+   "freq": 439.3,
+   "info": "439.3000 MHz (in 431.7000, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Veľký Inovec · JN98GJ"
+  },
+  {
+   "name": "OM0OUP",
+   "cc": "SK",
+   "lat": 49.06423,
+   "lon": 21.25619,
+   "freq": 439.1,
+   "info": "439.1000 MHz (in 431.5000, shift -7.6) · FM",
+   "detail": "70cm · Prešov · KN09PB"
+  },
+  {
+   "name": "OM0OUR",
+   "cc": "SK",
+   "lat": 48.36889,
+   "lon": 17.57805,
+   "freq": 439.475,
+   "info": "439.4750 MHz (in 431.8750, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Trnava · JN88SI"
+  },
+  {
+   "name": "OM0OUS",
+   "cc": "SK",
+   "lat": 49.31917,
+   "lon": 20.71,
+   "freq": 439.025,
+   "info": "439.0250 MHz (in 438.4250, shift -0.6) · FM",
+   "detail": "70cm · Stará Ľubovňa · KN09IH"
+  },
+  {
+   "name": "OM0OUT",
+   "cc": "SK",
+   "lat": 48.89435,
+   "lon": 18.04469,
+   "freq": 439.1,
+   "info": "439.1000 MHz (in 431.5000, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Trenčín · JN98AV"
+  },
+  {
+   "name": "OM0OUU",
+   "cc": "SK",
+   "lat": 48.72917,
+   "lon": 18.79167,
+   "freq": 439.25,
+   "info": "439.2500 MHz (in 431.6500, shift -7.6) · FM",
+   "detail": "70cm · Čertová skala · JN98JR · podľa cq.sk"
+  },
+  {
+   "name": "OM0OUX",
+   "cc": "SK",
+   "lat": 48.39583,
+   "lon": 18.875,
+   "freq": 439.15,
+   "info": "439.1500 MHz (in 431.5500, shift -7.6) · FM · CTCSS 77.0",
+   "detail": "70cm · Sitno · JN98KJ"
+  },
+  {
+   "name": "OM0OUZ",
+   "cc": "SK",
+   "lat": 48.60417,
+   "lon": 19.125,
+   "freq": 439.25,
+   "info": "439.2500 MHz (in 431.6500, shift -7.6) · FM",
+   "detail": "70cm · Zvolen · JN98NO"
+  },
+  {
+   "name": "OM0OVK",
+   "cc": "SK",
+   "lat": 49.3125,
+   "lon": 21.29167,
+   "freq": 145.7625,
+   "info": "145.7625 MHz (in 145.1625, shift -0.6) · FM",
+   "detail": "2m · Vimbarg · KN09PH · podľa cq.sk"
+  },
+  {
+   "name": "OM0OVL",
+   "cc": "SK",
+   "lat": 48.52083,
+   "lon": 19.625,
+   "freq": 145.7,
+   "info": "145.7000 MHz (in 145.1000, shift -0.6) · FM",
+   "detail": "2m · Surovina · JN98TM · podľa cq.sk"
+  },
+  {
+   "name": "OM0OVN",
+   "cc": "SK",
+   "lat": 48.343,
+   "lon": 18.105,
+   "freq": 145.7,
+   "info": "145.7000 MHz (in 145.1000, shift -0.6) · FM",
+   "detail": "2m · Zobor · poloha lokality · podľa cq.sk"
+  },
+  {
+   "name": "OM0OVQ",
+   "cc": "SK",
+   "lat": 48.8576,
+   "lon": 17.67525,
+   "freq": 145.7625,
+   "info": "145.7625 MHz (in 145.1625, shift -0.6) · FM · CTCSS 77.0",
+   "detail": "2m · Veľká Javorina · JN88UU"
+  },
+  {
+   "name": "OM0OVR",
+   "cc": "SK",
+   "lat": 48.88255,
+   "lon": 20.13999,
+   "freq": 145.75,
+   "info": "145.7500 MHz (in 145.1500, shift -0.6) · FM",
+   "detail": "2m · Kráľova Hoľa · KN08BV"
+  },
+  {
+   "name": "OM0OVS",
+   "cc": "SK",
+   "lat": 48.39583,
+   "lon": 20.04167,
+   "freq": 145.6,
+   "info": "145.6000 MHz (in 145.0000, shift -0.6) · FM",
+   "detail": "2m · Rimavská Sobota · KN08AJ · podľa cq.sk"
+  },
+  {
+   "name": "OM0OVT",
+   "cc": "SK",
+   "lat": 48.8743,
+   "lon": 21.487,
+   "freq": 145.65,
+   "info": "145.6500 MHz (in 145.0500, shift -0.6) · FM · CTCSS 88.5",
+   "detail": "2m · Makovica · KN08RU"
+  },
+  {
+   "name": "OM0OVU",
+   "cc": "SK",
+   "lat": 49.09555,
+   "lon": 18.81824,
+   "freq": 145.725,
+   "info": "145.7250 MHz (in 145.1250, shift -0.6) · FM · CTCSS 67.0",
+   "detail": "2m · Veľká lúka, Martinské hole · JN99JC"
+  },
+  {
+   "name": "OM0OVV",
+   "cc": "SK",
+   "lat": 48.18233,
+   "lon": 17.09481,
+   "freq": 145.6,
+   "info": "145.6000 MHz (in 145.0000, shift -0.6) · FM · CTCSS 77.0",
+   "detail": "2m · Kamzík - Bratislava · JN88NE"
+  },
+  {
+   "name": "OM0OVW",
+   "cc": "SK",
+   "lat": 48.85417,
+   "lon": 19.04167,
+   "freq": 145.775,
+   "info": "145.7750 MHz (in 145.1750, shift -0.6) · FM",
+   "detail": "2m · Krížna · JN98MU · podľa cq.sk"
+  },
+  {
+   "name": "OM0OVX",
+   "cc": "SK",
+   "lat": 48.77083,
+   "lon": 21.04167,
+   "freq": 145.7,
+   "info": "145.7000 MHz (in 145.1000, shift -0.6) · FM",
+   "detail": "2m · Opátka · KN08MS · podľa cq.sk"
+  },
+  {
+   "name": "OM0OVY",
+   "cc": "SK",
+   "lat": 49.02083,
+   "lon": 20.875,
+   "freq": 145.675,
+   "info": "145.6750 MHz (in 145.0750, shift -0.6) · FM",
+   "detail": "2m · Rudník · KN09KA"
+  },
+  {
+   "name": "OK0AA",
+   "cc": "CZ",
+   "lat": 49.37749,
+   "lon": 15.39732,
+   "freq": 145.6625,
+   "info": "145.6625 MHz (in 145.0625, shift -0.6) · FM · CTCSS 103.5",
+   "detail": "2m · Mešnice, okr. Pelhřimov · JN79QJ"
+  },
+  {
+   "name": "OK0AC",
+   "cc": "CZ",
+   "lat": 49.7444,
+   "lon": 13.95233,
+   "freq": 145.7625,
+   "info": "145.7625 MHz (in 145.1625, shift -0.6) · FM · CTCSS 88.5",
+   "detail": "2m · Drahlín · JN69XR"
+  },
+  {
+   "name": "OK0ACC",
+   "cc": "CZ",
+   "lat": 49.74439,
+   "lon": 13.9523,
+   "freq": 145.7625,
+   "info": "145.7625 MHz (in 145.1625, shift -0.6) · FM · CTCSS 136.5",
+   "detail": "2m · Obecnice, Drahlín - Sádka · JN69XR"
+  },
+  {
+   "name": "OK0AD",
+   "cc": "CZ",
+   "lat": 49.8125,
+   "lon": 18.20833,
+   "freq": 145.6,
+   "info": "145.6000 MHz (in 145.0000, shift -0.6) · FM · CTCSS 88.5",
+   "detail": "2m · Ostrava-Poruba · JN99CT"
+  },
+  {
+   "name": "OK0AE",
+   "cc": "CZ",
+   "lat": 49.803,
+   "lon": 13.34148,
+   "freq": 145.6125,
+   "info": "145.6125 MHz (in 145.0125, shift -0.6) · FM",
+   "detail": "2m · Krkavec · JN69QT"
+  },
+  {
+   "name": "OK0AH",
+   "cc": "CZ",
+   "lat": 49.02083,
+   "lon": 17.625,
+   "freq": 145.7375,
+   "info": "145.7375 MHz (in 145.1375, shift -0.6) · FM",
+   "detail": "2m · Uherský Brod · JN89TA"
+  },
+  {
+   "name": "OK0B",
+   "cc": "CZ",
+   "lat": 50.71091,
+   "lon": 15.23733,
+   "freq": 145.725,
+   "info": "145.7250 MHz (in 145.1250, shift -0.6) · FM",
+   "detail": "2m · Jablonec · JO70OR"
+  },
+  {
+   "name": "OK0BAB",
+   "cc": "CZ",
+   "lat": 49.23487,
+   "lon": 16.62192,
+   "freq": 438.925,
+   "info": "438.9250 MHz (in 431.3250, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Brno - Lesná · JN89HF"
+  },
+  {
+   "name": "OK0BAD",
+   "cc": "CZ",
+   "lat": 49.77083,
+   "lon": 14.04167,
+   "freq": 438.75,
+   "info": "438.7500 MHz (in 431.1500, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Písek - Brdy · JN79AS"
+  },
+  {
+   "name": "OK0BAF",
+   "cc": "CZ",
+   "lat": 49.73501,
+   "lon": 16.03439,
+   "freq": 438.6,
+   "info": "438.6000 MHz (in 431.0000, shift -7.6) · FM",
+   "detail": "70cm · Svratouch · JN89AR"
+  },
+  {
+   "name": "OK0BAF",
+   "cc": "CZ",
+   "lat": 49.73501,
+   "lon": 16.03439,
+   "freq": 438.85,
+   "info": "438.8500 MHz (in 431.2500, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Svratouch, Otava · JN89AR"
+  },
+  {
+   "name": "OK0BAJ",
+   "cc": "CZ",
+   "lat": 49.39694,
+   "lon": 15.57111,
+   "freq": 439.325,
+   "info": "439.3250 MHz (in 431.7250, shift -7.6) · FM",
+   "detail": "70cm · Jihlava · JN79TJ"
+  },
+  {
+   "name": "OK0BAP",
+   "cc": "CZ",
+   "lat": 49.88806,
+   "lon": 16.11889,
+   "freq": 439.3,
+   "info": "439.3000 MHz (in 431.7000, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Litomyšl - Libecina · JN89DU"
+  },
+  {
+   "name": "OK0BBF",
+   "cc": "CZ",
+   "lat": 50.0507,
+   "lon": 16.69354,
+   "freq": 439.125,
+   "info": "439.1250 MHz (in 431.5250, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Suchý vrch - Orlické Hory · JO80IB"
+  },
+  {
+   "name": "OK0BBK",
+   "cc": "CZ",
+   "lat": 50.59433,
+   "lon": 15.26315,
+   "freq": 439.075,
+   "info": "439.0750 MHz (in 431.4750, shift -7.6) · FM",
+   "detail": "70cm · Kozákov u Semil · JO70PO"
+  },
+  {
+   "name": "OK0BC",
+   "cc": "CZ",
+   "lat": 50.75391,
+   "lon": 15.50649,
+   "freq": 438.7,
+   "info": "438.7000 MHz (in 431.1000, shift -7.6) · FM · CTCSS 136.5",
+   "detail": "70cm · Lysá hora - Krkonoše · JO70SS"
+  },
+  {
+   "name": "OK0BCA",
+   "cc": "CZ",
+   "lat": 50.68361,
+   "lon": 15.70111,
+   "freq": 438.875,
+   "info": "438.8750 MHz (in 431.2750, shift -7.6) · FM · CTCSS 203.5",
+   "detail": "70cm · Liščí hora - Krkonoše · JO70UQ"
+  },
+  {
+   "name": "OK0BCA",
+   "cc": "CZ",
+   "lat": 50.684,
+   "lon": 15.701,
+   "freq": 438.9,
+   "info": "438.9000 MHz (in 431.3000, shift -7.6) · FM · CTCSS 203.5",
+   "detail": "70cm · Liščí hora - Krkonoše · JO70UQ"
+  },
+  {
+   "name": "OK0BCN",
+   "cc": "CZ",
+   "lat": 50.40111,
+   "lon": 16.19083,
+   "freq": 438.775,
+   "info": "438.7750 MHz (in 431.1750, shift -7.6) · FM · CTCSS 82.5",
+   "detail": "70cm · Náchod · JO80BJ"
+  },
+  {
+   "name": "OK0BD",
+   "cc": "CZ",
+   "lat": 49.8125,
+   "lon": 18.125,
+   "freq": 438.65,
+   "info": "438.6500 MHz (in 431.0500, shift -7.6) · FM · CTCSS 82.5",
+   "detail": "70cm · Ostrava · JN99BT"
+  },
+  {
+   "name": "OK0BDL",
+   "cc": "CZ",
+   "lat": 49.54613,
+   "lon": 18.44834,
+   "freq": 439.425,
+   "info": "439.4250 MHz (in 431.8250, shift -7.6) · FM · CTCSS 82.5",
+   "detail": "70cm · Lysá Hora · JN99FN"
+  },
+  {
+   "name": "OK0BDV",
+   "cc": "CZ",
+   "lat": 48.73832,
+   "lon": 14.72435,
+   "freq": 438.925,
+   "info": "438.9250 MHz (in 431.3250, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Dobrá Voda u Nových Hradů · JN78IR"
+  },
+  {
+   "name": "OK0BE",
+   "cc": "CZ",
+   "lat": 50.39671,
+   "lon": 12.9677,
+   "freq": 438.65,
+   "info": "438.6500 MHz (in 431.0500, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Klínovec · JO60LJ"
+  },
+  {
+   "name": "OK0BEA",
+   "cc": "CZ",
+   "lat": 50.405,
+   "lon": 13.18806,
+   "freq": 439.2125,
+   "info": "439.2125 MHz (in 431.6125, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Klášterec nad Ohří · JO60OJ"
+  },
+  {
+   "name": "OK0BEZ",
+   "cc": "CZ",
+   "lat": 50.3185,
+   "lon": 13.54217,
+   "freq": 439.275,
+   "info": "439.2750 MHz (in 431.6750, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Žatec · JO60SH"
+  },
+  {
+   "name": "OK0BF",
+   "cc": "CZ",
+   "lat": 49.38617,
+   "lon": 17.50133,
+   "freq": 439.275,
+   "info": "439.2750 MHz (in 431.6750, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Holý kopec u Přerova · JN89SJ"
+  },
+  {
+   "name": "OK0BG",
+   "cc": "CZ",
+   "lat": 48.97917,
+   "lon": 14.54167,
+   "freq": 438.85,
+   "info": "438.8500 MHz (in 431.2500, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · České Budějovice - komín teplárny 160 m · JN78GX"
+  },
+  {
+   "name": "OK0BH",
+   "cc": "CZ",
+   "lat": 48.86922,
+   "lon": 16.65012,
+   "freq": 439.0,
+   "info": "439.0000 MHz (in 431.4000, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Děvín - Pálava · JN88HU"
+  },
+  {
+   "name": "OK0BHD",
+   "cc": "CZ",
+   "lat": 49.22109,
+   "lon": 16.79754,
+   "freq": 439.3,
+   "info": "439.3000 MHz (in 431.7000, shift -7.6) · FM · CTCSS 77.0",
+   "detail": "70cm · Pozoříce · JN89JF"
+  },
+  {
+   "name": "OK0BHJ",
+   "cc": "CZ",
+   "lat": 49.55847,
+   "lon": 16.27963,
+   "freq": 439.225,
+   "info": "439.2250 MHz (in 431.6250, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Karasín · JN89DN"
+  },
+  {
+   "name": "OK0BHS",
+   "cc": "CZ",
+   "lat": 48.86009,
+   "lon": 17.3656,
+   "freq": 439.25,
+   "info": "439.2500 MHz (in 431.6500, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Travičná · JN88QU"
+  },
+  {
+   "name": "OK0BK",
+   "cc": "CZ",
+   "lat": 50.14,
+   "lon": 14.07861,
+   "freq": 439.0,
+   "info": "439.0000 MHz (in 431.4000, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Kladno · JO70AD"
+  },
+  {
+   "name": "OK0BKA",
+   "cc": "CZ",
+   "lat": 50.12222,
+   "lon": 14.25306,
+   "freq": 439.425,
+   "info": "439.4250 MHz (in 431.8250, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Kněževes Praha - západ · JO70DC"
+  },
+  {
+   "name": "OK0BKO",
+   "cc": "CZ",
+   "lat": 49.35928,
+   "lon": 16.66111,
+   "freq": 439.325,
+   "info": "439.3250 MHz (in 431.7250, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Blansko · JN89HI"
+  },
+  {
+   "name": "OK0BL",
+   "cc": "CZ",
+   "lat": 49.38298,
+   "lon": 12.78384,
+   "freq": 439.3,
+   "info": "439.3000 MHz (in 431.7000, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Čerchov · JN69JJ"
+  },
+  {
+   "name": "OK0BLI",
+   "cc": "CZ",
+   "lat": 48.72358,
+   "lon": 14.09069,
+   "freq": 439.1,
+   "info": "439.1000 MHz (in 431.5000, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Přehrada Lipno, Černá v Pošumaví · JN78BR"
+  },
+  {
+   "name": "OK0BNH",
+   "cc": "CZ",
+   "lat": 49.90988,
+   "lon": 14.28588,
+   "freq": 438.625,
+   "info": "438.6250 MHz (in 431.0250, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Černolice · JN79DV"
+  },
+  {
+   "name": "OK0BNJ",
+   "cc": "CZ",
+   "lat": 49.52159,
+   "lon": 14.43236,
+   "freq": 438.775,
+   "info": "438.7750 MHz (in 431.1750, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Kozlov u Chyšek · JN79FM"
+  },
+  {
+   "name": "OK0BPI",
+   "cc": "CZ",
+   "lat": 49.35889,
+   "lon": 14.06861,
+   "freq": 438.2125,
+   "info": "438.2125 MHz (in 430.6125, shift -7.6) · FM",
+   "detail": "70cm · Písek · JN79CH"
+  },
+  {
+   "name": "OK0BPL",
+   "cc": "CZ",
+   "lat": 49.68111,
+   "lon": 13.465,
+   "freq": 438.675,
+   "info": "438.6750 MHz (in 431.0750, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Plzeň - Radyně · JN69RQ"
+  },
+  {
+   "name": "OK0BPT",
+   "cc": "CZ",
+   "lat": 49.03625,
+   "lon": 14.04229,
+   "freq": 439.075,
+   "info": "439.0750 MHz (in 431.4750, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Prachatice - Libín · JN78AX"
+  },
+  {
+   "name": "OK0BR",
+   "cc": "CZ",
+   "lat": 49.6583,
+   "lon": 13.81778,
+   "freq": 438.725,
+   "info": "438.7250 MHz (in 431.1250, shift -7.6) · FM · CTCSS 77.0",
+   "detail": "70cm · Praha - Brdy · JN69VP"
+  },
+  {
+   "name": "OK0BRN",
+   "cc": "CZ",
+   "lat": 49.19972,
+   "lon": 16.53306,
+   "freq": 439.375,
+   "info": "439.3750 MHz (in 431.7750, shift -7.6) · FM · CTCSS 103.5",
+   "detail": "70cm · Brno - Kohoutovice · JN89GE"
+  },
+  {
+   "name": "OK0BRT",
+   "cc": "CZ",
+   "lat": 49.91111,
+   "lon": 14.63778,
+   "freq": 439.2,
+   "info": "439.2000 MHz (in 431.6000, shift -7.6) · FM",
+   "detail": "70cm · Velké Popovice - Brtnice · JN79HV"
+  },
+  {
+   "name": "OK0BS",
+   "cc": "CZ",
+   "lat": 50.04677,
+   "lon": 15.7601,
+   "freq": 438.75,
+   "info": "438.7500 MHz (in 431.1500, shift -7.6) · FM · CTCSS 118.8",
+   "detail": "70cm · Pardubice - Polabiny · JO70VA"
+  },
+  {
+   "name": "OK0BSJ",
+   "cc": "CZ",
+   "lat": 48.82389,
+   "lon": 14.50833,
+   "freq": 439.4875,
+   "info": "439.4875 MHz (in 431.8875, shift -7.6) · FM",
+   "detail": "70cm · Svatý Jan nad Malší · JN78GT"
+  },
+  {
+   "name": "OK0BTA",
+   "cc": "CZ",
+   "lat": 49.49056,
+   "lon": 14.53306,
+   "freq": 438.8,
+   "info": "438.8000 MHz (in 431.2000, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Jistebnice · JN79GL"
+  },
+  {
+   "name": "OK0BZ",
+   "cc": "CZ",
+   "lat": 48.8746,
+   "lon": 16.0035,
+   "freq": 439.15,
+   "info": "439.1500 MHz (in 431.5500, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Znojmo, Cínová Hora · JN88AU"
+  },
+  {
+   "name": "OK0BZR",
+   "cc": "CZ",
+   "lat": 49.58131,
+   "lon": 15.96211,
+   "freq": 439.4,
+   "info": "439.4000 MHz (in 431.8000, shift -7.6) · FM · CTCSS 79.7",
+   "detail": "70cm · Vysoké u Žďáru nad Sázavou · JN79XN"
+  },
+  {
+   "name": "OK0C",
+   "cc": "CZ",
+   "lat": 50.65244,
+   "lon": 15.74171,
+   "freq": 145.7,
+   "info": "145.7000 MHz (in 145.1000, shift -0.6) · FM · CTCSS 136.5",
+   "detail": "2m · Černá Hora · JO70UP"
+  },
+  {
+   "name": "OK0D",
+   "cc": "CZ",
+   "lat": 49.54613,
+   "lon": 18.44834,
+   "freq": 145.65,
+   "info": "145.6500 MHz (in 145.0500, shift -0.6) · FM · CTCSS 88.5",
+   "detail": "2m · Lysá Hora · JN99FN"
+  },
+  {
+   "name": "OK0DAN",
+   "cc": "CZ",
+   "lat": 50.30597,
+   "lon": 13.49192,
+   "freq": 438.9125,
+   "info": "438.9125 MHz (in 431.3125, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Čeradice (Žatec) · JO60RH"
+  },
+  {
+   "name": "OK0DAS",
+   "cc": "CZ",
+   "lat": 50.73583,
+   "lon": 15.74028,
+   "freq": 438.3,
+   "info": "438.3000 MHz (in 430.7000, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Sněžka · JO70UR"
+  },
+  {
+   "name": "OK0DBF",
+   "cc": "CZ",
+   "lat": 50.05083,
+   "lon": 16.69333,
+   "freq": 438.35,
+   "info": "438.3500 MHz (in 430.7500, shift -7.6) · FM",
+   "detail": "70cm · Suchý vrch · JO80IB"
+  },
+  {
+   "name": "OK0DBY",
+   "cc": "CZ",
+   "lat": 50.07972,
+   "lon": 14.39222,
+   "freq": 439.325,
+   "info": "439.3250 MHz (in 431.7250, shift -7.6) · FM",
+   "detail": "70cm · Praha Strahov · JO70EB"
+  },
+  {
+   "name": "OK0DBZ",
+   "cc": "CZ",
+   "lat": 50.53917,
+   "lon": 14.71972,
+   "freq": 439.5,
+   "info": "439.5000 MHz (in 431.9000, shift -7.6) · FM",
+   "detail": "70cm · Bezděz · JO70IM"
+  },
+  {
+   "name": "OK0DFR",
+   "cc": "CZ",
+   "lat": 50.65148,
+   "lon": 15.63036,
+   "freq": 438.375,
+   "info": "438.3750 MHz (in 430.7750, shift -7.6) · C4FM",
+   "detail": "70cm · Strazne - Krkonose · JO70TP"
+  },
+  {
+   "name": "OK0DHD",
+   "cc": "CZ",
+   "lat": 49.41275,
+   "lon": 16.75426,
+   "freq": 145.5875,
+   "info": "145.5875 MHz (in 144.9875, shift -0.6) · FM",
+   "detail": "2m · Blansko Šošůvka · JN89JJ"
+  },
+  {
+   "name": "OK0DHD",
+   "cc": "CZ",
+   "lat": 49.41275,
+   "lon": 16.75426,
+   "freq": 438.45,
+   "info": "438.4500 MHz (in 430.8500, shift -7.6) · FM",
+   "detail": "70cm · Blansko Šošůvka · JN89JJ"
+  },
+  {
+   "name": "OK0DHU",
+   "cc": "CZ",
+   "lat": 49.53639,
+   "lon": 15.32611,
+   "freq": 439.425,
+   "info": "439.4250 MHz (in 431.8250, shift -7.6) · FM",
+   "detail": "70cm · Humpolec · JN79PM"
+  },
+  {
+   "name": "OK0DIT",
+   "cc": "CZ",
+   "lat": 49.26828,
+   "lon": 16.305,
+   "freq": 438.6375,
+   "info": "438.6375 MHz (in 431.0375, shift -7.6) · FM",
+   "detail": "70cm · Devět Křížů · JN89DG"
+  },
+  {
+   "name": "OK0DJ",
+   "cc": "CZ",
+   "lat": 50.7325,
+   "lon": 14.98444,
+   "freq": 439.15,
+   "info": "439.1500 MHz (in 431.5500, shift -7.6) · FM",
+   "detail": "70cm · Ještěd · JO70LR"
+  },
+  {
+   "name": "OK0DMR",
+   "cc": "CZ",
+   "lat": 50.07972,
+   "lon": 14.39222,
+   "freq": 439.475,
+   "info": "439.4750 MHz (in 431.8750, shift -7.6) · FM",
+   "detail": "70cm · Praha – Strahov · JO70EB"
+  },
+  {
+   "name": "OK0DNS",
+   "cc": "CZ",
+   "lat": 50.72831,
+   "lon": 14.98971,
+   "freq": 438.375,
+   "info": "438.3750 MHz (in 430.7750, shift -7.6) · FM · CTCSS 77.0",
+   "detail": "70cm · Ještědka · JO70LR"
+  },
+  {
+   "name": "OK0DOL",
+   "cc": "CZ",
+   "lat": 49.62222,
+   "lon": 17.37167,
+   "freq": 439.525,
+   "info": "439.5250 MHz (in 431.9250, shift -7.6) · FM",
+   "detail": "70cm · Olomouc – Lošov · JN89QO"
+  },
+  {
+   "name": "OK0DOV",
+   "cc": "CZ",
+   "lat": 49.83222,
+   "lon": 18.16861,
+   "freq": 439.4875,
+   "info": "439.4875 MHz (in 431.8875, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Ostrava-Poruba · JN99CT"
+  },
+  {
+   "name": "OK0DPA",
+   "cc": "CZ",
+   "lat": 49.25028,
+   "lon": 15.54944,
+   "freq": 438.625,
+   "info": "438.6250 MHz (in 431.0250, shift -7.6) · FM",
+   "detail": "70cm · Pavlov · JN79SG"
+  },
+  {
+   "name": "OK0DPL",
+   "cc": "CZ",
+   "lat": 49.73889,
+   "lon": 13.365,
+   "freq": 439.5,
+   "info": "439.5000 MHz (in 431.9000, shift -7.6) · FM",
+   "detail": "70cm · Plzeň - město · JN69QR"
+  },
+  {
+   "name": "OK0DRB",
+   "cc": "CZ",
+   "lat": 50.08028,
+   "lon": 13.50194,
+   "freq": 439.4875,
+   "info": "439.4875 MHz (in 431.8875, shift -7.6) · FM",
+   "detail": "70cm · Plaveč, Jesenice u Rakovníka · JO60SB"
+  },
+  {
+   "name": "OK0DRO",
+   "cc": "CZ",
+   "lat": 49.73389,
+   "lon": 13.59722,
+   "freq": 438.6,
+   "info": "438.6000 MHz (in 431.0000, shift -7.6) · FM",
+   "detail": "70cm · Rokycany · JN69TR"
+  },
+  {
+   "name": "OK0DSJ",
+   "cc": "CZ",
+   "lat": 49.52722,
+   "lon": 18.16167,
+   "freq": 438.625,
+   "info": "438.6250 MHz (in 431.0250, shift -7.6) · FM",
+   "detail": "70cm · Velký Javorník · JN99BM"
+  },
+  {
+   "name": "OK0DSK",
+   "cc": "CZ",
+   "lat": 49.63262,
+   "lon": 18.26451,
+   "freq": 438.6,
+   "info": "438.6000 MHz (in 431.0000, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Kubánkov · JN99DP"
+  },
+  {
+   "name": "OK0DSL",
+   "cc": "CZ",
+   "lat": 49.77361,
+   "lon": 16.82111,
+   "freq": 438.325,
+   "info": "438.3250 MHz (in 430.7250, shift -7.6) · FM",
+   "detail": "70cm · Studená loučka · JN89JS"
+  },
+  {
+   "name": "OK0DUR",
+   "cc": "CZ",
+   "lat": 49.42492,
+   "lon": 17.04919,
+   "freq": 439.1,
+   "info": "439.1000 MHz (in 431.5000, shift -7.6) · FM",
+   "detail": "70cm · Určice · JN89MK"
+  },
+  {
+   "name": "OK0DV",
+   "cc": "CZ",
+   "lat": 49.89639,
+   "lon": 15.57528,
+   "freq": 439.275,
+   "info": "439.2750 MHz (in 431.6750, shift -7.6) · DSTAR",
+   "detail": "70cm · Železné Hory · JN79SV"
+  },
+  {
+   "name": "OK0DZO",
+   "cc": "CZ",
+   "lat": 49.63424,
+   "lon": 17.34053,
+   "freq": 439.5,
+   "info": "439.5000 MHz (in 431.9000, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Olomouc - Svatý Kopeček · JN89QP"
+  },
+  {
+   "name": "OK0E",
+   "cc": "CZ",
+   "lat": 50.39676,
+   "lon": 12.9677,
+   "freq": 145.65,
+   "info": "145.6500 MHz (in 145.0500, shift -0.6) · FM · CTCSS 100.0",
+   "detail": "2m · Klínovec · JO60LJ"
+  },
+  {
+   "name": "OK0EB",
+   "cc": "CZ",
+   "lat": 48.86728,
+   "lon": 14.28111,
+   "freq": 145.575,
+   "info": "145.5750 MHz (in 144.9750, shift -0.6) · FM",
+   "detail": "2m · Kleť - Blanský les · JN78DU"
+  },
+  {
+   "name": "OK0EB",
+   "cc": "CZ",
+   "lat": 48.86727,
+   "lon": 14.28128,
+   "freq": 439.175,
+   "info": "439.1750 MHz (in 431.5750, shift -7.6) · FM · CTCSS 77.0",
+   "detail": "70cm · Kleť · JN78DU"
+  },
+  {
+   "name": "OK0F",
+   "cc": "CZ",
+   "lat": 50.05071,
+   "lon": 16.69351,
+   "freq": 145.775,
+   "info": "145.7750 MHz (in 145.1750, shift -0.6) · FM · CTCSS 136.5",
+   "detail": "2m · Suchý Vrch · JO80IB"
+  },
+  {
+   "name": "OK0G",
+   "cc": "CZ",
+   "lat": 48.97852,
+   "lon": 14.01123,
+   "freq": 145.5875,
+   "info": "145.5875 MHz (in 144.9875, shift -0.6) · FM · CTCSS 77.0",
+   "detail": "2m · Libín, okres Prachatice · JN78AX"
+  },
+  {
+   "name": "OK0H",
+   "cc": "CZ",
+   "lat": 48.86922,
+   "lon": 16.65012,
+   "freq": 145.675,
+   "info": "145.6750 MHz (in 145.0750, shift -0.6) · FM · CTCSS 88.5",
+   "detail": "2m · Děvín · JN88HU"
+  },
+  {
+   "name": "OK0HCS",
+   "cc": "CZ",
+   "lat": 50.08016,
+   "lon": 14.38467,
+   "freq": 439.45,
+   "info": "439.4500 MHz (in 431.8500, shift -7.6) · FM",
+   "detail": "70cm · Praha 6 - Strahov · JO70EB"
+  },
+  {
+   "name": "OK0I",
+   "cc": "CZ",
+   "lat": 50.63876,
+   "lon": 13.86025,
+   "freq": 145.7875,
+   "info": "145.7875 MHz (in 145.1875, shift -0.6) · FM",
+   "detail": "2m · Teplice · JO60WP"
+  },
+  {
+   "name": "OK0K",
+   "cc": "CZ",
+   "lat": 50.14,
+   "lon": 14.0786,
+   "freq": 145.75,
+   "info": "145.7500 MHz (in 145.1500, shift -0.6) · FM · CTCSS 88.5",
+   "detail": "2m · Kladno · JO70AD"
+  },
+  {
+   "name": "OK0KOP",
+   "cc": "CZ",
+   "lat": 48.96083,
+   "lon": 17.79613,
+   "freq": 439.2,
+   "info": "439.2000 MHz (in 431.6000, shift -7.6) · FM",
+   "detail": "70cm · Mikulčin Vrch · JN88VX"
+  },
+  {
+   "name": "OK0KRC",
+   "cc": "CZ",
+   "lat": 50.02083,
+   "lon": 14.45833,
+   "freq": 1258.2,
+   "info": "1258.2000 MHz (in 1293.2000, shift +35.0) · FM",
+   "detail": "23cm · Praha Ikem · JO70FA"
+  },
+  {
+   "name": "OK0L",
+   "cc": "CZ",
+   "lat": 49.43103,
+   "lon": 13.20317,
+   "freq": 145.7375,
+   "info": "145.7375 MHz (in 145.1375, shift -0.6) · FM",
+   "detail": "2m · Klatovy · JN69OK"
+  },
+  {
+   "name": "OK0MF",
+   "cc": "CZ",
+   "lat": 50.05083,
+   "lon": 16.69333,
+   "freq": 51.97,
+   "info": "51.9700 MHz (in 51.3700, shift -0.6) · FM · CTCSS 88.5",
+   "detail": "6m · Suchý vrch, Orlické hory · JO80IB"
+  },
+  {
+   "name": "OK0MM",
+   "cc": "CZ",
+   "lat": 49.52083,
+   "lon": 14.45833,
+   "freq": 145.625,
+   "info": "145.6250 MHz (in 145.0250, shift -0.6) · FM · CTCSS 88.5",
+   "detail": "2m · Kozlov u Chyšek · JN79FM"
+  },
+  {
+   "name": "OK0N",
+   "cc": "CZ",
+   "lat": 50.08157,
+   "lon": 14.45082,
+   "freq": 145.6,
+   "info": "145.6000 MHz (in 145.0000, shift -0.6) · FM · CTCSS 88.5",
+   "detail": "2m · Praha - Žižkov · JO70FB"
+  },
+  {
+   "name": "OK0N",
+   "cc": "CZ",
+   "lat": 50.08157,
+   "lon": 14.45085,
+   "freq": 438.95,
+   "info": "438.9500 MHz (in 431.3500, shift -7.6) · FM · CTCSS 79.7",
+   "detail": "70cm · Praha - Žižkov · JO70FB"
+  },
+  {
+   "name": "OK0NCC",
+   "cc": "CZ",
+   "lat": 49.93642,
+   "lon": 14.35587,
+   "freq": 439.55,
+   "info": "439.5500 MHz (in 431.9500, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Cukrak · JN79EW"
+  },
+  {
+   "name": "OK0ND",
+   "cc": "CZ",
+   "lat": 50.08106,
+   "lon": 14.38738,
+   "freq": 439.025,
+   "info": "439.0250 MHz (in 431.4250, shift -7.6) · FM · CTCSS 203.5",
+   "detail": "70cm · Praha Strahov · JO70EB"
+  },
+  {
+   "name": "OK0O",
+   "cc": "CZ",
+   "lat": 49.67457,
+   "lon": 17.38654,
+   "freq": 145.6,
+   "info": "145.6000 MHz (in 145.0000, shift -0.6) · FM · CTCSS 136.5",
+   "detail": "2m · Pohořany · JN89QQ"
+  },
+  {
+   "name": "OK0OMX",
+   "cc": "CZ",
+   "lat": 50.02412,
+   "lon": 14.49773,
+   "freq": 439.525,
+   "info": "439.5250 MHz (in 431.9250, shift -7.6) · FM",
+   "detail": "70cm · Praha · JO70FB"
+  },
+  {
+   "name": "OK0OZL",
+   "cc": "CZ",
+   "lat": 49.2005,
+   "lon": 17.69092,
+   "freq": 145.6375,
+   "info": "145.6375 MHz (in 145.0375, shift -0.6) · FM · CTCSS 136.5",
+   "detail": "2m · Zlín · JN89UE"
+  },
+  {
+   "name": "OK0OZL",
+   "cc": "CZ",
+   "lat": 49.20045,
+   "lon": 17.69092,
+   "freq": 438.725,
+   "info": "438.7250 MHz (in 431.1250, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Zlín - Kudlov · JN89UF"
+  },
+  {
+   "name": "OK0PI",
+   "cc": "CZ",
+   "lat": 49.3125,
+   "lon": 14.20833,
+   "freq": 145.7125,
+   "info": "145.7125 MHz (in 145.1125, shift -0.6) · FM · CTCSS 100.0",
+   "detail": "2m · Písek · JN79CH"
+  },
+  {
+   "name": "OK0PI",
+   "cc": "CZ",
+   "lat": 49.30889,
+   "lon": 14.18861,
+   "freq": 439.275,
+   "info": "439.2750 MHz (in 431.6750, shift -7.6) · FM",
+   "detail": "70cm · Jarník · JN79CH"
+  },
+  {
+   "name": "OK0POR",
+   "cc": "CZ",
+   "lat": 49.93833,
+   "lon": 14.67556,
+   "freq": 439.4875,
+   "info": "439.4875 MHz (in 431.8875, shift -7.6) · FM",
+   "detail": "70cm · Vidovice · JN79HW"
+  },
+  {
+   "name": "OK0Q",
+   "cc": "CZ",
+   "lat": 50.02028,
+   "lon": 15.725,
+   "freq": 439.375,
+   "info": "439.3750 MHz (in 431.7750, shift -7.6) · FM",
+   "detail": "70cm · Pardubice · JO70UA"
+  },
+  {
+   "name": "OK0S",
+   "cc": "CZ",
+   "lat": 50.04688,
+   "lon": 15.7601,
+   "freq": 145.7875,
+   "info": "145.7875 MHz (in 145.1875, shift -0.6) · FM · CTCSS 118.8",
+   "detail": "2m · Pardubice - Polabiny · JO70VA"
+  },
+  {
+   "name": "OK0T",
+   "cc": "CZ",
+   "lat": 50.63833,
+   "lon": 13.86,
+   "freq": 145.7875,
+   "info": "145.7875 MHz (in 145.1875, shift -0.6) · FM · CTCSS 88.5",
+   "detail": "2m · Teplice - Doubravka · JO60WP"
+  },
+  {
+   "name": "OK0T",
+   "cc": "CZ",
+   "lat": 50.63861,
+   "lon": 13.86028,
+   "freq": 438.8,
+   "info": "438.8000 MHz (in 431.2000, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Teplice - Doubravka · JO60WP"
+  },
+  {
+   "name": "OK0TAD",
+   "cc": "CZ",
+   "lat": 50.27083,
+   "lon": 14.875,
+   "freq": 438.4,
+   "info": "438.4000 MHz (in 430.8000, shift -7.6) · FM",
+   "detail": "70cm · Milovice · JO70KG"
+  },
+  {
+   "name": "OK0X",
+   "cc": "CZ",
+   "lat": 50.08278,
+   "lon": 17.23083,
+   "freq": 439.35,
+   "info": "439.3500 MHz (in 431.7500, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Praděd · JO80OB"
+  },
+  {
+   "name": "OK0YSF",
+   "cc": "CZ",
+   "lat": 49.35194,
+   "lon": 16.7875,
+   "freq": 145.6125,
+   "info": "145.6125 MHz (in 145.0125, shift -0.6) · FM · CTCSS 71.9",
+   "detail": "2m · Kotvrdovice · JN89JI"
+  },
+  {
+   "name": "OK0Z",
+   "cc": "CZ",
+   "lat": 49.40028,
+   "lon": 17.76806,
+   "freq": 439.4,
+   "info": "439.4000 MHz (in 431.8000, shift -7.6) · FM · CTCSS 88.5",
+   "detail": "70cm · Kelčský Javorník · JN89VJ"
+  },
+  {
+   "name": "OK1CQC",
+   "cc": "CZ",
+   "lat": 49.74972,
+   "lon": 13.60167,
+   "freq": 144.8375,
+   "info": "144.8375 MHz · FM",
+   "detail": "2m · Rokycany · JN69TR"
+  },
+  {
+   "name": "OK1HZ",
+   "cc": "CZ",
+   "lat": 49.20672,
+   "lon": 17.58747,
+   "freq": 438.1,
+   "info": "438.1000 MHz · FM",
+   "detail": "70cm · Zlín-Malenovice · JN89TE"
+  },
+  {
+   "name": "OK1KHL",
+   "cc": "CZ",
+   "lat": 50.0868,
+   "lon": 16.0062,
+   "freq": 438.1,
+   "info": "438.1000 MHz · FM",
+   "detail": "70cm · Holice - Kamenec · JO80AC"
+  },
+  {
+   "name": "OK1KVR",
+   "cc": "CZ",
+   "lat": 50.60417,
+   "lon": 15.625,
+   "freq": 145.1875,
+   "info": "145.1875 MHz (in 145.7875, shift +0.6) · FM",
+   "detail": "2m · Vrchlabi · JO70TO"
+  },
+  {
+   "name": "OK2JF",
+   "cc": "CZ",
+   "lat": 49.57972,
+   "lon": 15.97194,
+   "freq": 144.8625,
+   "info": "144.8625 MHz · FM",
+   "detail": "2m · Vysoké · JN79XN"
+  },
+  {
+   "name": "OK2JF",
+   "cc": "CZ",
+   "lat": 49.55889,
+   "lon": 15.93417,
+   "freq": 438.1,
+   "info": "438.1000 MHz · FM",
+   "detail": "70cm · Žďár nad Sázavou · JN79XN"
+  },
+  {
+   "name": "OK3JS",
+   "cc": "CZ",
+   "lat": 50.12881,
+   "lon": 17.36375,
+   "freq": 438.1,
+   "info": "438.1000 MHz · FM",
+   "detail": "70cm · Vrbno pod Pradědem Železná · JO80QD"
+  },
+  {
+   "name": "OK5DM",
+   "cc": "CZ",
+   "lat": 50.6875,
+   "lon": 14.04167,
+   "freq": 438.1,
+   "info": "438.1000 MHz · FM",
+   "detail": "70cm · Ústí nad Labem- Centrum · JO70AQ"
+  },
+  {
+   "name": "OK5MV",
+   "cc": "CZ",
+   "lat": 49.22861,
+   "lon": 14.70667,
+   "freq": 438.05,
+   "info": "438.0500 MHz · FM",
+   "detail": "70cm · Dráchov · JN79IF"
+  }
+ ]
+}

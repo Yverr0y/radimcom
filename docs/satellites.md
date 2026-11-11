@@ -14,7 +14,7 @@ and the rotor work on one VFO each and go on with the page closed.
 | **PASSES** | Timeline of the passes of the chosen satellites over the next 12, 24 or 48 hours, and a list of them. A click on a pass shows its track on a polar plot, the elevation over time, the nearest distance, the Doppler shift at 145.9 and 435 MHz, the position now while it is on, and the transmitters of the satellite. |
 | **MAP** | World map (Natural Earth, works offline) with the satellites switched on by the keys above it (up to 20): each with its footprint (yellow while it is above our horizon), the night side and the station. A click on a key or a dot chooses the satellite whose ground track is drawn (half an orbit behind, one ahead); beside the map are its position, altitude, azimuth and elevation from here, distance, Doppler shift, the next pass and its transmitters, and **TRACK** opens it on the TRACK page. Moves every second. |
 | **TRACK** | Doppler correction and the rotor for one satellite of the timeline, below. |
-| **SETUP** | The station location (shown here; it is set in **MENU › SETUP › LOCATION**: locator or latitude and longitude, CHOOSE ON MAP, altitude; **LOCATION…** opens it), the lowest highest-elevation of a pass shown, and the satellites on the timeline, chosen in tabs by CelesTrak group: Amateur Radio, Weather, CubeSats, Space & Earth Science, Galileo, GLONASS operational, GPS operational, Iridium NEXT (and Chosen). **SELECT ACTIVE** ticks the satellites of the AMSAT lists LINEAR, FM, IMAGE and MISC (matched by name; it lists those not in the orbital elements), **CLEAR** unticks all. |
+| **SETUP** | The station location (shown here; it is set in **SETTINGS › GENERAL › LOCATION**: locator or latitude and longitude, CHOOSE ON MAP, altitude; **LOCATION…** opens it), the lowest highest-elevation of a pass shown, and the satellites on the timeline, chosen in tabs by CelesTrak group: Amateur Radio, Weather, CubeSats, Space & Earth Science, Galileo, GLONASS operational, GPS operational, Iridium NEXT (and Chosen). **SELECT ACTIVE** ticks the satellites of the AMSAT lists LINEAR, FM, IMAGE and MISC (matched by name; it lists those not in the orbital elements), **CLEAR** unticks all. |
 | **LINEAR**, **FM**, **IMAGE**, **MISC** | Lists of active satellites from [AMSAT](https://www.amsat.org/), kept for 12 hours in `data\satellites.json`. |
 
 ![PASSES page: timeline of five satellites over 12 hours with bars shaded by the highest elevation, the list of passes, and the details of an FO-29 pass with its polar plot, AOS, LOS, nearest distance and Doppler shift](images/sat_passes.png)
@@ -32,7 +32,7 @@ Downloaded data (internet needed only for the download; the last copy is used of
 | `sat_tle.txt`, `sat_groups.json` | orbital elements of the 8 CelesTrak groups above | once a day; elements older than 7 days are marked, older than 14 need a confirmation for tracking |
 | `sat_transmitters.json` | [SatNOGS DB](https://db.satnogs.org/): downlinks, modes, transponders | once a week |
 | `sat_setup.json` | the lowest elevation of a pass and the choice of satellites | saved by SETUP |
-| `location.json` | the station location (locator, latitude, longitude, altitude) | saved by MENU › SETUP › LOCATION |
+| `location.json` | the station location (locator, latitude, longitude, altitude) | saved by SETTINGS › GENERAL › LOCATION |
 
 ## Doppler correction (TRACK)
 
@@ -47,7 +47,7 @@ transponder stops it. The name frame of the VFO shows the satellite and transpon
 
 ## Rotor
 
-1. In **SETTINGS → ROTOR** press **ON** (for one VFO) and choose the serial port of the K3NG controller (GS-232 commands, 9600 baud). The page also has the position on a polar plot and an elevation column (a click moves the antenna there), **STOP**, **RESET**, **MONITOR** (AZ / EL in the additional display under the S-meter) and the azimuth calibration.
+1. In **SETTINGS → GENERAL → ROTOR** press **ON** (one rotor for the whole station, whichever VFO is active; settings in `data\rotor.json`) and choose the serial port of the K3NG controller (GS-232 commands, 9600 baud). The page also has the position on a polar plot and an elevation column (a click moves the antenna there), **STOP**, **RESET**, **MONITOR** (AZ / EL in the additional display under the S-meter) and the azimuth calibration.
 2. On the **TRACK** page, the **Rotor** part: **TRACK** follows the passes of the chosen satellite and moves the rotor (it turns the rotor link on), a second press ends it and stops the rotor. Beside it **STOP** stops both motors and ends the tracking. The flag beside *Rotor*: **TRACKING** (the rotor follows), **CALC ONLY** (the tracking runs but the rotor does not move: the link failed, a fault, STOP in SET; TRACK off and on moves it again) or **NOT TRACKING**. The **TRACK** key on the MAP page and in the pass details of PASSES opens that satellite here (one not on the timeline is added to it).
 3. The polar plot shows the antenna as a red cross, the elevation chart (0 to 180 degrees on this page) its real elevation, over 90 when it looks back. A click on the polar plot turns the antenna there, a click on the elevation chart sets only the elevation.
 
@@ -72,3 +72,36 @@ than the rotor can move, or a move without progress, stops the rotor and needs *
 K3NG ends any move after its operation timeout (60 s here), so an unchanged target is sent again every 30 s.
 
 **Azimuth calibration:** K3NG counts 0–450 degrees from the left stop of the rotor, which need not be exactly north. In **SETTINGS → ROTOR**, enter the true azimuth of the antenna at K3NG 0 and at K3NG 450 (measure it, for example, with the antenna parallel to the walls of a house whose orientation is known from a map; 0 and 450 = no correction). The position, the tracking and the clicks on the plots then use true azimuths. K3NG reports its azimuth only modulo 360, so RADIMCOM follows the whole 0–450 position itself and saves it; for the clicks on the plots it picks the command that ends nearest the wanted direction. A direction just beyond a stop is reached as near as the rotor can get, without a fault.
+
+## Rotor control map
+
+The **RCTRL** key (key group **TRACKING**, beside SAT) shows the **ROTOR CONTROL** tab. It turns the station rotor
+(**SETTINGS › GENERAL › ROTOR**, one for all VFOs: the map works from any VFO) to fixed places on the ground, for example a
+broadcast transmitter or a repeater.
+
+- **MAP:** a dark OpenStreetMap map centred on the station (**SETTINGS › GENERAL › LOCATION**). A click anywhere on it, on a point of an
+  overlay or on a row of the list beside it turns the rotor to the azimuth of that place from the QTH (great circle), elevation 0.
+  The **dashed line** is the wanted azimuth: it goes to the target and stays there until **CLEAR** (remembered in the browser).
+  The **green sector** of the antenna beam width (**BEAM**, default 30°) is where the antenna points now: it follows the position
+  the rotor reports and turns with it, so you see the antenna reach the dashed line. **STOP** stops both motors. While the rotor
+  cannot take a command (off, not connected, a fault, or TRACK on the TRACK page moves it) the target is still drawn and the
+  reason is shown in the top line.
+- **Groups of points** (beside the map, each on / off). The built-in default groups are **DAB+ SR** (Towercom / RTVS sites with channel, power and programmes),
+  **FM BCAST SK/CZ** (main FM sites with their programmes) and **HAM repeaters SK/CZ**. A point shows its details on mouse over.
+  The list under the switches has the points of the groups that are on, nearest first, with azimuth and distance, and a filter.
+  **Target → group, + ADD POINT** puts the last clicked place into a group (it asks for the name).
+- **OVERLAYS:** the groups as cards. **+ NEW GROUP** makes an empty own group, **IMPORT AS NEW GROUP** makes one from a JSON file.
+  On a card: **EDIT** opens the editor (name, colour, a table of the points – **+ POINT**, **+ MAP TARGET**, ✕ deletes a row;
+  a QTH locator such as `JN88WQ` typed into the latitude field gives the position of the centre of the square; **SAVE** / **CANCEL**),
+  **IMPORT** replaces the points of the group from a JSON file, **EXPORT** saves the group as JSON. A built-in group can be edited
+  too: the edited copy is saved in `data\overlays\` and **RESET** brings back the built-in list; an own group is removed with **DELETE**.
+  Format:
+
+```json
+{"name": "My points", "color": "#ffb74d", "source": "where it comes from",
+ "points": [{"name": "Kamzík", "lat": 48.1825, "lon": 17.0944, "info": "12C · 7.2 kW", "detail": "programmes…", "freq": 227.36}]}
+```
+
+  Only `name`, `lat` and `lon` (WGS 84, degrees) are required; a plain list of points works too. The built-in lists
+  (`static/overlays/`, 2026-11-11) come from Wikipedia (DAB+, FM: main sites only, the programmes may be out of date),
+  [przemienniki.net](https://przemienniki.net) and [cq.sk](https://cq.sk/zoznam-vkv-ukv-prevadzacov-a-majakov-v-sr/) (repeaters).

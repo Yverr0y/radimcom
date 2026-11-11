@@ -29,6 +29,7 @@ if __name__ == "__main__" and "--vfo" not in sys.argv and os.path.exists(VFOS_PA
 
 import location
 import memories
+import overlays
 import satellites
 import sysload
 import update_check
@@ -42,6 +43,7 @@ from cw import CwDecoder
 from rtty import RttyDecoder
 from packet import PacketDecoder
 from daylog import DayLog, TextLog
+import recorder as recorder_mod
 from recorder import Recorder
 import rotor as rotor_module
 from wefax import WefaxDecoder
@@ -1080,10 +1082,12 @@ def api_sat_doppler():
 
 @app.route("/api/sat/rotor", methods=["GET", "POST"])
 def api_sat_rotor():
-    """Own satellite tracking with the rotor on this VFO: GET the state and the plan of the pass;
+    """Own satellite tracking with the rotor (held by the first VFO, see ROTOR_HERE): GET the state and the plan of the pass;
     POST {"start": {"norad", "force": true/false}} or {"stop": true}."""
     if sattrack is None:
         return jsonify(SGP4_MISSING), 503
+    if not ROTOR_HERE:
+        return rotor_elsewhere()
     if request.method == "POST":
         if not same_host(request):
             return jsonify({"error": "rotor commands are accepted only from this RADIMCOM page"}), 403
@@ -1114,6 +1118,41 @@ def api_location():
             return jsonify({"error": str(e)}), 400
         _qth_cache[0] = 0.0          # APRS distances use the new place at once
     return jsonify(location.load())
+
+
+@app.route("/api/overlays", methods=["GET", "POST"])
+def api_overlays():
+    """Overlay groups of the ROTOR CONTROL map (TRACKING › RCTRL), shared by all VFOs: GET {"groups": [...]}
+    (built-in DAB+ SR, FM SK/CZ, ham repeaters SK/CZ first, then the own ones); POST {name, color?, points?} makes a new group."""
+    if request.method == "GET":
+        return jsonify({"groups": overlays.load_all()})
+    return overlay_change(lambda body: overlays.create(body or {}))
+
+
+@app.route("/api/overlays/<gid>", methods=["PUT", "POST", "DELETE"])
+def api_overlay_set(gid):
+    """PUT (or POST): replace the group (edit: name, colour, points; import of a JSON file);
+    DELETE: a built-in group goes back to its built-in list, an own group is deleted."""
+    if request.method == "DELETE":
+        def drop(_):
+            overlays.reset(gid)
+            return overlays.load(gid) if gid in overlays.BUILTIN else {"id": gid, "deleted": True}
+        return overlay_change(drop, need_body=False)
+    return overlay_change(lambda body: overlays.save(gid, body))
+
+
+def overlay_change(do, need_body=True):
+    if not same_host(request):
+        return jsonify({"error": "overlays can be changed only from this RADIMCOM page"}), 403
+    body = request.get_json(force=True, silent=True)
+    if need_body and body is None:
+        return jsonify({"error": "not valid JSON"}), 400
+    try:
+        return jsonify(do(body))
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except OSError as e:
+        return jsonify({"error": f"cannot save: {e}"}), 500
 
 
 @app.route("/api/sat/setup", methods=["GET", "POST"])
@@ -1155,9 +1194,28 @@ def api_memory_add():
 
 @app.route("/api/recordings", methods=["GET"])
 def api_recordings():
-    """The MP3 recordings in data
-ecordings (RECORDINGS tab), newest first."""
+    """The MP3 recordings in the recordings folder (RECORDINGS tab), newest first."""
     return jsonify(recorder.files())
+
+
+@app.route("/api/recording_folder", methods=["GET", "POST"])
+def api_recording_folder():
+    """Folder of the recordings (SETTINGS › GENERAL › RECORDINGS), shared by all VFOs: {"folder", "custom", "default"};
+    POST {"folder": "<full path>"} sets it, "" = the default data\\recordings. Files being written finish in the old folder."""
+    if request.method == "POST":
+        if not same_host(request):
+            return jsonify({"error": "the folder can be changed only from this RADIMCOM page"}), 403
+        body = request.get_json(force=True, silent=True) or {}
+        folder = body.get("folder", "")
+        if not isinstance(folder, str):
+            return jsonify({"error": "folder must be text"}), 400
+        try:
+            return jsonify(recorder_mod.save_folder(folder))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except OSError as e:
+            return jsonify({"error": f"cannot save: {e}"}), 500
+    return jsonify(recorder_mod.settings())
 
 
 @app.route("/api/recordings/<name>", methods=["GET"])
@@ -1660,6 +1718,43 @@ def rotor_set_mode(mode):
     return None if res.status_code == 200 else (res.get_json() or {}).get("error", "refused")
 
 
+# One rotor for the whole station (SETTINGS › GENERAL › ROTOR), not tied to a VFO: its settings are in data\rotor.json
+# and its serial port is held by one process, the first VFO of vfos.json (or the receiver without vfos.json).
+# The page sends all rotor commands and the rotor tracking of the satellites there (/api/vfos: "rotor": true).
+ROTOR_PATH = data("rotor.json")
+ROTOR_HERE = not VFO or VFO["name"] == ALL_VFOS[0]["name"]
+ROTOR_HOST = None if ROTOR_HERE else ALL_VFOS[0]["name"]
+if not VFO:
+    rotor_module.migrate(ROTOR_PATH, [CONFIG_PATH])    # standalone receiver; with VFOs the launcher does it
+cfg.pop("rotor", None)                                  # kept in the VFO config up to 0.114beta1
+rotor_cfg = rotor_module.load_settings(ROTOR_PATH)
+rotor_save_lock = threading.Lock()
+rotor_save_timer = None
+
+
+def save_rotor_later():
+    """Saves data\\rotor.json with a delay (the K3NG azimuth changes while the rotor turns)."""
+    global rotor_save_timer
+
+    def save():
+        with rotor_save_lock:
+            try:
+                rotor_module.save_settings(ROTOR_PATH, rotor_cfg)
+            except OSError as e:
+                print(f"Rotor: settings not saved: {e}")
+
+    if rotor_save_timer:
+        rotor_save_timer.cancel()
+    rotor_save_timer = threading.Timer(1.0, save)
+    rotor_save_timer.daemon = True
+    rotor_save_timer.start()
+
+
+def rotor_elsewhere():
+    """This VFO does not hold the rotor: the error answer of its rotor endpoints."""
+    return jsonify({"error": f"the rotor is run by VFO {ROTOR_HOST}", "host": ROTOR_HOST}), 409
+
+
 rotor_link = rotor_module.RotorLink()
 doppler = sattrack.Doppler(rotor_set_freq, lambda: cfg["tune_hz"], lambda: cfg["mode"], rotor_set_mode) if sattrack else None
 sat_tracker = satplan.Tracker(rotor_link.rotor) if sattrack else None
@@ -1667,15 +1762,15 @@ sat_tracker = satplan.Tracker(rotor_link.rotor) if sattrack else None
 
 def rotor_raw_moved(raw):
     """Saves the K3NG azimuth (0-450): after a restart it tells 0-90 from 360-450."""
-    cfg["rotor"] = dict(cfg.get("rotor") or {}, k3ng_az=raw)
-    save_config_later()
+    rotor_cfg["k3ng_az"] = raw
+    save_rotor_later()
 
 
 rotor_link.rotor.on_raw = rotor_raw_moved
 
 
 def start_rotor():
-    r = cfg.get("rotor") or {}
+    r = rotor_cfg
     cal = r.get("az_cal") or [0.0, rotor_module.K3NG_SPAN]
     rotor_link.rotor.set_cal(*cal)
     if rotor_link.rotor.raw is None and r.get("k3ng_az") is not None:
@@ -1702,6 +1797,8 @@ def rotor_info():
 
 @app.route("/api/rotor", methods=["GET"])
 def api_rotor():
+    if not ROTOR_HERE:
+        return rotor_elsewhere()
     info = rotor_info()
     if request.args.get("ports"):
         try:
@@ -1715,6 +1812,8 @@ def api_rotor():
 def api_rotor_cmd():
     if not same_host(request):
         return jsonify({"error": "rotor commands are accepted only from this RADIMCOM page"}), 403
+    if not ROTOR_HERE:
+        return rotor_elsewhere()
     body = request.get_json(force=True)
     rotor = rotor_link.rotor
     if body.get("stop"):
@@ -1728,20 +1827,21 @@ def api_rotor_cmd():
             return jsonify({"error": "calibration: two numbers, true azimuth at K3NG 0 and at K3NG 450"}), 400
         if not rotor_module.cal_ok(az0, az450):
             return jsonify({"error": "calibration: azimuth at K3NG 0 from -180 to 360, at 450 between 400 and 500 more"}), 400
-        cfg["rotor"] = dict(cfg.get("rotor") or {}, az_cal=[az0, az450])
-        save_config_later()
+        rotor_cfg["az_cal"] = [az0, az450]
+        save_rotor_later()
         rotor.set_cal(az0, az450)
     if body.get("start") and not rotor.running:
         body["enabled"] = True     # rotor control also turns the link on, with the port saved in SET
     if "enabled" in body:
-        saved = dict(cfg.get("rotor") or {}, enabled=bool(body["enabled"]))
+        saved = dict(rotor_cfg, enabled=bool(body["enabled"]))
         for k in ("port", "usb_serial"):
             if k in body:
                 saved[k] = str(body[k])
         if saved["enabled"] and not (saved.get("port") or saved.get("usb_serial")):
-            return jsonify({"error": "choose the serial port in SET, ROTOR tab"}), 409
-        cfg["rotor"] = saved
-        save_config_later()
+            return jsonify({"error": "choose the serial port in SETTINGS › GENERAL › ROTOR"}), 409
+        rotor_cfg.clear()
+        rotor_cfg.update(saved)
+        save_rotor_later()
         err = start_rotor() if saved["enabled"] else rotor_link.stop()
         if err:
             return jsonify({"error": err}), 409
@@ -1842,7 +1942,7 @@ if __name__ == "__main__":
     receiver.start()
     if not VFO:
         update_check.start(cfg.get("update_check", True))     # without vfos.json: no launcher to do it
-    if (cfg.get("rotor") or {}).get("enabled"):
+    if ROTOR_HERE and rotor_cfg.get("enabled"):
         err = start_rotor()
         if err:
             print(f"Rotor: {err}")
