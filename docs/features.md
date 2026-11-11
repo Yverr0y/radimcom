@@ -83,7 +83,7 @@ and the country flag from the ICAO address; a click on a message pauses the list
 - **Band plan on the frequency axis** (Europe / ITU Region 1: ham, broadcast, aviation, marine, satellites, mobile networks, ISM…); hover it for the descriptions of all bands at that frequency.
 - **Audio spectrum bubble:** hovering over the passband label shows the audio spectrum of the active VFO (in WFM the MPX signal with the stereo pilot, in CW also the decoded text).
 - **Frequency memories** (MEMORIES tab) with groups, favourites, import from SDR# (`frequencies.xml`), JSON and CSV, export to JSON and CSV; memories in view show as tags in the spectrum,
-  ↑ ↓ arrow keys recall the next one. A memory can also hold a DAB channel.
+  ↑ ↓ arrow keys recall the next one. A memory can also be a DAB channel (mode DAB) or a DSD (digital voice) channel.
 - **Memory editor** (pages of the MEMORIES tab; by Brano, [brjanicek](https://github.com/brjanicek)): channels in several groups, with a decoder and a recording (REC, REC SQ or REC SQ with ASQ) started at recall, a note and their own tag colour
   (or no tag); groups with notes (add, rename, copy, merge, delete); duplicates shown; import from SDR#, JSON or CSV and export to
   JSON or CSV, both through a list to edit and choose from first. See [Memory editor](controls.md#memory-editor).

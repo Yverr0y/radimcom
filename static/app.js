@@ -7947,7 +7947,9 @@ async function loadMems() {
 
 // MEMORIES tab: the memory editor (CHANNELS, GROUPS, IMPORT, EXPORT; by Brano, brjanicek). A click on a row of CHANNELS
 // recalls the channel, so the table is also the list to tune from.
-const MEM_MODES = ["AM", "FM", "WFM", "LSB", "USB", "CW", "DSD"];
+// DAB: the channel of the memory is recalled (DAB on with it); DSD: the digital voice mode. Both have a fixed width.
+const MEM_MODES = ["AM", "FM", "WFM", "LSB", "USB", "CW", "DAB", "DSD"];
+const MEM_FIXED_BW = { DAB: 1536000, DSD: 12500 };
 let dabChannelList = [];     // [[channel, centre Hz]] from /api/state
 
 /** id -> names of the other memories on the same frequency (within 50 Hz) and mode, or the same DAB channel. */
@@ -8008,8 +8010,8 @@ function markActiveMem(scroll = false) {
 async function recallMem(m) {
   await ensureVfoFor(m.freq_hz);
   if (!st) return;
-  if (m.dab_channel) {
-    dabRecall(m.dab_channel);
+  if (m.dab_channel || m.mode === "DAB") {
+    dabRecall(m.dab_channel || st.dab_channel);
     markActiveMem();
     return;
   }
@@ -8109,6 +8111,13 @@ function memStartDecoder(key) {
   setBodyTab("dec");
 }
 
+/** Mode and width of the active VFO for a new memory: DAB while DAB is on, AM when the mode cannot be stored. */
+function memCurMode() {
+  if (st && (st.dab || st.mode === "DAB")) return { mode: "DAB", bw: MEM_FIXED_BW.DAB };
+  const mode = st && MEM_MODES.includes(st.mode) ? st.mode : "AM";
+  return { mode, bw: MEM_FIXED_BW[mode] || (st && st.bandwidth && st.bandwidth[mode]) || 3000 };
+}
+
 /** Opens the memory editor; template: a new channel to fill in the form (＋ SAVE CURRENT, ＋ NEW). */
 async function memOpenEditor(template) {
   await loadMemGroups();
@@ -8121,8 +8130,7 @@ $("medSaveCur").addEventListener("click", () => {   // the tuned frequency, mode
   const dabName = st.dab ? ["DAB", st.dab_channel, dabLastInfo.ensemble].filter(Boolean).join(" ") : "";
   const group = $("medGroup").value && $("medGroup").value !== NO_GROUP ? $("medGroup").value : "";
   memOpenEditor({ name: dabName || `${fmtKHz(st.tune_hz, 2)} kHz ${st.mode}`, groups: group ? [group] : [],
-    freq_hz: st.tune_hz, mode: MEM_MODES.includes(st.mode) ? st.mode : "AM", bw: st.bandwidth[st.mode] || 3000,
-    ...(st.dab ? { dab_channel: st.dab_channel } : {}) });
+    freq_hz: st.tune_hz, ...memCurMode(), ...(st.dab ? { dab_channel: st.dab_channel } : {}) });
 });
 
 // ---------- memory editor (MEM → ✎ EDITOR): channels, groups with notes, import and export with a list ----------
@@ -8575,14 +8583,13 @@ function medOpenForm(m, template) {
   medFormDirty = false;
   const f = $("medForm");
   const src = m || template || { name: "", groups: $("medGroup").value && $("medGroup").value !== NO_GROUP ? [$("medGroup").value] : [],
-    freq_hz: st ? st.tune_hz : 0, mode: st && MEM_MODES.includes(st.mode) ? st.mode : "AM",
-    bw: st && st.bandwidth ? st.bandwidth[st.mode] || 3000 : 3000, decoder: "", record: "off", note: "", color: "", tag: true, fav: false };
+    freq_hz: st ? st.tune_hz : 0, ...memCurMode(), ...(st && st.dab ? { dab_channel: st.dab_channel } : {}), decoder: "", record: "off", note: "", color: "", tag: true, fav: false };
   f.elements.mode.innerHTML = MEM_MODES.map((x) => `<option>${x}</option>`).join("");
   f.elements.decoder.innerHTML = Object.entries(DECODER_NAMES).map(([k, v]) => `<option value="${k}">${k ? v : "none"}</option>`).join("");
-  f.elements.dab.innerHTML = `<option value="">no DAB</option>` + dabChannelList.map(([n, hz]) => `<option value="${escHtml(n)}">DAB ${escHtml(n)} · ${fmtMHz(hz, 3)} MHz</option>`).join("");
+  f.elements.dab.innerHTML = `<option value="">—</option>` + dabChannelList.map(([n, hz]) => `<option value="${escHtml(n)}">${escHtml(n)} · ${fmtMHz(hz, 3)} MHz</option>`).join("");
   f.elements.name.value = src.name;
   f.elements.freq.value = src.freq_hz == null ? "" : fmtMHz(src.freq_hz, 6);
-  f.elements.mode.value = src.mode;
+  f.elements.mode.value = src.dab_channel ? "DAB" : src.mode;
   f.elements.bw.value = kHzText(src.bw);
   f.elements.decoder.value = src.decoder || "";
   f.elements.record.innerHTML = Object.entries(RECORD_NAMES).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
@@ -8620,8 +8627,24 @@ function renderMedForm() {
   const names = [...new Set([...memAllGroups(), ...medFormGroups])].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
   $("medFormGroups").innerHTML = names.length ? names.map((g) => `<label class="chip-check"><input type="checkbox" value="${escHtml(g)}"` +
     `${medFormGroups.includes(g) ? " checked" : ""}> ${escHtml(g)}</label>`).join("") : `<span class="muted">no groups yet</span>`;
-  f.elements.freq.disabled = !!f.elements.dab.value;
+  medFormModeFields();
   medFormDupNote();
+}
+
+/** The fields of the form that the mode uses: DAB = the DAB channel (frequency = its centre), a fixed width for DAB and
+ *  DSD, the DAB channel empty and off for the other modes. */
+function medFormModeFields() {
+  const f = $("medForm"), mode = f.elements.mode.value, dab = mode === "DAB";
+  if (dab && !f.elements.dab.value) f.elements.dab.value = (st && st.dab_channel) || (dabChannelList[0] || [])[0] || "";
+  if (!dab) f.elements.dab.value = "";
+  f.elements.dab.disabled = !dab;
+  f.elements.freq.disabled = dab;
+  if (dab) {
+    const hz = (dabChannelList.find(([n]) => n === f.elements.dab.value) || [])[1];
+    if (hz) f.elements.freq.value = fmtMHz(hz, 6);
+  }
+  f.elements.bw.disabled = !!MEM_FIXED_BW[mode];
+  if (MEM_FIXED_BW[mode]) f.elements.bw.value = kHzText(MEM_FIXED_BW[mode]);
 }
 
 /** Warns in the form when another channel is on the same frequency and mode. */
@@ -8651,12 +8674,12 @@ $("medForm").addEventListener("input", (e) => {
   medFormDirty = true;
   if ((e.target === f.elements.lat || e.target === f.elements.lon) && medMap) medMapShow(false);
   if (e.target === f.elements.color) medFormColor = e.target.value;
-  if (e.target === f.elements.dab) f.elements.freq.disabled = !!f.elements.dab.value;
+  if (e.target === f.elements.dab || e.target === f.elements.mode) medFormModeFields();
   if ([f.elements.freq, f.elements.mode, f.elements.dab].includes(e.target)) medFormDupNote();
 });
 $("medForm").addEventListener("change", (e) => {
   const f = $("medForm");
-  if (e.target === f.elements.mode && st && st.bandwidth && st.bandwidth[e.target.value]) f.elements.bw.value = kHzText(st.bandwidth[e.target.value]);
+  if (e.target === f.elements.mode && !MEM_FIXED_BW[e.target.value] && st && st.bandwidth && st.bandwidth[e.target.value]) f.elements.bw.value = kHzText(st.bandwidth[e.target.value]);
 });
 $("medForm").addEventListener("click", async (e) => {
   const act = e.target.closest("[data-act]")?.dataset.act;
@@ -8684,10 +8707,11 @@ $("medForm").addEventListener("submit", async (e) => {
   const pending = $("medFormNewGroup").value.trim();   // typed but Enter not pressed
   if (pending && !medFormGroups.includes(pending)) medFormGroups.push(pending.slice(0, 40));
   $("medFormNewGroup").value = "";
-  const dab = f.elements.dab.value;
+  const dab = f.elements.mode.value === "DAB" ? f.elements.dab.value : "";
   const freq = dab ? null : parseFreq(f.elements.freq.value);
   const bw = parseFloat(f.elements.bw.value.replace(",", ".")) * 1000;
   if (!f.elements.name.value.trim()) return err("Enter a name.");
+  if (f.elements.mode.value === "DAB" && !dab) return err("Choose the DAB channel.");
   if (!dab && !freq) return err("Enter a frequency, e.g. 145.5 or 7100k.");
   if (!(bw > 0)) return err("Enter the bandwidth in kHz.");
   const isNew = medEditId === "new";
@@ -8824,7 +8848,7 @@ function medRow(m) {
   const hz = num(m.freq_hz);
   const bw = num(m.bw);
   return { name: String(m.name ?? ""), freq: Number.isFinite(hz) ? fmtMHz(hz, 6) : String(m.freq_hz ?? ""),
-    mode: String(m.mode || "").toUpperCase(), bw: Number.isFinite(bw) ? kHzText(bw) : String(m.bw ?? ""),
+    mode: m.dab_channel ? "DAB" : String(m.mode || "").toUpperCase(), bw: Number.isFinite(bw) ? kHzText(bw) : String(m.bw ?? ""),
     decoder: m.decoder || "", record: String(m.record || "off").toLowerCase(), groups: (Array.isArray(m.groups) ? m.groups : m.group ? [m.group] : []).filter(Boolean).join(" | "),
     note: m.note || "", color: m.color || "", tag: m.tag !== false && m.tag !== "0", fav: !!m.fav, dab: m.dab_channel || "",
     lat: m.lat ?? "", lon: m.lon ?? "", sel: true, err: m.error || "" };
@@ -8839,22 +8863,24 @@ function medCoord(v) {
 }
 /** Row -> entry for the server; throws Error with the reason when a field is wrong. */
 function medRowEntry(r) {
-  const hz = r.dab ? null : parseFreq(r.freq);
+  const dab = r.mode === "DAB" ? r.dab : "";   // another mode chosen in the list ends the DAB channel
+  const hz = dab ? null : parseFreq(r.freq);
   const bw = parseFloat(String(r.bw).replace(",", ".")) * 1000;
   if (!r.name.trim()) throw new Error("name is missing");
-  if (!r.dab && !hz) throw new Error("bad frequency");
+  if (!dab && !hz) throw new Error("bad frequency");
   if (!MEM_MODES.includes(r.mode)) throw new Error("unknown mode");
   if (!(bw > 0)) throw new Error("bad bandwidth");
   return { name: r.name.trim(), groups: r.groups.split("|").map((g) => g.trim()).filter(Boolean), mode: r.mode, bw: Math.round(bw),
     decoder: r.decoder, record: r.record, note: r.note.trim(), color: r.color, tag: r.tag, fav: r.fav,
     lat: medCoord(r.lat), lon: medCoord(r.lon),
-    ...(r.dab ? { dab_channel: r.dab } : { freq_hz: Math.round(hz) }) };
+    ...(dab ? { dab_channel: dab } : { freq_hz: Math.round(hz) }) };   // DAB without a channel: the server finds it by the frequency
 }
 
 function medRowDup(r) {
   if (r.err) return "";
-  const hz = r.dab ? (dabChannelList.find(([n]) => n === r.dab) || [])[1] : parseFreq(r.freq);
-  const m = hz && mems.find((x) => x.mode === r.mode && Math.abs(x.freq_hz - hz) < 50 && (x.dab_channel || "") === r.dab);
+  const dab = r.mode === "DAB" ? r.dab : "";
+  const hz = dab ? (dabChannelList.find(([n]) => n === dab) || [])[1] : parseFreq(r.freq);
+  const m = hz && mems.find((x) => x.mode === r.mode && Math.abs(x.freq_hz - hz) < 50 && (x.dab_channel || "") === dab);
   return m ? m.name : "";
 }
 
@@ -8862,7 +8888,7 @@ function medRowDup(r) {
 function medEditCells(r, i, extra = "") {
   return `<tr data-i="${i}" class="${r.sel ? "sel" : ""}${r.err ? " bad" : ""}"><td><input type="checkbox" data-f="sel" ${r.sel ? "checked" : ""}></td>` +
     `<td><input data-f="name" value="${escHtml(r.name)}" maxlength="80"></td>` +
-    `<td><input data-f="freq" class="mono" value="${escHtml(r.freq)}" ${r.dab ? `disabled title="DAB ${escHtml(r.dab)}"` : ""}></td>` +
+    `<td><input data-f="freq" class="mono" value="${escHtml(r.freq)}" ${r.dab && r.mode === "DAB" ? `disabled title="DAB ${escHtml(r.dab)}"` : ""}></td>` +
     `<td><select data-f="mode">${MEM_MODES.map((x) => `<option${x === r.mode ? " selected" : ""}>${x}</option>`).join("")}` +
     `${MEM_MODES.includes(r.mode) ? "" : `<option selected value="${escHtml(r.mode)}">${escHtml(r.mode) || "?"}</option>`}</select></td>` +
     `<td><input data-f="bw" class="mono short" value="${escHtml(r.bw)}"></td>` +
@@ -8895,6 +8921,7 @@ function medBindEditList(table, list, after) {
     if (f !== "sel") r.err = "";
     tr.classList.toggle("sel", !!r.sel);
     tr.classList.remove("bad");
+    if (f === "mode") tr.querySelector("[data-f=freq]").disabled = !!r.dab && r.mode === "DAB";   // DAB: the frequency is the channel
     after(r, tr, f);
   };
   table.addEventListener("input", onEdit);

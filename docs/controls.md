@@ -273,7 +273,8 @@ The memory editor was written by **Brano ([brjanicek](https://github.com/brjanic
   SSTV, PACKET, ACARS, VDL2 or ISM), **record** (a recording to MP3 started when the channel is recalled: **ON** = REC,
   everything; **SQ** = REC SQ, only while the squelch is open; **ASQ** = REC SQ with the auto squelch switched on, AM, FM
   and WFM; **OFF** = none, the default; a recording or ASQ that recalling a channel started stops when the VFO leaves
-  the channel (another frequency, mode or channel); one switched on by hand, or a key pressed by hand meanwhile, stays), DAB channel, the **groups** (a list, one per line, scrolls when long: tick any number, or type a new one and press Enter),
+  the channel (another frequency, mode or channel); one switched on by hand, or a key pressed by hand meanwhile, stays), DAB channel (mode **DAB**: the frequency is
+  the centre of the channel; **DAB** and **DSD** have a fixed width), the **groups** (a list, one per line, scrolls when long: tick any number, or type a new one and press Enter),
   a **note**, the **tag in the spectrum** (shown or hidden, default shown) with its **colour** (↺ = the default green) and
   the star, and the **location** of the station on the channel: **LAT** / **LON** in decimal degrees (north and east
   positive, both or neither, empty = none; **CHOOSE ON MAP** opens an OpenStreetMap map in place of the table: a click

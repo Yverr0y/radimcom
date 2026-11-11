@@ -274,7 +274,7 @@ class Scanner:
             sq, asq = m.get("scan_sq"), m.get("scan_asq")
             if not m.get("scan", True):
                 why = "SCAN off in the memory"
-            elif m.get("dab_channel") or mode == DSD_MODE:
+            elif m.get("dab_channel") or mode in (DSD_MODE, "DAB"):
                 why = "DAB / DSD memories are not scanned"
             elif sq is None and asq is None and not opts["asq"] and rx.manual_squelch(mode) <= SQUELCH_OFF:
                 why = "squelch off: it would stop the scan for good (set SQ or ASQ of the channel, or ASQ FOR ALL)"
