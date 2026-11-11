@@ -205,6 +205,10 @@ class AcarsDecoder:
         self._next_id = 1
         self._cache = {}                              # registration -> (time, ADS-B data or None)
         self._lookups = queue.Queue(maxsize=50)
+        # positions from VDL2 XID frames for the MAP of the card: aircraft (by ICAO address) and ground stations
+        self.positions = collections.deque(maxlen=3000)
+        self._last_pos = {}                           # ICAO address -> (lat, lon) of its last stored position
+        self.gs_pos = {}                              # ground station address -> position record
         threading.Thread(target=self._lookup_worker, name="acars-adsb", daemon=True).start()
 
     # ---------- control ----------
@@ -246,10 +250,14 @@ class AcarsDecoder:
         with self.lock:
             self.msgs.clear()
             self.count = self.crc_errors = 0
+            self.positions.clear()
+            self._last_pos.clear()
+            self.gs_pos.clear()
 
     def info(self):
         return {"enabled": self.enabled, "vdl2": self.vdl2_on, "count": self.count, "crc_errors": self.crc_errors,
-                "level_db": round(self.level, 1), "messages": list(self.msgs)}
+                "level_db": round(self.level, 1), "messages": list(self.msgs),
+                "positions": list(self.positions), "gs_pos": list(self.gs_pos.values())}
 
     # ---------- signal processing ----------
 
@@ -364,6 +372,32 @@ class AcarsDecoder:
             m["freq_hz"] = m["vdl2"]["freq_hz"]
             self._accept(m, time.time())
         self._emit_state()
+
+    def accept_pos(self, p):
+        """Position from a VDL2 XID frame (vdl2.py): kind "ac" = aircraft (addr = ICAO address), "gs" = ground station.
+        An aircraft repeating the same position is stored once; a ground station keeps only its newest record."""
+        if not self.vdl2_on:
+            return
+        now = time.time()
+        p["t"] = round(now, 1)
+        p["time"] = time.strftime("%H:%M:%S", time.gmtime(now))
+        with self.lock:
+            if p["kind"] == "gs":
+                old = self.gs_pos.get(p["addr"])
+                self.gs_pos[p["addr"]] = p
+                if old and (old["lat"], old["lon"]) == (p["lat"], p["lon"]) and now - old["t"] < 60:
+                    return                               # the browser already has it
+            else:
+                if not re.fullmatch(r"[0-9A-Fa-f]{6}", p["addr"] or ""):
+                    return
+                p["addr"] = p["addr"].upper()
+                if self._last_pos.get(p["addr"]) == (p["lat"], p["lon"]):
+                    return
+                self._last_pos[p["addr"]] = (p["lat"], p["lon"])
+                if len(self._last_pos) > 5000:
+                    self._last_pos.clear()
+                self.positions.append(p)
+        self.on_event("acarspos", p)
 
     def accept_atn(self, r):
         """ATN application message over VDL2 (CPDLC card record from vdl2.py)."""
@@ -568,5 +602,5 @@ class AcarsDecoder:
 
     def _emit_state(self):
         i = self.info()
-        del i["messages"]
+        del i["messages"], i["positions"], i["gs_pos"]
         self.on_event("acarsstate", i)

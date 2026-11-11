@@ -1,6 +1,6 @@
 """Station location (MENU › SETUP › LOCATION), shared by all VFOs: Maidenhead locator, latitude, longitude, altitude.
 
-Used by the satellites (passes, Doppler, rotor), the packet decoder (APRS distances, map), HFDL and AIS (maps).
+Used by the satellites (passes, Doppler, rotor), the packet decoder (APRS distances, map), ACARS / VDL2, HFDL and AIS (maps).
 File data\\location.json. Until it exists, the location saved by older versions in sat_setup.json is taken over;
 a new installation starts at 0.0 / 0.0 (to be set by the user). Needs no extra package (unlike sattrack, sgp4).
 """

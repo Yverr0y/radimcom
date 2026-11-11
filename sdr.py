@@ -14,6 +14,7 @@ import time
 import numpy as np
 
 from autotune import AutoTune
+from tonesq import CTCSS_DEFAULT_HZ, DCS_DEFAULT, TONE_HPF_HZ, ToneSquelch
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 LIB_DIR = os.path.join(BASE, "lib")
@@ -878,6 +879,9 @@ class Receiver:
         self.smeter = -150.0
         self.sagc = SmartAgc()
         self.sq_open, self.sq_hang, self.sq_gain = True, 0, 1.0
+        self.tsq = ToneSquelch()                 # TSQ-C / TSQ-D: CTCSS / DCS detector (tonesq.py)
+        self.tsq_hpf = PassFilter("highpass")    # with a tone squelch on, the tone is not heard
+        self.tone_open, self.tone_key = None, None   # set tone / code received; None = no tone squelch now
         self.asq_hist, self.asq_key, self.asq_floor = [], None, None   # auto squelch: (time, dB) and noise floor
         self.asq_spec, self.wf_power = None, None   # auto squelch: noise in the channel from the spectrum (dBFS)
         self.dropped = 0
@@ -1122,6 +1126,18 @@ class Receiver:
             c["auto_sql"] = changes["auto_sql"]
         if "auto_sql_db" in changes:
             c["auto_sql_db"] = changes["auto_sql_db"]
+        for k in ("ctcss_hz", "dcs_code"):
+            if k in changes:
+                c[k] = changes[k]
+        # TSQ-C and TSQ-D: one of them at a time (as in a radio)
+        if "ctcss" in changes:
+            c["ctcss"] = changes["ctcss"]
+            if c["ctcss"]:
+                c["dcs"] = False
+        if "dcs" in changes:
+            c["dcs"] = changes["dcs"]
+            if c["dcs"]:
+                c["ctcss"] = False
         for k in ("lpf", "lpf_hz", "hpf", "hpf_hz"):
             if k in changes:
                 c[k] = changes[k]
@@ -1373,6 +1389,8 @@ class Receiver:
                 sub_db = sub_db + cal
             if self.on_meter:
                 self.on_meter(self.smeter)
+            # tone squelch on the plain FM audio (before AFI, LPF and HPF would change the sub-audio band)
+            self.tone_open = self._tone_squelch(audio, mode)
             if c.get("afi") and mode not in ("WFM", DSD_MODE) and audio.ndim == 1:   # AFI: voice inversion (de)scrambler
                 audio = self.afi.process(audio, self.fs / DECIM, float(c.get("afi_hz", AFI_DEFAULT_HZ)))
             if self.on_demod:                       # demodulated audio before the squelch (SSTV)
@@ -1380,8 +1398,13 @@ class Receiver:
             if dsd and self.on_dsd:                 # from here on the audio is the decoded voice
                 audio = self.on_dsd(audio, self.fs / DECIM, c["tune_hz"])
             audio = self._audio_pass(audio)         # after the SSTV feed: LPF / HPF are for listening, not for decoders
+            if self.tone_open is not None or self.tsq_hpf.key is not None:   # also the block after, for the crossfade
+                mono = audio.ndim == 1
+                x = self.tsq_hpf.process(np.stack((audio, audio), axis=1) if mono else audio, self.fs / DECIM,
+                                         TONE_HPF_HZ if self.tone_open is not None else None)
+                audio = (x[:, 0] if mono else x).astype(np.float32)
             self._noise_floor(mode, bw, sub_db, cal)
-            audio = self._squelch(audio, mode, sub_db)
+            audio = self._squelch(audio, mode, sub_db, self.tone_open)
             if audio.ndim == 1:                     # the browser always gets stereo (L, R interleaved)
                 audio = np.repeat(audio[:, None], 2, axis=1)
             self.on_audio((audio * 32767).astype("<i2").tobytes())
@@ -1440,10 +1463,32 @@ class Receiver:
         x = self.hpf.process(self.lpf.process(x, fs, lp), fs, hp)
         return np.clip(x[:, 0] if mono else x, -1, 1).astype(np.float32)   # overshoot must not wrap in 16 bits
 
-    def _squelch(self, audio, mode, sub_db):
+    def tsq_on(self, mode=None):
+        """A tone squelch (TSQ-C CTCSS or TSQ-D DCS) works now: only in FM."""
+        c = self.cfg
+        return (mode or c["mode"]) == "FM" and bool(c.get("ctcss") or c.get("dcs"))
+
+    def _tone_squelch(self, audio, mode):
+        """TSQ-C / TSQ-D: True / False = the set tone / code is / is not received, None = no tone squelch."""
+        c = self.cfg
+        if not self.tsq_on(mode) or audio.ndim != 1:
+            if self.tone_open is not None:
+                self.tsq.reset()
+                self.tone_key = None
+            return None
+        key = ("C", float(c.get("ctcss_hz", CTCSS_DEFAULT_HZ))) if c.get("ctcss") else ("D", c.get("dcs_code", DCS_DEFAULT))
+        if key != self.tone_key:                # another tone / code: start again (no match carried over)
+            self.tone_key = key
+            self.tsq.reset()
+        if c.get("ctcss"):
+            return self.tsq.process(audio, self.fs / DECIM, ctcss_hz=float(c.get("ctcss_hz", CTCSS_DEFAULT_HZ)))
+        return self.tsq.process(audio, self.fs / DECIM, dcs_code=c.get("dcs_code", DCS_DEFAULT))
+
+    def _squelch(self, audio, mode, sub_db, tone=None):
         """Squelch for AM/FM/WFM: mutes the sound while the channel power is below the mode's level.
         It decides per part of a block (sub_db, ~8 ms), with 2 dB hysteresis and SQUELCH_HANG_S hold.
         In AM the carrier is measured too, so the squelch is opened by the transmission's carrier (airband).
+        tone: tone squelch (TSQ-C / TSQ-D) in addition: False mutes the whole block, None = not used.
         The volume change goes smoothly over one part, so it does not click."""
         level = self.squelch_level(mode)
         parts = len(sub_db)
@@ -1461,6 +1506,8 @@ class Receiver:
                 else:
                     self.sq_open = False
                 gains[i] = 1.0 if self.sq_open else 0.0
+        if tone is False:
+            gains[:] = 0.0
         start = np.concatenate(([self.sq_gain], gains[:-1])).astype(np.float32)
         self.sq_gain = float(gains[-1])
         if start.min() == 1.0 and gains.min() == 1.0:
@@ -1579,7 +1626,14 @@ class Receiver:
             "auto_sql_on": self.auto_sql_on(c["mode"]),            # auto squelch runs (ASQ key, or AGC+ with squelch set)
             "auto_sql_db": float(c.get("auto_sql_db", ASQ_DEFAULT_DB)),
             "auto_sql_level": self.auto_sql_level() if self.auto_sql_on(c["mode"]) else None,
-            "squelch_open": self.sq_open,
+            "squelch_open": self.sq_open and self.tone_open is not False,   # carrier and tone squelch together
+            "ctcss": bool(c.get("ctcss", False)),                  # TSQ-C key
+            "ctcss_hz": float(c.get("ctcss_hz", CTCSS_DEFAULT_HZ)),
+            "dcs": bool(c.get("dcs", False)),                      # TSQ-D key
+            "dcs_code": c.get("dcs_code", DCS_DEFAULT),
+            "tsq_on": self.tsq_on(),                               # a tone squelch works (FM)
+            "tone_match": bool(self.tone_open),                    # the set tone / code is received now
+            "tone_metric": self.tsq.metric if self.tone_open is not None else None,   # CTCSS dB / DCS correlation
             "status": self.status,
             "error": self.error,
             "device": c["device"],

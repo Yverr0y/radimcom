@@ -39,7 +39,9 @@ squelch gets a green underline, a transmitting one turns red.
   blinking orange = connecting (waiting, opening the dongle, LimeSDR calibration), grey = disconnected or error
   (hover for details). A chained VFO shows CHAIN, one out of the range of its dongle owner OOR.
 - **Frequency** in the middle.
-- **Info row** under it (each item has a fixed place): RX / TX (red while transmitting), the filter width, the audio
+- **Tone squelch row** under it: the set **CTCSS** tone and **DCS** code (keys TSQ-C / TSQ-D): grey = off or not FM,
+  orange = on, glowing = the tone / code is received now.
+- **Info row** under that (each item has a fixed place): RX / TX (red while transmitting), the filter width, the audio
   **HPF** and **LPF** with their cutoffs (lit when on), **ST** (WFM: lit while stereo is decoded, grey without the 19 kHz pilot or with S/M set to mono),
   **SQL** (squelch on: grey while closed, green while open) and **CONV / BYPASS**, the required position of the manual
   upconverter switch (VFOs with upconverter mode auto; BYPASS in amber).
@@ -60,7 +62,7 @@ squelch gets a green underline, a transmitting one turns red.
 - **MODE**: demodulation. **FILTER**: bandwidth for the current mode (WFM: 50, 75, 150 or 200 kHz, default 200 kHz = the full broadcast signal with the best stereo and RDS; 150 kHz is a compromise, 50–75 kHz help with a weak station next to a strong one but distort and usually lose stereo and RDS; any width up to 250 kHz by dragging the filter edge).
 - **GAIN**: AGC switches automatic tuner gain on/off (manual gain with the RF GAIN slider or in SET). **AGC+** sets the tuner gain from the level of the A/D converter: as high as possible without clipping it (the tuner AGC of the R820T watches only its LNA and mixer, not the A/D). The gain flag under the display shows `+` and the gain; the AGC+ key gets a red underline while the A/D clips. With the squelch set, AGC+ makes it work as auto squelch (ASQ lights up), because a fixed level would not fit the changing gain; the slider then only turns it on / off, and ASQ pressed in this state turns the squelch off.
 - **TUNE**: **ATU** (autotune) in USB, LSB and AM. With ATU on, a click on a signal in the spectrum or waterfall tunes to the clicked point (without the step grid), listens for a moment and moves the tuning onto the carrier; the key blinks while listening and the passband label shows the shift (e.g. *ATU +130 Hz*) or *no signal*. Tuning by the wheel, the arrow keys, dragging or the VFO display digits starts it too, 0.7 s after the tuning rests, when it moved by at least 150 Hz. AM: the carrier is found within a few Hz in under 1 s. SSB: the edge of the voice band goes onto the red line (the tuned frequency): the lower edge in USB, the upper one in LSB, within a few Hz after ~2 s of speech (up to 6.5 s while nobody speaks). Tuning elsewhere while listening cancels it.
-- **STEP**: tuning step (10 Hz – 10 kHz). **Zoom** (1×–32×) is the bar in the top right corner of the frequency scale: − / +, a click on a cell, or the mouse wheel over it. **Waterfall speed** (WF, 1/8 – 4×) is the same bar in the top right corner of the waterfall: below 1× several rows are averaged into one line (slower, longer history), above 1× each row is drawn taller (faster); the setting is kept in the browser. **Waterfall settings**: the gear in a square above the speed bar; with the mouse over it a half transparent window opens with the **colour scheme** (Classic, Inferno, Viridis, Turbo, Ice; only new rows take the new colours), **colour range** and **colour offset**. Kept in the browser.
+- **STEP**: tuning step: 10 Hz, 100 Hz, 1 kHz, 10 kHz in AM, FM, SSB and CW; in WFM also 500 Hz, 5 kHz and 9 kHz. Each of the two sets remembers its own step (in the browser). **Zoom** (1×–32×) is the bar in the top right corner of the frequency scale: − / +, a click on a cell, or the mouse wheel over it. **Waterfall speed** (WF, 1/8 – 4×) is the same bar in the top right corner of the waterfall: below 1× several rows are averaged into one line (slower, longer history), above 1× each row is drawn taller (faster); the setting is kept in the browser. **Waterfall settings**: the gear in a square above the speed bar; with the mouse over it a half transparent window opens with the **colour scheme** (Classic, Inferno, Viridis, Turbo, Ice; only new rows take the new colours), **colour range** and **colour offset**. Kept in the browser.
 - **DECODE**: turns on the FT8, WEFAX, CW, RTTY, SSTV, PACKET, ACARS, VDL2, DAB or ISM decoder. The panels are in the
   **DECODERS** tab next to SPECTRUM; turning a decoder on opens it, a green dot signals a new message/image.
   Every panel has a LOG checkbox for the daily log:
@@ -125,6 +127,12 @@ squelch gets a green underline, a transmitting one turns red.
     the channel, even a long one, does not raise the level and close it; in a crowded band (e.g. FM broadcast) the quietest channel power over the
     last 15 s is used when it is lower. The measurement starts again after a change of frequency, mode, bandwidth or gain. The SQL bar
     of the VFO window follows the level in use; so does the yellow mark on the S-meter.
+  - TSQ-C / TSQ-D: tone squelch in FM – CTCSS (sub-audio tone, 50 standard tones 67.0–254.1 Hz) or DCS (digital code at
+    134.4 bit/s, 104 standard codes, polarity N or I). It adds to the squelch of the SQL bar or ASQ: the audio passes only while
+    that squelch is open and the set tone / code is received; without the SQL bar and ASQ the tone alone opens it. One of them at
+    a time. Opens ~0.3 s after the tone starts, closes ~0.5 s after it stops; the tone is filtered out of what you hear
+    (300 Hz high-pass). Tone / code: mouse wheel over the key, or SETTINGS › VFO › AUDIO (the DCS polarity only there).
+    As in every radio, a DCS code is the same as its cyclic shifts, so e.g. 023N also opens on 047I.
   - ALC: automatic audio level in AM/LSB/USB/CW; off = fixed gain.
   - CUE: keep hearing this VFO (at the CUE level) when another VFO is selected.
   - RECS: the **RECORDINGS** tab in the bottom part (beside SPECTRUM, DECODERS, SATELLITES), see [Recordings](#recordings) below. Like MEM, the key
@@ -190,7 +198,7 @@ squelch gets a green underline, a transmitting one turns red.
         A signal on a spur is removed with it.
       - **AGC+**: its parameters (clipping thresholds, steps down and up, the level for going up, target, hold time, settle blocks) with the gain and A/D level live; DEFAULTS returns them.
       - **S-meter: S9 =**: calibration of the S-meter of this VFO (the level in dBFS shown as S9; was on UI › S-METER).
-    - **AUDIO**: AFI inversion frequency, the ASQ (auto squelch) margin above the noise (2–30 dB), HPF and LPF frequency. The squelch level itself is set by the SQL bar of the VFO window.
+    - **AUDIO**: AFI inversion frequency, the ASQ (auto squelch) margin above the noise (2–30 dB), the CTCSS tone (TSQ-C) and DCS code with polarity (TSQ-D), HPF and LPF frequency. The squelch level itself is set by the SQL bar of the VFO window.
     - **TX** (LimeSDR only): Enable TX, see [Transmitting (LimeSDR)](configuration.md#transmitting-limesdr).
 - **MENU → MEM**: frequency memories. While the MEM key is lit, the bottom part has a **MEMORIES** tab (beside DECODERS,
   SATELLITES and SETTINGS) that covers the spectrum and waterfall like the other tabs; the MEM key is one switch for all VFOs,

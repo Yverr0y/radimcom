@@ -191,6 +191,8 @@
       <button id="alcKey" class="key" title="Audio ALC (automatic audio level) in AM/LSB/USB/CW; off = fixed gain, set the level with MAIN">ALC</button>
       <button id="afiKey" class="key" title="AFI: audio frequency inversion – voice inversion scrambler / descrambler (all modes except WFM); the inversion frequency is set in SETTINGS">AFI</button>
       <button id="asqKey" class="key" title="ASQ: auto squelch in AM/FM/WFM – the level follows the noise floor (margin in SETTINGS › VFO › AUDIO). Also on by itself with AGC+ and the squelch set">ASQ</button>
+      <button id="tsqcKey" class="key" title="TSQ-C: CTCSS tone squelch (FM)">TSQ-C</button>
+      <button id="tsqdKey" class="key" title="TSQ-D: DCS code squelch (FM)">TSQ-D</button>
       <button id="cueKey" class="key" title="CUE: keep hearing this VFO (at CUE level) when another VFO is selected">CUE</button>
       <button id="recsKey" class="key" aria-controls="recsPane" title="RECS: the RECORDINGS tab – the MP3 files recorded by REC / REC SQ (data
 ecordings), play them in the browser">RECS</button>
@@ -417,6 +419,11 @@ ecordings), play them in the browser">RECS</button>
         <span id="vdl2Info" class="muted" hidden></span>
         <span id="acarsInfo" class="muted"></span>
         <span id="acarsPaused" class="scroll-paused" hidden title="A click on a message holds the list still. Turn the mouse wheel over the messages to resume.">SCROLL PAUSED</span>
+        <div class="bands" id="acarsViews">
+          <button class="key small on" data-view="msgs" title="All received messages">MESSAGES</button>
+          <button class="key small" data-view="aircraft" title="Aircraft heard: the newest data of each (from ACARS / VDL2 and ADS-B)">AIRCRAFT</button>
+          <button class="key small" data-view="map" title="Aircraft with a known position (ADS-B, ADS-C, VDL2 XID), their tracks and the VDL2 ground stations on a map">MAP</button>
+        </div>
         <span id="acarsFilter" class="tag-filter" title="Click a tag to show only those messages (more tags can be combined); click again to remove it">
           <span class="type-tag t-acars" data-kind="acars">ACARS</span><span class="type-tag t-cpdlc" data-kind="cpdlc" title="FANS CPDLC (in ACARS) and ATN CPDLC (VDL2)">CPDLC</span><span class="type-tag t-adsc" data-kind="adsc" title="FANS ADS-C (in ACARS) and ATN ADS-C (VDL2)">ADS-C</span><span id="acarsFilterState" hidden></span></span>
         <label class="wf-opt" data-link="vdl2" hidden title="Show only messages of this ground station location. The list has the locations of the messages in the table; - = not known (station not in the list)">Ground Station<select id="acarsLoc"><option value="">All</option></select></label>
@@ -438,8 +445,12 @@ ecordings), play them in the browser">RECS</button>
         A message appears once its ADS-B data and flag have arrived, or after about 15 s without them.
         <span class="ext">Blue</span> = aircraft type, flight level and speed looked up on ADS-B (adsb.fi / adsb.lol, needs internet);
         click the callsign or flight to open the map. Country = from the aircraft's ICAO address.
-        A click on a message marks it and holds the list still (SCROLL PAUSED); the mouse wheel over the messages resumes it.</p>
-      <div class="ft8-table">
+        A click on a message marks it and holds the list still (SCROLL PAUSED); the mouse wheel over the messages resumes it.
+        AIRCRAFT: the newest data of each aircraft heard (a click on its position shows it on the map).
+        MAP: aircraft with a known position – from ADS-B (at the time of the message), from ADS-C reports and, on VDL2, the approximate
+        location the aircraft sends in its XID frames (link setup and handoff); also the VDL2 ground stations that announced their position.
+        The square key in the top right corner of the map opens it alone in a new tab.</p>
+      <div class="ft8-table" id="acarsMsgBox">
         <table class="acars-table">
           <colgroup><col class="c-type"><col class="c-utc"><col class="c-freq"><col class="c-cty"><col class="c-flt"><col class="c-ac"><col class="c-icao"><col class="c-sqk"><col class="c-act"><col class="c-model"><col class="c-fl"><col class="c-spd"><col class="c-lbl"><col class="c-desc"><col class="c-loc"><col class="c-msg"></colgroup>
           <thead><tr><th>Type</th><th>UTC</th><th title="Frequency in MHz">Freq</th><th title="Country of registration, from the 24-bit ICAO address">Country</th><th>Flight</th><th title="Registration (ATN: from ADS-B by the ICAO address); click for the map">Callsign</th><th title="24-bit ICAO aircraft address (hex)">ICAO</th><th title="Transponder squawk code from ADS-B">Squawk</th><th title="Aircraft type code from ADS-B">ACFT type</th><th title="Aircraft model from ADS-B">Model</th><th title="Flight level from ADS-B">FL</th><th title="Ground speed from ADS-B">Speed</th><th>Label</th><th title="Approximate meaning: many labels are defined by each airline">Description</th><th title="Airport of the VDL2 ground station (IATA/ICAO), from the ground station list by its address; - = not known. The tooltip of a cell has the address and the list entry">Ground Station</th><th>Message</th></tr></thead>
@@ -448,6 +459,18 @@ ecordings), play them in the browser">RECS</button>
         <div id="acarsEmpty" class="ft8-empty"><span data-link="acars">No messages yet. ACARS bursts are short and come every few
           seconds to minutes.</span><span data-link="vdl2" hidden>No messages yet. VDL2 traffic usually starts within a minute;
           the frame count above grows with every decoded VDL2 frame.</span></div>
+      </div>
+      <div class="ft8-table" id="acarsAcBox" hidden>
+        <table class="acars-ac-table">
+          <colgroup><col class="c-utc"><col class="c-cty"><col class="c-flt"><col class="c-reg"><col class="c-icao"><col class="c-act"><col class="c-model"><col class="c-fl"><col class="c-spd"><col class="c-sqk"><col class="c-pos"><col class="c-src"><col class="c-gs"><col class="c-n"></colgroup>
+          <thead><tr><th title="Last message or position">UTC</th><th>Country</th><th>Flight</th><th>Reg</th><th>ICAO</th><th title="Aircraft type code from ADS-B">ACFT type</th><th title="Aircraft model from ADS-B">Model</th><th title="Flight level from ADS-B">FL</th><th title="Ground speed from ADS-B">Speed</th><th title="Squawk from ADS-B">Squawk</th><th title="Newest known position; click to show it on the MAP">Position</th><th title="Where the newest position comes from and its age: ADS-B (adsb.fi / adsb.lol at the time of the message), ADS-C report, or VDL2 XID (approximate)">Source</th><th title="VDL2 ground station of the last message of the aircraft">Ground station</th><th title="Number of messages">Msgs</th></tr></thead>
+          <tbody id="acarsAcRows"></tbody>
+        </table>
+        <div id="acarsAcEmpty" class="ft8-empty">No aircraft yet.</div>
+      </div>
+      <div class="hfdl-map" id="acarsMapBox" hidden>
+        <div class="hfdl-map-main"><div id="acarsMap"></div><div id="acarsMapNote" class="muted"></div></div>
+        <div class="hfdl-map-list" id="acarsMapList"></div>
       </div>
     </section>
 
@@ -974,7 +997,7 @@ ecordings, played in the browser -->
               <div class="sats-pick" id="locPickMap" hidden></div>
               <p class="note" id="locPickNote" hidden>Click the place of the antenna, then SAVE. Map tiles: OpenStreetMap, need internet.</p>
               <p class="note">The location is used by the <b>satellites</b> (passes, Doppler, rotor tracking), the <b>packet decoder</b>
-                (APRS distances and map), <b>HFDL</b> and <b>AIS</b> (maps). The same location is used on all VFOs.</p>
+                (APRS distances and map), <b>ACARS / VDL2</b>, <b>HFDL</b> and <b>AIS</b> (maps). The same location is used on all VFOs.</p>
               <p class="note">A locator gives the centre of its square (JN88WQ: about 2 km from any point in it; enough for tracking).
                 Latitude and longitude give an exact point. A new installation starts at 0.0 / 0.0: set your own place.</p>
             </div>
@@ -1287,6 +1310,18 @@ ecordings, played in the browser -->
                   of the last 15 s is used if it is lower. 2–30 dB, default 6 dB.
                   With AGC+ on, a squelch set by the SQL bar of the VFO window works as auto squelch too (a fixed level would not fit the changing gain);
                   the SQL bar then only turns it on and off.</p>
+              </div>
+              <div class="setting">
+                <div class="set-cols">
+                  <label class="set-field"><span>TSQ-C – CTCSS tone (Hz)</span><select id="ctcssHz"></select></label>
+                  <label class="set-field"><span>TSQ-D – DCS code</span><span class="dcs-pick"><select id="dcsCode"></select><select id="dcsPol" title="N = normal, I = inverted polarity"><option value="N">N</option><option value="I">I</option></select></span></label>
+                </div>
+                <p class="note">Tone squelch in FM, keys TSQ-C (CTCSS, sub-audio tone 67.0–254.1 Hz) and TSQ-D (DCS, digital code
+                  at 134.4 bit/s). They add to the squelch of the SQL bar or ASQ: the audio passes only while that squelch is open
+                  and the set tone or code is received. Without the SQL bar / ASQ the tone alone opens it. One of them at a time.
+                  The tone is filtered out of what you hear (300 Hz high-pass). It opens about 0.3 s after the tone starts.
+                  Faster: turn the mouse wheel over the key. The VFO window shows the set tone and code under the frequency:
+                  grey = off, orange = on, glowing = received now. For this VFO.</p>
               </div>
               <div class="setting">
                 <div class="set-cols">

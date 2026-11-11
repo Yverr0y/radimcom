@@ -107,8 +107,16 @@ Main Features
   + ADD POINT puts the map target into a group.
 - Folder of the MP3 recordings selectable: SETTINGS -> GENERAL -> RECORDINGS (full path, created if missing,
   DEFAULT = data\recordings); one folder for all VFOs, used by REC / REC SQ and the RECORDINGS tab. data\recordings.json.
+- Tone squelch in FM: keys TSQ-C (CTCSS, 50 tones) and TSQ-D (DCS, 104 codes, N / I) in the AUDIO group, in addition
+  to the SQL bar or ASQ. Tone / code in SETTINGS -> VFO -> AUDIO or with the mouse wheel over the key; shown in the
+  VFO window under the frequency (grey = off, orange = on, glowing = received). The tone is filtered out of the audio.
+- ACARS / VDL2: MESSAGES / AIRCRAFT / MAP views like HFDL. AIRCRAFT = newest data of each aircraft heard
+  (ADS-B data, position with its source and age, ground station, message count). MAP = aircraft with a known position (ADS-B, ADS-C, and on VDL2 the
+  approximate position from XID frames), tracks, VDL2 ground stations, list beside the map; the square key in the top
+  right corner opens the map alone in a new browser tab.
 Minor Fixes
 - WFM filters 50, 75, 150 and 200 kHz (default 200 kHz).
+- STEP keys: 10 Hz / 100 Hz / 1 kHz / 10 kHz in AM, FM, SSB, CW; WFM keeps all seven steps (each set remembers its own).
 - Default S-meter layout: amber needle.
 
 Ver. 0.113

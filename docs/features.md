@@ -16,6 +16,9 @@
   - **ASQ (auto squelch):** the squelch level follows the noise in the channel plus a margin (6 dB by default, 2–30 dB in SET, AUDIO tab).
     The noise is measured in the spectrum of the dongle band, so a signal in the channel, even a long one, does not raise the level and close it.
     See [Function keys → AUDIO](controls.md#function-keys).
+  - **Tone squelch TSQ-C (CTCSS) and TSQ-D (DCS)** in FM, in addition to the squelch level or ASQ: the audio passes only while the set
+    sub-audio tone (50 standard tones 67.0–254.1 Hz) or DCS code (104 standard codes, N / I) is received; the tone is filtered out of what you hear.
+    Shown in the VFO window under the frequency. See [Function keys → AUDIO](controls.md#function-keys).
 - **AGC+ (smart gain):** sets the tuner gain from the level of the A/D converter, as high as possible without clipping it,
   also with strong signals outside the channel. With the squelch set, AGC+ switches it to auto squelch. See [Function keys → GAIN](controls.md#function-keys).
 - **ATU (autotune), experimental,** in USB, LSB and AM: a click on a signal moves the tuning onto its carrier (AM within a few Hz in under 1 s);
@@ -47,8 +50,8 @@
 | **RTTY** | Baudot | automatic shift 90–1000 Hz, speed 45.45 / 50 / 75 / 100 Bd and polarity | all | [DECODE](controls.md#function-keys) |
 | **SSTV** | colour images | 14 modes (Martin, Scottie, Robot, PD), VIS, automatic AFC and slant, gallery of saved images | all | [DECODE](controls.md#function-keys) |
 | **PACKET** | AX.25 at 1200 Bd AFSK and 9600 Bd FSK / GFSK G3RUH (satellites) | APRS with a station list and map, spectrum and eye diagram | all | [DECODE](controls.md#function-keys) |
-| **ACARS** | classic aircraft data link (131.725 MHz and others, AM, MSK 2400 bit/s) | FANS-1/A CPDLC and ADS-C decoded to plain text | all | [Aircraft data link](decoders/aircraft.md) |
-| **VDL2** | VDL Mode 2, EU or US channels 136.100–136.975 MHz, all channels of the region at once | via dumpvdl2; CPDLC (FANS-1/A and European ATN), ADS-C, VDL2 ground station of each message with a filter | RTL-SDR only | [Aircraft data link](decoders/aircraft.md) |
+| **ACARS** | classic aircraft data link (131.725 MHz and others, AM, MSK 2400 bit/s) | FANS-1/A CPDLC and ADS-C decoded to plain text; MESSAGES / AIRCRAFT / MAP views (aircraft heard, aircraft with a known position) | all | [Aircraft data link](decoders/aircraft.md) |
+| **VDL2** | VDL Mode 2, EU or US channels 136.100–136.975 MHz, all channels of the region at once | via dumpvdl2; CPDLC (FANS-1/A and European ATN), ADS-C, VDL2 ground station of each message with a filter; MESSAGES / AIRCRAFT / MAP views (aircraft list; map of aircraft from ADS-B, ADS-C and VDL2 XID positions, tracks, ground stations) | RTL-SDR only | [Aircraft data link](decoders/aircraft.md) |
 | **HFDL** | aircraft data link on HF, **2.9–22 MHz**, 16 ground stations; all HFDL channels inside the band of the VFO at once | via dumphfdl; ACARS, positions, logons, frequency data; aircraft data from ADS-B with a map link; heard ground stations, table of stations and frequencies, band buttons | all (needs HF: V4, upconverter) | [HFDL](decoders/hfdl.md) |
 | **AIS** | ships: position reports, static and voyage data, base stations, aids to navigation, SAR aircraft on **161.975 / 162.025 MHz** (both channels at once) | own decoder (GMSK 9600 Bd, no external program); country from the MMSI, MarineTraffic / VesselFinder links; MESSAGES / SHIPS / MAP views (ships turned to their heading, tracks), NMEA sentence, LOG | all | [AIS](decoders/ais.md) |
 | **DAB / DAB+** | digital broadcast radio in Band III | via welle-cli: station list of the ensemble, DLS text, slideshow, audio, signal, ensemble and capacity panels, remembered channel and station | RTL-SDR only | [DAB / DAB+](decoders/dab.md) |
@@ -69,7 +72,7 @@ and the country flag from the ICAO address; a click on a message pauses the list
   right after switching. With fewer than four SDRs the remaining VFO windows stay in place, greyed out ("NO SDR").
 - **Each VFO is one dark display window:** on top the name of the memory on its frequency, otherwise the band plan label
   (e.g. `HAM 70cm`) or the satellite transponder, lit on the active VFO (a memory name in its own tag colour); the receiver state, recording and mute indicators;
-  the frequency; an info row (RX/TX, filter width, HPF and LPF with cutoffs, ST, SQL, CONV/BYPASS); annunciators lit like LCD segments (mode, AGC / AGC+, NF, SP, ALC, AFI, ASQ, ATU, satellite Doppler, CUE);
+  the frequency; an info row (RX/TX, filter width, HPF and LPF with cutoffs, ST, SQL, CONV/BYPASS); a tone squelch row (CTCSS / DCS); annunciators lit like LCD segments (mode, AGC / AGC+, NF, SP, ALC, AFI, ASQ, ATU, satellite Doppler, CUE);
   **RF and SQL segment bars** (drag, click or mouse wheel). See [VFO window](controls.md#vfo-window).
 - **Spectrum and waterfall** with 1×–32× zoom (the waterfall keeps the history of the whole band, so after zooming out the hidden parts are shown at once) and a waterfall speed bar (1/8 – 4×) and waterfall settings under a gear (colour scheme, range, offset); tuning by a click, dragging the band or the passband, the mouse wheel or the wheel over a digit of the display. See [Tuning](controls.md#tuning).
 - **Band plan on the frequency axis** (Europe / ITU Region 1: ham, broadcast, aviation, marine, satellites, mobile networks, ISM…); hover it for the descriptions of all bands at that frequency.

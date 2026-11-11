@@ -57,6 +57,7 @@ import hfdl as hfdl_mod
 from hfdl import HfdlDecoder
 import ais as ais_mod
 from ais import AisDecoder
+from tonesq import norm_ctcss, norm_dcs
 from sdr import (AFI_MAX_HZ, AFI_MIN_HZ, ASQ_MAX_DB, ASQ_MIN_DB, DECIM, DSD_MODE, HPF_MAX_HZ, HPF_MIN_HZ, LPF_MAX_HZ, LPF_MIN_HZ, MODES, SQUELCH_OFF,
                  SAGC_PARAMS, UPCONV_MAX_HZ, ZOOMS, Receiver, list_devices, lowpass, sagc_params)
 
@@ -309,7 +310,8 @@ if cfg.get("dsd_protocol") in DSD_PROTOCOLS:
     dsd.protocol = cfg["dsd_protocol"]
 if cfg.get("dsd_slot") in DSD_SLOTS:
     dsd.slot = cfg["dsd_slot"]
-vdl2 = Vdl2Decoder(on_acars=acars.accept_vdl2, on_atn=acars.accept_atn, on_state=lambda i: hub.event("vdl2state", i))
+vdl2 = Vdl2Decoder(on_acars=acars.accept_vdl2, on_atn=acars.accept_atn, on_state=lambda i: hub.event("vdl2state", i),
+                  on_pos=acars.accept_pos)
 
 
 def dab_tune(hz):
@@ -1432,6 +1434,13 @@ def api_set():
             changes["auto_sql"] = bool(body["auto_sql"])
         if "auto_sql_db" in body:
             changes["auto_sql_db"] = min(max(float(body["auto_sql_db"]), ASQ_MIN_DB), ASQ_MAX_DB)
+        for key in ("ctcss", "dcs"):              # TSQ-C / TSQ-D keys (the receiver keeps only one of them on)
+            if key in body:
+                changes[key] = bool(body[key])
+        if "ctcss_hz" in body:
+            changes["ctcss_hz"] = norm_ctcss(body["ctcss_hz"])
+        if "dcs_code" in body:
+            changes["dcs_code"] = norm_dcs(body["dcs_code"])
         if "afi_hz" in body:
             hz = float(body["afi_hz"])
             if not AFI_MIN_HZ <= hz <= AFI_MAX_HZ:

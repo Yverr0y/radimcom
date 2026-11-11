@@ -36,6 +36,15 @@ Airliners exchange data with the ground over two VHF links, and RADIMCOM receive
   | **CPDLC** (green) | controller-pilot message: ↑ from ATC (amber text), ↓ from the aircraft (green); FANS-1/A in ACARS, or the European ATN CPDLC over VDL2 (Description column says "ATN CPDLC") |
   | **ADS-C** (violet) | automatic position report to air traffic control (FANS in ACARS, or ATN ADS-C over VDL2) |
 
+- **MESSAGES / AIRCRAFT / MAP** keys at the top of the card switch between the message table, the list of aircraft heard
+  (the newest data of each: ADS-B data, newest position with its source and age – a click shows it on the map –, VDL2 ground
+  station of the last message, number of messages) and a map (dark OpenStreetMap) of the
+  aircraft with a known position: turned to their heading, with their track, flight + type as a label, and a list beside the
+  map (a click centres the aircraft and opens its details with adsb.fi / adsb.lol links). Positions come from ADS-B (looked
+  up at the time of the message), from ADS-C reports (FANS and ATN) and, on VDL2, from the XID frames, where an aircraft
+  sends its approximate location when it sets up or hands off the link (also aircraft that send no ACARS). VDL2 ground
+  stations that broadcast their position are green ▲. The □ key in the top right corner opens the map alone in a new tab.
+
   ![VDL2 card: European ATN CPDLC (WILCO, LOGICAL ACKNOWLEDGEMENT with MIN/MRN) between plain ACARS messages with aircraft type and position from ADS-B](../images/decoders_vdl2.png)
 
 - **CPDLC** (FANS-1/A, ARINC 622): the standard wording with the values filled in ("CLIMB TO AND MAINTAIN FL350",
