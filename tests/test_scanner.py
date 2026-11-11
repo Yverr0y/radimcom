@@ -141,10 +141,19 @@ class ScannerTest(unittest.TestCase):
         self.sc.command("stop")
         self.assertEqual(self.run_blocks(1, [])["state"], "off")
 
-    def test_squelch_off_channel_left_out(self):
+    def test_squelch_off_uses_auto_squelch(self):
+        """AUTO SQUELCH off and the squelch of the mode off: the channel is scanned with the auto squelch (it is not
+        left out and does not hold the scan on noise); a failed start lists why the channels were left out."""
         mems = [{"id": "a", "name": "A", "freq_hz": 145.5e6, "mode": "FM", "bw": 12500, "groups": []}]
-        self.assertIsNotNone(self.sc.start(mems, norm_opts({"asq": False}), self.rx))
-        self.assertIsNone(self.sc.start(mems, norm_opts({"asq": True}), self.rx))
+        self.assertIsNone(self.sc.start(mems, norm_opts({"asq": False}), self.rx))
+        self.run_blocks(30, [])
+        self.assertEqual(self.sc.state, "search")
+        self.run_blocks(10, [(145.5e6, 0.05)])
+        self.assertEqual(self.cur(), "A")
+        sc = Scanner()
+        err = sc.start([dict(mems[0], scan=False)], norm_opts({}), self.rx)
+        self.assertIn("SCAN off in the memory", err)
+        self.assertEqual(sc.info(full=True)["excluded_list"][0]["id"], "a")
 
 
     def test_range_airband_strongest_store_log_rec(self):
@@ -176,6 +185,70 @@ class ScannerTest(unittest.TestCase):
         self.assertTrue(rows[0]["file"].endswith(".wav") and os.path.getsize(wav) > 44)
         hm = scanner.heatmap(1)
         self.assertEqual(hm["rows"][0]["freq_hz"], 127700000)
+
+    def test_session_old_rows_prune(self):
+        """THIS SCAN shows only its session; rows of older files (no session column) are read; old files are pruned."""
+        import time
+        now = time.time()
+        with open(scanner.log_path(now), "w", encoding="utf-8", newline="") as f:
+            f.write("time_utc,vfo,freq_hz,name,mode,duration_s,max_dbfs,snr_db,file,note\n"
+                    "2026-11-11 10:00:00Z,D,145500000,old,FM,2.0,-40,20,,\n")
+        mems = [{"id": "a", "name": "A", "freq_hz": 118.1e6, "mode": "AM", "bw": 8000, "groups": []}]
+        self.sc.start(mems, norm_opts({"hang_s": 0.5}), self.rx, session="S1")
+        self.run_blocks(20, [])
+        self.run_blocks(15, [(118.1e6, 0.05)])
+        self.sc.command("session", session="S2")            # CLR while heard: the activity is closed under S1
+        self.run_blocks(15, [(118.1e6, 0.05)])
+        self.run_blocks(20, [])
+        self.assertEqual(len(scanner.read_log(1, now=now)), 3)
+        self.assertEqual([r["name"] for r in scanner.read_log(1, now=now, session="S1")], ["A"])
+        self.assertEqual(len(scanner.read_log(1, now=now, session="S2")), 1)
+        self.assertEqual(scanner.read_log(1, now=now, session="none"), [])
+        self.assertEqual(len(scanner.heatmap(1, now=now, session="S2")["rows"]), 1)
+        self.assertEqual(scanner.signature(norm_opts({"source": "fav"})), "mem:fav:")
+        self.assertNotEqual(scanner.signature(norm_opts({"source": "view", "from_hz": 145e6, "to_hz": 146e6})),
+                            scanner.signature(norm_opts({"source": "view", "from_hz": 145e6, "to_hz": 147e6})))
+        old = scanner.log_path(now - 40 * 86400)
+        open(old, "w").close()
+        self.assertEqual(scanner.prune(31, now=now), 1)
+        self.assertFalse(os.path.exists(old))
+        self.assertTrue(os.path.exists(scanner.log_path(now)))
+
+    def test_view_keeps_the_centre(self):
+        """VISIBLE BAND: the whole band shown is scanned without moving the tuner (no windows), also when listening."""
+        centre = self.rx.cfg["center_hz"]
+        moved = []
+        self.rx.sdr.set_center_freq = moved.append
+        half = self.rx.fs / 2
+        opts = norm_opts({"source": "view", "from_hz": centre - half, "to_hz": centre + half, "step_hz": 12500,
+                          "mode": "FM", "bw": 12500})
+        self.assertIsNone(self.sc.start([], opts, self.rx))
+        self.run_blocks(30, [])
+        self.assertEqual(self.sc.windows, [])
+        self.assertEqual(self.rx.cfg["mode"], "FM")        # the VFO takes the mode of the scan at START
+        self.assertGreater(self.sc.n, 100)                 # the band but its edges
+        self.assertGreater(self.sc.n_excluded, 0)
+        f = centre + half * 0.8                            # beyond a range window (0.75), still in the band
+        f = float(self.sc.f[np.argmin(np.abs(self.sc.f - f))])
+        self.run_blocks(10, [(f, 0.05)])
+        self.assertEqual(self.cur(), int(f))
+        self.assertEqual(self.rx.cfg["center_hz"], centre)
+        self.assertEqual(moved, [])
+
+    def test_lock_row(self):
+        """✕ of a row: the channel heard is locked out until STOP (the scan leaves it), again = back in."""
+        mems = [{"id": "a", "name": "A", "freq_hz": 118.1e6, "mode": "AM", "bw": 8000, "groups": []},
+                {"id": "b", "name": "B", "freq_hz": 118.3e6, "mode": "AM", "bw": 8000, "groups": []}]
+        self.sc.start(mems, norm_opts({}), self.rx)
+        self.run_blocks(20, [])
+        self.run_blocks(10, [(118.1e6, 0.05)])
+        self.assertEqual(self.cur(), "A")
+        self.sc.command("lock", id="a")
+        self.run_blocks(10, [(118.1e6, 0.05)])
+        self.assertEqual(self.sc.state, "search")
+        self.sc.command("unlock", id="a")
+        self.run_blocks(10, [(118.1e6, 0.05)])
+        self.assertEqual(self.cur(), "A")
 
     def test_carrier_lockout(self):
         mems = [{"id": "a", "name": "A", "freq_hz": 118.1e6, "mode": "AM", "bw": 8000, "groups": []}]

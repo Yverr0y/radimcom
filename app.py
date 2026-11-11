@@ -1187,28 +1187,61 @@ def scan_store(entry):
 receiver.scan.on_store = scan_store
 
 
+def scan_session(opts=None, new=False):
+    """Session of the scan of this VFO (cfg "scan_session" {"id", "sig"}): ACTIVITY and HEATMAP of THIS SCAN show only
+    its activities. A START of another source / range (another signature) or CLR (new=True) begins a new one."""
+    cur = cfg.get("scan_session") or {}
+    sig = scanner_mod.signature(opts) if opts else cur.get("sig", "")
+    if new or not cur.get("id") or sig != cur.get("sig"):
+        cur = {"id": f"{cfg.get('vfo') or ''}{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns() // 1000000 % 1000:03d}",
+               "sig": sig}
+        cfg["scan_session"] = cur
+        save_config_later()
+    return cur["id"]
+
+
+def scan_prune():
+    """Activities and WAV recordings of the scan older than keep_days (⚙ of the SCAN tab) are deleted."""
+    days = scanner_mod.norm_opts(None, cfg.get("scan"))["keep_days"]
+    threading.Thread(target=scanner_mod.prune, args=(days,), name="scan-prune", daemon=True).start()
+
+
+scan_prune()
+
+
 @app.route("/api/scan", methods=["GET"])
 def api_scan():
     """State of the scan of this VFO with the live values of the channels (list), the channels left out, the last
     activities of this VFO (log), the saved options and the range presets."""
     return jsonify(dict(receiver.scan.info(full=True), saved_opts=scanner_mod.norm_opts(None, cfg.get("scan")),
+                        session_id=(cfg.get("scan_session") or {}).get("id", ""),
                         presets=[dict(zip(("name", "from_hz", "to_hz", "step_hz", "mode", "bw"), p))
                                  for p in scanner_mod.PRESETS]))
 
 
 @app.route("/api/scan/log")
 def api_scan_log():
-    """Activity log of all VFOs (data/logs/scan_YYYY-MM-DD.csv, UTC), newest first: ?days=1..31, ?limit."""
-    days = min(max(request.args.get("days", 1, type=int), 1), 31)
+    """Activity log of all VFOs (data/logs/scan_YYYY-MM-DD.csv, UTC), newest first: ?days=1..365, ?limit;
+    ?session=<id> only the activities of that scan session (THIS SCAN; read over all kept days)."""
+    session = request.args.get("session")
+    days = min(max(request.args.get("days", 1, type=int), 1), 365)
+    if session is not None:
+        days = scanner_mod.norm_opts(None, cfg.get("scan"))["keep_days"]
     limit = min(max(request.args.get("limit", 1000, type=int), 1), 20000)
-    return jsonify({"days": days, "rows": scanner_mod.read_log(days, limit), "fields": scanner_mod.LOG_FIELDS})
+    return jsonify({"days": days, "session": session, "rows": scanner_mod.read_log(days, limit, session=session),
+                    "fields": scanner_mod.LOG_FIELDS})
 
 
 @app.route("/api/scan/heatmap")
 def api_scan_heatmap():
-    """Occupancy from the log: frequency × hour of the day (local time), seconds of activity; ?days=1..31."""
-    days = min(max(request.args.get("days", 7, type=int), 1), 31)
-    return jsonify(scanner_mod.heatmap(days, top=min(max(request.args.get("top", 60, type=int), 1), 300)))
+    """Occupancy from the log: frequency × hour of the day (local time), seconds of activity; ?days=1..365,
+    ?session=<id> only that scan session."""
+    session = request.args.get("session")
+    days = min(max(request.args.get("days", 7, type=int), 1), 365)
+    if session is not None:
+        days = scanner_mod.norm_opts(None, cfg.get("scan"))["keep_days"]
+    return jsonify(scanner_mod.heatmap(days, top=min(max(request.args.get("top", 60, type=int), 1), 300),
+                                       session=session))
 
 
 @app.route("/api/scan/rec/<name>")
@@ -1222,7 +1255,8 @@ def api_scan_rec(name):
 @app.route("/api/scan", methods=["POST"])
 def api_scan_cmd():
     """{"action": "start", "opts": {...}} / "stop" / "pause" / "resume" / "skip" / "lockout" / "unlock" /
-    "step" ({"dir": 1 | -1}) / "opts" (only saves the options)."""
+    "step" ({"dir": 1 | -1}) / "lock" / "unlock" ({"id": channel}) / "clear" (CLR: a new session, ACTIVITY and HEATMAP
+    of THIS SCAN start empty) / "opts" (only saves the options)."""
     body = request.get_json(force=True, silent=True) or {}
     action = body.get("action")
     try:
@@ -1230,7 +1264,11 @@ def api_scan_cmd():
     except (TypeError, ValueError) as e:
         return jsonify({"error": str(e)}), 400
     if action in ("start", "opts"):
-        cfg["scan"] = opts
+        saved = opts
+        if action == "start" and opts["source"] == "view":   # VISIBLE BAND: the RANGE settings stay as they were
+            prev = scanner_mod.norm_opts(None, cfg.get("scan"))
+            saved = dict(opts, **{k: prev[k] for k in ("from_hz", "to_hz", "step_hz", "mode", "bw")})
+        cfg["scan"] = saved
         save_config_later()
     if action == "start":
         busy = [name for name, on in SCAN_RAW_DECODERS if on()]
@@ -1238,9 +1276,16 @@ def api_scan_cmd():
             return jsonify({"error": f"switch off {', '.join(busy)} on this VFO first (it holds the dongle)"}), 409
         if receiver.status != "running":
             return jsonify({"error": f"receiver is not running ({receiver.status})"}), 409
-        err = receiver.scan.start(memories.load(), opts, receiver)
+        err = receiver.scan.start(memories.load(), opts, receiver, session=scan_session(opts))
         if err:
             return jsonify({"error": err}), 400
+        scan_prune()
+    elif action == "clear":
+        sid = scan_session(new=True)
+        receiver.scan.command("session", session=sid)
+        return jsonify({"ok": True, "session_id": sid})
+    elif action in ("lock", "unlock") and body.get("id") is not None:
+        receiver.scan.command(action, id=str(body["id"]))
     elif action in ("stop", "pause", "resume", "skip", "lockout", "unlock"):
         receiver.scan.command(action)
     elif action == "step":

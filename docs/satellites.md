@@ -93,3 +93,5 @@ broadcast transmitter or a repeater, taken from the channels of **MEMORIES** tha
   groups is on. The choice is remembered in the browser. The list under the groups has the shown channels, nearest first, with
   azimuth and distance, and a filter (name, frequency, group, note); a click on a point scrolls the list to its row. The channel
   aimed at last is selected and scrolled into view in **MEMORIES › CHANNELS** when that tab opens next. A change in MEMORIES shows on the map at once.
+- **Recalling a channel with a location** (a row of **MEMORIES › CHANNELS**, a memory tag in the spectrum, RECALL in the editor, the memory
+  step) opens the **ROTOR CONTROL** tab by itself (the RCTRL key goes on), centres the map on the channel and turns the rotor to it.

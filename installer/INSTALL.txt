@@ -92,6 +92,8 @@ Change log
 Ver. 0.114beta1
 (test beta, GitHub branch 0.114beta1)
 Main Features
+- Recalling a MEMORIES channel with a location (LAT / LON) opens the ROTOR CONTROL tab (RCTRL on), centres the map
+  on it and turns the rotor to its azimuth from the QTH (elevation 0).
 - Station location moved from SATELLITES -> SETUP to SETTINGS -> GENERAL -> LOCATION (locator or lat / lon,
   CHOOSE ON MAP, altitude); used by the satellites, packet decoder (APRS), HFDL and AIS. data\location.json,
   default 0.0 / 0.0 on a new installation, an older installation keeps its station.
@@ -107,21 +109,25 @@ Main Features
   DEFAULT = data\recordings); one folder for all VFOs, used by REC / REC SQ and the RECORDINGS tab. data\recordings.json.
 - Tone squelch in FM: keys TSQ-C (CTCSS, 50 tones) and TSQ-D (DCS, 104 codes, N / I) in the AUDIO group, in addition
   to the SQL bar or ASQ. Tone / code in SETTINGS -> VFO -> AUDIO or with the mouse wheel over the key; shown in the
-  VFO window under the frequency (grey = off, orange = on, glowing = received). The tone is filtered out of the audio.
+  VFO window under the frequency (grey = off, orange = on, lit orange box = received). The tone is filtered out of the audio.
 - ACARS / VDL2: MESSAGES / AIRCRAFT / MAP views like HFDL. AIRCRAFT = newest data of each aircraft heard
   (ADS-B data, position with its source and age, ground station, message count). MAP = aircraft with a known position (ADS-B, ADS-C, and on VDL2 the
   approximate position from XID frames), tracks, VDL2 ground stations, list beside the map; the square key in the top
   right corner opens the map alone in a new browser tab.
-- SCAN: scanner of memories and ranges. New key SCAN in the MENU group -> SCAN tab with pages SCAN, LOG, HEATMAP.
-  All channels in the band of the dongle are measured at once from the spectrum; the tuner moves only between windows.
-  Sources: ALL / FAVOURITES / group of memories, RANGE FROM-TO-STEP-MODE-BW (presets: airband 8.33 kHz, PMR446, 2 m,
-  70 cm, LPD433, marine VHF, CB) or VIEW (spectrum shown); PICK NEXT / STRONGEST. Per memory (new fields): SCAN on/off,
-  own SQ (dBFS), own ASQ margin, PRIO; ASQ FOR ALL (noise floor of each channel + margin). RESUME DELAY / CARRIER / TIME.
-  START / PAUSE / SKIP (5 min) / LOCKOUT / prev / next / STOP; priority channels (other windows: look every PRIO LOOK s);
-  CARRIER LOCKOUT after X min open. LOG = data\logs\scan_YYYY-MM-DD.csv (page LOG, CSV export); REC = WAV of each activity
-  with 0.5 s before the signal came back (recordings folder\scan); STORE = found range frequencies into the memory group
-  "Scan YYYY-MM-DD"; HEATMAP = frequency x hour of the day. Range in the spectrum blue, locked out channels grey.
-  Decoder and recording of a memory are ignored; the decoders of the scanning VFO pause. scanner.py, /api/scan.
+- SCAN: scanner of memories and ranges. New key SCAN in the MENU group -> SCAN tab. All channels in the band of the
+  dongle are measured at once from the spectrum; the tuner moves only between windows. What is scanned = three tiles:
+  MEMORY (all / favourites / a group, as chips), VISIBLE BAND (the spectrum shown; MODE keys switch the VFO too; the
+  tuner is not moved, the spectrum stays as it is), RANGE FROM-TO-STEP-MODE-BW (presets: airband 8.33 kHz, PMR446, 2 m,
+  70 cm, LPD433, marine VHF, CB; STORE FOUND = found frequencies into the memory group "Scan YYYY-MM-DD"). Keys:
+  START/STOP; HOLD, SKIP (5 min), prev / next only while scanning; REC = WAV of each activity with 0.5 s before the
+  signal came back (recordings folder\scan). Settings behind the gear key: AUTO SQUELCH (noise floor of each channel +
+  MARGIN), CONTINUE after signal / at once / after time, PRIORITY EVERY x s, CARRIER LOCKOUT (30 s - 30 min), PICK next
+  / strongest, KEEP HISTORY days. Pages: CHANNELS (per memory SCAN on/off, own SQ, own ASQ margin, PRIO, edited in
+  place; x in a row = locked out until STOP), ACTIVITY (what was heard, CSV export, play), HEATMAP (frequency x hour of
+  the day). Both show THIS SCAN: a START of another source / range begins a new one, so they start empty; CLR empties
+  them by hand; the history of all VFOs (data\logs\scan_YYYY-MM-DD.csv) is kept KEEP HISTORY days (31). Range in the
+  spectrum blue, locked out grey. Decoder and recording of a memory are ignored; the decoders of the scanning VFO pause.
+  scanner.py, /api/scan.
 Minor Fixes
 - WFM filters 50, 75, 150 and 200 kHz (default 200 kHz).
 - Memory channel location: LAT / LON (decimal degrees) or CHOOSE ON MAP in the channel form, saved in memories.json and

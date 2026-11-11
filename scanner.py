@@ -6,12 +6,14 @@ power of all channels in the band the dongle receives now from the fine FFT of t
 applied when SP is on), so a whole tuner window is checked in one block (~85 ms at 1.536 MS/s). The tuner is retuned
 only to reach the next window; the channels are sorted into windows of SCAN_SPAN × sample rate.
 
-Sources: memories (ALL, FAVOURITES or a group) or a RANGE FROM / TO / STEP / MODE / BW (a grid of channels; VIEW is a
-range set to the part of the spectrum shown by the page). All channels are kept in numpy arrays, so a range of
+Sources: memories (ALL, FAVOURITES or a group) or a RANGE FROM / TO / STEP / MODE / BW (a grid of channels). VIEW
+(VISIBLE BAND) is a grid over the part of the spectrum shown by the page; the tuner is not moved for it (no windows:
+the spectrum and waterfall stay as they are), so only what the dongle receives now is scanned. All channels are kept in numpy arrays, so a range of
 thousands of channels costs only a few ms per block.
 
 Squelch of a channel: its own level (scan_sq of a memory), or its noise floor + a margin (scan_asq of a memory, or the
-margin of the scan with "ASQ for all"), or else the squelch level of its mode. Noise floor: a low percentile of its
+margin of the scan with AUTO SQUELCH), or else the squelch level of its mode (when that squelch is off: the noise floor
++ margin again, so a channel never stays open for good). Noise floor: a low percentile of its
 own last measurements once there are FLOOR_MIN_N of them (it knows spurs, the DC spike and local noise; it learns only
 while the channel is quiet), before that the noise density of the spectrum (as the auto squelch of sdr.py). All in the
 units of the squelch slider (channel power, dBFS).
@@ -38,6 +40,8 @@ import numpy as np
 from paths import data
 
 SCAN_SPAN = 0.75        # part of the dongle band (around its centre) used for one tuner window (edges roll off)
+VIEW_SPAN = 0.88        # VISIBLE BAND: the tuner stays where it is; this part of its band is scanned (below the 0.9
+                        # at which tuning a channel would move the centre)
 DC_GAP_HZ = 12000       # a window centre is placed at least this far from every channel when it can be (DC spike)
 SETTLE_BLOCKS = 2       # blocks thrown away after retuning the tuner (+ the blocks waiting in the queue)
 FLOOR_N = 40            # measurements kept per channel for its own noise floor
@@ -57,15 +61,18 @@ REC_TAIL_S = 0.5        # recording: audio after the signal dropped
 REC_MAX_S = 300.0       # recording: one activity at most this long
 BLOCK_S = 0.085         # about one block (for the time away during a priority look)
 LOG_DIR = data("logs")
-LOG_FIELDS = ("time_utc", "vfo", "freq_hz", "name", "mode", "duration_s", "max_dbfs", "snr_db", "file", "note")
+# the log is read by position (older files have no "session" column; their header row is skipped)
+LOG_FIELDS = ("time_utc", "vfo", "freq_hz", "name", "mode", "duration_s", "max_dbfs", "snr_db", "file", "note",
+              "session")
 RESUME_MODES = ("delay", "carrier", "time")
 SOURCES = ("all", "fav", "group", "range", "view")
+MEM_SOURCES = ("all", "fav", "group")
 PICKS = ("next", "strongest")
 MODES = ("AM", "FM", "WFM", "LSB", "USB", "CW")
-DEFAULTS = {"source": "all", "group": "", "asq": True, "margin": 6.0, "resume": "delay", "hang_s": 2.0,
+DEFAULTS = {"source": "all", "mem": "all", "group": "", "asq": True, "margin": 6.0, "resume": "delay", "hang_s": 2.0,
             "time_s": 10.0, "from_hz": 118e6, "to_hz": 136.99167e6, "step_hz": 25000 / 3, "mode": "AM",
-            "bw": 8000.0, "pick": "next", "store": False, "rec": False, "log": True, "carrier_min": 3.0,
-            "prio_s": 3.0}
+            "bw": 8000.0, "pick": "next", "store": False, "rec": False, "carrier_min": 3.0,
+            "prio_s": 3.0, "keep_days": 31}
 # ranges offered by the page: (name, from, to, step, mode, bw)
 PRESETS = [
     ("Airband 118–137 MHz", 118e6, 136.99167e6, 25000 / 3, "AM", 8000),
@@ -82,25 +89,36 @@ def norm_opts(o, base=None):
     """Checked scan options (ValueError on a bad value); missing ones from base / DEFAULTS."""
     out = dict(DEFAULTS, **{k: v for k, v in (base or {}).items() if k in DEFAULTS})
     o = o or {}
-    for k, allowed in (("source", SOURCES), ("resume", RESUME_MODES), ("pick", PICKS), ("mode", MODES)):
+    for k, allowed in (("source", SOURCES), ("mem", MEM_SOURCES), ("resume", RESUME_MODES), ("pick", PICKS),
+                       ("mode", MODES)):
         if k in o:
             if o[k] not in allowed:
                 raise ValueError(f"unknown scan {k}")
             out[k] = o[k]
     if "group" in o:
         out["group"] = str(o["group"] or "")[:40]
-    for k in ("asq", "store", "rec", "log"):
+    for k in ("asq", "store", "rec"):
         if k in o:
             out[k] = bool(o[k])
     for k, lo, hi in (("margin", 1.0, 30.0), ("hang_s", 0.0, 60.0), ("time_s", 1.0, 600.0), ("from_hz", 0.0, 6e9),
                       ("to_hz", 0.0, 6e9), ("step_hz", 100.0, 1e6), ("bw", 100.0, 250000.0),
-                      ("carrier_min", 0.0, 120.0), ("prio_s", 0.0, 60.0)):
+                      ("carrier_min", 0.0, 120.0), ("prio_s", 0.0, 60.0), ("keep_days", 1, 365)):
         if k in o:
             v = float(o[k])
             if not lo <= v <= hi:
                 raise ValueError(f"scan {k} must be {lo:g} to {hi:g}")
-            out[k] = v
+            out[k] = int(v) if k == "keep_days" else v
+    if out["source"] in MEM_SOURCES:
+        out["mem"] = out["source"]
     return out
+
+
+def signature(o):
+    """What is scanned: a scan of another source / range starts a new session (ACTIVITY and HEATMAP of THIS SCAN)."""
+    if o["source"] in MEM_SOURCES:
+        return f"mem:{o['source']}:{o['group'] if o['source'] == 'group' else ''}"
+    return (f"range:{round(min(o['from_hz'], o['to_hz']))}-{round(max(o['from_hz'], o['to_hz']))}"
+            f"/{round(o['step_hz'])}/{o['mode']}/{round(o['bw'])}")
 
 
 def passband(f, mode, bw):
@@ -126,27 +144,64 @@ def log_path(t=None):
     return os.path.join(LOG_DIR, f"scan_{time.strftime('%Y-%m-%d', time.gmtime(t))}.csv")
 
 
-def read_log(days=1, limit=None, now=None):
-    """Activities of the last `days` days (all VFOs), newest first."""
+def read_log(days=1, limit=None, now=None, session=None):
+    """Activities of the last `days` days (all VFOs), newest first; with `session` only those of that scan session."""
     now = now or time.time()
     rows = []
     for d in range(int(days) - 1, -1, -1):
         try:
             with open(log_path(now - d * 86400), encoding="utf-8", newline="") as f:
-                rows.extend(r for r in csv.DictReader(f) if r.get("time_utc"))
+                for rec in csv.reader(f):
+                    if not rec or rec[0] in ("", "time_utc"):
+                        continue
+                    r = dict(zip(LOG_FIELDS, rec + [""] * (len(LOG_FIELDS) - len(rec))))
+                    if session is None or r["session"] == session:
+                        rows.append(r)
         except OSError:
             continue
     rows.reverse()
     return rows[:limit] if limit else rows
 
 
-def heatmap(days=7, top=60, now=None):
+def prune(keep_days, now=None):
+    """History kept keep_days days: older scan_*.csv logs and WAV recordings of the scan are deleted.
+    Returns the number of files deleted."""
+    now = now or time.time()
+    keep = time.strftime("%Y-%m-%d", time.gmtime(now - (int(keep_days) - 1) * 86400))
+    gone = 0
+    try:
+        for fn in os.listdir(LOG_DIR):
+            m = re.fullmatch(r"scan_(\d{4}-\d{2}-\d{2})\.csv", fn)
+            if m and m.group(1) < keep:
+                try:
+                    os.remove(os.path.join(LOG_DIR, fn))
+                    gone += 1
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    try:
+        folder = rec_folder()
+        for fn in os.listdir(folder):
+            path = os.path.join(folder, fn)
+            if fn.lower().endswith(".wav") and os.path.getmtime(path) < now - int(keep_days) * 86400:
+                try:
+                    os.remove(path)
+                    gone += 1
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return gone
+
+
+def heatmap(days=7, top=60, now=None, session=None):
     """Occupancy: frequency × hour of the day (local time) from the log, seconds of activity.
     {"days", "rows": [{"freq_hz", "name", "mode", "total", "count", "hours": [24 × s]}]}: the `top` busiest, by
     frequency."""
     import calendar
     acc = {}
-    for r in read_log(days, now=now):
+    for r in read_log(days, now=now, session=session):
         try:
             hz = int(round(float(r["freq_hz"])))
             t = calendar.timegm(time.strptime(r["time_utc"], "%Y-%m-%d %H:%M:%SZ"))
@@ -176,7 +231,9 @@ class Scanner:
         self.paused = False
         self.state = "off"            # off / search / listen / peek / hold (paused)
         self.meta = []                # [{"id", "name", "freq", "mode", "bw", "mem"}] per channel
-        self.windows = []             # tuner windows [{"center", "tune", "lo"}]; [] = chained VFO (band of the owner)
+        self.windows = []             # tuner windows [{"center", "tune", "lo"}]; [] = the tuner is not moved
+                                      # (chained VFO: band of the owner; VISIBLE BAND: the spectrum stays as shown)
+        self.span = SCAN_SPAN         # part of the dongle band measured
         self.win = 0
         self.cur = None               # index of the channel being listened to / held
         self.pos = -1                 # index of the last channel stopped on (round robin)
@@ -199,6 +256,7 @@ class Scanner:
         self.stored = 0
         self._stored_ids = set()
         self.vfo = ""
+        self.session = ""             # scan session (app.py): written with each activity
         self.rec_pre = collections.deque()
         self.rec_pre_s = 0.0
         self.rec_wav = None
@@ -238,32 +296,41 @@ class Scanner:
         with self.lock:
             self.cmds.append((action, kw))
 
-    def start(self, mems, opts, rx):
-        """Builds the channels (memories or a range); returns an error text, or None when the scan starts."""
+    def start(self, mems, opts, rx, session=""):
+        """Builds the channels (memories or a range); returns an error text, or None when the scan starts.
+        session: id written with each activity (ACTIVITY / HEATMAP of THIS SCAN)."""
         try:
             chans, excluded = (self._grid(opts, rx) if opts["source"] in ("range", "view")
                                else self._from_mems(mems, opts, rx))
         except ValueError as e:
             return str(e)
         if not chans:
-            return "no channel to scan" + (f" ({len(excluded)} left out, see the list)" if excluded else "")
+            with self.lock:                         # the State column shows why (the scan does not run)
+                if not self.on:
+                    self.excluded, self.n_excluded = excluded[:EXCLUDED_MAX], len(excluded)
+            why = sorted({x["why"] for x in excluded})
+            return "no channel to scan" + (f" ({len(excluded)} left out: {'; '.join(why[:2])})" if excluded else "")
         chans.sort(key=lambda c: (c["lo"], c["freq"]))
-        self.command("start", chans=chans, excluded=excluded, opts=opts, chained=rx.chained, fs=rx.fs,
-                     vfo=rx.cfg.get("vfo") or "")
+        fixed = opts["source"] == "view"
+        self.command("start", chans=chans, excluded=excluded, opts=opts, chained=rx.chained or fixed, fs=rx.fs,
+                     span=VIEW_SPAN if fixed else SCAN_SPAN,
+                     vfo=rx.cfg.get("vfo") or "", session=session)
         return None
 
     @staticmethod
-    def _check(f, bw, rx):
-        """Why a channel cannot be scanned on this VFO, or None."""
+    def _check(f, bw, rx, fixed=False):
+        """Why a channel cannot be scanned on this VFO, or None. fixed: VISIBLE BAND, the tuner is not moved."""
         lo_hz, hi_hz = rx.tune_range()
         if not lo_hz <= f <= hi_hz:
             return "outside the range of this VFO"
+        if fixed and not rx.chained and abs(f - rx.cfg["center_hz"]) + bw / 2 > rx.fs / 2 * VIEW_SPAN:
+            return "at the edge of the band of the dongle (VISIBLE BAND does not move the spectrum)"
         if rx.chained and abs(f - rx.cfg["center_hz"]) + bw / 2 > rx.fs / 2 * SCAN_SPAN:
             return "outside the band of the shared dongle (chained VFO)"
         return None
 
     def _from_mems(self, mems, opts, rx):
-        from sdr import DSD_MODE, SQUELCH_OFF
+        from sdr import DSD_MODE
         chans, excluded = [], []
         for m in mems:
             if opts["source"] == "fav" and not m.get("fav"):
@@ -276,8 +343,6 @@ class Scanner:
                 why = "SCAN off in the memory"
             elif m.get("dab_channel") or mode == DSD_MODE:
                 why = "DAB / DSD memories are not scanned"
-            elif sq is None and asq is None and not opts["asq"] and rx.manual_squelch(mode) <= SQUELCH_OFF:
-                why = "squelch off: it would stop the scan for good (set SQ or ASQ of the channel, or ASQ FOR ALL)"
             else:
                 why = self._check(f, bw, rx)
             if why:
@@ -289,23 +354,22 @@ class Scanner:
         return chans, excluded
 
     def _grid(self, opts, rx):
-        from sdr import SQUELCH_OFF
         f0, f1, step = sorted((opts["from_hz"], opts["to_hz"])) + [opts["step_hz"]]
         n = int((f1 - f0) / step + 1e-6) + 1
         if n > MAX_CHANNELS:
             raise ValueError(f"the range has {n} channels, at most {MAX_CHANNELS} (a larger STEP or a smaller range)")
         mode, bw = opts["mode"], opts["bw"]
-        if not opts["asq"] and rx.manual_squelch(mode) <= SQUELCH_OFF:
-            raise ValueError(f"the squelch of {mode} is off: switch ASQ FOR ALL on or set the SQL bar")
         chans, excluded = [], []
+        fixed = opts["source"] == "view"
         for k in range(n):
             f = float(round(f0 + k * step))
-            why = self._check(f, bw, rx)
+            why = self._check(f, bw, rx, fixed)
             if why:
                 excluded.append({"id": f"g{int(f)}", "name": "", "freq_hz": f, "mode": mode, "why": why})
                 continue
             chans.append({"id": f"g{int(f)}", "name": "", "freq": f, "mode": mode, "bw": bw, "mem": False,
-                          "sq": None, "asq": None, "prio": False, "lo": rx.lo_for(f) if not rx.chained else 0.0})
+                          "sq": None, "asq": None, "prio": False,
+                          "lo": 0.0 if rx.chained else rx.lo if fixed else rx.lo_for(f)})
         return chans, excluded
 
     def _windows(self, fs):
@@ -489,6 +553,10 @@ class Scanner:
                 self.rate, self._rate_n, self._rate_t = 0.0, 0, now
                 self.message, self.rec_error, self.peek, self.last_peek = "", "", None, now
                 self.stored, self._stored_ids = 0, set()
+                if self.meta and not self.meta[0]["mem"]:   # RANGE / VISIBLE BAND: the VFO shows the mode scanned
+                    m = self.meta[0]                        # at once (a memory scan takes the mode of each channel)
+                    rx.cfg["mode"] = m["mode"]
+                    rx.cfg.setdefault("bandwidth", {})[m["mode"]] = float(m["bw"])
                 if self.windows:
                     self._goto(rx, 0, backlog)
             elif not self.on:
@@ -514,8 +582,25 @@ class Scanner:
                     self.locked[self.cur] = now + SKIP_S if action == "skip" else float("inf")
                     self.paused, self.message, self.peek = False, "", None
                     self._resume(rx, backlog)
-            elif action == "unlock":
+            elif action == "session":              # CLR: the activities from now on belong to a new session
+                a = self.act
+                self._end_activity()
+                self.session = kw.get("session", "")
+                if a:                               # the channel heard goes on as a new activity of the new session
+                    self.act = dict(a, t0=time.time(), m0=now, m_last=now, file="", note="")
+            elif action == "unlock" and kw.get("id") is None:
                 self.locked = {}
+            elif action in ("lock", "unlock"):       # x in a row of the CHANNELS table
+                for i, mt in enumerate(self.meta):
+                    if mt["id"] != kw["id"]:
+                        continue
+                    if action == "unlock":
+                        self.locked.pop(i, None)
+                        continue
+                    self.locked[i] = float("inf")
+                    if i == self.cur:
+                        self.paused, self.message, self.peek = False, "", None
+                        self._resume(rx, backlog)
             elif action == "step":
                 self.peek = None
                 i = ((self.cur if self.cur is not None else self.pos) + int(kw.get("dir", 1))) % self.n
@@ -549,9 +634,10 @@ class Scanner:
             self.asq[i] = np.nan if c["asq"] is None else float(c["asq"])
             self.prio[i] = c["prio"]
             self.mi[i] = self.modes.index(c["mode"])
-        self.opts, self.vfo = dict(kw["opts"]), kw["vfo"]
+        self.opts, self.vfo, self.session = dict(kw["opts"]), kw["vfo"], kw.get("session", "")
         self.n_excluded = len(kw["excluded"])
         self.excluded = kw["excluded"][:EXCLUDED_MAX]
+        self.span = kw.get("span", SCAN_SPAN)
         self.windows = [] if kw["chained"] else self._windows(kw["fs"])
         self.win = 0
         self.prio_wins = sorted({int(w) for w in self.win_of[self.prio] if w >= 0})
@@ -565,7 +651,7 @@ class Scanner:
         bin_hz = fs / n
         lo_edge = center - fs / 2
         cal = getattr(rx.sdr, "smeter_offset", 0.0)
-        vis = np.abs(self.f - center) + self.bw / 2 <= fs / 2 * SCAN_SPAN
+        vis = np.abs(self.f - center) + self.bw / 2 <= fs / 2 * self.span
         if not rx.chained:
             vis &= self.lo == rx.lo
         self.vis = vis
@@ -659,21 +745,21 @@ class Scanner:
         dur = max(a["m_last"] - a["m0"], 0.0) + BLOCK_S
         entry = {"time_utc": time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime(a["t0"])), "vfo": self.vfo,
                  "freq_hz": int(round(m["freq"])), "name": m["name"], "mode": m["mode"], "duration_s": round(dur, 1),
-                 "max_dbfs": round(a["max"], 1), "snr_db": round(a["snr"], 1), "file": a["file"], "note": a["note"]}
+                 "max_dbfs": round(a["max"], 1), "snr_db": round(a["snr"], 1), "file": a["file"], "note": a["note"],
+                 "session": self.session}
         self.log.appendleft(entry)
-        if self.opts["log"]:
-            try:
-                os.makedirs(LOG_DIR, exist_ok=True)
-                path = log_path(a["t0"])
-                buf = io.StringIO()
-                w = csv.DictWriter(buf, LOG_FIELDS, lineterminator="\n")
-                if not os.path.exists(path):
-                    w.writeheader()
-                w.writerow(entry)
-                with open(path, "a", encoding="utf-8", newline="") as f:
-                    f.write(buf.getvalue())
-            except OSError:
-                pass                                # a full disk / locked file must not stop the scan
+        try:                                        # always written: ACTIVITY and HEATMAP read it
+            os.makedirs(LOG_DIR, exist_ok=True)
+            path = log_path(a["t0"])
+            buf = io.StringIO()
+            w = csv.DictWriter(buf, LOG_FIELDS, lineterminator="\n")
+            if not os.path.exists(path):
+                w.writeheader()
+            w.writerow(entry)
+            with open(path, "a", encoding="utf-8", newline="") as f:
+                f.write(buf.getvalue())
+        except OSError:
+            pass                                    # a full disk / locked file must not stop the scan
         if (self.opts["store"] and not m["mem"] and dur >= STORE_MIN_S and m["id"] not in self._stored_ids
                 and self.on_store and not a["note"]):
             self._stored_ids.add(m["id"])
@@ -755,7 +841,7 @@ class Scanner:
         out = {"on": self.on, "paused": self.paused, "state": self.state, "opts": o, "rate": round(self.rate, 1),
                "channels": self.n if self.on else 0, "windows": len(self.windows) or (1 if self.on else 0),
                "window": self.win + 1 if self.windows else (1 if self.on else 0), "excluded": self.n_excluded,
-               "locked": len(self.locked), "message": self.message or self.rec_error, "stored": self.stored,
+               "locked": len(self.locked), "session": self.session, "message": self.message or self.rec_error, "stored": self.stored,
                "range": rng if self.on else None, "rec_file": self.rec_file if self.rec_wav is not None else "",
                "locked_f": [float(self.f[i]) for i in list(self.locked)[:200]] if self.on else [],
                "cur": {"id": self.meta[cur]["id"], "name": self.meta[cur]["name"], "freq_hz": float(self.f[cur]),
