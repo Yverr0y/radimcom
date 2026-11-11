@@ -68,10 +68,6 @@ zip yet. To ask for it, or for any other source code, write to radim.mutina@gmai
 
 - The VDL2 ground station list (`VDL2_Ground_Stations.txt`) comes from <https://acars-vdl2.groups.io/>, redistributed
   with approval.
-- The built-in overlays of the ROTOR CONTROL map (`static/overlays/`): the DAB+ and FM transmitter sites and programmes are taken
-  from Wikipedia (sk.wikipedia.org and cs.wikipedia.org: *Zoznam vysielačov na Slovensku*, *Zoznam vysielačov v Česku* and the pages of
-  the single transmitters; text under CC BY-SA 4.0); the ham repeaters from przemienniki.net (<https://przemienniki.net>, RXF export)
-  and cq.sk (<https://cq.sk/zoznam-vkv-ukv-prevadzacov-a-majakov-v-sr/>). State of 2026-11-11, main sites only, may be out of date.
 - The airport tables in `airports.py` come from OurAirports (public domain).
 - The SATELLITES tab shows pages of AMSAT (<https://www.amsat.org/>), downloaded by the running program. They belong to AMSAT and are not in the repository or the release packages.
 - The orbital elements for pass prediction (TLE, amateur group) come from CelesTrak (<https://celestrak.org/>), downloaded by the running program once a day into `data\sat_tle.txt`; they are not in the repository or the release packages.

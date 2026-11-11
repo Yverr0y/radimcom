@@ -1943,6 +1943,13 @@ body.map-only .pkt-map.map-only-box { flex-direction: column; gap: 4px; }
 .rc-ovs-head { display: flex; align-items: center; gap: 6px; color: var(--muted); margin-bottom: 2px; }
 .rc-ovs-head button:first-of-type { margin-left: auto; }
 .rc-ov { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+/* narrow scrollbars of the group box and the list (a third of the default width); Firefox: thin */
+#rotPane ::-webkit-scrollbar { width: 6px; height: 6px; }
+#rotPane ::-webkit-scrollbar-thumb { background: #3a424d; border-radius: 3px; }
+#rotPane ::-webkit-scrollbar-thumb:hover { background: #56606d; }
+#rotPane ::-webkit-scrollbar-track { background: transparent; }
+#rotPane ::-webkit-scrollbar-button { display: none; }
+@supports not selector(::-webkit-scrollbar) { #rotPane, #rotPane * { scrollbar-width: thin; } }
 .rc-ov i, .rc-row i { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #000; flex: none; display: inline-block; }
 .rc-list { flex: 1 1 0; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; font-size: 12px; }
 .rc-row { display: grid; grid-template-columns: 12px 1fr 40px 56px; grid-template-rows: auto auto; column-gap: 6px; align-items: center; padding: 3px 8px; cursor: pointer;
