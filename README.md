@@ -51,7 +51,7 @@ Up to four SDRs at once, each assigned to a VFO by its serial number; one dongle
 - **AIS** ships on 161.975 / 162.025 MHz (own decoder, both channels at once) with a map of ships, base stations and aids to navigation. → [AIS](docs/decoders/ais.md)
 - **DAB / DAB+ radio**, **digital voice** (DMR, P25, D-Star, YSF, …; test version) and **ISM** 433 / 868 MHz devices. → [DAB](docs/decoders/dab.md) · [DSD](docs/decoders/dsd.md) · [ISM](docs/decoders/ism.md)
 - **Satellite tracking:** passes, world map, Doppler correction and a K3NG rotor, no other program needed. → [Satellites](docs/satellites.md)
-- **Rotor control map:** click a place, a DAB+ / FM transmitter or a ham repeater (SK / CZ) and the rotor turns there; beam sector on the map turns with the antenna; own editable groups of points. → [Rotor control](docs/satellites.md#rotor-control-map)
+- **Rotor control map:** click a place or a memory channel with a location (LAT / LON) and the rotor turns there; channels shown by their MEMORIES groups; beam sector on the map turns with the antenna. → [Rotor control](docs/satellites.md#rotor-control-map)
 - **MP3 recording** (REC / REC SQ) with a RECORDINGS tab to play the files in the browser, daily decoder logs, **HTTP API**, optional **TX with LimeSDR**. → [Configuration](docs/configuration.md)
 
 ### User interface

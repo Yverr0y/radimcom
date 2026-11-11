@@ -99,12 +99,10 @@ Main Features
   the lit one joined to its card: SDR DONGLE, ADVANCED, AUDIO, TX). S9 calibration moved to VFO -> ADVANCED.
 - One rotor for the whole station: settings in data\rotor.json (moved from config_X.json at the first start),
   run by the receiver of the first VFO whichever VFO is active; MONITOR is one switch for all VFOs.
-- ROTOR CONTROL tab (new key RCTRL in the key group TRACKING, formerly SAT): a click on the map, on an overlay point
+- ROTOR CONTROL tab (new key RCTRL in the key group TRACKING, formerly SAT): a click on the map, on a channel point
   or on a list row turns the station rotor (from any VFO) to that azimuth from the QTH (elevation 0); dashed line =
-  wanted azimuth to the target, green sector (BEAM width) = antenna now, turning with the rotor. Groups of points:
-  default DAB+ SR, FM BCAST SK/CZ, HAM repeaters SK/CZ, plus own groups; OVERLAYS page to make, rename, edit
-  (points by lat / lon or QTH locator), IMPORT / EXPORT, RESET or DELETE groups (saved in data\overlays);
-  + ADD POINT puts the map target into a group.
+  wanted azimuth to the target, green sector (BEAM width) = antenna now, turning with the rotor. The points are the
+  MEMORIES channels with a location (LAT / LON); GROUPS beside the map: a checkbox per group (ALL / NONE).
 - Folder of the MP3 recordings selectable: SETTINGS -> GENERAL -> RECORDINGS (full path, created if missing,
   DEFAULT = data\recordings); one folder for all VFOs, used by REC / REC SQ and the RECORDINGS tab. data\recordings.json.
 - Tone squelch in FM: keys TSQ-C (CTCSS, 50 tones) and TSQ-D (DCS, 104 codes, N / I) in the AUDIO group, in addition

@@ -7524,15 +7524,14 @@ $("rotElHit").addEventListener("click", (e) => {
 });
 
 // ---------- ROTOR CONTROL tab (RCTRL key): a map to aim the rotor at a place ----------
-// A click on the map, on an overlay point or on a row of the list: azimuth from the QTH (great circle), elevation 0.
+// A click on the map, on a channel point or on a row of the list: azimuth from the QTH (great circle), elevation 0.
+// The points are the MEMORIES channels with a location (LAT / LON), shown by their groups (checkboxes beside the map).
 // The dashed line is the wanted azimuth (to the target, remembered in this browser until CLEAR); the green sector
 // (BEAM °) is where the antenna points now and turns with the rotor. The rotor belongs to the station: its commands
 // go to the VFO that holds it (rotorBase), so the map works from every VFO.
 const RC_EARTH_KM = 6371;
 const RC_ANT_KM = 250;          // length of the antenna sector without a target
-let rcMap = null, rcLay = null, rcQth = null, rcOv = null, rcOvBusy = false, rcListShown = [];
-let rcEdit = null;              // the group being edited on the OVERLAYS page: a working copy {id, name, color, points}
-let rcTab = recall("rcTab") === "overlays" ? "overlays" : "map";
+let rcMap = null, rcLay = null, rcQth = null, rcListShown = [];
 let rcTarget = (() => {
   try {
     const t = JSON.parse(recall("rcTarget") || "null");
@@ -7541,7 +7540,10 @@ let rcTarget = (() => {
 })();
 let rcMsg = "", rcMsgUntil = 0, rcMsgWarn = false;
 const rcBeam = () => Math.min(Math.max(Number(recall("rcBeam")) || 30, 1), 360);
-const rcOvOn = (id) => recall(`rcOv_${id}`) !== "0";
+const rcGrpOn = (name) => recall(`rcGrp_${name}`) !== "0";
+const RC_NO_GROUP = "(no group)";
+// colours of the groups on the map, in the order of the group list
+const RC_COLORS = ["#ff9f1c", "#2ec4b6", "#9b5de5", "#00bbf9", "#f15bb5", "#8ac926", "#00f5d4", "#c77dff", "#4895ef", "#b5838d"];
 const rcRad = (d) => (d * Math.PI) / 180, rcDeg = (r) => (r * 180) / Math.PI;
 const rcKm = (km) => (km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`);
 const RC_NOTE = "dashed = wanted azimuth (target) · green sector = antenna now · red = QTH · map © OpenStreetMap";
@@ -7568,22 +7570,6 @@ function rcPath(a, az, km) {
   return Array.from({ length: n + 1 }, (_, i) => rcDest(a, az, (km * i) / n));
 }
 
-/** QTH locator (4, 6 or 8 characters) → the centre of its square {lat, lon}, or null. */
-function rcLocator(s) {
-  const m = /^([A-R]{2})(\d{2})([A-X]{2})?(\d{2})?$/i.exec(String(s).trim());
-  if (!m) return null;
-  const L = m[1].toUpperCase(), A = "A".charCodeAt(0);
-  let lon = (L.charCodeAt(0) - A) * 20 - 180 + Number(m[2][0]) * 2, lat = (L.charCodeAt(1) - A) * 10 - 90 + Number(m[2][1]);
-  let w = 2, h = 1;
-  if (m[3]) {
-    const S = m[3].toUpperCase();
-    w /= 24; h /= 24;
-    lon += (S.charCodeAt(0) - A) * w; lat += (S.charCodeAt(1) - A) * h;
-    if (m[4]) { w /= 10; h /= 10; lon += Number(m[4][0]) * w; lat += Number(m[4][1]) * h; }
-  }
-  return { lat: +(lat + h / 2).toFixed(5), lon: +(lon + w / 2).toFixed(5) };
-}
-
 function rcSay(text, warn = false) {
   rcMsg = text;
   rcMsgWarn = warn;
@@ -7599,27 +7585,16 @@ async function rcLoadQth() {
   } catch { /* server unreachable: keep the last one */ }
 }
 
-async function rcLoadOverlays(force = false) {
-  if ((rcOv && !force) || rcOvBusy) return;
-  rcOvBusy = true;
-  try {
-    rcOv = (await satFetch("/api/overlays")).groups || [];
-  } catch (e) {
-    rcSay(`Overlays: ${e.message}`, true);
-  } finally {
-    rcOvBusy = false;
-  }
-}
-
-const rcGroup = (id) => (rcOv || []).find((g) => g.id === id);
-
 /** The tab opened (RCTRL key, tab, page switch): the QTH may have changed in SETTINGS › GENERAL › LOCATION, read it again. */
 async function rctrlOpened() {
-  setRcTab(rcTab, false);
   await rcLoadQth();
-  await rcLoadOverlays();
-  if (rcTab === "map") await rcMapOpen();
+  await rcMapOpen();
   rcRenderAll();
+}
+
+/** The memories changed (MEMORIES editor, import, another VFO): the points and the group list are drawn again. */
+function rctrlMemsChanged() {
+  if (bodyTab === "rot" && rcMap) rcRenderAll();
 }
 
 async function rcMapOpen() {
@@ -7736,15 +7711,29 @@ function rcRenderInfo() {
   $("rcInfo").classList.toggle("warn", !!msg && rcMsgWarn);
 }
 
-/** All points of the groups that are on, with the azimuth and distance from the QTH. */
+const rcHasLoc = (m) => Number.isFinite(m.lat) && Number.isFinite(m.lon);
+const rcGroupsOf = (m) => { const g = memGroupsOf(m); return g.length ? g : [RC_NO_GROUP]; };
+
+/** The groups of the channels with a location: [{name, color, count}], by name, "(no group)" last. */
+function rcGroups() {
+  const count = new Map();
+  for (const m of mems) if (rcHasLoc(m)) for (const g of rcGroupsOf(m)) count.set(g, (count.get(g) || 0) + 1);
+  const names = [...count.keys()].sort((a, b) => (a === RC_NO_GROUP) - (b === RC_NO_GROUP) || a.localeCompare(b, "en", { sensitivity: "base" }));
+  return names.map((name, i) => ({ name, color: RC_COLORS[i % RC_COLORS.length], count: count.get(name) }));
+}
+
+/** The channels with a location in a group that is on (each once, in the colour of its first shown group),
+ *  with the azimuth and distance from the QTH. */
 function rcPoints() {
-  const out = [];
-  for (const g of rcOv || []) {
-    if (!rcOvOn(g.id)) continue;
-    for (const p of g.points || []) {
-      const [az, km] = rcQth ? rcBearing(rcQth, p) : [null, null];
-      out.push({ ...p, group: g.id, color: g.color, az, km });
-    }
+  const color = new Map(rcGroups().map((g) => [g.name, g.color])), out = [];
+  for (const m of mems) {
+    if (!rcHasLoc(m)) continue;
+    const g = rcGroupsOf(m).find(rcGrpOn);
+    if (!g) continue;
+    const [az, km] = rcQth ? rcBearing(rcQth, m) : [null, null];
+    const freq = m.freq_hz >= 30e6 ? `${fmtMHz(m.freq_hz, 4)} MHz` : `${fmtKHz(m.freq_hz, 2)} kHz`;
+    out.push({ id: m.id, name: m.name, lat: m.lat, lon: m.lon, info: `${freq} ${m.mode}`, detail: [rcGroupsOf(m).join(", "), m.note || ""].filter(Boolean).join(" · "),
+      group: g, color: color.get(g), az, km });
   }
   return out;
 }
@@ -7753,37 +7742,38 @@ function rcRenderOverlays() {
   if (!rcLay) return;
   rcLay.ov.clearLayers();
   for (const p of rcPoints()) {
-    const tip = `<b>${escHtml(p.name)}</b>${p.info ? `<br>${escHtml(p.info)}` : ""}${p.detail ? `<br><span class="rc-tip-d">${escHtml(p.detail)}</span>` : ""}` +
+    const tip = `<b>${escHtml(p.name)}</b><br>${escHtml(p.info)}${p.detail ? `<br><span class="rc-tip-d">${escHtml(p.detail)}</span>` : ""}` +
       (p.az != null ? `<br>AZ ${Math.round(p.az)}° · ${rcKm(p.km)} · click: turn the rotor` : "");
-    L.circleMarker([p.lat, p.lon], { radius: p.group === "ham" ? 4 : 5, color: "#000", weight: 1, fillColor: p.color, fillOpacity: 0.95, bubblingMouseEvents: false })
+    L.circleMarker([p.lat, p.lon], { radius: 5, color: "#000", weight: 1, fillColor: p.color, fillOpacity: 0.95, bubblingMouseEvents: false })
       .bindTooltip(tip, { className: "ais-label rc-tip" })
       .on("click", () => rcAim(p))
       .addTo(rcLay.ov);
   }
 }
 
+/** Beside the map: one row per group of channels with a location, its checkbox shows / hides its points. */
 function rcRenderToggles() {
-  $("rcOvs").innerHTML = (rcOv || []).map((g) =>
-    `<label class="rc-ov" title="${escHtml(g.source ? `Source: ${g.source}` : "")}"><input type="checkbox" data-rc-ov="${escHtml(g.id)}"${rcOvOn(g.id) ? " checked" : ""}>` +
-    `<i style="background:${escHtml(g.color)}"></i>${escHtml(g.name)} <span class="muted">(${(g.points || []).length}${g.builtin && g.custom ? ", edited" : ""})</span></label>`).join("") ||
-    '<span class="muted">No groups of points</span>';
-  const sel = $("rcAddGroup"), keep = sel.value || recall("rcAddGroup") || "";
-  sel.innerHTML = (rcOv || []).map((g) => `<option value="${escHtml(g.id)}">${escHtml(g.name)}</option>`).join("");
-  if (rcGroup(keep)) sel.value = keep;
+  const groups = rcGroups();
+  $("rcOvs").innerHTML = `<div class="rc-ovs-head">GROUPS <button class="key small" data-rc-all="1" title="Show all groups">ALL</button>` +
+    `<button class="key small" data-rc-all="0" title="Hide all groups">NONE</button></div>` +
+    (groups.map((g) =>
+      `<label class="rc-ov"><input type="checkbox" data-rc-grp="${escHtml(g.name)}"${rcGrpOn(g.name) ? " checked" : ""}>` +
+      `<i style="background:${g.color}"></i>${escHtml(g.name)} <span class="muted">(${g.count})</span></label>`).join("") ||
+    '<span class="muted">No channel has a location: set LAT / LON of a channel in MEMORIES › CHANNELS (EDIT, CHOOSE ON MAP).</span>');
 }
 
 function rcRenderList() {
   const q = $("rcFilter").value.trim().toLowerCase();
-  const list = rcPoints().filter((p) => !q || `${p.name} ${p.info || ""} ${p.detail || ""} ${p.freq || ""}`.toLowerCase().includes(q))
+  const list = rcPoints().filter((p) => !q || `${p.name} ${p.info} ${p.detail}`.toLowerCase().includes(q))
     .sort((a, b) => (a.km ?? 0) - (b.km ?? 0));
   const isSel = (p) => rcTarget && Math.abs(p.lat - rcTarget.lat) < 1e-6 && Math.abs(p.lon - rcTarget.lon) < 1e-6;
   rcListShown = list.slice(0, 1500);
-  $("rcList").innerHTML = `<div class="ais-ml-head">${list.length} point${list.length === 1 ? "" : "s"}${rcQth ? ", nearest first" : ""} · click: turn the rotor</div>` +
+  $("rcList").innerHTML = `<div class="ais-ml-head">${list.length} channel${list.length === 1 ? "" : "s"}${rcQth ? ", nearest first" : ""} · click: turn the rotor</div>` +
     rcListShown.map((p, i) =>
       `<div class="rc-row${isSel(p) ? " sel" : ""}" data-i="${i}">` +
       `<i style="background:${escHtml(p.color)}"></i><b>${escHtml(p.name)}</b>` +
       `<span class="rc-az">${p.az != null ? `${Math.round(p.az)}°` : ""}</span><span class="rc-km">${p.km != null ? rcKm(p.km) : ""}</span>` +
-      `<span class="rc-inf">${escHtml(p.info || "")}${p.detail ? ` · ${escHtml(p.detail)}` : ""}</span></div>`).join("");
+      `<span class="rc-inf">${escHtml(p.info)}${p.detail ? ` · ${escHtml(p.detail)}` : ""}</span></div>`).join("");
 }
 
 function rcRenderAll() {
@@ -7795,151 +7785,23 @@ function rcRenderAll() {
   rcDrawTarget();
   rctrlRotor(rotorInfo);
   $("rcNote").textContent = RC_NOTE;
-  if (rcTab === "overlays") rcRenderOvCards();
 }
 
-// ----- OVERLAYS page: the groups of points (built-in defaults and own ones), their editor, import / export -----
-function rcRenderOvCards() {
-  $("rcOvCards").innerHTML = (rcOv || []).map((g) => {
-    const state = g.builtin ? (g.custom ? "built-in, edited" : "built-in") : "own group";
-    return `<div class="setting rc-ov-card${rcEdit && rcEdit.id === g.id ? " on" : ""}" data-gid="${escHtml(g.id)}">` +
-      `<div class="rc-ov-title"><i style="background:${escHtml(g.color)}"></i><b>${escHtml(g.name)}</b></div>` +
-      `<p class="note">${(g.points || []).length} points · ${state}${g.updated ? ` · ${escHtml(g.updated)}` : ""}</p>` +
-      (g.source ? `<p class="note">Source: ${escHtml(g.source)}</p>` : "") +
-      (g.error ? `<p class="note error">${escHtml(g.error)}</p>` : "") +
-      `<div class="row"><button class="key small" data-rc-act="edit" title="Rename, recolour, add / change / delete points">EDIT</button>` +
-      `<button class="key small" data-rc-act="import" title="Load a JSON file: it replaces the points of this group">IMPORT</button>` +
-      `<button class="key small" data-rc-act="export" title="Save the group as a JSON file">EXPORT</button>` +
-      (g.builtin
-        ? `<button class="key small" data-rc-act="reset"${g.custom ? "" : " disabled"} title="Forget the changes and use the built-in list again">RESET</button>`
-        : `<button class="key small" data-rc-act="delete" title="Delete this group">DELETE</button>`) +
-      `</div></div>`;
-  }).join("");
-  rcRenderEdit();
-}
-
-const RC_EDIT_COLS = [["name", "Name", "text"], ["lat", "Lat ° / locator", "text"], ["lon", "Lon °", "text"], ["freq", "MHz", "text"], ["info", "Info", "text"]];
-
-function rcRenderEdit() {
-  const box = $("rcEdit");
-  if (!rcEdit) { box.hidden = true; box.innerHTML = ""; return; }
-  box.hidden = false;
-  const g = rcEdit;
-  box.innerHTML =
-    `<div class="rc-edit-head"><b>EDIT GROUP</b>` +
-    `<label>Name <input id="rcEdName" type="text" maxlength="80" value="${escHtml(g.name)}"></label>` +
-    `<label>Colour <input id="rcEdColor" type="color" value="${escHtml(/^#[0-9a-f]{6}$/i.test(g.color) ? g.color : "#888888")}"></label>` +
-    `<span class="muted">${g.points.length} points</span>` +
-    `<button class="key small" data-rc-ed="add" title="Add an empty row for a new point">+ POINT</button>` +
-    `<button class="key small" data-rc-ed="target"${rcTarget ? "" : " disabled"} title="Add the target point of the map (the last click there)">+ MAP TARGET</button>` +
-    `<button class="key small accent" data-rc-ed="save">SAVE</button><button class="key small" data-rc-ed="cancel">CANCEL</button></div>` +
-    `<div class="rc-edit-tab"><table><thead><tr>${RC_EDIT_COLS.map((c) => `<th>${c[1]}</th>`).join("")}<th></th></tr></thead><tbody>` +
-    g.points.map((p, i) => `<tr data-i="${i}">${RC_EDIT_COLS.map(([k]) =>
-      `<td><input data-k="${k}" type="text" value="${escHtml(p[k] ?? "")}"></td>`).join("")}` +
-      `<td><button class="key small" data-rc-ed="del" title="Delete this point">✕</button></td></tr>`).join("") +
-    `</tbody></table>${g.points.length ? "" : '<p class="note">No points yet: + POINT, + MAP TARGET, or + ADD POINT on the MAP page.</p>'}</div>`;
-}
-
-function rcStartEdit(id) {
-  const g = rcGroup(id);
-  if (!g) return;
-  rcEdit = { id: g.id, name: g.name, color: g.color, source: g.source || "", updated: g.updated || "",
-    points: (g.points || []).map((p) => ({ ...p })) };
-  rcRenderOvCards();
-  $("rcEdit").scrollIntoView({ block: "nearest" });
-}
-
-/** The rows of the editor → points; a locator in the latitude field gives both coordinates. Throws on a bad row. */
-function rcEditPoints() {
-  return rcEdit.points.map((p, i) => {
-    const loc = rcLocator(p.lat);
-    const lat = loc ? loc.lat : Number(String(p.lat).replace(",", ".")), lon = loc ? loc.lon : Number(String(p.lon).replace(",", "."));
-    const name = String(p.name || "").trim();
-    if (!name || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180 || p.lat === "" || (!loc && p.lon === "")) {
-      throw new Error(`row ${i + 1}${name ? ` (${name})` : ""}: needs a name and a position (lat, lon or a locator)`);
-    }
-    const q = { ...p, name, lat, lon };
-    const f = Number(String(p.freq ?? "").replace(",", "."));
-    if (p.freq === "" || p.freq == null || !(f > 0)) delete q.freq; else q.freq = f;
-    if (!q.info) delete q.info;
-    return q;
-  });
-}
-
-async function rcSaveGroup(id, body) {
-  const g = await satFetch(`/api/overlays/${encodeURIComponent(id)}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  await rcOvReload();
-  return g;
-}
-
-/** + ADD POINT on the map: the target point into the chosen group (asks for its name). */
-async function rcAddTarget(gid) {
-  const g = rcGroup(gid);
-  if (!g) { rcSay("Make a group first (OVERLAYS, + NEW GROUP)", true); return; }
-  if (!rcTarget) { rcSay("Click the place on the map first", true); return; }
-  const name = prompt(`Name of the point in "${g.name}" (AZ ${Math.round(rcTarget.az || 0)}°):`, rcTarget.name || "");
-  if (name == null || !name.trim()) return;
-  const { custom, error, skipped, builtin, id, ...keep } = g;
-  try {
-    await rcSaveGroup(gid, { ...keep, points: [...(g.points || []), { name: name.trim(), lat: +rcTarget.lat.toFixed(6), lon: +rcTarget.lon.toFixed(6) }] });
-    rcTarget.name = name.trim();
-    store("rcTarget", JSON.stringify(rcTarget));
-    store(`rcOv_${gid}`, "1");
-    rcRenderAll();
-    rcSay(`"${name.trim()}" added to ${g.name}`);
-  } catch (e) { rcSay(`Not added: ${e.message}`, true); }
-}
-
-function rcExport(g) {
-  const { custom, error, skipped, builtin, id, created, ...keep } = g;
-  const a = Object.assign(document.createElement("a"), {
-    href: URL.createObjectURL(new Blob([JSON.stringify(keep, null, 1)], { type: "application/json" })),
-    download: `radimcom_overlay_${(g.name || g.id).replace(/[^\w.-]+/g, "_")}.json`,
-  });
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
-
-/** Picks a JSON file and hands its content to use(body, fileName). */
-function rcPickJson(use) {
-  const inp = Object.assign(document.createElement("input"), { type: "file", accept: ".json,application/json" });
-  inp.onchange = async () => {
-    const f = inp.files[0];
-    if (!f) return;
-    let body;
-    try { body = JSON.parse(await f.text()); } catch { alert(`${f.name}: not valid JSON`); return; }
-    try { await use(body, f.name); } catch (err) { alert(`${f.name}: ${err.message}`); }
-  };
-  inp.click();
-}
-
-function setRcTab(t, render = true) {
-  rcTab = t;
-  store("rcTab", t);
-  for (const b of $("rcTabs").children) b.classList.toggle("on", b.dataset.rcTab === t);
-  $("rcMapBox").hidden = t !== "map";
-  $("rcOvBox").hidden = t !== "overlays";
-  if (!render) return;
-  if (t === "map" && bodyTab === "rot") rcMapOpen().then(rcRenderAll);
-  if (t === "overlays") rcRenderOvCards();
-}
-
-async function rcOvReload() {
-  await rcLoadOverlays(true);
-  rcRenderAll();
-  if (rcTab === "overlays") rcRenderOvCards();
-}
-
-$("rcTabs").addEventListener("click", (e) => { const b = e.target.closest("button[data-rc-tab]"); if (b) setRcTab(b.dataset.rcTab); });
 $("rcOvs").addEventListener("change", (e) => {
-  const k = e.target.dataset.rcOv;
-  if (!k) return;
-  store(`rcOv_${k}`, e.target.checked ? "1" : "0");
+  const k = e.target.dataset.rcGrp;
+  if (k == null) return;
+  store(`rcGrp_${k}`, e.target.checked ? "1" : "0");
   rcRenderOverlays();
   rcRenderList();
 });
-$("rcAddGroup").addEventListener("change", () => store("rcAddGroup", $("rcAddGroup").value));
-$("rcAddBtn").addEventListener("click", () => rcAddTarget($("rcAddGroup").value));
+$("rcOvs").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-rc-all]");
+  if (!b) return;
+  for (const g of rcGroups()) store(`rcGrp_${g.name}`, b.dataset.rcAll);
+  rcRenderToggles();
+  rcRenderOverlays();
+  rcRenderList();
+});
 $("rcFilter").addEventListener("input", () => rcRenderList());
 $("rcList").addEventListener("click", (e) => {
   const r = e.target.closest(".rc-row");
@@ -7964,92 +7826,6 @@ $("rcClear").addEventListener("click", () => {
   rcRenderInfo();
 });
 $("rcStop").addEventListener("click", () => rcPost({ stop: true }, "Rotor stopped"));
-$("rcNewGroup").addEventListener("click", async () => {
-  const name = prompt("Name of the new group of points:", "");
-  if (name == null) return;
-  try {
-    const g = await satFetch("/api/overlays", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() }) });
-    await rcOvReload();
-    store("rcAddGroup", g.id);
-    rcStartEdit(g.id);
-  } catch (e) { alert(e.message); }
-});
-$("rcImportNew").addEventListener("click", () => rcPickJson(async (body, fname) => {
-  const g = await satFetch("/api/overlays", { method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(Array.isArray(body) ? { name: fname.replace(/\.json$/i, ""), points: body } : { name: fname.replace(/\.json$/i, ""), ...body }) });
-  await rcOvReload();
-  alert(`${fname}: group "${g.name}" with ${g.points.length} points${g.skipped ? `, ${g.skipped} skipped (no name / lat / lon)` : ""}.`);
-}));
-$("rcOvCards").addEventListener("click", async (e) => {
-  const b = e.target.closest("button[data-rc-act]");
-  if (!b) return;
-  const id = b.closest("[data-gid]").dataset.gid, g = rcGroup(id);
-  if (!g) return;
-  const act = b.dataset.rcAct;
-  if (act === "edit") rcStartEdit(id);
-  else if (act === "export") rcExport(g);
-  else if (act === "reset" || act === "delete") {
-    if (!confirm(act === "reset" ? `Forget the changes of "${g.name}" and use the built-in list again?` : `Delete the group "${g.name}" with its ${(g.points || []).length} points?`)) return;
-    try { await satFetch(`/api/overlays/${encodeURIComponent(id)}`, { method: "DELETE" }); } catch (err) { alert(err.message); }
-    if (rcEdit && rcEdit.id === id) rcEdit = null;
-    await rcOvReload();
-  } else if (act === "import") {
-    rcPickJson(async (body, fname) => {
-      const pts = Array.isArray(body) ? body : body.points;
-      const { custom, error, skipped, builtin, id: _, ...keep } = g;
-      const merged = Array.isArray(body) ? { ...keep, points: pts } : { ...keep, ...body, name: body.name || g.name };
-      const r = await rcSaveGroup(id, merged);
-      if (rcEdit && rcEdit.id === id) rcEdit = null;
-      alert(`${fname}: ${r.points.length} points in "${r.name}"${r.skipped ? `, ${r.skipped} skipped (no name / lat / lon)` : ""}.`);
-    });
-  }
-});
-// the editor: the inputs change the working copy, SAVE sends the whole group
-$("rcEdit").addEventListener("input", (e) => {
-  if (!rcEdit) return;
-  if (e.target.id === "rcEdName") { rcEdit.name = e.target.value; return; }
-  if (e.target.id === "rcEdColor") { rcEdit.color = e.target.value; return; }
-  const tr = e.target.closest("tr[data-i]"), k = e.target.dataset.k;
-  if (!tr || !k) return;
-  const p = rcEdit.points[Number(tr.dataset.i)];
-  p[k] = e.target.value;
-  if (k === "lat") {
-    const loc = rcLocator(e.target.value);
-    e.target.classList.toggle("rc-loc", !!loc);
-    e.target.title = loc ? `Locator → ${loc.lat}, ${loc.lon}` : "";
-  }
-});
-$("rcEdit").addEventListener("click", async (e) => {
-  const b = e.target.closest("button[data-rc-ed]");
-  if (!b || !rcEdit) return;
-  const act = b.dataset.rcEd;
-  if (act === "add") {
-    rcEdit.points.push({ name: "", lat: "", lon: "" });
-    rcRenderEdit();
-    const rows = $("rcEdit").querySelectorAll("tr[data-i]");
-    rows[rows.length - 1]?.querySelector("input")?.focus();
-  } else if (act === "target" && rcTarget) {
-    rcEdit.points.push({ name: rcTarget.name || "", lat: +rcTarget.lat.toFixed(6), lon: +rcTarget.lon.toFixed(6) });
-    rcRenderEdit();
-    const rows = $("rcEdit").querySelectorAll("tr[data-i]");
-    rows[rows.length - 1]?.querySelector("input")?.focus();
-  } else if (act === "del") {
-    rcEdit.points.splice(Number(b.closest("tr[data-i]").dataset.i), 1);
-    rcRenderEdit();
-  } else if (act === "cancel") {
-    rcEdit = null;
-    rcRenderOvCards();
-  } else if (act === "save") {
-    let points;
-    try { points = rcEditPoints(); } catch (err) { alert(err.message); return; }
-    const { id, ...body } = rcEdit;
-    try {
-      await rcSaveGroup(id, { ...body, name: body.name.trim(), points });
-      rcEdit = null;
-      rcRenderOvCards();
-    } catch (err) { alert(err.message); }
-  }
-});
 document.addEventListener("visibilitychange", () => { if (!document.hidden && bodyTab === "rot") rctrlOpened(); });
 
 // A click on the clock switches UTC / local time (LOC); the choice is remembered.
@@ -8107,6 +7883,7 @@ async function loadMems() {
   mems = await fetch(vbase + "/api/memories").then((r) => r.json());
   await loadMemGroups();
   renderMems();
+  rctrlMemsChanged();
 }
 
 // MEMORIES tab: the memory editor (CHANNELS, GROUPS, IMPORT, EXPORT; by Brano, brjanicek). A click on a row of CHANNELS
@@ -8343,6 +8120,7 @@ async function memChanged(newMems) {
   else mems = await fetch(vbase + "/api/memories").then((r) => r.json());
   await loadMemGroups();
   renderMems();
+  rctrlMemsChanged();
 }
 
 function medMsg(text, error) {

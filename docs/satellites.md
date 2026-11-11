@@ -77,31 +77,18 @@ K3NG ends any move after its operation timeout (60 s here), so an unchanged targ
 
 The **RCTRL** key (key group **TRACKING**, beside SAT) shows the **ROTOR CONTROL** tab. It turns the station rotor
 (**SETTINGS › GENERAL › ROTOR**, one for all VFOs: the map works from any VFO) to fixed places on the ground, for example a
-broadcast transmitter or a repeater.
+broadcast transmitter or a repeater, taken from the channels of **MEMORIES** that have a location.
 
-- **MAP:** a dark OpenStreetMap map centred on the station (**SETTINGS › GENERAL › LOCATION**). A click anywhere on it, on a point of an
-  overlay or on a row of the list beside it turns the rotor to the azimuth of that place from the QTH (great circle), elevation 0.
+- **MAP:** a dark OpenStreetMap map centred on the station (**SETTINGS › GENERAL › LOCATION**). A click anywhere on it, on a channel
+  point or on a row of the list beside it turns the rotor to the azimuth of that place from the QTH (great circle), elevation 0.
   The **dashed line** is the wanted azimuth: it goes to the target and stays there until **CLEAR** (remembered in the browser).
   The **green sector** of the antenna beam width (**BEAM**, default 30°) is where the antenna points now: it follows the position
   the rotor reports and turns with it, so you see the antenna reach the dashed line. **STOP** stops both motors. While the rotor
   cannot take a command (off, not connected, a fault, or TRACK on the TRACK page moves it) the target is still drawn and the
   reason is shown in the top line.
-- **Groups of points** (beside the map, each on / off). The built-in default groups are **DAB+ SR** (Towercom / RTVS sites with channel, power and programmes),
-  **FM BCAST SK/CZ** (main FM sites with their programmes) and **HAM repeaters SK/CZ**. A point shows its details on mouse over.
-  The list under the switches has the points of the groups that are on, nearest first, with azimuth and distance, and a filter.
-  **Target → group, + ADD POINT** puts the last clicked place into a group (it asks for the name).
-- **OVERLAYS:** the groups as cards. **+ NEW GROUP** makes an empty own group, **IMPORT AS NEW GROUP** makes one from a JSON file.
-  On a card: **EDIT** opens the editor (name, colour, a table of the points – **+ POINT**, **+ MAP TARGET**, ✕ deletes a row;
-  a QTH locator such as `JN88WQ` typed into the latitude field gives the position of the centre of the square; **SAVE** / **CANCEL**),
-  **IMPORT** replaces the points of the group from a JSON file, **EXPORT** saves the group as JSON. A built-in group can be edited
-  too: the edited copy is saved in `data\overlays\` and **RESET** brings back the built-in list; an own group is removed with **DELETE**.
-  Format:
-
-```json
-{"name": "My points", "color": "#ffb74d", "source": "where it comes from",
- "points": [{"name": "Kamzík", "lat": 48.1825, "lon": 17.0944, "info": "12C · 7.2 kW", "detail": "programmes…", "freq": 227.36}]}
-```
-
-  Only `name`, `lat` and `lon` (WGS 84, degrees) are required; a plain list of points works too. The built-in lists
-  (`static/overlays/`, 2026-11-11) come from Wikipedia (DAB+, FM: main sites only, the programmes may be out of date),
-  [przemienniki.net](https://przemienniki.net) and [cq.sk](https://cq.sk/zoznam-vkv-ukv-prevadzacov-a-majakov-v-sr/) (repeaters).
+- **Points = channels with a location.** Every channel of **MEMORIES › CHANNELS** with **LAT / LON** (EDIT, **CHOOSE ON MAP**) is a point
+  on the map, coloured by its group; on mouse over it shows the name, frequency, mode, groups and note.
+- **GROUPS** (beside the map): one row with a checkbox per group of the channels with a location (with the number of channels; channels
+  without a group are under *(no group)*); **ALL** / **NONE** switch them all. A channel in several groups is shown while any of its
+  groups is on. The choice is remembered in the browser. The list under the groups has the shown channels, nearest first, with
+  azimuth and distance, and a filter (name, frequency, group, note). A change in MEMORIES shows on the map at once.
