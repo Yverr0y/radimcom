@@ -7633,6 +7633,7 @@ function rcAim(t) {
   rcDrawTarget();
   rcDrawAntenna(rotorInfo);
   rcRenderList();
+  rcShowSel();
   const refusal = satDialRefusal(rotorInfo);
   if (refusal) { rcSay(`Target AZ ${Math.round(az)}° drawn, rotor not moved: ${refusal}`, true); return; }
   rcPost({ goto: [Math.round(az) % 360, 0] }, `Rotor → AZ ${Math.round(az)}° EL 0°${t.name ? ` (${t.name})` : ""}`);
@@ -7774,6 +7775,16 @@ function rcRenderList() {
       `<i style="background:${escHtml(p.color)}"></i><b>${escHtml(p.name)}</b>` +
       `<span class="rc-az">${p.az != null ? `${Math.round(p.az)}°` : ""}</span><span class="rc-km">${p.km != null ? rcKm(p.km) : ""}</span>` +
       `<span class="rc-inf">${escHtml(p.info)}${p.detail ? ` · ${escHtml(p.detail)}` : ""}</span></div>`).join("");
+}
+
+/** Scrolls the list so that the row of the target (a clicked point) is visible; only the list moves, not the page. */
+function rcShowSel() {
+  const box = $("rcList"), row = box.querySelector(".rc-row.sel");
+  if (!row) return;
+  const head = box.querySelector(".ais-ml-head"), h = head ? head.offsetHeight : 0;
+  // offsetTop is relative to the list (position: relative), so a CSS zoom of the page does not matter
+  if (row.offsetTop - h < box.scrollTop) box.scrollTop = row.offsetTop - h;
+  else if (row.offsetTop + row.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = row.offsetTop + row.offsetHeight - box.clientHeight;
 }
 
 function rcRenderAll() {
