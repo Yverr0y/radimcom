@@ -46,7 +46,8 @@
     <div class="vfo-keys" id="vfoKeys"></div>
 
     <!-- AD = additional display under the S-meter and the VFO keys (as wide as both). Shows one thing, by priority:
-         1. error messages (red, confirmed by OK), 2. rotor AZ / EL (MONITOR in SETTINGS › GENERAL › ROTOR), 3. RDS -->
+         1. error messages (red, confirmed by OK), 2. rotor AZ / EL (MONITOR in SETTINGS › GENERAL › ROTOR),
+         3. DAB now on air (station, SNR, DLS text), 4. RDS -->
     <div class="mfd" id="mfd">
       <div class="ad-err" id="adErr" hidden role="alert">
         <span class="ad-err-text" id="adErrText"></span><span class="ad-err-more" id="adErrMore"></span>
@@ -55,6 +56,11 @@
       <div class="ad-rot" id="adRot" hidden title="Rotor of the station (MONITOR in SETTINGS › GENERAL › ROTOR)">
         <span class="ad-rot-v"><span class="ad-rot-tag">ROTOR</span><small>AZ</small><b id="adRotAz">–</b><small>EL</small><b id="adRotEl">–</b></span>
         <span class="ad-rot-tgt" id="adRotTgt"></span>
+      </div>
+      <div class="ad-dab" id="adDab" hidden>
+        <span class="ad-dab-tag" id="adDabTag">DAB</span>
+        <div class="rds-top"><span class="rds-ps ad-dab-ps" id="adDabPs"></span><span class="ad-dab-snr" id="adDabSnr" title="Signal to noise ratio of the DAB ensemble"></span></div>
+        <div class="ad-dab-dls" id="adDabDls"><span id="adDabDlsText"></span></div>
       </div>
       <div class="rds off" id="rds">
       <!-- simplified RDS logo (two interlaced rings and R·D·S); shown only while the station sends RDS -->

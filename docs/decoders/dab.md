@@ -13,6 +13,7 @@ DAB and DAB+ are broadcast in Band III (174–240 MHz). One channel (e.g. 12C = 
 - Click a station to listen, click it again to stop. Each VFO remembers the last channel and the last station of each channel, and the station plays again by itself; after a reload of the page the browser may wait for the first click.
   Audio plays through MAIN volume; REC does not record DAB.
 - The middle of the card shows the station: slideshow picture, programme type, DAB / DAB+, bitrate, language, error protection, codec, the DLS text ("now on air") and the decoding errors.
+- The station playing is also in the **AD window** under the S-meter (in the place of RDS): DAB / DAB+ tag, station name, SNR in the colour of the signal quality and the DLS text, running when it is wider than the window. Errors and the rotor MONITOR have priority over it.
 - The right side shows **SIGNAL** (SNR with a quality mark, frequency correction and FIC errors), **ENSEMBLE** (name, country, ID, stations, local time and UTC) and **MULTIPLEX CAPACITY** (the share of each station; the one playing is yellow).
 - Another mode in MODE, any band button or recalling a memory that is not DAB ends DAB and restores the previous sample rate. DAB turns ACARS and
   VDL2 off (one dongle cannot be in two bands). RTL-SDR only; not on LimeSDR, Airspy or a chained VFO.

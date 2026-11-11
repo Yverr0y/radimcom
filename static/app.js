@@ -2089,9 +2089,11 @@ function renderRds() {
 }
 
 // ---------- AD = additional display under the S-meter: one thing at a time, by priority ----------
-// 1. error messages (red, the frame blinks, OK accepts them), 2. rotor AZ / EL (MONITOR in SETTINGS › GENERAL › ROTOR), 3. RDS.
+// 1. error messages (red, the frame blinks, OK accepts them), 2. rotor AZ / EL (MONITOR in SETTINGS › GENERAL › ROTOR),
+// 3. DAB now on air (station, SNR, DLS text), 4. RDS.
 const adErrors = [];       // messages not accepted yet, oldest first
 let adRotInfo = null;      // the last rotor state of the active VFO while its MONITOR is on
+let adDabInfo = null;      // the DAB station playing: { label, type, dls, snr } (pollDab), null = none
 
 /** An error message to the AD; it stays until OK. The same text already waiting is not added again. */
 function adError(msg) {
@@ -2122,7 +2124,27 @@ function renderAd() {
       : rotorMoving(i) ? `→ ${Math.round(i.target[0])}° / ${Math.round(i.target[1])}°` : "";
     $("adRotTgt").classList.toggle("bad", bad);
   }
-  $("rds").hidden = err || rot;
+  const dab = !err && !rot && !!adDabInfo;
+  $("adDab").hidden = !dab;
+  if (dab) {
+    const d = adDabInfo, snr = d.snr == null ? null : Number(d.snr);
+    $("adDabTag").textContent = d.type || "DAB";
+    $("adDabPs").textContent = d.label;
+    $("adDabSnr").textContent = snr == null ? "" : `SNR ${snr.toFixed(1)} dB`;
+    $("adDabSnr").style.setProperty("--q", dabQuality(snr)[1]);
+    const box = $("adDabDls"), text = $("adDabDlsText");
+    if (text.textContent !== d.dls) text.textContent = d.dls;
+    box.title = d.dls;
+    // running text only when it does not fit; set again only on another text or width (the animation is not restarted)
+    const over = Math.max(0, text.offsetWidth - box.clientWidth);
+    if (box._over !== over) {
+      box._over = over;
+      box.classList.toggle("run", over > 0);
+      box.style.setProperty("--shift", `${-over}px`);
+      box.style.setProperty("--t", `${(4 + over / 25).toFixed(1)}s`);
+    }
+  }
+  $("rds").hidden = err || rot || dab;
 }
 
 $("adErrOk").addEventListener("click", () => { adErrors.shift(); renderAd(); });
@@ -4989,9 +5011,12 @@ function dabRemember(sid) {
   send({ dab_sid: sid });
 }
 
+/** [word, colour] of the DAB signal by its SNR in dB (null = not known). */
+const dabQuality = (snr) => (snr == null ? ["", ""] : snr >= 12 ? ["good", "var(--green)"] : snr >= 8 ? ["usable", "var(--accent)"] : ["weak", "#ff7b6b"]);
+
 function renderDabSide(m, cur) {
   const snr = m.snr == null ? null : Number(m.snr);
-  const quality = snr == null ? ["", ""] : snr >= 12 ? ["good", "#3cf07c"] : snr >= 8 ? ["usable", "#ffd84a"] : ["weak", "#ff7b6b"];
+  const quality = dabQuality(snr);
   $("dabSignal").innerHTML = (snr == null ? `<div class="dab-row"><span>No signal yet</span></div>`
     : `<div class="dab-snr" style="--q:${quality[1]}"><b>${snr.toFixed(1)}</b> dB SNR <span>${quality[0]}</span></div>` +
       `<div class="dab-gauge" style="--q:${quality[1]}"><i style="width:${Math.max(0, Math.min(100, snr * 4))}%"></i></div>`) +
@@ -5080,6 +5105,8 @@ async function pollDab() {
   const wanted = !dabSid && m.channel === st.dab_channel && dabRemembered(m.channel);
   if (wanted && m.services.some((x) => x.sid === wanted && x.audio && !x.encrypted)) dabPlay(wanted);
   const cur = m.services.find((x) => x.sid === dabSid);
+  adDabInfo = cur ? { label: cur.label || cur.sid, type: cur.type, dls: cur.dls || "", snr: m.snr } : null;
+  renderAd();
   renderDabSide(m, cur);
   if (!cur) return;
   renderDabNow(cur);
@@ -5092,6 +5119,8 @@ async function pollDab() {
 /** Plays station sid (null = stop). The MP3 stream goes through MAIN volume like the normal audio. */
 function dabPlay(sid) {
   dabSid = sid;
+  adDabInfo = null;                       // the AD window: filled again by the next pollDab
+  renderAd();
   dabMotTime = 0;
   $("dabSlide").hidden = true;
   $("dabSlide").removeAttribute("src");

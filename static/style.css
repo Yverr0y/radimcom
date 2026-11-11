@@ -377,8 +377,8 @@ body {
 }
 @keyframes conv-blink { from { box-shadow: 0 0 0 rgba(255, 181, 71, 0); } to { box-shadow: 0 0 16px rgba(255, 181, 71, .6); } }
 
-/* AD (additional display): one of error / rotor monitor / RDS, by priority (app.js renderAd) */
-.ad-err[hidden], .ad-rot[hidden], .rds[hidden] { display: none !important; }
+/* AD (additional display): one of error / rotor monitor / DAB now on air / RDS, by priority (app.js renderAd) */
+.ad-err[hidden], .ad-rot[hidden], .ad-dab[hidden], .rds[hidden] { display: none !important; }
 .ad-err { display: flex; align-items: center; gap: 8px; height: 100%; padding: 0 4px 0 8px; }
 .ad-err-text { flex: 1; min-width: 0; color: #ff5a4f; font: 600 12px/1.25 system-ui, sans-serif; text-shadow: 0 0 6px rgba(255, 70, 60, .45);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -399,6 +399,19 @@ body {
 .ad-rot-tgt { flex: 1; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis;
   color: var(--muted); font: 11px ui-monospace, Consolas, monospace; }
 .ad-rot-tgt.bad { color: #ff5a4f; font-weight: 700; }
+/* DAB now on air: laid out and coloured as RDS (tag in place of the logo, station as PS, DLS text as RadioText) */
+.ad-dab { position: relative; height: 100%; padding: 2px 8px 2px 44px; text-align: left; }
+.ad-dab-tag { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 30px; padding: 2px 0; text-align: center;
+  border: 1px solid currentColor; border-radius: 3px; color: var(--amber); font: 800 9px/1.1 system-ui, sans-serif;
+  letter-spacing: .03em; text-shadow: 0 0 5px rgba(255, 181, 71, .45); }
+.ad-dab-ps { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.ad-dab-snr { flex: 0 0 auto; color: var(--q, var(--muted)); font: 700 10px ui-monospace, Consolas, monospace; white-space: nowrap; }
+.ad-dab-dls { height: 14px; overflow: hidden; white-space: nowrap; color: var(--text); font: 11px/1.3 system-ui, sans-serif; }
+.ad-dab-dls span { display: inline-block; }
+/* a text wider than the window runs to its end and back, with a rest at both ends (--shift, --t set by app.js) */
+.ad-dab-dls.run span { animation: ad-dab-run var(--t, 8s) linear infinite alternate; }
+@keyframes ad-dab-run { 0%, 15% { transform: translateX(0); } 85%, 100% { transform: translateX(var(--shift, 0)); } }
+@media (prefers-reduced-motion: reduce) { .ad-dab-dls.run span { animation: none; } }
 
 /* RDS: compact frame under the logo; station name (PS) like on an LCD, RadioText under it.
  * width 0 + min-width 100 %: the frame is exactly as wide as the clock and a long RadioText does not stretch it */

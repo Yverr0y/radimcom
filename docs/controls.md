@@ -261,7 +261,9 @@ squelch gets a green underline, a transmitting one turns red.
    accepted by the small framed **OK**; the frame of the window blinks red (period 0.5 s) meanwhile. More waiting messages show *+n*, the next one comes after OK.
    (Errors used to show for 5 s under the logo.)
 2. **Rotor AZ / EL** while **MONITOR** is on (SETTINGS › GENERAL › ROTOR), with the requested direction while the rotor is on its way (or LINK OFF, NOT CONNECTED, FAULT).
-3. **RDS** (station name, RadioText, PI, PTY, TP/TA); empty without RDS.
+3. **DAB now on air** while a DAB station plays: the DAB / DAB+ tag, the station name, the SNR of the ensemble (green from 12 dB, yellow from 8 dB, red below)
+   and the DLS text (artist / song) under them; a text wider than the window runs to its end and back (the whole text is in the tooltip).
+4. **RDS** (station name, RadioText, PI, PTY, TP/TA); empty without RDS.
 
 The clock (top right) switches between local time and UTC with a click. Small bars under the S-meter show the CPU load and
 memory use of the PC running RADIMCOM (amber over 70 %, red over 90 %). A click on the RADIMCOM logo opens the project on GitHub. When a newer version is released, the logo turns red; hovering shows the new version and a click opens its release page in a new tab.

@@ -91,7 +91,7 @@ and the country flag from the ICAO address; a click on a message pauses the list
 - **CUE:** keep listening to other VFOs at a separate CUE level while one VFO is selected;
   MAIN and CUE volume faders, stereo level meter, MUTE.
 - **DECODERS tab** with a page for each decoder, and the **SATELLITES** tab (also the **SAT** key), which shows the active linear, FM, image and other satellites from AMSAT, with clickable links.
-- **AD (additional display)** under the S-meter: error messages (red, accepted by OK, the frame blinks), the rotor AZ / EL (MONITOR) or RDS, by this priority.
+- **AD (additional display)** under the S-meter: error messages (red, accepted by OK, the frame blinks), the rotor AZ / EL (MONITOR), DAB now on air (station, SNR, running DLS text) or RDS, by this priority.
 - **Rotor page** in SETTINGS › GENERAL: one rotor for the whole station (not tied to a VFO, settings in `data\rotor.json`), ON / OFF, polar plot and elevation column 0–180° with the antenna and its target, a click moves the antenna; STOP, RESET, MONITOR.
 - **SETTINGS tab** (gear key) split into **GENERAL** (the whole station: SKINS, S-METER, TOUCHPAD, LOCATION – station locator or latitude / longitude, also chosen on a map, used by the satellites, packet, HFDL and AIS; ROTOR) and **VFO** (keys VFO-A … VFO-D on the left, the lit one joined to its card: SDR DONGLE with a block diagram of the receive chain, ADVANCED with the list of dongles and their VFOs, SP, AGC+ and the S9 calibration, AUDIO, TX); **MEMORIES tab** (MEM key) with the pages CHANNELS (also the list to recall from), GROUPS, IMPORT, EXPORT.
 - **Clock** in local time or UTC (a click switches).

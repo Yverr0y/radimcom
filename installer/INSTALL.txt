@@ -100,6 +100,9 @@ Main Features
   read as DAB. IMPORT / EXPORT lists: a DAB row has a dropdown of the DAB channels.
 - MEMORIES: simpler channel form (by Brano, brjanicek): name, mode, frequency (or DAB channel) and groups; ADVANCED
   (remembered in the browser) shows the other fields under them.
+- DAB now on air in the AD window (in the place of RDS, same colours): DAB / DAB+ tag, station name, SNR (green /
+  yellow / red) and the DLS text (artist / song), running when wider than the window. AD priority: 1. errors,
+  2. rotor AZ / EL (MONITOR), 3. DAB, 4. RDS.
 - Recalling a MEMORIES channel with a location (LAT / LON) opens the ROTOR CONTROL tab (RCTRL on), centres the map
   on it and turns the rotor to its azimuth from the QTH (elevation 0).
 - Station location moved from SATELLITES -> SETUP to SETTINGS -> GENERAL -> LOCATION (locator or lat / lon,
