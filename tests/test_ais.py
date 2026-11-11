@@ -16,7 +16,8 @@ import packet  # noqa: E402
 
 
 def dearmor(payload, fill=0):
-    """NMEA payload -> message bytes as the HDLC deframer gives them (LSB first on the air)."""
+    """NMEA payload -> message bytes as the HDLC deframer gives them (the payload bit string packed MSB first;
+    each byte then goes on the air LSB first and the deframer assembles it LSB first again)."""
     bits = ""
     for ch in payload:
         v = ord(ch) - 48
@@ -25,7 +26,7 @@ def dearmor(payload, fill=0):
         bits += f"{v:06b}"
     bits = bits[:len(bits) - fill]
     bits = bits[:len(bits) // 8 * 8]
-    return bytes(int(bits[k:k + 8][::-1], 2) for k in range(0, len(bits), 8))
+    return bytes(int(bits[k:k + 8], 2) for k in range(0, len(bits), 8))
 
 
 # the examples of the gpsd AIVDM documentation
@@ -65,6 +66,22 @@ class Payload(unittest.TestCase):
         self.assertEqual(payload, POS_A)
         self.assertEqual(fill, 0)
         self.assertEqual(ais.nmea(payload, fill, "B"), "!AIVDM,1,1,,B,177KQJ5000G?tO`K>RA1wUbN0TKH,0*5C")
+
+    def test_live_frames(self):
+        """Frames as the deframer gave them on the Danube in Bratislava (JN88NC): the positions must be there, not
+        somewhere in the Pacific (the bits of each byte used to be reversed)."""
+        r = ais.decode(bytes.fromhex("1000a30b607eab5b9b4c139a71c6e2e523c0094032"))         # base station
+        self.assertEqual((r["type"], r["mmsi"], r["cc"]), (4, 2671320, "sk"))
+        self.assertAlmostEqual(r["lat"], 48.1388, places=3)
+        self.assertAlmostEqual(r["lon"], 17.1296, places=3)
+        r = ais.decode(bytes.fromhex("043fb538842005484de9929b8cb145b8ffa8088313"))         # class A under way
+        self.assertEqual((r["type"], r["mmsi"], r["cc"]), (1, 267210273, "sk"))
+        self.assertAlmostEqual(r["lat"], 48.1464, places=3)
+        self.assertAlmostEqual(r["lon"], 17.0202, places=3)
+        self.assertEqual((r["sog"], r["cog"]), (8.4, 146.4))
+        self.assertEqual(ais.nmea(*ais.armor(bytes.fromhex("043fb538842005484de9929b8cb145b8ffa8088313")), "A"),
+                         "!AIVDM,1,1,,A,13vm>8@P1DQ=rI:KS;55f?v`28<C,0*28")
+        self.assertTrue(ais._frame_plausible(bytes.fromhex("043fb538842005484de9929b8cb145b8ffa8088313")))
 
     def test_short_frame(self):
         self.assertIsNone(ais.decode(b"\x01\x02"))
