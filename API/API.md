@@ -264,20 +264,6 @@ The MP3 files of REC / REC SQ in the recordings folder (default `data\recordings
 | GET | `/api/recording_folder` | `{"folder", "custom", "default"}`: the folder in use, the one set (`""` = default) and the default `data\recordings` |
 | POST | `/api/recording_folder` | `{"folder": "<full path>"}` sets it (created if missing, must be writable), `""` = back to the default; 400 with `error` for a relative or unusable path; only from this RADIMCOM page (403 otherwise). Saved in `data\recordings.json`, all VFOs use it at once |
 
-## Rotor control overlays
-
-The groups of points of the ROTOR CONTROL map (RCTRL key), shared by all VFOs. `<id>`: `dab`, `fm`, `ham` (built-in defaults)
-or `g1`, `g2`, … (own groups).
-
-| Method | Path | Meaning |
-|---|---|---|
-| GET | `/api/overlays` | `{"groups": [...]}`, built-in first, then own groups in the order they were made; each `{"id", "name", "color", "source", "updated", "builtin", "custom" (edited / own file), "points": [{"name", "lat", "lon", "info", "detail", "freq", "cc"}], "error"}` |
-| POST | `/api/overlays` | new own group `{"name", "color"?, "points"?}`; returns it with its new `id` |
-| PUT (or POST) | `/api/overlays/<id>` | replace the group (edit or import): `{"name", "color", "source", "points": [...]}` or a list of points (`name`, `lat`, `lon` required); saved in `data\overlays\<id>.json`. Returns the group with `skipped` (invalid points); 400 with `error` when points were given but none is valid |
-| DELETE | `/api/overlays/<id>` | built-in group: back to the built-in list (`static/overlays/<id>.json`); own group: deleted |
-
-The changes are refused with 403 from a page of another host.
-
 ## Examples
 
 ```bash

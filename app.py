@@ -29,7 +29,6 @@ if __name__ == "__main__" and "--vfo" not in sys.argv and os.path.exists(VFOS_PA
 
 import location
 import memories
-import overlays
 import satellites
 import sysload
 import update_check
@@ -1120,41 +1119,6 @@ def api_location():
             return jsonify({"error": str(e)}), 400
         _qth_cache[0] = 0.0          # APRS distances use the new place at once
     return jsonify(location.load())
-
-
-@app.route("/api/overlays", methods=["GET", "POST"])
-def api_overlays():
-    """Overlay groups of the ROTOR CONTROL map (TRACKING › RCTRL), shared by all VFOs: GET {"groups": [...]}
-    (built-in DAB+ SR, FM SK/CZ, ham repeaters SK/CZ first, then the own ones); POST {name, color?, points?} makes a new group."""
-    if request.method == "GET":
-        return jsonify({"groups": overlays.load_all()})
-    return overlay_change(lambda body: overlays.create(body or {}))
-
-
-@app.route("/api/overlays/<gid>", methods=["PUT", "POST", "DELETE"])
-def api_overlay_set(gid):
-    """PUT (or POST): replace the group (edit: name, colour, points; import of a JSON file);
-    DELETE: a built-in group goes back to its built-in list, an own group is deleted."""
-    if request.method == "DELETE":
-        def drop(_):
-            overlays.reset(gid)
-            return overlays.load(gid) if gid in overlays.BUILTIN else {"id": gid, "deleted": True}
-        return overlay_change(drop, need_body=False)
-    return overlay_change(lambda body: overlays.save(gid, body))
-
-
-def overlay_change(do, need_body=True):
-    if not same_host(request):
-        return jsonify({"error": "overlays can be changed only from this RADIMCOM page"}), 403
-    body = request.get_json(force=True, silent=True)
-    if need_body and body is None:
-        return jsonify({"error": "not valid JSON"}), 400
-    try:
-        return jsonify(do(body))
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    except OSError as e:
-        return jsonify({"error": f"cannot save: {e}"}), 500
 
 
 @app.route("/api/sat/setup", methods=["GET", "POST"])
