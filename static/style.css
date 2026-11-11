@@ -1936,15 +1936,21 @@ html[data-ink="dark"] .r-top, html[data-ink="dark"] .r-keys { border-bottom-colo
 #medBulk .med-starbtn.fill { color: var(--amber, #ffb02e); }
 .med-form .med-groups { flex: none; }
 
-/* ===== memory editor: channel form in three columns (fields | settings | groups), no scrolling ===== */
-.med-form { width: 640px; display: grid; grid-template-columns: 1.25fr 1fr 1fr; grid-template-rows: auto 1fr auto;
+/* ===== memory editor: channel form in two columns (channel | groups); ADVANCED adds its part under the basic fields ===== */
+.med-form { width: 600px; display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); grid-template-rows: auto 1fr auto;
   gap: 6px 12px; overflow: hidden; }
-.med-form h4 { grid-column: 1 / 3; }
-.med-form .med-fcol { display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; overflow: auto; }
+.med-form [hidden] { display: none !important; }
+.med-form h4 { grid-column: 1; }
+.med-form .med-fcol { grid-column: 1; display: flex; flex-direction: column; gap: 6px; min-width: 0; min-height: 0; overflow: auto; }
 .med-form .med-fcol .switch { white-space: nowrap; }
-.med-form .med-groups { grid-column: 3; grid-row: 1 / 4; display: flex; flex-direction: column; min-height: 0; }
+.med-form .med-adv { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line2); }
+.med-form .med-advkey { width: auto; align-self: flex-start; }
+.med-form .med-advkey::after { content: " ▸"; }
+.med-form .med-advkey.on::after { content: " ▾"; }
+.med-form .med-color { align-self: end; padding-bottom: 4px; }
+.med-form .med-groups { grid-column: 2; grid-row: 1 / 4; display: flex; flex-direction: column; min-height: 0; }
 .med-groups #medFormGroups { flex: 1 1 auto; min-height: 0; max-height: none; }
-.med-form .med-fbtns { grid-column: 1 / 3; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.med-form .med-fbtns { grid-column: 1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .med-form .note { margin: 0; font-size: 11px; }
 .med-form textarea { min-height: 38px; }
 /* thinner scroll bars in the MEMORIES tab (about half the width) */

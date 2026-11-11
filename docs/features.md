@@ -9,7 +9,7 @@
 - **VFO chaining:** one dongle can serve several VFOs, e.g. one dongle for VFO A–D, or two dongles with two VFOs
   each. A chained VFO listens anywhere inside the band its dongle receives and shows a green CHAIN flag
   (see [VFO chaining](configuration.md#vfo-chaining-one-dongle-for-several-vfos)).
-- **Modes:** AM, FM, WFM, LSB, USB and CW with selectable filter width, and DSD for digital voice (see below).
+- **Modes:** AM, FM, WFM, LSB, USB and CW with selectable filter width, DAB (digital radio) and DSD (digital voice), each of these two with its own tab (see below).
 - **WFM stereo** (19 kHz pilot, **ST** indicator) and **RDS**: station name (PS), RadioText, PI, PTY, TP/TA and clock (CT).
 - **Squelch** for AM, FM and WFM, each mode with its own level. It decides every ~8 ms, so it does not cut off
   the start of a transmission (airband), and closes about 25 ms after the signal drops below the level. The level is marked on the S-meter with a yellow tick.
@@ -83,7 +83,7 @@ and the country flag from the ICAO address; a click on a message pauses the list
 - **Band plan on the frequency axis** (Europe / ITU Region 1: ham, broadcast, aviation, marine, satellites, mobile networks, ISM…); hover it for the descriptions of all bands at that frequency.
 - **Audio spectrum bubble:** hovering over the passband label shows the audio spectrum of the active VFO (in WFM the MPX signal with the stereo pilot, in CW also the decoded text).
 - **Frequency memories** (MEMORIES tab) with groups, favourites, import from SDR# (`frequencies.xml`), JSON and CSV, export to JSON and CSV; memories in view show as tags in the spectrum,
-  ↑ ↓ arrow keys recall the next one. A memory can also hold a DAB channel.
+  ↑ ↓ arrow keys recall the next one. A memory can also be a DAB channel (mode DAB) or a DSD (digital voice) channel.
 - **Memory editor** (pages of the MEMORIES tab; by Brano, [brjanicek](https://github.com/brjanicek)): channels in several groups, with a decoder and a recording (REC, REC SQ or REC SQ with ASQ) started at recall, a note and their own tag colour
   (or no tag); groups with notes (add, rename, copy, merge, delete); duplicates shown; import from SDR#, JSON or CSV and export to
   JSON or CSV, both through a list to edit and choose from first. See [Memory editor](controls.md#memory-editor).

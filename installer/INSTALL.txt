@@ -92,6 +92,14 @@ Change log
 Ver. 0.114beta1
 (test beta, GitHub branch 0.114beta1)
 Main Features
+- DAB and DSD are modes with their own tabs (by Brano, brjanicek): MODE has a new key DAB (DAB on + DAB tab with the
+  DAB+ card); another mode, a band button or a memory that is not DAB turns DAB off. DSD opens its own DSD tab.
+  The DAB and DSD pages are gone from DECODERS.
+- MEMORIES: modes DAB and DSD (by Brano, brjanicek). A DAB memory has the DAB channel chosen in the form (frequency =
+  its centre), recall turns DAB on with it; DAB and DSD have a fixed width. Older memories with a DAB channel are
+  read as DAB. IMPORT / EXPORT lists: a DAB row has a dropdown of the DAB channels.
+- MEMORIES: simpler channel form (by Brano, brjanicek): name, mode, frequency (or DAB channel) and groups; ADVANCED
+  (remembered in the browser) shows the other fields under them.
 - Recalling a MEMORIES channel with a location (LAT / LON) opens the ROTOR CONTROL tab (RCTRL on), centres the map
   on it and turns the rotor to its azimuth from the QTH (elevation 0).
 - Station location moved from SATELLITES -> SETUP to SETTINGS -> GENERAL -> LOCATION (locator or lat / lon,

@@ -1,7 +1,8 @@
 """Frequency memories (memories.json), their groups (memory_groups.json), import and export.
 
 A memory: {"id", "name", "group", "groups", "freq_hz", "mode", "bw", "fav", "decoder", "record", "note", "color",
-"tag"} and "dab_channel" on a DAB memory. "groups" is the list of groups the memory belongs to; "group" is kept as the
+"tag"} and "dab_channel" on a DAB memory (mode "DAB"; older files kept the DAB channel with another mode, read as
+"DAB"). "groups" is the list of groups the memory belongs to; "group" is kept as the
 first of them, so the file stays readable for older versions. "decoder" is switched on when the memory is recalled
 ("" = none). "record" starts a recording when the memory is recalled: "off", "on" (no squelch), "sq" (with the
 squelch) or "asq" (with the auto squelch). "color" is the colour of its tag in the spectrum ("" = default green),
@@ -33,7 +34,10 @@ from paths import data
 
 PATH = data("memories.json")
 GROUPS_PATH = data("memory_groups.json")
-MODES = ("AM", "FM", "WFM", "LSB", "USB", "CW", "DSD")
+MODES = ("AM", "FM", "WFM", "LSB", "USB", "CW", "DAB", "DSD")
+DAB_MODE = "DAB"     # a DAB memory: its channel ("dab_channel") is recalled, the frequency is the centre of the channel
+DAB_BW, DSD_BW = 1536000, 12500    # fixed widths: a DAB ensemble, the channel of the digital voice decoder
+DAB_SNAP_HZ = 10000  # a DAB memory without a channel (import) takes the channel whose centre is this close
 DECODERS = ("", "ft8", "wefax", "cw", "rtty", "sstv", "packet", "acars", "vdl2", "hfdl", "ais", "ism")
 RECORDS = ("off", "on", "sq", "asq")
 DETECTORS = {"AM": "AM", "DSB": "AM", "NFM": "FM", "WFM": "WFM", "LSB": "LSB", "USB": "USB", "CW": "CW"}
@@ -58,6 +62,8 @@ def _normalize(m):
         groups = [m["group"]] if m.get("group") else []
     m["groups"] = groups
     m["group"] = groups[0] if groups else ""
+    if m.get("dab_channel"):
+        m["mode"] = DAB_MODE    # before the DAB mode a DAB memory kept the mode of the VFO
     m.setdefault("decoder", "")
     m.setdefault("record", "off")
     m.setdefault("note", "")
@@ -191,7 +197,8 @@ def make(name, group, freq_hz, mode, bw, fav=False, groups=None, decoder="", not
     record = str(record or "").strip().lower() or "off"
     if record not in RECORDS:
         raise ValueError(f"unknown record mode (one of {', '.join(RECORDS)})")
-    lo, hi = {"WFM": (50000, 250000), "FM": (500, 50000)}.get(mode, (100, 18000))
+    lo, hi = {"WFM": (50000, 250000), "FM": (500, 50000), DAB_MODE: (DAB_BW, DAB_BW),
+              "DSD": (DSD_BW, DSD_BW)}.get(mode, (100, 18000))
     bw = int(min(max(float(bw), lo), hi))
     groups = _groups(groups) if groups is not None else [(" ".join(str(group).split()) or DEFAULT_GROUP)[:GROUP_MAX]]
     lat, lon = _coord(lat, 90, "latitude"), _coord(lon, 180, "longitude")
@@ -205,12 +212,21 @@ def make(name, group, freq_hz, mode, bw, fav=False, groups=None, decoder="", not
 
 
 def from_dict(e, dab_channels):
-    """A memory from a dict (API, JSON import); ValueError / KeyError / TypeError on invalid data. New id."""
+    """A memory from a dict (API, JSON import); ValueError / KeyError / TypeError on invalid data. New id.
+    A DAB channel makes it a DAB memory (mode "DAB"); the mode DAB without a channel takes the channel whose centre is
+    at the frequency."""
     ch = e.get("dab_channel") or None
     if ch is not None and ch not in dab_channels:
         raise ValueError("unknown DAB channel")
+    mode = str(e["mode"]).strip().upper()
+    if ch:
+        mode = DAB_MODE
+    elif mode == DAB_MODE:
+        ch = dab_channel_at(e.get("freq_hz"), dab_channels)
+        if not ch:
+            raise ValueError("DAB needs a DAB channel (or the centre frequency of one)")
     groups = e.get("groups")
-    m = make(e.get("name", ""), e.get("group", ""), dab_channels[ch] if ch else e["freq_hz"], e["mode"],
+    m = make(e.get("name", ""), e.get("group", ""), dab_channels[ch] if ch else e["freq_hz"], mode,
              e.get("bw", 3000), e.get("fav", False), groups=groups, decoder=e.get("decoder", ""),
              note=e.get("note", ""), color=e.get("color", ""), tag=e.get("tag", True),
              record=e.get("record", "off"), lat=e.get("lat"), lon=e.get("lon"), scan=e.get("scan", True),
@@ -218,6 +234,16 @@ def from_dict(e, dab_channels):
     if ch:
         m["dab_channel"] = ch
     return m
+
+
+def dab_channel_at(freq_hz, dab_channels):
+    """The DAB channel whose centre is within DAB_SNAP_HZ of the frequency, or None."""
+    try:
+        f = float(freq_hz)
+    except (TypeError, ValueError):
+        return None
+    best = min(dab_channels.items(), key=lambda kv: abs(kv[1] - f), default=None)
+    return best[0] if best and abs(best[1] - f) <= DAB_SNAP_HZ else None
 
 
 def _apply(m, changes, dab_channels):
@@ -232,6 +258,8 @@ def _apply(m, changes, dab_channels):
     if "name" in changes and not str(changes["name"]).strip():
         raise ValueError("name is missing")
     merged = dict(m, **changes)
+    if "mode" in changes and str(changes["mode"]).strip().upper() != DAB_MODE and "dab_channel" not in changes:
+        merged["dab_channel"] = None    # another mode ends a DAB memory (its frequency stays: the channel centre)
     if "group" in changes and "groups" not in changes:
         merged["groups"] = [changes["group"]]
     groups = _groups(merged.get("groups", []))

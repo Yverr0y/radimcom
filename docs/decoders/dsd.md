@@ -28,7 +28,7 @@ The script always installs the one version tested with this RADIMCOM; if a new R
 
 **New, empty folder:** `lib\dsd-fme` is not in `data\`, so a clean installation has no decoder. Run `install_dsd.bat` there as well.
 
-- Tune to the centre of the channel and press **DSD**. The channel is fixed at 12.5 kHz. The **DSD** card opens on the DECODERS tab.
+- Tune to the centre of the channel and press **DSD**. The channel is fixed at 12.5 kHz. The **DSD** tab (next to SPECTRUM, there only while the mode DSD is on) opens with the DSD card.
 - **Protocol:** AUTO finds DMR, P25 (phase 1 and 2), D-Star, YSF and X2-TDMA. NXDN48, NXDN96, dPMR, M17 and ProVoice have to be selected.
 - **Slot** (DMR, P25 phase 2): voice of slot 1, slot 2 or both. Both talking at once: slot 1 on the left, slot 2 on the right. A change of the
   protocol or the slot restarts the decoder, which takes about a second.

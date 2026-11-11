@@ -198,7 +198,7 @@
 ecordings), play them in the browser">RECS</button>
     </div></div>
     <div class="kgroup"><span class="klabel">DECODE</span><div class="keys">
-      <button id="decKey" class="key" aria-controls="decPane" title="Decoders on/off: shows or hides the DECODERS tab, one page for each decoder (FT8, WEFAX, CW, RTTY, SSTV, ACARS, VDL2, HFDL, AIS, DAB, ISM, DSD)">DECODE</button>
+      <button id="decKey" class="key" aria-controls="decPane" title="Decoders on/off: shows or hides the DECODERS tab, one page for each decoder (FT8, WEFAX, CW, RTTY, SSTV, PACKET, ACARS, VDL2, HFDL, AIS, ISM); DAB and DSD are modes with their own tabs">DECODE</button>
     </div></div>
     <div class="kgroup"><span class="klabel">TRACKING</span><div class="keys">
       <button id="satKey" class="key sat-key" aria-label="Satellite tracking" aria-controls="amsatPane" title="Satellite tracking: the SATELLITES tab (passes, map, Doppler, rotor)"><svg class="sat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.6 7C3.2 12.6 8.4 18.8 15 17.4Z"/><path d="M9.8 12.2L13.4 8.6"/><circle cx="14.6" cy="7.4" r="1.6"/><path d="M16.6 3.1A5 5 0 0 1 19 5.5"/><path d="M17.2.6A8 8 0 0 1 21.5 4.9"/><path d="M7.6 15.4L5.8 20.6M11 17.2L12.4 20.6M3.2 21.2H15"/></svg></button>
@@ -221,6 +221,8 @@ ecordings), play them in the browser">RECS</button>
   <!-- tabs of the bottom part: spectrum with waterfall, decoders, or lists of satellites -->
   <div class="body-tabs" id="bodyTabs">
     <button data-tab="scope" class="on">SPECTRUM</button>
+    <button data-tab="dab" id="dabTab" hidden>DAB</button>
+    <button data-tab="dsd" id="dsdTab" hidden>DSD <span id="dsdTabDot" class="dec-new" hidden>●</span></button>
     <button data-tab="dec" id="decTab">DECODERS <span id="decCount" class="dec-count"></span><span id="decNew" class="dec-new" hidden>●</span></button>
     <button data-tab="sat" id="amsatTab">SATELLITES</button>
     <button data-tab="rot" id="rotTab" hidden>ROTOR CONTROL</button>
@@ -264,13 +266,82 @@ ecordings), play them in the browser">RECS</button>
     <div class="hover-freq" id="hoverFreq" hidden></div>
     <!-- audio spectrum: shown while the mouse is over the passband label -->
     <div class="audio-bubble" id="audioBubble" hidden><canvas id="audioBubbleCanvas"></canvas><div class="audio-bubble-cw" id="audioBubbleCw" hidden></div></div>
+    <!-- DAB and DSD tabs: shown while the mode DAB / DSD is selected under MODE; they cover the spectrum like DECODERS -->
+    <div class="dec-pane mode-pane" id="dabPane" hidden>
+    <section class="card ft8 dab" id="dabCard">
+      <div class="ft8-head dab-head">
+        <label class="wf-opt" title="Band III ensemble (multiplex); remembered for this VFO">CHANNEL <select id="dabChannel"></select></label>
+        <img id="dabFlag" class="dab-flag" alt="" hidden>
+        <span id="dabEnsemble" class="dab-ens"></span>
+        <span id="dabInfo" class="muted"></span>
+      </div>
+      <p class="note">Digital radio in Band III (174–240 MHz), decoded by welle-cli. Audio comes through MAIN volume; REC does not include DAB. RTL-SDR only.
+        The last channel and the last station of each channel are remembered. Channels of your region: e.g. Slovakia / Czechia 12C, 12D, 7D, Austria 5C, 5D, 8B, 11C.</p>
+      <div class="dab-main">
+        <div class="dab-list" id="dabServices"><div id="dabEmpty" class="ft8-empty">Searching the ensemble…</div></div>
+        <div class="dab-now">
+          <div class="dab-hero">
+            <div class="dab-glow" id="dabGlow"></div>
+            <div class="dab-art">
+              <span class="dab-mono" id="dabArtMono"></span>
+              <img id="dabSlide" alt="" title="Click: 16:9 / original ratio (for slides squeezed into 4:3)" hidden>
+            </div>
+            <div class="dab-hero-text">
+              <div class="dab-title" id="dabNowLabel">Select a station</div>
+              <div class="dab-chips" id="dabChips"></div>
+              <div class="dab-meta" id="dabNowMeta"></div>
+              <div class="dab-dls-box" id="dabDlsBox" hidden>
+                <span class="dab-cap">NOW ON AIR</span>
+                <div class="dab-dls" id="dabDls"></div>
+              </div>
+            </div>
+          </div>
+          <div class="dab-health" id="dabHealth"></div>
+        </div>
+        <div class="dab-side">
+          <div class="dab-panel"><span class="dab-cap">SIGNAL</span><div id="dabSignal"></div></div>
+          <div class="dab-panel"><span class="dab-cap">ENSEMBLE</span><div id="dabEnsInfo"></div></div>
+          <div class="dab-panel"><span class="dab-cap">MULTIPLEX CAPACITY</span><div id="dabCapacity"></div></div>
+        </div>
+      </div>
+    </section>
+    </div>
+    <div class="dec-pane mode-pane" id="dsdPane" hidden>
+    <section class="card ft8 dsd" id="dsdCard">
+      <div class="ft8-head">
+        <b>DSD</b>
+        <label class="wf-opt" title="AUTO finds DMR, P25, D-Star, YSF and X2-TDMA. NXDN, dPMR, M17 and ProVoice have to be selected. A change restarts the decoder.">Protocol
+          <select id="dsdProtocol">
+            <option value="auto">AUTO</option><option value="dmr">DMR</option><option value="p25p1">P25 phase 1</option>
+            <option value="p25p2">P25 phase 2</option><option value="dstar">D-Star</option><option value="ysf">YSF</option>
+            <option value="nxdn48">NXDN48</option><option value="nxdn96">NXDN96</option><option value="dpmr">dPMR</option>
+            <option value="m17">M17</option><option value="x2tdma">X2-TDMA</option><option value="provoice">ProVoice</option>
+          </select></label>
+        <label class="wf-opt" title="TDMA protocols (DMR, P25 phase 2): voice of which time slot. Both talking at once: slot 1 on the left, slot 2 on the right. A change restarts the decoder.">Slot
+          <select id="dsdSlot"><option value="both">Both</option><option value="1">1</option><option value="2">2</option></select></label>
+        <span class="txt-info" id="dsdInfo"></span>
+        <label class="wf-opt log-opt" title="Write to the daily log data\logs\dsd_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="dsd">LOG</label>
+        <button id="dsdClear" class="key small" title="Clear the list">CLR</button>
+      </div>
+      <div class="dsd-error" id="dsdError" hidden></div>
+      <div class="dsd-now" id="dsdNow"></div>
+      <div class="ft8-table">
+        <table>
+          <colgroup><col class="c-utc"><col class="c-freq"><col class="c-proto"><col class="c-slot"><col class="c-to"><col class="c-from"><col class="c-time"><col></colgroup>
+          <thead><tr><th>UTC</th><th title="Frequency in MHz">Freq</th><th>Protocol</th><th>Slot</th><th title="TG = talk group, ID = private call">To</th><th>From</th><th title="Duration">Time</th><th title="Talker alias or text sent by the radio">Alias</th></tr></thead>
+          <tbody id="dsdRows"></tbody>
+        </table>
+        <div id="dsdEmpty" class="ft8-empty">No calls yet. Tune to the centre of a digital voice channel; finished calls are listed here.</div>
+      </div>
+    </section>
+    </div>
     <!-- DECODERS tab (DECODE key): a page for each decoder; the cards cover the spectrum and waterfall (those keep running) -->
     <div class="dec-pane" id="decPane" hidden>
       <!-- a page for each decoder; its ON key is in the top left corner of the card -->
       <div class="amsat-head dec-head">
         <div class="amsat-pages dec-pages" id="decPages"></div>
       </div>
-      <div id="decEmpty" class="ft8-empty" hidden>DSD (digital voice: DMR, P25, D-Star, YSF, NXDN…) is a mode: select DSD under MODE.</div>
+      <div id="decEmpty" class="ft8-empty" hidden></div>
     <!-- ===== decoders ===== -->
     <!-- text decoders (CW, RTTY): the text fills the rest of the tab -->
     <section class="card ft8 txtdec" id="cwCard" data-dec="cw" hidden>
@@ -382,34 +453,6 @@ ecordings), play them in the browser">RECS</button>
           <tbody id="ft8Rows"></tbody>
         </table>
         <div id="ft8Empty" class="ft8-empty">No messages yet.</div>
-      </div>
-    </section>
-
-    <section class="card ft8 dsd" id="dsdCard" data-dec="dsd" hidden>
-      <div class="ft8-head">
-        <b>DSD</b>
-        <label class="wf-opt" title="AUTO finds DMR, P25, D-Star, YSF and X2-TDMA. NXDN, dPMR, M17 and ProVoice have to be selected. A change restarts the decoder.">Protocol
-          <select id="dsdProtocol">
-            <option value="auto">AUTO</option><option value="dmr">DMR</option><option value="p25p1">P25 phase 1</option>
-            <option value="p25p2">P25 phase 2</option><option value="dstar">D-Star</option><option value="ysf">YSF</option>
-            <option value="nxdn48">NXDN48</option><option value="nxdn96">NXDN96</option><option value="dpmr">dPMR</option>
-            <option value="m17">M17</option><option value="x2tdma">X2-TDMA</option><option value="provoice">ProVoice</option>
-          </select></label>
-        <label class="wf-opt" title="TDMA protocols (DMR, P25 phase 2): voice of which time slot. Both talking at once: slot 1 on the left, slot 2 on the right. A change restarts the decoder.">Slot
-          <select id="dsdSlot"><option value="both">Both</option><option value="1">1</option><option value="2">2</option></select></label>
-        <span class="txt-info" id="dsdInfo"></span>
-        <label class="wf-opt log-opt" title="Write to the daily log data\logs\dsd_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="dsd">LOG</label>
-        <button id="dsdClear" class="key small" title="Clear the list">CLR</button>
-      </div>
-      <div class="dsd-error" id="dsdError" hidden></div>
-      <div class="dsd-now" id="dsdNow"></div>
-      <div class="ft8-table">
-        <table>
-          <colgroup><col class="c-utc"><col class="c-freq"><col class="c-proto"><col class="c-slot"><col class="c-to"><col class="c-from"><col class="c-time"><col></colgroup>
-          <thead><tr><th>UTC</th><th title="Frequency in MHz">Freq</th><th>Protocol</th><th>Slot</th><th title="TG = talk group, ID = private call">To</th><th>From</th><th title="Duration">Time</th><th title="Talker alias or text sent by the radio">Alias</th></tr></thead>
-          <tbody id="dsdRows"></tbody>
-        </table>
-        <div id="dsdEmpty" class="ft8-empty">No calls yet. Tune to the centre of a digital voice channel; finished calls are listed here.</div>
       </div>
     </section>
 
@@ -649,45 +692,6 @@ ecordings), play them in the browser">RECS</button>
           <tbody id="ismRows"></tbody>
         </table>
         <div id="ismEmpty" class="ft8-empty">No messages yet. Many sensors send only once a minute or less often.</div>
-      </div>
-    </section>
-
-    <section class="card ft8 dab" id="dabCard" data-dec="dab" hidden>
-      <div class="ft8-head dab-head">
-        <button id="dabKey" class="key small" data-dec-on="dab" title="DAB / DAB+ digital radio, Band III 174–240 MHz (welle-cli, RTL-SDR only)">ON</button>
-        <label class="wf-opt" title="Band III ensemble (multiplex); remembered for this VFO">CHANNEL <select id="dabChannel"></select></label>
-        <img id="dabFlag" class="dab-flag" alt="" hidden>
-        <span id="dabEnsemble" class="dab-ens"></span>
-        <span id="dabInfo" class="muted"></span>
-      </div>
-      <p class="note">Digital radio in Band III (174–240 MHz), decoded by welle-cli. Audio comes through MAIN volume; REC does not include DAB. RTL-SDR only.
-        The last channel and the last station of each channel are remembered. Channels of your region: e.g. Slovakia / Czechia 12C, 12D, 7D, Austria 5C, 5D, 8B, 11C.</p>
-      <div class="dab-main">
-        <div class="dab-list" id="dabServices"><div id="dabEmpty" class="ft8-empty">Searching the ensemble…</div></div>
-        <div class="dab-now">
-          <div class="dab-hero">
-            <div class="dab-glow" id="dabGlow"></div>
-            <div class="dab-art">
-              <span class="dab-mono" id="dabArtMono"></span>
-              <img id="dabSlide" alt="" title="Click: 16:9 / original ratio (for slides squeezed into 4:3)" hidden>
-            </div>
-            <div class="dab-hero-text">
-              <div class="dab-title" id="dabNowLabel">Select a station</div>
-              <div class="dab-chips" id="dabChips"></div>
-              <div class="dab-meta" id="dabNowMeta"></div>
-              <div class="dab-dls-box" id="dabDlsBox" hidden>
-                <span class="dab-cap">NOW ON AIR</span>
-                <div class="dab-dls" id="dabDls"></div>
-              </div>
-            </div>
-          </div>
-          <div class="dab-health" id="dabHealth"></div>
-        </div>
-        <div class="dab-side">
-          <div class="dab-panel"><span class="dab-cap">SIGNAL</span><div id="dabSignal"></div></div>
-          <div class="dab-panel"><span class="dab-cap">ENSEMBLE</span><div id="dabEnsInfo"></div></div>
-          <div class="dab-panel"><span class="dab-cap">MULTIPLEX CAPACITY</span><div id="dabCapacity"></div></div>
-        </div>
       </div>
     </section>
 
@@ -950,31 +954,37 @@ ecordings, played in the browser -->
               <div id="medMap"></div>
             </div>
             <form class="med-form" id="medForm" autocomplete="off" hidden>
-              <!-- three columns, so the whole form fits the height of the tab: fields | settings | groups -->
+              <!-- two columns: the channel (basic fields, ADVANCED below them) | groups; ADVANCED only adds or removes its part
+                   under the basic fields, nothing else moves -->
               <h4 id="medFormTitle">Edit channel</h4>
               <div class="med-fcol">
                 <label>Name<input name="name" maxlength="80" required></label>
                 <div class="med-row2">
-                  <label>Frequency<input name="freq" spellcheck="false" title="MHz, or with a unit: 7100k, 145.5M, 7100000Hz"></label>
                   <label>Mode<select name="mode"></select></label>
+                  <label class="med-freq">Frequency<input name="freq" spellcheck="false" title="MHz, or with a unit: 7100k, 145.5M, 7100000Hz"></label>
+                  <label class="med-dab" hidden>DAB channel<select name="dab" title="Recalling the memory turns DAB on with this channel"></select></label>
                 </div>
-                <div class="med-row2">
-                  <label>Bandwidth, kHz<input name="bw" title="Clamped to the range of the mode"></label>
-                  <label>DAB channel<select name="dab" title="Recalling the channel turns DAB on with this channel"></select></label>
+                <button type="button" class="key small med-advkey" id="medFormAdvKey" data-act="adv" aria-controls="medFormAdv" title="Shows or hides the other settings of the channel (remembered)">ADVANCED</button>
+                <div class="med-adv" id="medFormAdv" hidden>
+                  <div class="med-row2">
+                    <label>Bandwidth, kHz<input name="bw" title="Clamped to the range of the mode; fixed for DAB and DSD"></label>
+                    <label>Decoder<select name="decoder" title="Switched on when the channel is recalled"></select></label>
+                  </div>
+                  <div class="med-row2">
+                    <label>Record<select name="record" title="Recording to MP3 started when the channel is recalled: ON = REC (everything), SQ = REC SQ (while the squelch is open), ASQ = REC SQ with the auto squelch (AM, FM, WFM)"></select></label>
+                    <label class="med-color">colour <input name="color" type="color" value="#7ee0a8"><button type="button" class="key small" data-act="nocolor" title="Default colour (green)">↺</button></label>
+                  </div>
+                  <div class="med-row2">
+                    <label class="switch small"><input name="fav" type="checkbox"><span></span> ★ favourite</label>
+                    <label class="switch small"><input name="tag" type="checkbox" checked><span></span> tag in spectrum</label>
+                  </div>
+                  <div class="med-row2">
+                    <label>LAT (48.123456)<input name="lat" spellcheck="false" title="Latitude of the station on the channel, decimal degrees (north +, south −); empty = no location"></label>
+                    <label>LON (17.123456)<input name="lon" spellcheck="false" title="Longitude of the station on the channel, decimal degrees (east +, west −); empty = no location"></label>
+                  </div>
+                  <button type="button" class="key small" data-act="map" title="Choose the place of the station on an OpenStreetMap map beside the form (needs internet)">CHOOSE ON MAP</button>
+                  <label>Note<textarea name="note" maxlength="200" rows="2"></textarea></label>
                 </div>
-                <div class="med-row2">
-                  <label>LAT (48.123456)<input name="lat" spellcheck="false" title="Latitude of the station on the channel, decimal degrees (north +, south −); empty = no location"></label>
-                  <label>LON (17.123456)<input name="lon" spellcheck="false" title="Longitude of the station on the channel, decimal degrees (east +, west −); empty = no location"></label>
-                </div>
-                <button type="button" class="key small" data-act="map" title="Choose the place of the station on an OpenStreetMap map beside the form (needs internet)">CHOOSE ON MAP</button>
-                <label>Note<textarea name="note" maxlength="200" rows="2"></textarea></label>
-              </div>
-              <div class="med-fcol">
-                <label>Decoder<select name="decoder" title="Switched on when the channel is recalled"></select></label>
-                <label>Record<select name="record" title="Recording to MP3 started when the channel is recalled: ON = REC (everything), SQ = REC SQ (while the squelch is open), ASQ = REC SQ with the auto squelch (AM, FM, WFM)"></select></label>
-                <label class="switch small"><input name="fav" type="checkbox"><span></span> ★ favourite</label>
-                <label class="switch small"><input name="tag" type="checkbox" checked><span></span> tag in spectrum</label>
-                <label class="med-color">colour <input name="color" type="color" value="#7ee0a8"><button type="button" class="key small" data-act="nocolor" title="Default colour (green)">↺</button></label>
                 <p class="note warn" id="medFormDup" hidden></p>
                 <p class="note error" id="medFormErr" hidden></p>
               </div>

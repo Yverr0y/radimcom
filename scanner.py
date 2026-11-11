@@ -341,7 +341,7 @@ class Scanner:
             sq, asq = m.get("scan_sq"), m.get("scan_asq")
             if not m.get("scan", True):
                 why = "SCAN off in the memory"
-            elif m.get("dab_channel") or mode == DSD_MODE:
+            elif m.get("dab_channel") or mode in (DSD_MODE, "DAB"):
                 why = "DAB / DSD memories are not scanned"
             else:
                 why = self._check(f, bw, rx)
