@@ -293,11 +293,25 @@ body {
 .vfo-row:not(.active) .ann.on:not(.vfo-cue), .vfo-row:not(.active) .ann.vfo-mode { color: #7d8794; text-shadow: none; filter: none; }
 .vfo-row:not(.active) .ann.afi.on { animation: none; }
 
+/* tone squelch row between the frequency and the info row: set CTCSS tone and DCS code.
+ * grey = off (or not FM), orange = on, glowing = the tone / code is received now */
+.vfo-tone { display: flex; align-items: center; gap: .8em; height: 1.45em; font-size: clamp(8px, .84cqw, 10.5px); white-space: nowrap; }
+.vfo-tone .tsq { color: #5f6874; }
+.vfo-tone .tsq b { margin-left: .35em; font-weight: 700; }
+.vfo-tone .ctcss b { min-width: 2.6em; }
+.vfo-tone .dcs b { min-width: 2.4em; }
+.vfo-tone .tsq.act { color: #b8681c; }
+.vfo-tone .tsq.act.rx { color: var(--orange); text-shadow: 0 0 5px rgba(255, 140, 26, .7); }
+.vfo-row.active .vfo-tone .tsq.act { color: var(--orange); }
+.vfo-row:not(.active) .vfo-tone .tsq.act.rx { text-shadow: none; }
+.dcs-pick { display: flex; gap: 4px; }
+.dcs-pick select:first-child { flex: 1; }
+
 /* info row under the frequency: RX/TX, filter width, HPF and LPF with cutoffs, stereo, squelch, upconverter.
  * Fixed widths, so a change (3 kHz / 200 kHz, OPEN / SQL, CONV / BYPASS) moves nothing. */
 .vfo-info { display: flex; align-items: center; justify-content: space-between; height: 1.45em; font-size: clamp(8px, .84cqw, 10.5px); white-space: nowrap; }
 .vfo-info .ann { justify-content: center; }
-.vfo-info .rx { min-width: 2.3em; }
+.vfo-info .rx { min-width: 2.3em; justify-content: flex-start; }   /* left edge in line with CTCSS above it */
 .vfo-info .bw { min-width: 5em; }
 .vfo-info .rx, .vfo-info .bw { color: var(--green); text-shadow: 0 0 5px rgba(60, 240, 124, .6); }
 .vfo-info .hpf, .vfo-info .lpf { justify-content: flex-start; }
@@ -906,6 +920,15 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .acars-table col.c-desc { width: 200px; }
 .acars-table col.c-loc { width: 120px; }
 .acars-table td { overflow: hidden; text-overflow: ellipsis; }
+/* ACARS / VDL2 AIRCRAFT list */
+.acars table.acars-ac-table { table-layout: fixed; min-width: 1200px; }
+.acars-ac-table col.c-utc { width: 76px; } .acars-ac-table col.c-cty { width: 64px; } .acars-ac-table col.c-flt { width: 80px; }
+.acars-ac-table col.c-reg { width: 80px; } .acars-ac-table col.c-icao { width: 66px; } .acars-ac-table col.c-act { width: 70px; }
+.acars-ac-table col.c-model { width: 160px; } .acars-ac-table col.c-fl { width: 56px; } .acars-ac-table col.c-spd { width: 60px; }
+.acars-ac-table col.c-sqk { width: 60px; } .acars-ac-table col.c-pos { width: 120px; } .acars-ac-table col.c-src { width: 130px; }
+.acars-ac-table col.c-gs { width: 150px; } .acars-ac-table col.c-n { width: 50px; }
+.acars-ac-table td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acars-ac-table td.num { text-align: right; }
 .acars-table td.reg, .acars-table td.flt, .acars-table td.model { white-space: normal; overflow-wrap: anywhere; }
 .acars td.icao { color: var(--muted); }
 .acars-table td.reg .ac-sub, .acars-table td.loc .ac-sub { white-space: normal; }
@@ -996,8 +1019,8 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .hfdl td.num { text-align: right; }
 .dec-pane .hfdl-map { flex: 1 1 0; min-height: 300px; display: flex; gap: 8px; }
 .hfdl-map-main { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-#hfdlMap { flex: 1 1 0; min-height: 300px; border: 1px solid var(--line); border-radius: 6px; background: #0e1116; }
-#hfdlMap.leaflet-container { font: 12px system-ui, sans-serif; }
+#hfdlMap, #acarsMap { flex: 1 1 0; min-height: 300px; border: 1px solid var(--line); border-radius: 6px; background: #0e1116; }
+#hfdlMap.leaflet-container, #acarsMap.leaflet-container { font: 12px system-ui, sans-serif; }
 .hfdl-dark { filter: invert(1) hue-rotate(180deg) brightness(.8) contrast(.9) saturate(.4); }   /* OSM tiles turned dark */
 .hfdl-map-list { width: 330px; flex: none; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; font-size: 12px; }
 .hfdl-ml-head { position: sticky; top: 0; padding: 4px 8px; background: #0b0e12; color: var(--muted); }
@@ -1890,7 +1913,7 @@ html[data-ink="dark"] .r-top, html[data-ink="dark"] .r-keys { border-bottom-colo
 .med-table.multi .med-pen { visibility: hidden; pointer-events: none; }
 .med-table.form-open [data-pick], .med-table.form-open [data-selall] { visibility: hidden; pointer-events: none; }
 #medBulkGroupSel { min-width: 140px; max-width: 200px; } #medBulkGroup { width: 150px; }
-/* □ key in the top right corner of the PACKET, HFDL and AIS maps: the map in a new tab */
+/* □ key in the top right corner of the PACKET, ACARS / VDL2, HFDL and AIS maps: the map in a new tab */
 .map-popout a { display: flex !important; align-items: center; justify-content: center; }
 .map-popout svg { width: 15px; height: 15px; fill: none; stroke: #222; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 /* that tab (?map=…): only the map box, over the whole window */

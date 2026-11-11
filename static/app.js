@@ -30,7 +30,13 @@ const BANDWIDTHS = {
   CW: [300, 500, 800, 1200],
   DSD: [12500],      // fixed channel width of the digital voice decoder
 };
-const STEPS = [10, 100, 500, 1000, 5000, 9000, 10000];
+// STEP keys: AM, FM, SSB, CW (and DSD) have four steps, WFM keeps the full set; each set remembers its own step
+const STEPS = [10, 100, 1000, 10000];
+const STEPS_WFM = [10, 100, 500, 1000, 5000, 9000, 10000];
+const stepSet = (mode) => (mode === "WFM" ? "wfm" : "narrow");
+const STEP_SETS = { narrow: STEPS, wfm: STEPS_WFM };
+const STEP_KEYS = { narrow: "step", wfm: "stepWfm" };   // browser storage
+const stepMem = { narrow: 1000, wfm: 1000 };
 let mems = [];   // memories (list in the panel and tags in the spectrum)
 // Band button groups: [title, [[label, frequency Hz, mode], …]].
 // HF goes through the upconverter, VHF/UHF (above 30 MHz) straight into the dongle.
@@ -61,11 +67,11 @@ let vbase = ""; // receiver address of the active VFO ("" = server of this page,
 let vfos = []; // [{name, port, serial, note, base, st, rows, online}]
 let active = null; // active VFO
 
-// "?map=packet|hfdl|ais&vfo=A": this tab shows only that map (opened by the □ key of the map) – no audio,
+// "?map=packet|hfdl|ais|acars&vfo=A": this tab shows only that map (opened by the □ key of the map) – no audio,
 // no spectrum, and it saves nothing to the browser, so the settings of the main window stay as they are
 const MAP_ONLY = (() => {
   const m = new URLSearchParams(location.search).get("map");
-  return ["packet", "hfdl", "ais"].includes(m) ? m : null;
+  return ["packet", "hfdl", "ais", "acars"].includes(m) ? m : null;
 })();
 
 function store(key, value) { if (MAP_ONLY) return; try { localStorage.setItem(key, value); } catch (e) { /* no storage */ } }
@@ -208,7 +214,9 @@ function renderControls() {
   // The buttons stay fixed; a width set by dragging the edge in the spectrum has no button (none is lit).
   const bw = st.bandwidth[st.mode];
   segButtons($("bandwidths"), BANDWIDTHS[st.mode], bw, fmtBw);
-  segButtons($("steps"), STEPS, stepHz, fmtBw);
+  const set = stepSet(st.mode);
+  stepHz = stepMem[set];
+  segButtons($("steps"), STEP_SETS[set], stepHz, fmtBw);
   renderZoomBar();
   renderSqlBadge();
   renderRds();
@@ -287,7 +295,9 @@ $("steps").addEventListener("click", (e) => {
   const b = e.target.closest("[data-v]");
   if (!b) return;
   stepHz = Number(b.dataset.v);
-  store("step", stepHz);
+  const set = stepSet(st && st.mode);
+  stepMem[set] = stepHz;
+  store(STEP_KEYS[set], stepHz);
   renderControls();
 });
 function setZoom(z) {
@@ -2034,6 +2044,7 @@ function renderRds() {
   $("asqKey").classList.toggle("on", asqMode && !!st.auto_sql_on);
   $("asqKey").title = (asqMode && st.auto_sql_on && !st.auto_sql ? "ASQ: on by AGC+ with the squelch set. " : "")
     + "ASQ: auto squelch in AM/FM/WFM – the level follows the noise floor (margin in SETTINGS › VFO › AUDIO). Also on by itself with AGC+ and the squelch set";
+  renderTsqKeys();
   renderPassKeys();
   // The RDS frame is always in place (the waterfall does not move); without RDS it is empty and dark.
   const has = !!r && (r.ps || r.rt || r.pi);
@@ -2203,6 +2214,69 @@ $("asqDb").addEventListener("change", () => {
   $("asqDb").value = v;
   send({ auto_sql_db: v });
 });
+// ---------- TSQ-C / TSQ-D: CTCSS / DCS tone squelch (FM), in addition to the SQL bar or ASQ ----------
+const CTCSS_TONES = [67.0, 69.3, 71.9, 74.4, 77.0, 79.7, 82.5, 85.4, 88.5, 91.5, 94.8, 97.4, 100.0, 103.5, 107.2, 110.9,
+  114.8, 118.8, 123.0, 127.3, 131.8, 136.5, 141.3, 146.2, 151.4, 156.7, 159.8, 162.2, 165.5, 167.9, 171.3, 173.8, 177.3,
+  179.9, 183.5, 186.2, 189.9, 192.8, 196.6, 199.5, 203.5, 206.5, 210.7, 218.1, 225.7, 229.1, 233.6, 241.8, 250.3, 254.1];
+const DCS_CODES = ("023 025 026 031 032 036 043 047 051 053 054 065 071 072 073 074 114 115 116 122 125 131 132 134 " +
+  "143 145 152 155 156 162 165 172 174 205 212 223 225 226 243 244 245 246 251 252 255 261 263 265 266 271 274 306 " +
+  "311 315 325 331 332 343 346 351 356 364 365 371 411 412 413 423 431 432 445 446 452 454 455 462 464 465 466 503 " +
+  "506 516 523 526 532 546 565 606 612 624 627 631 632 654 662 664 703 712 723 731 732 734 743 754").split(" ");
+const ctcssHz = (s) => s.ctcss_hz ?? 88.5;
+const dcsCode = (s) => s.dcs_code ?? "023N";
+const ctcssText = (hz) => Number(hz).toFixed(1);
+$("ctcssHz").innerHTML = CTCSS_TONES.map((t) => `<option value="${t}">${ctcssText(t)}</option>`).join("");
+$("dcsCode").innerHTML = DCS_CODES.map((c) => `<option>${c}</option>`).join("");
+
+function renderTsqKeys() {
+  const fm = st.mode === "FM";
+  const hz = ctcssHz(st), code = dcsCode(st);
+  for (const [id, on, what] of [["tsqcKey", st.ctcss, `CTCSS ${ctcssText(hz)} Hz`], ["tsqdKey", st.dcs, `DCS ${code}`]]) {
+    $(id).disabled = !fm;
+    $(id).classList.toggle("on", fm && !!on);
+    $(id).title = `${id === "tsqcKey" ? "TSQ-C" : "TSQ-D"}: ${what} tone squelch in FM, in addition to the SQL bar or ASQ` +
+      `${fm && on ? (st.tone_match ? " – received now" : " – not received") : ""}. Click = on/off, mouse wheel = ` +
+      `${id === "tsqcKey" ? "tone" : "code"} (also in SETTINGS › VFO › AUDIO)`;
+  }
+  if (document.activeElement !== $("ctcssHz")) $("ctcssHz").value = String(hz);
+  if (document.activeElement !== $("dcsCode")) $("dcsCode").value = code.slice(0, 3);
+  if (document.activeElement !== $("dcsPol")) $("dcsPol").value = code.slice(3);
+}
+
+/** Local change of the tone squelch (TSQ-C and TSQ-D are never on together), sent to the receiver. */
+function setTsq(changes) {
+  if (!st) return;
+  if (changes.ctcss) changes.dcs = false;
+  if (changes.dcs) changes.ctcss = false;
+  Object.assign(st, changes);
+  if ("ctcss" in changes || "dcs" in changes || "ctcss_hz" in changes || "dcs_code" in changes) st.tone_match = false;
+  renderTsqKeys();
+  renderVfoDisplays();
+  send(changes);
+}
+$("tsqcKey").addEventListener("click", () => st && setTsq({ ctcss: !st.ctcss }));
+$("tsqdKey").addEventListener("click", () => st && setTsq({ dcs: !st.dcs }));
+$("tsqcKey").addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const dir = wheelStep(e);
+  if (!st || st.mode !== "FM" || !dir) return;
+  const i = CTCSS_TONES.indexOf(ctcssHz(st));
+  const j = Math.max(0, Math.min(CTCSS_TONES.length - 1, (i < 0 ? 8 : i) + dir));
+  if (j !== i) setTsq({ ctcss_hz: CTCSS_TONES[j] });
+}, { passive: false });
+$("tsqdKey").addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const dir = wheelStep(e);
+  if (!st || st.mode !== "FM" || !dir) return;
+  const code = dcsCode(st), i = DCS_CODES.indexOf(code.slice(0, 3));
+  const j = Math.max(0, Math.min(DCS_CODES.length - 1, (i < 0 ? 0 : i) + dir));
+  if (j !== i) setTsq({ dcs_code: DCS_CODES[j] + code.slice(3) });
+}, { passive: false });
+$("ctcssHz").addEventListener("change", () => setTsq({ ctcss_hz: Number($("ctcssHz").value) }));
+for (const id of ["dcsCode", "dcsPol"]) {
+  $(id).addEventListener("change", () => setTsq({ dcs_code: $("dcsCode").value + $("dcsPol").value }));
+}
+
 $("afiHz").addEventListener("change", () => {
   const v = Math.round(Number($("afiHz").value));
   if (!Number.isFinite(v)) return;
@@ -2448,8 +2522,14 @@ for (const id of ["wfRange", "wfShift"]) {
   const saved = recall(id);
   if (saved !== null) $(id).value = saved;
 }
-const savedStep = Number(recall("step"));
-if (STEPS.includes(savedStep)) stepHz = savedStep;
+// a step saved by an older version (one set for all modes) goes to WFM; the four-step set takes the nearest one
+for (const set of ["narrow", "wfm"]) {
+  const old = Number(recall("step")), saved = Number(recall(STEP_KEYS[set]) ?? (set === "wfm" ? old : NaN));
+  const list = STEP_SETS[set];
+  if (list.includes(saved)) stepMem[set] = saved;
+  else if (saved > 0) stepMem[set] = list.reduce((a, b) => (Math.abs(Math.log(b / saved)) < Math.abs(Math.log(a / saved)) ? b : a));
+}
+stepHz = stepMem.narrow;
 
 // ---------- FT8 ----------
 
@@ -2638,6 +2718,8 @@ function renderDecTab() {
   // ACARS and VDL2 share one card (on both pages): it shows the link that runs, with none the link of the page
   for (const c of $("decPane").querySelectorAll(".card[data-dec]")) c.classList.toggle("off-page", !!na || !c.dataset.dec.split(" ").includes(decPage));
   if (st) renderLinkBands();
+  // the ACARS map was hidden (size 0); later: this also runs before the map variables are declared
+  if (decPage === "acars" || decPage === "vdl2") setTimeout(() => { if (acarsMap) acarsMap.invalidateSize(); });
   const dsdOff = decPage === "dsd" && !decRunning("dsd");
   $("decEmpty").hidden = !na && !dsdOff;
   $("decEmpty").classList.toggle("dec-na", !!na);
@@ -4352,6 +4434,7 @@ function addAcars(m, fresh) {
   tr.dataset.kind = kind === "atn" ? "cpdlc" : kind;    // filter: CPDLC = FANS and ATN CPDLC
   tr.dataset.loc = m.vdl2?.gs_loc || "-";
   renderAcarsAircraft(tr, m.ac);
+  acarsAcUpdate(m);
   acarsKeepView(() => {
     // newest on top by message number: a held row may come after a newer one that had nothing to wait for
     let next = tb.firstElementChild;
@@ -4428,7 +4511,7 @@ $("acarsLoc").addEventListener("change", (e) => {
 
 /** ATN message (European CPDLC over VDL2, no ACARS around it) as a row of the ACARS card. */
 function addAtn(c, fresh) {
-  const m = { id: c.id, time: c.time, freq_hz: c.freq_hz, link: c.link, vdl2: c.vdl2, reg: c.reg, flight: "", label: "",
+  const m = { id: c.id, time: c.time, date: c.date, freq_hz: c.freq_hz, link: c.link, vdl2: c.vdl2, reg: c.reg, flight: "", label: "",
     dir: c.dir, desc: c.imi_desc, text: "", crc_ok: true, cpdlc: c, ac: c.ac, atn: true, lookup: c.lookup };
   if (fresh) acarsReceive(m); else addAcars(m, false);
 }
@@ -4490,6 +4573,7 @@ function onAcarsInfo(d) {
     if (!tr) continue;
     tr._msg.ac = d.ac;
     acarsKeepView(() => renderAcarsAircraft(tr, d.ac));
+    acarsAcUpdate(tr._msg);
   }
 }
 
@@ -4498,6 +4582,242 @@ function renderAcarsInfo(i) {
   $("acarsCard").hidden = !(st.acars || st.vdl2);
   if (!i) return;
   $("acarsInfo").textContent = `${i.count} messages${i.crc_errors ? ` · ${i.crc_errors} CRC errors` : ""}`;
+}
+
+// ----- ACARS / VDL2 MAP: aircraft with a known position (ADS-B, ADS-C, VDL2 XID) and the VDL2 ground stations -----
+// The aircraft records have the shape of the HFDL ones, so the icon, track and heading helpers of the HFDL map are shared.
+
+const acarsAc = new Map();       // key -> aircraft {key, hex, reg, flight, ac, first, last, n, gs, ids, pts: [{lat, lon, t, src}]}
+const acarsAcAlias = new Map();  // "hex:…" / "reg:…" / "flt:…" -> aircraft
+const acarsGsPos = new Map();    // VDL2 ground station address -> {lat, lon, gs_loc, gs_city, t}
+let acarsView = MAP_ONLY ? "map" : recall("acarsView") || "msgs";
+let acarsMap = null, acarsMapLayers = null, acarsMapFitted = false, acarsSel = null, acarsViewTimer = null;
+
+/** Time of a message (UTC date + time strings) in seconds. */
+function acarsT(m) {
+  const t = Date.parse(`${m.date}T${m.time}Z`);
+  return Number.isFinite(t) ? t / 1000 : Date.now() / 1000;
+}
+
+/** 24-bit ICAO address of the aircraft: ATN message, VDL2 link address of the aircraft, else from ADS-B. */
+function acarsAirHex(m) {
+  if (m.atn) return m.reg || "";
+  const a = m.vdl2 ? (m.dir === "down" ? m.vdl2.src : m.vdl2.dst) : "";
+  return /^[0-9A-Fa-f]{6}$/.test(a || "") && !/^f{6}$/i.test(a) ? a : "";
+}
+
+/** Aircraft record for these identifiers; records found under different identifiers are joined into one. */
+function acarsAcFind(ids) {
+  const found = [...new Set(ids.map((k) => acarsAcAlias.get(k)).filter(Boolean))];
+  let a = found[0];
+  if (!a) {
+    a = { key: ids[0], hex: "", reg: "", flight: "", ac: null, first: 0, last: 0, n: 0, gs: "", ids: new Set(), pts: [] };
+    acarsAc.set(a.key, a);
+  }
+  for (const b of found.slice(1)) {           // the same aircraft seen first by another identifier
+    for (const id of b.ids) if (!a.ids.has(id)) { a.ids.add(id); a.n++; }
+    for (const p of b.pts) acarsAddPt(a, p.lat, p.lon, p.t, p.src);
+    a.hex = a.hex || b.hex; a.reg = a.reg || b.reg; a.flight = a.flight || b.flight; a.ac = a.ac || b.ac;
+    if (b.last > a.last) { a.last = b.last; a.gs = b.gs || a.gs; }
+    for (const [k, x] of acarsAcAlias) if (x === b) acarsAcAlias.set(k, a);
+    acarsAc.delete(b.key);
+    if (acarsSel === b.key) acarsSel = a.key;
+  }
+  for (const k of ids) acarsAcAlias.set(k, a);
+  return a;
+}
+
+function acarsAddPt(a, lat, lon, t, src) {
+  if (lat == null || lon == null || a.pts.some((p) => p.lat === lat && p.lon === lon)) return;
+  a.pts.push({ lat, lon, t, src });
+  a.pts.sort((p, q) => p.t - q.t);
+  if (a.pts.length > 200) a.pts.shift();
+}
+
+/** A message (or its ADS-B data that came later) -> aircraft record and its positions. */
+function acarsAcUpdate(m) {
+  const ac = m.ac && m.ac.found ? m.ac : null;
+  const hex = (acarsAirHex(m) || (ac ? ac.hex : "") || "").toUpperCase();
+  const reg = (!m.atn && m.reg) || (ac ? ac.reg : "") || "";
+  const flight = m.flight || (ac ? ac.callsign : "") || "";
+  const ids = [hex && `hex:${hex}`, reg && `reg:${reg}`, flight && `flt:${flight}`].filter(Boolean);
+  if (!ids.length) return;
+  const a = acarsAcFind(ids), t = acarsT(m);
+  if (!a.ids.has(m.id)) { a.ids.add(m.id); a.n++; }
+  a.hex = hex || a.hex; a.reg = reg || a.reg; a.flight = flight || a.flight;
+  if (!a.first || t < a.first) a.first = t;
+  if (t >= a.last) { a.last = t; a.gs = (m.vdl2 && m.vdl2.gs_loc !== "-" && m.vdl2.gs_loc) || a.gs; }
+  if (ac) a.ac = ac;
+  const pos = m.cpdlc && m.cpdlc.pos;
+  if (pos) acarsAddPt(a, pos.lat, pos.lon, t, "ADS-C");
+  if (ac) acarsAddPt(a, ac.lat, ac.lon, t, ac.src || "ADS-B");
+  acarsViewLater();
+}
+
+/** Position from a VDL2 XID frame (server event "acarspos" or the history). */
+function acarsPosUpdate(p) {
+  if (p.kind === "gs") {
+    acarsGsPos.set(p.addr, p);
+  } else {
+    const a = acarsAcFind([`hex:${p.addr}`]);
+    a.hex = a.hex || p.addr;
+    if (!a.first) a.first = p.t;
+    if (p.t > a.last) { a.last = p.t; a.gs = (p.gs_loc !== "-" && p.gs_loc) || a.gs; }
+    acarsAddPt(a, p.lat, p.lon, p.t, "VDL2 XID");
+  }
+  acarsViewLater();
+}
+
+function acarsViewLater() {
+  if (acarsView === "msgs" || acarsViewTimer) return;
+  acarsViewTimer = setTimeout(() => { acarsViewTimer = null; renderAcarsView(); }, 400);
+}
+
+function renderAcarsView() {
+  if (acarsView === "aircraft") renderAcarsAcTable();
+  else if (acarsView === "map") renderAcarsMap();
+}
+
+/** AIRCRAFT view: the newest data of each aircraft, newest first. */
+function renderAcarsAcTable() {
+  const list = [...acarsAc.values()].sort((a, b) => b.last - a.last);
+  $("acarsAcRows").innerHTML = list.map((a) => {
+    const ac = a.ac, p = hfdlPos(a), esc = escHtml;
+    const cty = a.hex ? icaoCountry(a.hex) : null;
+    const ext = (t) => (t ? `<span class="ext">${esc(t)}</span>` : "");
+    return `<tr data-key="${esc(a.key)}"><td>${hfdlUtc(a.last)}</td>` +
+      `<td>${cty && cty.cc ? `<span class="cflag" title="${esc(cty.name)}"><img src="${flagUrl(cty.cc)}" alt="${cty.cc.toUpperCase()}" onerror="this.replaceWith(this.alt)"><span>${cty.cc.toUpperCase()}</span></span>` : ""}</td>` +
+      `<td class="flt">${esc(a.flight)}</td><td class="reg">${esc(a.reg)}</td><td class="icao">${esc(a.hex)}</td>` +
+      `<td>${ext(ac && ac.type)}</td><td class="model">${ext(ac && ac.desc)}</td><td>${ext(hfdlFl(ac))}</td><td>${ext(hfdlSpd(ac))}</td><td>${ext(ac && ac.squawk)}</td>` +
+      `<td>${p ? `<a href="#" class="acars-goto" title="Show on the MAP">${p.lat.toFixed(2)}, ${p.lon.toFixed(2)}</a>` : ""}</td>` +
+      `<td>${p ? `${esc(p.src)} · ${hfdlAge(p.t)}` : ""}</td><td>${esc(a.gs || "")}</td><td class="num">${a.n}</td></tr>`;
+  }).join("");
+  $("acarsAcEmpty").hidden = list.length > 0;
+}
+
+function acarsPopup(a) {
+  const ac = a.ac, p = hfdlPos(a), esc = escHtml, hex = a.hex.toLowerCase();
+  const links = hex ? `<a href="https://globe.adsb.fi/?icao=${hex}" target="_blank" rel="noopener">adsb.fi</a> · <a href="https://adsb.lol/?icao=${hex}" target="_blank" rel="noopener">adsb.lol</a>` : "";
+  return `<b>${esc(a.flight || a.reg || a.hex)}</b> ${esc([a.reg, a.hex].filter((x) => x && x !== a.flight).join(" · "))}` +
+    (ac && ac.found ? `<br>${esc([ac.type, ac.desc].filter(Boolean).join(" · "))}<br>${esc([hfdlFl(ac), hfdlSpd(ac), ac.squawk && `squawk ${ac.squawk}`].filter(Boolean).join(" · "))}` : "") +
+    (p ? `<br>position ${p.lat.toFixed(3)}, ${p.lon.toFixed(3)} (${esc(p.src)}, ${hfdlAge(p.t)} ago)` : "") +
+    `<br>last heard ${hfdlUtc(a.last)} UTC${a.gs ? ` via ${esc(a.gs)}` : ""} · ${a.n} msgs` + (links ? `<br>${links}` : "");
+}
+
+async function acarsMapOpen() {
+  try {
+    await Promise.all([satAsset("/static/leaflet/leaflet.css"), satAsset("/static/leaflet/leaflet.js")]);
+  } catch (e) {
+    $("acarsMapNote").textContent = e.message;
+    return false;
+  }
+  if (!acarsMap) {
+    acarsMap = L.map($("acarsMap"), { worldCopyJump: true, minZoom: 2 }).setView([48, 17], 6);
+    // the same darkened OpenStreetMap tiles as the HFDL map
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 13, className: "hfdl-dark",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+    }).addTo(acarsMap);
+    mapPopout(acarsMap, "acars");
+    acarsMapLayers = { gs: L.layerGroup().addTo(acarsMap), tracks: L.layerGroup().addTo(acarsMap), planes: L.layerGroup().addTo(acarsMap), marks: new Map() };
+    try {
+      const s = await satFetch("/api/location");
+      if (s && Number.isFinite(s.lat) && Number.isFinite(s.lon)) {
+        L.circleMarker([s.lat, s.lon], { radius: 6, color: "#000", weight: 2, fillColor: "#ff5a3c", fillOpacity: 1 }).bindTooltip("QTH").addTo(acarsMap);
+        if (!acarsMapLayers.marks.size) acarsMap.setView([s.lat, s.lon], 6);
+      }
+    } catch { /* server unreachable */ }
+  }
+  return true;
+}
+
+async function renderAcarsMap() {
+  if (!(await acarsMapOpen())) return;
+  acarsMap.invalidateSize();
+  const lay = acarsMapLayers, esc = escHtml;
+  lay.gs.clearLayers();
+  for (const g of acarsGsPos.values()) {
+    L.marker([g.lat, g.lon], { icon: L.divIcon({ className: "hfdl-gs-mark heard", html: "▲", iconSize: [14, 14], iconAnchor: [7, 7] }), zIndexOffset: -1000 })
+      .bindTooltip(`VDL2 ground station ${esc(g.addr)}${g.gs_loc && g.gs_loc !== "-" ? ` · ${esc(g.gs_loc)}` : ""}${g.gs_city ? ` ${esc(g.gs_city)}` : ""}` +
+        `<br>${fmtMHz(g.freq_hz, 3)} MHz · ${hfdlUtc(g.t)} UTC`, { direction: "top" }).addTo(lay.gs);
+  }
+  lay.tracks.clearLayers();
+  const list = [...acarsAc.values()].filter((a) => a.pts.length).sort((a, b) => b.last - a.last);
+  const keep = new Set();
+  for (const a of list) {
+    const p = hfdlPos(a), track = hfdlTrack(a);
+    keep.add(a.key);
+    if (track.length > 1) L.polyline(track.map((q) => [q.lat, q.lon]), { color: a.key === acarsSel ? "#ff4b3c" : "#fff", weight: a.key === acarsSel ? 2.5 : 1.5, opacity: 0.7 }).addTo(lay.tracks);
+    let mk = lay.marks.get(a.key);
+    const label = `${esc(a.flight || a.reg || a.hex)}${a.ac && a.ac.found && a.ac.type ? `<br>${esc(a.ac.type)}` : ""}`;
+    if (!mk) {
+      mk = L.marker([p.lat, p.lon]).bindPopup("").bindTooltip("", { permanent: true, direction: "bottom", offset: [0, 8], className: "hfdl-label" }).addTo(lay.planes);
+      mk.on("click", () => acarsSelect(a.key, false));
+      lay.marks.set(a.key, mk);
+    }
+    mk.setLatLng([p.lat, p.lon]);
+    mk.setIcon(hfdlPlaneIcon(a, a.key === acarsSel));
+    mk.setTooltipContent(label);
+    mk.setPopupContent(acarsPopup(a));
+  }
+  for (const [k, mk] of lay.marks) if (!keep.has(k)) { mk.remove(); lay.marks.delete(k); }
+  if (!acarsMapFitted && lay.marks.size) {
+    acarsMapFitted = true;
+    acarsMap.fitBounds(L.featureGroup([...lay.marks.values()]).getBounds().pad(0.3), { maxZoom: 7 });
+  }
+  $("acarsMapList").innerHTML = `<div class="hfdl-ml-head">Tracking ${list.length} aircraft${acarsAc.size > list.length ? ` (${acarsAc.size - list.length} without a position)` : ""}</div>` +
+    list.map((a) => {
+      const cty = a.hex ? icaoCountry(a.hex) : null, ac = a.ac && a.ac.found ? a.ac : null;
+      return `<div class="hfdl-ml${a.key === acarsSel ? " sel" : ""}${Date.now() / 1000 - a.last > HFDL_OLD_S ? " old" : ""}" data-key="${esc(a.key)}">` +
+        `${cty && cty.cc ? `<img src="${flagUrl(cty.cc)}" alt="" title="${esc(cty.name)}">` : "<span class=\"noflag\"></span>"}` +
+        `<b>${esc(a.flight || "-")}</b><span>${esc(a.reg)}</span><span class="icao">${esc(a.hex)}</span>` +
+        `<span class="ext">${esc(ac ? ac.type : "")}</span><span class="ext">${esc(hfdlFl(ac))}</span><span class="age">${hfdlAge(a.last)}</span></div>`;
+    }).join("");
+  $("acarsMapNote").textContent = `${list.length} aircraft with a position · positions from ADS-B (at the time of the message), ADS-C and VDL2 XID (approximate)` +
+    ` · ▲ VDL2 ground stations · red = selected · grey = not heard for an hour · map © OpenStreetMap`;
+}
+
+/** Selects an aircraft (map list or a click on its icon): red, popup, centred. */
+function acarsSelect(key, pan = true) {
+  acarsSel = key;
+  renderAcarsMap().then(() => {
+    const mk = acarsMapLayers && acarsMapLayers.marks.get(key);
+    if (!mk) return;
+    if (pan) acarsMap.setView(mk.getLatLng(), Math.max(acarsMap.getZoom(), 7));
+    mk.openPopup();
+  });
+}
+
+function setAcarsView(v) {
+  acarsView = v;
+  store("acarsView", v);
+  for (const b of $("acarsViews").children) b.classList.toggle("on", b.dataset.view === v);
+  $("acarsMsgBox").hidden = v !== "msgs";
+  $("acarsAcBox").hidden = v !== "aircraft";
+  $("acarsMapBox").hidden = v !== "map";
+  $("acarsFilter").hidden = v !== "msgs";
+  if (v !== "msgs" && acarsPausedRow) acarsResume();
+  renderAcarsView();
+}
+$("acarsViews").addEventListener("click", (e) => { const b = e.target.closest("button[data-view]"); if (b) setAcarsView(b.dataset.view); });
+$("acarsMapList").addEventListener("click", (e) => { const r = e.target.closest("[data-key]"); if (r) acarsSelect(r.dataset.key); });
+$("acarsAcRows").addEventListener("click", (e) => {
+  if (!e.target.closest(".acars-goto")) return;
+  e.preventDefault();
+  const key = e.target.closest("tr").dataset.key;
+  setAcarsView("map");
+  acarsSelect(key);
+});
+setTimeout(() => setAcarsView(acarsView));   // after the declarations below
+
+function acarsAcClear() {
+  acarsAc.clear();
+  acarsAcAlias.clear();
+  acarsGsPos.clear();
+  acarsSel = null;
+  acarsMapFitted = false;
+  if (acarsMapLayers) { acarsMapLayers.planes.clearLayers(); acarsMapLayers.tracks.clearLayers(); acarsMapLayers.gs.clearLayers(); acarsMapLayers.marks.clear(); }
+  renderAcarsView();
 }
 
 $("acarsOn").addEventListener("change", () => {
@@ -4818,6 +5138,7 @@ $("acarsClear").addEventListener("click", () => {
   $("acarsEmpty").hidden = false;
   $("acarsInfo").textContent = "";
   renderAcarsFilter();
+  acarsAcClear();
 });
 
 // ---------- WEFAX ----------
@@ -8979,7 +9300,7 @@ function onStatus(s) {
   const rateChanged = st && st.audio_rate !== s.audio_rate;
   // Shortly after a local change, do not let an older state from the server overwrite tuning and selection.
   if (st && Date.now() - localChangeAt < 700) {
-    for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "smart_agc", "dc_remove", "dc_hz", "dc_db", "spur_on", "spur_hz", "spur_edge", "spur_shift", "spur_db", "spur_learning", "stereo_on", "notch", "autotune", "ft8", "wefax", "cw", "rtty", "sstv", "packet", "hfdl", "ais", "acars", "cpdlc", "dab", "dab_channel", "dab_sids", "logs", "upconv", "device", "squelch_levels", "auto_sql", "auto_sql_on", "auto_sql_level"]) s[k] = st[k];
+    for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "smart_agc", "dc_remove", "dc_hz", "dc_db", "spur_on", "spur_hz", "spur_edge", "spur_shift", "spur_db", "spur_learning", "stereo_on", "notch", "autotune", "ft8", "wefax", "cw", "rtty", "sstv", "packet", "hfdl", "ais", "acars", "cpdlc", "dab", "dab_channel", "dab_sids", "logs", "upconv", "device", "squelch_levels", "auto_sql", "auto_sql_on", "auto_sql_level", "ctcss", "ctcss_hz", "dcs", "dcs_code"]) s[k] = st[k];
   }
   s.sample_rates = sampleRates;
   st = s;
@@ -9103,6 +9424,7 @@ function connectEvents(v) {
   on("ais", (m) => { addAis(m); decActivity("ais"); });
   on("aisstate", (d) => { if (st) renderAisInfo(d); });
   on("acarsinfo", onAcarsInfo);
+  on("acarspos", acarsPosUpdate);
   on("ft8cycle", (d) => renderFt8Info(`cycle ${d.time} · decoding…`));
   es.onerror = () => {
     v.online = false;
@@ -9156,6 +9478,24 @@ const PASS_ICON = {
   hpf: `<svg class="inf-ico" viewBox="60 180 680 440" aria-hidden="true"><path d="M100 576H150Q190 576 215 535L390 265Q415 228 460 228H695"/></svg>`,
   lpf: `<svg class="inf-ico" viewBox="60 180 680 440" aria-hidden="true"><path d="M100 228H340Q390 228 415 270L580 540Q610 576 650 576H695"/></svg>`,
 };
+// Tone squelch row under the frequency: the set CTCSS tone and DCS code, grey = off, orange = on (FM), glowing = received.
+const vfoToneHtml = () => `<div class="vfo-tone"><span class="ann tsq ctcss">CTCSS<b></b></span>` +
+  `<span class="ann tsq dcs">DCS<b></b></span></div>`;
+function renderVfoTone(row, s) {
+  const fm = s.mode === "FM";
+  for (const [c, on, val, name] of [["ctcss", s.ctcss, ctcssText(ctcssHz(s)), "TSQ-C: CTCSS tone squelch"],
+    ["dcs", s.dcs, dcsCode(s), "TSQ-D: DCS code squelch"]]) {
+    const el = row.querySelector(`.vfo-tone .${c}`);
+    if (!el) continue;
+    const act = fm && !!on;
+    el.classList.toggle("act", act);
+    el.classList.toggle("rx", act && !!s.tone_match);
+    const b = el.querySelector("b");
+    if (b.textContent !== val) b.textContent = val;
+    el.title = `${name} ${val}${c === "ctcss" ? " Hz" : ""}: ` + (!on ? "off" : !fm ? "on, works only in FM"
+      : s.tone_match ? "received now" : "not received");
+  }
+}
 const vfoInfoHtml = () => `<div class="vfo-info">` +
   `<span class="ann rx" title="RX / TX (hold SPACE to transmit: PTT, only with the LimeSDR VFO selected)">RX</span>` +
   `<span class="ann bw" title="Filter width"></span>` +
@@ -9268,7 +9608,7 @@ function renderVfoDisplays() {
         `<span class="mute-tag" title="Audio muted while the ACARS, VDL2, HFDL or ISM decoder runs" hidden></span>` +
         (v.name ? `<span class="vfo-stat"></span>` : "") + `</div></div>` +
         `<div class="vfo-disp"><div class="freq"></div></div>` +
-        (v.name ? vfoInfoHtml() + vfoAnnsHtml() + `<div class="vfo-foot"><label class="vfo-rf"><span>RF</span>` +
+        (v.name ? vfoToneHtml() + vfoInfoHtml() + vfoAnnsHtml() + `<div class="vfo-foot"><label class="vfo-rf"><span>RF</span>` +
         `<input type="range" min="0" max="0" step="1" value="0"></label>` +
         `<span class="vfo-gain" title="RF gain"></span></div>` +
         `<div class="vfo-foot vfo-sqrow"><label class="vfo-rf vfo-sq"><span>SQL</span>` +
@@ -9294,7 +9634,7 @@ function renderVfoDisplays() {
       }
       // red struck-through speaker in the top row: the audio of this VFO is muted by a decoder
       row.querySelector(".mute-tag").hidden = !s.audio_muted;
-      if (v.name) { renderVfoAnns(row, s); renderVfoInfo(row, s); }
+      if (v.name) { renderVfoAnns(row, s); renderVfoTone(row, s); renderVfoInfo(row, s); }
       // red dot in the corner of the display: blinks while a file is being written, steady while waiting for the squelch
       const recs = [s.recording?.cont, s.recording?.squelch];
       const recTag = row.querySelector(".rec-tag");
@@ -9375,7 +9715,7 @@ function renderVfoDisplays() {
       : `CUE off (click to keep hearing VFO ${v.name} when another VFO is selected)`;
     row.classList.toggle("tx", !!(s && s.tx));
     // Squelch open on an inactive VFO: the button lights up to show activity.
-    row.classList.toggle("busy", !!(s && !isActive && s.squelch > SQUELCH_OFF && s.squelch_open));
+    row.classList.toggle("busy", !!(s && !isActive && (s.squelch > SQUELCH_OFF || s.tsq_on) && s.squelch_open));
   }
   renderTx();
   renderVfoKeys();
@@ -9462,6 +9802,7 @@ async function selectVfo(v, keepTab) {
   acarsResume();
   acarsDropHeld();
   $("acarsRows").innerHTML = ""; $("acarsEmpty").hidden = false; renderAcarsFilter();
+  acarsAcClear();
   dsdReset();
   ismReset();
   hfdlReset();
@@ -9516,6 +9857,7 @@ async function loadDecoders() {
   const rows = ac.messages.map((m) => [m.id, () => addAcars(m, false)])
     .concat(cp.messages.filter((c) => c.imi === "ATN").map((c) => [c.id, () => addAtn(c, false)]));
   rows.sort((a, b) => a[0] - b[0]).forEach(([, add]) => add());
+  for (const p of (ac.gs_pos || []).concat(ac.positions || [])) acarsPosUpdate(p);
   renderAcarsInfo(ac);
 }
 
@@ -10040,8 +10382,8 @@ function mapOnlySetup() {
   document.body.append(box);
   box.classList.add("map-only-box");
   document.body.classList.add("map-only");
-  document.title = `${MAP_ONLY === "packet" ? "APRS" : MAP_ONLY.toUpperCase()} map${active && active.name ? ` · VFO ${active.name}` : ""} · RADIMCOM`;
-  ({ packet: setPktView, hfdl: setHfdlView, ais: setAisView })[MAP_ONLY]("map");
+  document.title = `${({ packet: "APRS", acars: "ACARS / VDL2" })[MAP_ONLY] || MAP_ONLY.toUpperCase()} map${active && active.name ? ` · VFO ${active.name}` : ""} · RADIMCOM`;
+  ({ packet: setPktView, hfdl: setHfdlView, ais: setAisView, acars: setAcarsView })[MAP_ONLY]("map");
 }
 
 /** □ key in the top right corner of a map: the same map in a new browser tab. */

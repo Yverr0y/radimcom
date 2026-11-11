@@ -8,6 +8,7 @@ as a separate process: it reads I/Q samples on its standard input and writes one
     receiver thread --raw bytes--> queue --writer thread--> dumpvdl2 stdin
     dumpvdl2 stdout --reader thread--> JSON -> on_acars(m)  (ACARS over VDL2: same dict as acars.parse)
                                             -> on_atn(r)    (ATN CPDLC / CM / ADS-C: CPDLC card record)
+                                            -> on_pos(p)    (XID frames: position of an aircraft or a ground station)
 
 dumpvdl2 needs a sample rate that is a multiple of 105 000 S/s, so the VFO runs at 2.1 MS/s (oversample 20)
 while VDL2 is on. The centre frequency and the channel list are fixed when dumpvdl2 starts; a change of the
@@ -50,9 +51,10 @@ def region_freqs(region):
 
 
 class Vdl2Decoder:
-    def __init__(self, on_acars, on_atn, on_state):
+    def __init__(self, on_acars, on_atn, on_state, on_pos=None):
         self.on_acars = on_acars
         self.on_atn = on_atn
+        self.on_pos = on_pos      # position from an XID frame (ACARS card MAP)
         self.on_state = on_state
         self.enabled = False
         self.error = None
@@ -210,6 +212,13 @@ class Vdl2Decoder:
             if app:
                 self.count += 1
                 self.on_atn(_atn_record(app[0], app[1], meta, avlc))
+        xid = avlc.get("xid")
+        if xid and self.on_pos:
+            p = _xid_position(xid)
+            if p:
+                p.update(kind="ac" if down else "gs", addr=src.get("addr", ""), freq_hz=meta["freq_hz"],
+                         gs=gs, gs_loc=meta["gs_loc"], gs_city=meta["gs_city"])
+                self.on_pos(p)
         self._emit_state()
 
     def _emit_state(self, force=False):
@@ -513,6 +522,66 @@ def _coord(c, pos, neg):
     return f"{d:.4f}{neg if str(c.get('dir', '')).startswith(('s', 'w')) else pos}"
 
 
+def _deg_val(c):
+    """Coordinate -> signed degrees: a number, or {"deg", "min", "sec", "dir"} (ATN ADS-C); None if neither."""
+    if isinstance(c, bool):
+        return None
+    if isinstance(c, (int, float)):
+        return float(c)
+    if isinstance(c, dict) and isinstance(c.get("deg"), (int, float)):
+        d = c["deg"] + c.get("min", 0) / 60 + c.get("sec", 0) / 3600
+        return -d if str(c.get("dir", "")).lower().startswith(("s", "w")) else d
+    return None
+
+
+def _latlon(v, depth=0):
+    """First object in the JSON tree with a usable "lat" and "lon" -> (lat, lon, that object), or None."""
+    if depth > 12:
+        return None
+    if isinstance(v, dict):
+        lat, lon = _deg_val(v.get("lat")), _deg_val(v.get("lon"))
+        if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180 and (lat, lon) != (0, 0):
+            return lat, lon, v
+        v = list(v.values())
+    if isinstance(v, list):
+        for x in v:
+            r = _latlon(x, depth + 1)
+            if r:
+                return r
+    return None
+
+
+def _xid_position(xid):
+    """XID frame (link setup / handoff / ground station broadcast) -> {lat, lon, alt_ft} or None.
+    Aircraft send their approximate location (ac_location), ground stations their own (gs_location)."""
+    r = _latlon(xid)
+    if not r:
+        return None
+    lat, lon, node = r
+    alt = None
+    for holder in (node, xid):
+        a = _find_key(holder, "alt")
+        a = _v(a)
+        if isinstance(a, (int, float)) and not isinstance(a, bool):
+            alt = int(a)
+            break
+    return {"lat": round(lat, 4), "lon": round(lon, 4), "alt_ft": alt}
+
+
+def _adsc_position(app):
+    """ATN ADS-C report -> {lat, lon, alt_ft} of the aircraft, or None."""
+    rd = _find_key(app, "report_data")
+    pos = rd.get("position") if isinstance(rd, dict) else None
+    if not isinstance(pos, dict):
+        return None
+    lat, lon = _deg_val(pos.get("lat")), _deg_val(pos.get("lon"))
+    if lat is None or lon is None:
+        return None
+    alt = _v(pos.get("alt"))
+    return {"lat": round(lat, 5), "lon": round(lon, 5),
+            "alt_ft": int(alt) if isinstance(alt, (int, float)) and not isinstance(alt, bool) else None}
+
+
 def _hms(t, z=True):
     if not isinstance(t, dict) or "hour" not in t:
         return ""
@@ -660,5 +729,6 @@ def _atn_record(kind, app, meta, avlc):
             "min": hdr.get("msg_id") if isinstance(hdr, dict) else None,
             "mrn": hdr.get("msg_ref") if isinstance(hdr, dict) else None, "ts": ts,
             "elements": [{"id": i, "text": t} for i, t in els], "error": "",
-            "text": "\n".join((f"{i}: " if i else "") + t for i, t in els), "pos": None, "link": "VDL2",
+            "text": "\n".join((f"{i}: " if i else "") + t for i, t in els),
+            "pos": _adsc_position(app) if kind.startswith("adsc") else None, "link": "VDL2",
             "vdl2": meta, "raw": json.dumps(avlc, ensure_ascii=False)[:4000], "detail": _detail(avlc, kind, app)}
