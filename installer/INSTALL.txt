@@ -114,6 +114,16 @@ Main Features
   (ADS-B data, position with its source and age, ground station, message count). MAP = aircraft with a known position (ADS-B, ADS-C, and on VDL2 the
   approximate position from XID frames), tracks, VDL2 ground stations, list beside the map; the square key in the top
   right corner opens the map alone in a new browser tab.
+- SCAN: scanner of memories and ranges. New key SCAN in the MENU group -> SCAN tab with pages SCAN, LOG, HEATMAP.
+  All channels in the band of the dongle are measured at once from the spectrum; the tuner moves only between windows.
+  Sources: ALL / FAVOURITES / group of memories, RANGE FROM-TO-STEP-MODE-BW (presets: airband 8.33 kHz, PMR446, 2 m,
+  70 cm, LPD433, marine VHF, CB) or VIEW (spectrum shown); PICK NEXT / STRONGEST. Per memory (new fields): SCAN on/off,
+  own SQ (dBFS), own ASQ margin, PRIO; ASQ FOR ALL (noise floor of each channel + margin). RESUME DELAY / CARRIER / TIME.
+  START / PAUSE / SKIP (5 min) / LOCKOUT / prev / next / STOP; priority channels (other windows: look every PRIO LOOK s);
+  CARRIER LOCKOUT after X min open. LOG = data\logs\scan_YYYY-MM-DD.csv (page LOG, CSV export); REC = WAV of each activity
+  with 0.5 s before the signal came back (recordings folder\scan); STORE = found range frequencies into the memory group
+  "Scan YYYY-MM-DD"; HEATMAP = frequency x hour of the day. Range in the spectrum blue, locked out channels grey.
+  Decoder and recording of a memory are ignored; the decoders of the scanning VFO pause. scanner.py, /api/scan.
 Minor Fixes
 - WFM filters 50, 75, 150 and 200 kHz (default 200 kHz).
 - Memory channel location: LAT / LON (decimal degrees) or CHOOSE ON MAP in the channel form, saved in memories.json and

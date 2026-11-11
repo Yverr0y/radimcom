@@ -207,6 +207,7 @@ ecordings), play them in the browser">RECS</button>
     <div class="kgroup"><span class="klabel">MENU</span><div class="keys">
       <button id="setKey" class="key set-key" aria-label="Settings" aria-controls="settingsCard" title="Settings: the SETTINGS tab (SDR dongle, audio, UI, rotor)"><svg class="gear-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.7h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
       <button id="memKey" class="key mem-key" aria-controls="memPane" title="Memories: the MEMORIES tab (channels to recall and edit, groups, import, export)">MEM</button>
+      <button id="scanKey" class="key" aria-controls="scanPane" title="SCAN: the SCAN tab – scanning the memories on this VFO (source, START / PAUSE / SKIP / LOCKOUT, squelch and ASQ of each channel)">SCAN</button>
       <button id="bandKey" class="key" aria-controls="bandGroups" title="BAND: show / hide the row of band keys (HF HAM, HF BROADCAST, VHF / UHF HAM, OTHER)">BAND</button>
     </div></div>
   </div>
@@ -225,6 +226,7 @@ ecordings), play them in the browser">RECS</button>
     <button data-tab="rot" id="rotTab" hidden>ROTOR CONTROL</button>
     <button data-tab="mem" id="memTab" hidden>MEMORIES</button>
     <button data-tab="recs" id="recsTab" hidden>RECORDINGS</button>
+    <button data-tab="scan" id="scanTab" hidden>SCAN <span id="scanTabDot" class="dec-new" hidden>●</span></button>
     <button data-tab="set" id="setTab" hidden>SETTINGS</button>
   </div>
   <div class="scope display">
@@ -761,6 +763,101 @@ ecordings), play them in the browser">RECS</button>
         <p class="note">Built-in lists (2026-11-11): DAB+ and FM from Wikipedia (sk/cs: the lists of transmitters and the pages of single transmitters –
           main sites only, the frequencies may be out of date); ham repeaters from <a href="https://przemienniki.net" target="_blank" rel="noopener">przemienniki.net</a>
           (working / testing) and <a href="https://cq.sk/zoznam-vkv-ukv-prevadzacov-a-majakov-v-sr/" target="_blank" rel="noopener">cq.sk</a>.</p>
+      </div>
+    </div>
+    <!-- SCAN tab (SCAN key in MENU): the scanner of the active VFO (scanner.py, data\poznamky_scan.md). Pages SCAN (memories or a
+         range / the spectrum shown; SCAN / SQ / ASQ / PRIO of a memory are saved in it and take effect at once), LOG and HEATMAP. -->
+    <div class="set-pane scan-pane" id="scanPane" hidden aria-label="Scan">
+      <div class="amsat-head scan-head">
+        <div class="amsat-pages" id="scanPages" role="tablist">
+          <button class="key small on" data-scan-page="scan" role="tab">SCAN</button>
+          <button class="key small" data-scan-page="log" role="tab">LOG</button>
+          <button class="key small" data-scan-page="heat" role="tab">HEATMAP</button>
+        </div>
+        <div class="scan-keys">
+          <button id="scanStart" class="key accent" title="START: start the scan on this VFO; when held (PAUSE, ◀ ▶, tuning by hand) it continues">▶ START</button>
+          <button id="scanPause" class="key" title="PAUSE: hold on the channel heard now (the normal squelch of the VFO works)">❚❚ PAUSE</button>
+          <button id="scanSkip" class="key" title="SKIP: leave the channel heard now and skip it for 5 minutes">SKIP</button>
+          <button id="scanLock" class="key" title="LOCKOUT: leave the channel heard now and skip it until STOP (the memory keeps SCAN on; uncheck SCAN in the table to leave it out for good)">LOCKOUT</button>
+          <button id="scanPrev" class="key" title="◀: hold on the previous channel of the list">◀</button>
+          <button id="scanNext" class="key" title="▶: hold on the next channel of the list">▶</button>
+          <button id="scanStop" class="key" title="STOP: end the scan (the temporary lockouts are forgotten)">■ STOP</button>
+        </div>
+        <span class="amsat-info" id="scanInfo"></span>
+      </div>
+      <!-- options: what is scanned, then how -->
+      <div class="scan-opts">
+        <label class="scan-opt" title="What is scanned: memories (ALL, FAVOURITES, a group; memories with SCAN unchecked never), a RANGE FROM–TO, or VIEW = the part of the spectrum shown now (taken at START)">SOURCE
+          <select id="scanSource"></select></label>
+        <span class="scan-range" id="scanRange">
+          <label class="scan-opt" title="A ready range: fills FROM, TO, STEP, MODE and BW">PRESET <select id="scanPreset"></select></label>
+          <label class="scan-opt">FROM <input id="scanFrom" type="number" step="0.001" class="wide"> </label>
+          <label class="scan-opt">TO <input id="scanTo" type="number" step="0.001" class="wide"> MHz</label>
+          <label class="scan-opt" title="Channel grid, kHz (8.333 = airband 8.33 kHz)">STEP <input id="scanStep" type="number" min="0.1" max="1000" step="0.001"> kHz</label>
+          <label class="scan-opt">MODE <select id="scanMode"><option>AM</option><option>FM</option><option>WFM</option><option>USB</option><option>LSB</option><option>CW</option></select></label>
+          <label class="scan-opt" title="Channel width, kHz">BW <input id="scanBw" type="number" min="0.1" max="250" step="0.1"> kHz</label>
+          <label class="scan-opt" title="Which active channel is tuned: NEXT = the next one after the last heard (round robin), STRONGEST = the strongest one of the band">PICK
+            <select id="scanPick"><option value="next">NEXT</option><option value="strongest">STRONGEST</option></select></label>
+          <label class="key small toggle" title="SEARCH &amp; STORE: every frequency heard for at least 1 s is stored as a memory in the group &quot;Scan YYYY-MM-DD&quot; (not when a memory is already there)"><input id="scanStore" type="checkbox">STORE</label>
+        </span>
+      </div>
+      <div class="scan-opts">
+        <label class="key small toggle" title="ASQ FOR ALL: every channel without its own SQ gets the auto squelch (its noise floor + margin). Recommended: fixed levels do not fit AGC+. Off = channels without SQ / ASQ use the squelch of their mode"><input id="scanAsq" type="checkbox">ASQ FOR ALL</label>
+        <label class="scan-opt" title="Margin of the auto squelch above the noise floor of a channel, dB (a channel's own ASQ wins)">MARGIN
+          <input id="scanMargin" type="number" min="1" max="30" step="0.5"> dB</label>
+        <label class="scan-opt" title="When the scan continues: DELAY = the set time after the signal drops (replies are heard), CARRIER = as soon as it drops, TIME = after the set time even while the signal lasts">RESUME
+          <select id="scanResume"><option value="delay">DELAY</option><option value="carrier">CARRIER</option><option value="time">TIME</option></select>
+          <input id="scanResumeS" type="number" min="0" max="600" step="0.5"> s</label>
+        <label class="scan-opt" title="Priority look: while another channel is heard, the priority channels in another tuner window are checked this often (the audio stops for ~0.3 s); 0 = off. Priority channels in the same window are checked all the time">PRIO LOOK
+          <input id="scanPrioS" type="number" min="0" max="60" step="0.5"> s</label>
+        <label class="scan-opt" title="Carrier lockout: a channel open longer than this without a break (a carrier, a spur) is locked out until STOP and written to the log; 0 = off">CARRIER LOCKOUT
+          <input id="scanCarrier" type="number" min="0" max="120" step="0.5"> min</label>
+        <label class="key small toggle" title="REC: each activity is recorded to a WAV file (subfolder scan of the recordings folder), with the audio from before the signal came back; ▶ in the LOG plays it"><input id="scanRec" type="checkbox">REC</label>
+        <label class="key small toggle" title="LOG: each activity is written to data\logs\scan_YYYY-MM-DD.csv (time UTC, VFO, frequency, name, mode, length, max. level, SNR, file); the LOG page and the HEATMAP read it"><input id="scanLog" type="checkbox">LOG</label>
+      </div>
+      <div class="scan-now" id="scanNow"></div>
+      <!-- page SCAN: the channels -->
+      <div class="amsat-body recs-body" data-scan-panel="scan">
+        <table class="recs-table scan-table">
+          <thead><tr><th title="SCAN: the memory is scanned">SCAN</th><th>Name</th><th>Frequency</th><th>Mode</th><th>BW</th>
+            <th title="Own squelch level of the channel, dBFS (empty = by ASQ / the scan settings)">SQ dBFS</th>
+            <th title="Own auto squelch margin of the channel, dB above its noise (empty = MARGIN of the scan)">ASQ dB</th>
+            <th title="Priority channel: wins over the other channels, even while another one is heard">PRIO</th>
+            <th title="Channel power now, dBFS (measured from the spectrum while the channel is in the band of the dongle)">Level</th>
+            <th title="Noise floor of the channel, dBFS">Noise</th><th title="Squelch level in use, dBFS">SQL</th>
+            <th title="How many times the scan stopped on it">Hits</th><th>Last</th><th>State</th></tr></thead>
+          <tbody id="scanRows"></tbody>
+        </table>
+        <p class="note" id="scanEmpty" hidden></p>
+      </div>
+      <!-- page LOG: the activities of all VFOs -->
+      <div class="amsat-body recs-body" data-scan-panel="log" hidden>
+        <div class="scan-log-head">
+          <label class="scan-opt">DAYS <select id="scanLogDays"><option value="1">TODAY (UTC)</option><option value="2">2</option><option value="7">7</option><option value="31">31</option></select></label>
+          <input id="scanLogFilter" class="recs-filter" type="search" placeholder="filter: name, MHz, VFO, note…">
+          <button id="scanLogReload" class="key small" title="Read the log again (it is read by itself every 5 s while the page is open)">⟳</button>
+          <button id="scanLogCsv" class="key small" title="Save the rows shown as a CSV file">CSV</button>
+          <audio id="scanAudio" controls preload="none"></audio>
+          <span class="recs-now" id="scanPlaying"></span>
+        </div>
+        <table class="recs-table scan-log">
+          <thead><tr><th></th><th>Time</th><th>VFO</th><th>Frequency</th><th>Name</th><th>Mode</th><th>Length</th><th>Max dBFS</th><th>SNR dB</th><th>Note</th></tr></thead>
+          <tbody id="scanLogRows"></tbody>
+        </table>
+        <p class="note" id="scanLogEmpty" hidden>No activity in the log yet (LOG on, START).</p>
+      </div>
+      <!-- page HEATMAP: occupancy frequency × hour of the day -->
+      <div class="amsat-body recs-body" data-scan-panel="heat" hidden>
+        <div class="scan-log-head">
+          <label class="scan-opt">DAYS <select id="scanHeatDays"><option value="1">1</option><option value="7" selected>7</option><option value="31">31</option></select></label>
+          <button id="scanHeatReload" class="key small">⟳</button>
+          <span class="amsat-info">Seconds of activity per hour of the day (local time) from the log; the 60 busiest frequencies. Darker = less, yellow = most. A click on a row tunes it.</span>
+        </div>
+        <table class="recs-table scan-heat">
+          <thead id="scanHeatHead"></thead>
+          <tbody id="scanHeatRows"></tbody>
+        </table>
+        <p class="note" id="scanHeatEmpty" hidden>No activity in the log for these days.</p>
       </div>
     </div>
     <!-- RECORDINGS tab (RECS key): the MP3 files of REC / REC SQ in data

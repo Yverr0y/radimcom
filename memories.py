@@ -7,6 +7,9 @@ first of them, so the file stays readable for older versions. "decoder" is switc
 squelch) or "asq" (with the auto squelch). "color" is the colour of its tag in the spectrum ("" = default green),
 "tag" false hides the tag. "lat" / "lon" is the location of the station on the channel (decimal degrees, WGS84,
 north / east positive), both or neither (null).
+Scanner (scanner.py, SCAN tab): "scan" false leaves the memory out of every scan (lockout), "scan_sq" its own squelch
+level in dBFS (null = by the scan settings), "scan_asq" its own auto squelch margin in dB above the noise (null = the
+margin of the scan), "scan_prio" 1 = priority channel.
 
 Groups are the names used by the memories plus the groups in memory_groups.json ([{"name", "note"}]), which keeps
 the note of each group and groups without memories.
@@ -38,7 +41,7 @@ NAME_MAX, GROUP_MAX, NOTE_MAX = 80, 40, 200
 DEFAULT_GROUP = "Moje"
 DUP_HZ = 50          # memories closer than this (same mode) are duplicates, as on the VFO display
 FIELDS = ("name", "group", "groups", "freq_hz", "mode", "bw", "fav", "dab_channel", "decoder", "record", "note",
-          "color", "tag", "lat", "lon")
+          "color", "tag", "lat", "lon", "scan", "scan_sq", "scan_asq", "scan_prio")
 CSV_COLUMNS = ("name", "frequency_hz", "mode", "bandwidth_hz", "groups", "decoder", "record", "dab_channel",
                "favourite", "note", "color", "show_tag", "lat", "lon")
 
@@ -63,6 +66,10 @@ def _normalize(m):
     m.setdefault("fav", False)
     m.setdefault("lat", None)
     m.setdefault("lon", None)
+    m.setdefault("scan", True)
+    m.setdefault("scan_sq", None)
+    m.setdefault("scan_asq", None)
+    m.setdefault("scan_prio", 0)
     return m
 
 
@@ -153,8 +160,21 @@ def _coord(value, limit, what):
     return round(v, 6)
 
 
+def _opt_num(value, lo, hi, what):
+    """A number in lo..hi, or None when empty (null, "")."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    try:
+        v = float(str(value).strip().replace(",", ".")) if isinstance(value, str) else float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} is not a number") from None
+    if not lo <= v <= hi:
+        raise ValueError(f"{what} out of range ({lo:g}..{hi:g})")
+    return round(v, 1)
+
+
 def make(name, group, freq_hz, mode, bw, fav=False, groups=None, decoder="", note="", color="", tag=True,
-         record="off", lat=None, lon=None):
+         record="off", lat=None, lon=None, scan=True, scan_sq=None, scan_asq=None, scan_prio=0):
     """Validates and creates an entry; ValueError on invalid data. groups (list) wins over group (one name)."""
     name = " ".join(str(name).split())[:NAME_MAX]
     freq_hz = int(round(float(freq_hz)))
@@ -180,7 +200,8 @@ def make(name, group, freq_hz, mode, bw, fav=False, groups=None, decoder="", not
     return {"id": uuid.uuid4().hex[:12], "name": name, "group": groups[0] if groups else "", "groups": groups,
             "freq_hz": freq_hz, "mode": mode, "bw": bw, "fav": _bool(fav), "decoder": decoder,
             "record": record, "note": str(note or "").strip()[:NOTE_MAX], "color": _color(color), "tag": _bool(tag),
-            "lat": lat, "lon": lon}
+            "lat": lat, "lon": lon, "scan": _bool(scan), "scan_sq": _opt_num(scan_sq, -120, 0, "scan squelch"),
+            "scan_asq": _opt_num(scan_asq, 1, 30, "scan ASQ margin"), "scan_prio": 1 if _bool(scan_prio) else 0}
 
 
 def from_dict(e, dab_channels):
@@ -192,7 +213,8 @@ def from_dict(e, dab_channels):
     m = make(e.get("name", ""), e.get("group", ""), dab_channels[ch] if ch else e["freq_hz"], e["mode"],
              e.get("bw", 3000), e.get("fav", False), groups=groups, decoder=e.get("decoder", ""),
              note=e.get("note", ""), color=e.get("color", ""), tag=e.get("tag", True),
-             record=e.get("record", "off"), lat=e.get("lat"), lon=e.get("lon"))
+             record=e.get("record", "off"), lat=e.get("lat"), lon=e.get("lon"), scan=e.get("scan", True),
+             scan_sq=e.get("scan_sq"), scan_asq=e.get("scan_asq"), scan_prio=e.get("scan_prio", 0))
     if ch:
         m["dab_channel"] = ch
     return m

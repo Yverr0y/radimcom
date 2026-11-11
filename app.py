@@ -29,6 +29,7 @@ if __name__ == "__main__" and "--vfo" not in sys.argv and os.path.exists(VFOS_PA
 
 import location
 import memories
+import scanner as scanner_mod
 import overlays
 import satellites
 import sysload
@@ -337,7 +338,10 @@ def tx_capable():
 
 
 def audio_muted():
-    """These decoders work on the raw samples or the baseband; the audio of their VFO would only be noise."""
+    """These decoders work on the raw samples or the baseband; the audio of their VFO would only be noise.
+    A running scan pauses ACARS, so its audio is heard (the raw-sample decoders do not let a scan start)."""
+    if receiver.scan.on and not (vdl2.enabled or ism.enabled or hfdl.enabled or ais.enabled):
+        return False
     return acars.enabled or vdl2.enabled or ism.enabled or hfdl.enabled or ais.enabled
 
 
@@ -370,6 +374,8 @@ def cw_band():
 
 
 def on_baseband(base, fs, dial_hz):
+    if receiver.scan.on:
+        return                           # SCAN: the decoders of this VFO are paused (they would get every channel)
     ft8.feed(base, fs, dial_hz)
     wefax.feed(base, fs, dial_hz)
     if cw.enabled:
@@ -404,7 +410,7 @@ receiver = Receiver(
     on_audio=on_audio,
     on_status=lambda: hub.event("status", state()),
     on_baseband=on_baseband,
-    on_demod=sstv.feed,
+    on_demod=lambda audio, fs: None if receiver.scan.on else sstv.feed(audio, fs),
     on_meter=lambda db: hub.event("meter", {"db": round(db, 1)}),
     on_dsd=dsd.process,
 )
@@ -1194,6 +1200,92 @@ def api_memory_add():
     return jsonify(memories.add(m))
 
 
+# ---------- SCAN tab: memory scanner (scanner.py runs in the receiver thread) ----------
+
+SCAN_RAW_DECODERS = (("DAB", lambda: dab.enabled), ("VDL2", lambda: vdl2.enabled), ("ISM", lambda: ism.enabled),
+                     ("HFDL", lambda: hfdl.enabled), ("AIS", lambda: ais.enabled))
+
+
+def scan_store(entry):
+    """Search & store (scanner thread → here): an active frequency of a range into the group "Scan YYYY-MM-DD",
+    unless a memory is already there (same mode, within memories.DUP_HZ)."""
+    def run():
+        try:
+            m = memories.from_dict(entry, CHANNEL_HZ)
+            if not memories.duplicate_of(m, memories.load()):
+                memories.add(m)
+                hub.event("memories", {"added": m["id"]})
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    threading.Thread(target=run, name="scan-store", daemon=True).start()
+
+
+receiver.scan.on_store = scan_store
+
+
+@app.route("/api/scan", methods=["GET"])
+def api_scan():
+    """State of the scan of this VFO with the live values of the channels (list), the channels left out, the last
+    activities of this VFO (log), the saved options and the range presets."""
+    return jsonify(dict(receiver.scan.info(full=True), saved_opts=scanner_mod.norm_opts(None, cfg.get("scan")),
+                        presets=[dict(zip(("name", "from_hz", "to_hz", "step_hz", "mode", "bw"), p))
+                                 for p in scanner_mod.PRESETS]))
+
+
+@app.route("/api/scan/log")
+def api_scan_log():
+    """Activity log of all VFOs (data/logs/scan_YYYY-MM-DD.csv, UTC), newest first: ?days=1..31, ?limit."""
+    days = min(max(request.args.get("days", 1, type=int), 1), 31)
+    limit = min(max(request.args.get("limit", 1000, type=int), 1), 20000)
+    return jsonify({"days": days, "rows": scanner_mod.read_log(days, limit), "fields": scanner_mod.LOG_FIELDS})
+
+
+@app.route("/api/scan/heatmap")
+def api_scan_heatmap():
+    """Occupancy from the log: frequency × hour of the day (local time), seconds of activity; ?days=1..31."""
+    days = min(max(request.args.get("days", 7, type=int), 1), 31)
+    return jsonify(scanner_mod.heatmap(days, top=min(max(request.args.get("top", 60, type=int), 1), 300)))
+
+
+@app.route("/api/scan/rec/<name>")
+def api_scan_rec(name):
+    """A WAV recording of the scan (subfolder "scan" of the recordings folder)."""
+    if not name.lower().endswith(".wav") or "/" in name or "\\" in name:
+        return jsonify({"error": "bad name"}), 400
+    return send_from_directory(scanner_mod.rec_folder(), name, mimetype="audio/wav", conditional=True)
+
+
+@app.route("/api/scan", methods=["POST"])
+def api_scan_cmd():
+    """{"action": "start", "opts": {...}} / "stop" / "pause" / "resume" / "skip" / "lockout" / "unlock" /
+    "step" ({"dir": 1 | -1}) / "opts" (only saves the options)."""
+    body = request.get_json(force=True, silent=True) or {}
+    action = body.get("action")
+    try:
+        opts = scanner_mod.norm_opts(body.get("opts"), cfg.get("scan"))
+    except (TypeError, ValueError) as e:
+        return jsonify({"error": str(e)}), 400
+    if action in ("start", "opts"):
+        cfg["scan"] = opts
+        save_config_later()
+    if action == "start":
+        busy = [name for name, on in SCAN_RAW_DECODERS if on()]
+        if busy:
+            return jsonify({"error": f"switch off {', '.join(busy)} on this VFO first (it holds the dongle)"}), 409
+        if receiver.status != "running":
+            return jsonify({"error": f"receiver is not running ({receiver.status})"}), 409
+        err = receiver.scan.start(memories.load(), opts, receiver)
+        if err:
+            return jsonify({"error": err}), 400
+    elif action in ("stop", "pause", "resume", "skip", "lockout", "unlock"):
+        receiver.scan.command(action)
+    elif action == "step":
+        receiver.scan.command("step", dir=1 if int(body.get("dir", 1)) >= 0 else -1)
+    elif action != "opts":
+        return jsonify({"error": "unknown scan action"}), 400
+    return jsonify({"ok": True})
+
+
 @app.route("/api/recordings", methods=["GET"])
 def api_recordings():
     """The MP3 recordings in the recordings folder (RECORDINGS tab), newest first."""
@@ -1346,6 +1438,8 @@ def api_memory_update(mid):
         m = memories.update(mid, request.get_json(force=True), CHANNEL_HZ)
     except (KeyError, TypeError, ValueError, OverflowError) as e:
         return jsonify({"error": str(e) or "invalid entry"}), 400
+    if m and receiver.scan.on:
+        receiver.scan.command("update", mem=m)     # SCAN / SQ / ASQ / PRIO take effect in the running scan at once
     return (jsonify(m), 200) if m else (jsonify({"error": "not found"}), 404)
 
 
@@ -1704,6 +1798,8 @@ def api_set():
     if changes.get("mode") == DSD_MODE:
         with tx_lock:
             tx_off("DSD mode")     # receive only
+    if receiver.scan.on and not receiver.scan.paused and ("tune_hz" in changes or "mode" in changes):
+        receiver.scan.command("pause", why="tuned by hand")   # tuning by hand holds the scan (START continues)
     receiver.update(changes)
     if "mode" in changes:
         dsd.set_enabled(changes["mode"] == DSD_MODE)

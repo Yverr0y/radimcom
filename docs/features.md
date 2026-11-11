@@ -33,6 +33,11 @@
 - **Satellite tracking:** pass prediction, world map, Doppler correction of the VFO and a K3NG antenna rotor over USB, planned for passes across the north; no other program needed. See [Satellite tracking](satellites.md).
 - **ROTOR CONTROL tab (RCTRL key):** a map where a click (or a click on a DAB+, FM or ham repeater point) turns the rotor to that azimuth from the QTH, with the wanted azimuth (dashed line) and the antenna now (beam sector turning with the rotor), from any VFO; editable groups of points (the built-in ones as defaults, own groups, import / export). See [Rotor control map](satellites.md#rotor-control-map).
 - **REC and REC SQ:** record the audio of the selected VFO to MP3 files in `data\recordings` or an own folder (SETTINGS › GENERAL › RECORDINGS): everything, or only while the squelch is open.
+- **SCAN tab (SCAN key, MENU group): scanner** on one VFO. Every ~85 ms it measures all channels in the band of the dongle at once
+  from the spectrum, the tuner moves only between windows; memories (ALL / FAVOURITES / group), a RANGE (FROM / TO / STEP / MODE / BW, presets
+  such as airband 8.33 kHz) or the spectrum shown (VIEW); START / PAUSE / SKIP / LOCKOUT / ◀ ▶ / STOP; own squelch, own ASQ margin and priority
+  per memory (ASQ FOR ALL by default); resume DELAY / CARRIER / TIME; priority look into other windows, carrier lockout; activity LOG (CSV),
+  WAV recording of each activity, search & store into a memory group, HEATMAP of the occupancy. See [MENU → SCAN](controls.md#scan).
 - **RECORDINGS tab (RECS key):** the recorded files in a table (start, memory, frequency, mode, length, size), played in the browser; NEXT plays the next older file, filter, delete. See [RECS](controls.md#function-keys).
 - **Daily logs:** the LOG checkbox in each decoder card writes to `data\logs\<decoder>_YYYY-MM-DD.txt` (UTC, one line per message; WEFAX/SSTV log the names of saved images), classic ACARS to `data\acars\acars_YYYY-MM-DD.txt` and VDL2 to `data\acars\vdl2_YYYY-MM-DD.txt`.
 - **TX with LimeSDR** (optional, off by default), see [Transmitting (LimeSDR)](configuration.md#transmitting-limesdr).

@@ -212,6 +212,37 @@ squelch gets a green underline, a transmitting one turns red.
   Memories in the visible part of the spectrum show their name on a tag at the top of the spectrum (green, or the colour
   chosen in the editor; a red ● before the name = recalling it starts a recording); click a tag to recall the memory.
 
+- <a id="scan"></a>**MENU → SCAN**: scanner. While the SCAN key is lit, the bottom part has a **SCAN** tab (one switch for all VFOs;
+  the tab shows the scan of the active VFO, the key blinks green while it scans and the tab has a green ●). The scan runs on the active VFO only,
+  the other VFOs keep working. The tab has three pages:
+  - **SCAN**: the keys, the options, the line with the state (SCANNING / LISTENING / PRIORITY LOOK / HOLD, the channel, level / squelch, ● REC)
+    and the table of channels.
+  - **SOURCE**: ALL memories, FAVOURITES, one GROUP, **RANGE** (FROM / TO MHz, STEP kHz, MODE, BW kHz; **PRESET** fills them: airband 118–137 MHz
+    AM 8.33 kHz, PMR446, 2 m, 70 cm, LPD433, marine VHF, CB) or **VIEW** (the part of the spectrum shown, taken at START; MODE / BW of the VFO and a
+    grid of half the width when chosen). Memories with SCAN unchecked, DAB and DSD memories and channels out of the range of the VFO are left out
+    (the reason is in the State column).
+  - How it scans: every block (~85 ms) the power of **all channels in the band of the dongle** is measured from the spectrum, so they are checked at once;
+    the tuner moves only to the next window (~¾ of the sample rate). Of overlapping neighbours only the strongest opens. **PICK** NEXT tunes the first active
+    channel after the last one heard, STRONGEST the strongest of the band (frequency, mode and width only – the decoder and recording of a memory are ignored).
+    A **PRIO** channel wins at once in the same window; in other windows the scan looks at the priority channels every **PRIO LOOK** seconds while another channel is heard (0 = off).
+  - **Squelch per channel**: **SQ** = own level in dBFS; **ASQ** = own auto squelch margin in dB above the noise of the channel; empty = by the scan settings:
+    **ASQ FOR ALL** (recommended, on by default) uses the noise floor of the channel + **MARGIN**; without it the squelch level of the mode (a channel whose squelch is off is left out).
+    The noise floor of a channel is learned from its own measurements while it is quiet (spurs, the DC spike and local noise included).
+  - **RESUME**: **DELAY** continues the set seconds after the signal drops (a reply is heard), **CARRIER** at once, **TIME** after the set seconds even while it lasts.
+  - **CARRIER LOCKOUT**: a channel open longer than the set minutes without a break is locked out until STOP (0 = off). Locked out channels are grey ✕ marks at
+    the bottom of the spectrum, the range scanned is a blue strip.
+  - **REC**: each activity is recorded to a WAV file (subfolder `scan` of the recordings folder) with the 0.5 s before the signal came back. **LOG**: each activity
+    is written to `data\logs\scan_YYYY-MM-DD.csv`. **STORE** (range / view): every frequency heard for at least 1 s becomes a memory in the group **Scan YYYY-MM-DD**
+    (not when a memory is already there).
+  - Keys: **START** (**RESUME** while held), **PAUSE** (hold on the channel; the normal squelch of the VFO works), **SKIP** (leave it and skip it for 5 min),
+    **LOCKOUT** (skip it until STOP), **◀ ▶** (hold on the previous / next channel), **STOP**. Tuning by hand or recalling a memory holds the scan too.
+  - The table: memories – SCAN, SQ, ASQ and PRIO are edited in place (saved in the memory, a running scan takes them at once); a range – the channels heard,
+    active or locked out. Level, Noise and SQL are the live values in dBFS, Hits = how many times it stopped there, Last = time of the last activity.
+  - **LOG**: the activities of all VFOs (today, 2, 7 or 31 days; filter; **CSV** saves the rows shown): time, VFO, frequency, name, mode, length, max. level, SNR,
+    note (carrier lockout); **▶** plays the recording, a double click tunes the frequency.
+  - **HEATMAP**: seconds of activity per hour of the day (local time) for the 60 busiest frequencies of the log; a click on a row tunes it.
+  - While a VFO scans, its baseband decoders (FT8, WEFAX, CW, RTTY, PACKET, SSTV, ACARS) pause; DAB, VDL2, ISM, HFDL and AIS must be off.
+
 - **MENU → BAND**: shows or hides the row of band keys; the spectrum and waterfall take the freed space. Remembered in the browser.
 
 **AD (additional display)**: the dark window under the S-meter and the VFO keys shows one thing at a time, by priority:

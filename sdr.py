@@ -14,6 +14,7 @@ import time
 import numpy as np
 
 from autotune import AutoTune
+from scanner import Scanner
 from tonesq import CTCSS_DEFAULT_HZ, DCS_DEFAULT, TONE_HPF_HZ, ToneSquelch
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -896,6 +897,7 @@ class Receiver:
         self.shared_lo = None
         self.out_of_band = False
         self.atune = AutoTune(self._autotune_done)   # ATU: click -> exact carrier (autotune.py)
+        self.scan = Scanner()                        # SCAN tab: memory scanner (scanner.py), runs in _loop
 
     def _autotune_done(self, old_hz, new_hz):
         """Autotune result (from its thread): retune only if nobody has tuned elsewhere meanwhile."""
@@ -1173,6 +1175,30 @@ class Receiver:
             raise ResetRequested()
         self.on_status()
 
+    def scan_tune(self, hz, mode, bw):
+        """Scanner (receiver thread): tunes a channel like a recalled memory, but without its decoder and recording."""
+        c = self.cfg
+        if c["tune_hz"] != hz and isinstance(self.wfm, Wfm):
+            self.wfm.rds.reset()
+        c["tune_hz"], c["mode"] = float(hz), mode
+        if mode != DSD_MODE:
+            c.setdefault("bandwidth", {})[mode] = float(bw)
+        old = c["center_hz"]
+        self._recenter(c["tune_hz"], only_if_outside=True)
+        if c["center_hz"] != old and self.sdr:
+            self.sdr.set_center_freq(c["center_hz"] + self.lo)
+            self.sagc.reset(SAGC_SETTLE)
+
+    def scan_center(self, center, tune):
+        """Scanner (receiver thread): the tuner to the next window; the VFO waits on its first channel (muted)."""
+        if self.chained:
+            return
+        c = self.cfg
+        c["center_hz"], c["tune_hz"] = float(center), float(tune)
+        if self.sdr:
+            self.sdr.set_center_freq(c["center_hz"] + self.lo)
+        self.sagc.reset(SAGC_SETTLE)
+
     def _recenter(self, tune, only_if_outside=False):
         """Tuned frequency outside the displayed band -> move the centre (away from the DC spike)."""
         c = self.cfg
@@ -1338,6 +1364,8 @@ class Receiver:
             iq = self._remove_dc(iq)
 
             self._waterfall(iq)
+            if self.scan.on or self.scan.cmds:
+                self.scan.block(self, blocks.qsize())   # may retune for this very block (scanner.py)
 
             # Channel: shift of the tuned frequency to zero, decimation, demodulation.
             c = self.cfg
@@ -1403,6 +1431,8 @@ class Receiver:
                 x = self.tsq_hpf.process(np.stack((audio, audio), axis=1) if mono else audio, self.fs / DECIM,
                                          TONE_HPF_HZ if self.tone_open is not None else None)
                 audio = (x[:, 0] if mono else x).astype(np.float32)
+            if self.scan.on:
+                self.scan.audio(audio, self.fs / DECIM)   # scan: recording of each activity (before the squelch)
             self._noise_floor(mode, bw, sub_db, cal)
             audio = self._squelch(audio, mode, sub_db, self.tone_open)
             if audio.ndim == 1:                     # the browser always gets stereo (L, R interleaved)
@@ -1493,7 +1523,11 @@ class Receiver:
         level = self.squelch_level(mode)
         parts = len(sub_db)
         gains = np.ones(parts, np.float32)
-        if level <= SQUELCH_OFF:
+        if self.scan.on and not self.scan.paused:
+            # scanning: the scanner decides (its level per channel, from the same block's spectrum)
+            self.sq_open, self.sq_hang = self.scan.audio_open, 0
+            gains[:] = 1.0 if self.sq_open else 0.0
+        elif level <= SQUELCH_OFF:
             self.sq_open, self.sq_hang = True, 0
         else:
             part_s = len(audio) / parts / (self.fs / DECIM)
@@ -1627,6 +1661,7 @@ class Receiver:
             "auto_sql_db": float(c.get("auto_sql_db", ASQ_DEFAULT_DB)),
             "auto_sql_level": self.auto_sql_level() if self.auto_sql_on(c["mode"]) else None,
             "squelch_open": self.sq_open and self.tone_open is not False,   # carrier and tone squelch together
+            "scan": self.scan.info(),                              # SCAN tab (scanner.py)
             "ctcss": bool(c.get("ctcss", False)),                  # TSQ-C key
             "ctcss_hz": float(c.get("ctcss_hz", CTCSS_DEFAULT_HZ)),
             "dcs": bool(c.get("dcs", False)),                      # TSQ-D key

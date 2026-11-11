@@ -1279,6 +1279,40 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .recs-table .play { width: 22px; color: var(--yellow); text-align: center; }
 .recs-table .del { width: 20px; color: var(--muted); text-align: center; }
 .recs-table .del:hover { color: var(--red); }
+/* SCAN tab: keys and options in the head, the line of the channel heard now, the table of channels */
+.scan-keys { display: flex; gap: 6px; flex-wrap: wrap; }
+.scan-keys .key:disabled { opacity: .4; cursor: default; }
+.scan-opt { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 12px; }
+.scan-opt select, .scan-opt input { padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: #000; color: var(--text); font-size: 12px; }
+.scan-opt input { width: 56px; }
+.scan-opt select { max-width: 200px; }
+.scan-now { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; background: #000; color: var(--muted); font-size: 13px; }
+.scan-now b { color: var(--muted); letter-spacing: .08em; min-width: 92px; }
+.scan-now.search b { color: var(--yellow); }
+.scan-now.listen b, .scan-now.listen .scan-ch { color: var(--green); }
+.scan-now.hold b { color: #6fb7ff; }
+.scan-now .scan-ch { color: var(--text); font-size: 15px; font-weight: 600; }
+.scan-now .scan-msg { color: #6fb7ff; }
+.scan-table td input[type="checkbox"] { margin: 0; }
+.scan-table .scan-num { width: 64px; padding: 2px 4px; border: 1px solid var(--line); border-radius: 3px; background: #000; color: var(--text); font-size: 12px; }
+.scan-table tbody tr { cursor: default; }
+.scan-table tbody tr.scan-off td { color: var(--muted); }
+.scan-table tbody tr.scan-active td[data-live="power"] { color: var(--green); }
+.scan-table td.scan-why { color: var(--muted); max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+.scan-opts { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.scan-range { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.scan-range[hidden] { display: none; }
+.scan-opt input.wide { width: 86px; }
+.scan-opt input:disabled, .scan-opt select:disabled { opacity: .45; }
+.scan-now .scan-rec { color: var(--red); animation: rec-tag-blink 1s steps(2, start) infinite; }
+.scan-now.peek b { color: #6fb7ff; }
+.scan-log-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 8px; }
+.scan-log-head audio { height: 30px; min-width: 220px; color-scheme: dark; }
+.scan-log tbody tr, .scan-heat tbody tr { cursor: pointer; }
+.scan-heat th.hh { text-align: center; padding: 5px 0; width: 26px; }
+.scan-heat td.hc { padding: 0; width: 26px; height: 20px; border-left: 1px solid #10151c; }
+#scanKey.scanning { animation: scan-key-blink 1s steps(1) infinite; }
+@keyframes scan-key-blink { 50% { color: var(--green); border-color: var(--green); } }
 .set-panel { zoom: 1.1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
 .set-subpanel.set-tx { grid-template-columns: minmax(0, 1fr); }
 /* pages with sub-pages (GENERAL, VFO): a row of sub-page keys, the open sub-page under it */
