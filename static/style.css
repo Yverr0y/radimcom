@@ -1961,3 +1961,7 @@ body.map-only .pkt-map.map-only-box { flex-direction: column; gap: 4px; }
   border-radius: 4px; background: #0b0e12; color: var(--text); font-size: 12px; }
 .rc-edit-tab input.rc-loc { border-color: #4cff7a; }
 .rc-edit-tab .note { padding: 6px 8px; margin: 0; }
+.med-table .c-lat, .med-table .c-lon { width: 74px; }
+.med-table .c-az { width: 44px; }
+.med-table .c-dist { width: 64px; }
+.med-table .c-incloc { width: 84px; }

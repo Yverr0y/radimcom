@@ -15,7 +15,7 @@ Test beta (GitHub branch `0.114beta1`).
 ### Minor Fixes
 
 - **WFM filters 50, 75, 150 and 200 kHz** (were 100, 150 and 200 kHz), default 200 kHz (the full broadcast signal: least distortion, best stereo and RDS). 150 kHz is a compromise, 50–75 kHz only for a weak station next to a strong one (distorted, usually without stereo and RDS); any width up to 250 kHz can still be set by dragging the filter edge.
-- **Location of a memory channel** (Brano, brjanicek): a channel can keep the location of its station, **LAT** / **LON** in decimal degrees in the channel form (both or neither; empty = none). Saved as `lat` / `lon` in `memories.json` (`null` without a location), in the JSON and CSV export and import, and in the memories API.
+- **Location of a memory channel** (Brano, brjanicek): a channel can keep the location of its station, **LAT** / **LON** in decimal degrees in the channel form (both or neither; empty = none). Saved as `lat` / `lon` in `memories.json` (`null` without a location), in the JSON and CSV export (**LAT/LON** column to include it) and import, and in the memories API. The CHANNELS table shows LAT, LON and the **azimuth** and **distance** from the station location of SETTINGS › GENERAL › LOCATION (sortable).
 - **The default S-meter layout is the amber needle** (only when none was chosen in this browser yet; SETTINGS › GENERAL › S-METER).
 
 ## Ver. 0.113

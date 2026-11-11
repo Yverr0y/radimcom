@@ -110,7 +110,8 @@ Main Features
 Minor Fixes
 - WFM filters 50, 75, 150 and 200 kHz (default 200 kHz).
 - Memory channel location: LAT / LON (decimal degrees) in the channel form, saved in memories.json and
-  in the JSON / CSV export and import.
+  in the JSON / CSV export and import; the CHANNELS table shows LAT, LON, azimuth and distance from the
+  station location (SETTINGS -> GENERAL -> LOCATION).
 - Default S-meter layout: amber needle.
 
 Ver. 0.113
