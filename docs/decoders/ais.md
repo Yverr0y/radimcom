@@ -60,8 +60,8 @@ nothing to hear away from navigable water. A ship under way sends a position rep
 Each channel is taken out of the raw band by a complex band-pass filter with polyphase decimation to about 48 kHz
 (5 samples per bit), the residual carrier removed, FM demodulated, the DC (tuning error) removed with a 20 ms window,
 low-pass filtered and sampled by the bit clock of the packet decoder (a PLL on the zero crossings). The HDLC deframer of
-the packet decoder (NRZI, bit stuffing, CRC-16/X.25) gives the frames; the bits of each byte are reversed (AIS sends
-the message MSB first) and the message is decoded: types 1–3 and 18 / 19 / 27 (positions), 4 / 11 (base stations),
+the packet decoder (NRZI, bit stuffing, CRC-16/X.25) gives the frames; each byte is sent LSB first and assembled LSB
+first, so the frame bytes are the message bytes and the message (MSB first) is decoded: types 1–3 and 18 / 19 / 27 (positions), 4 / 11 (base stations),
 5 / 24 (static data), 9 (SAR aircraft), 12 / 14 (safety text), 21 (aids to navigation); the others show their type.
 Messages with a wrong CRC are only counted (*bad CRC*). Works with RTL-SDR, LimeSDR and Airspy; not on a chained VFO.
 
