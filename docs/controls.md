@@ -227,7 +227,7 @@ The memory editor was written by **Brano ([brjanicek](https://github.com/brjanic
   a **note**, the **tag in the spectrum** (shown or hidden, default shown) with its **colour** (↺ = the default green) and
   the star. It warns when another channel is on the same frequency and mode. **＋ NEW** fills it from the tuner.
   Select or tick channels for the bar above the table (with none selected, it acts on the channel open in the form): pick a group in the list (or **＋ new group…** and type its name) and add them to it (**＋ TO GROUP**, they stay in their other groups),
-  remove them from it, **MOVE** them to one group only, star or unstar them, show or hide their tags, set or reset their
+  remove them from it (the group list and both keys are off with no channel selected and while the form is open: the groups of that channel are set in the form), star or unstar them, show or hide their tags, set or reset their
   colour (**SET** / **DEFAULT**), put them on the export list (**⇩ TO EXPORT**) or delete them.
 - **GROUPS**: every group with the number of its channels and its **note** (saved when you leave the field). **＋ ADD GROUP**
   adds an empty group. Per group, as icons: **☰** shows its channels in CHANNELS, **✎** renames it, **⎘** copies it (a new group with copies of its

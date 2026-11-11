@@ -1872,3 +1872,5 @@ body.map-only > :not(.map-only-box) { display: none !important; }
 body.map-only .map-only-box { position: fixed; inset: 0; padding: 6px; display: flex; gap: 8px; }
 body.map-only .map-only-box[hidden] { display: none; }
 body.map-only .pkt-map.map-only-box { flex-direction: column; gap: 4px; }
+.med-bar select:disabled, .med-bar input:disabled { opacity: .4; cursor: default; }
+#medSearch { flex: 0 1 33%; min-width: 180px; }
