@@ -9,7 +9,7 @@
 - **VFO chaining:** one dongle can serve several VFOs, e.g. one dongle for VFO A–D, or two dongles with two VFOs
   each. A chained VFO listens anywhere inside the band its dongle receives and shows a green CHAIN flag
   (see [VFO chaining](configuration.md#vfo-chaining-one-dongle-for-several-vfos)).
-- **Modes:** AM, FM, WFM, LSB, USB and CW with selectable filter width, and DSD for digital voice (see below).
+- **Modes:** AM, FM, WFM, LSB, USB and CW with selectable filter width, DAB (digital radio) and DSD (digital voice), each of these two with its own tab (see below).
 - **WFM stereo** (19 kHz pilot, **ST** indicator) and **RDS**: station name (PS), RadioText, PI, PTY, TP/TA and clock (CT).
 - **Squelch** for AM, FM and WFM, each mode with its own level. It decides every ~8 ms, so it does not cut off
   the start of a transmission (airband), and closes about 25 ms after the signal drops below the level. The level is marked on the S-meter with a yellow tick.

@@ -33,6 +33,8 @@ const BANDWIDTHS = {
 // STEP keys: AM, FM, SSB, CW (and DSD) have four steps, WFM keeps the full set; each set remembers its own step
 const STEPS = [10, 100, 1000, 10000];
 const STEPS_WFM = [10, 100, 500, 1000, 5000, 9000, 10000];
+// MODE keys: the demodulator modes and DAB (not a demodulator: DAB on with the DAB tab; lit while DAB runs)
+const MODE_KEYS = ["AM", "FM", "WFM", "LSB", "USB", "CW", "DAB", "DSD"];
 const stepSet = (mode) => (mode === "WFM" ? "wfm" : "narrow");
 const STEP_SETS = { narrow: STEPS, wfm: STEPS_WFM };
 const STEP_KEYS = { narrow: "step", wfm: "stepWfm" };   // browser storage
@@ -210,10 +212,10 @@ function atuNote() {
 
 function renderControls() {
   if (!st) return;
-  segButtons($("modes"), Object.keys(BANDWIDTHS), st.mode, (m) => m);
+  segButtons($("modes"), MODE_KEYS, st.dab ? "DAB" : st.mode, (m) => m);
   // The buttons stay fixed; a width set by dragging the edge in the spectrum has no button (none is lit).
   const bw = st.bandwidth[st.mode];
-  segButtons($("bandwidths"), BANDWIDTHS[st.mode], bw, fmtBw);
+  segButtons($("bandwidths"), st.dab ? [] : BANDWIDTHS[st.mode], bw, fmtBw);   // DAB: the ensemble has a fixed width
   const set = stepSet(st.mode);
   stepHz = stepMem[set];
   segButtons($("steps"), STEP_SETS[set], stepHz, fmtBw);
@@ -277,7 +279,12 @@ function renderTuner() {
 
 $("modes").addEventListener("click", (e) => {
   const b = e.target.closest("[data-v]");
-  if (!b) return;
+  if (!b || !st) return;
+  if (b.dataset.v === "DAB") {   // DAB: on with its tab (again on DAB: only the tab is shown)
+    if (st.dab) setBodyTab("dab"); else dabOn();
+    return;
+  }
+  if (st.dab) dabOff();   // another mode ends DAB (the previous sample rate comes back)
   st.mode = b.dataset.v;
   renderControls();
   drawOverlays();
@@ -2641,6 +2648,7 @@ function restoreBodyTab(keepTab) {
   decPage = decPageSaved ? page : "ft8";
   renderAmsatTab();
   const saved = MAP_ONLY ? "scope" : keepTab || recall(tabKey());
+  // DAB / DSD (tabs of a mode): the first state decides, like for a VFO without a saved tab
   bodyTabGuess = !["dec", "scope", "sat", "set", "mem", "recs", "rot", "scan"].includes(saved);
   setBodyTab((saved === "dec" && decTabShown()) || (saved === "sat" && amsatTabShown()) || (saved === "set" && setTabShown()) || (saved === "mem" && memTabShown()) || (saved === "recs" && recsTabShown()) || (saved === "rot" && rotTabShown()) || (saved === "scan" && scanTabShown()) ? saved : "scope", !bodyTabGuess);
 }
@@ -2649,6 +2657,8 @@ function restoreBodyTab(keepTab) {
 function guessBodyTab() {
   if (!bodyTabGuess) return;
   bodyTabGuess = false;
+  if (st && st.dab) { setBodyTab("dab", false); return; }        // a mode with its own tab
+  if (st && st.mode === "DSD") { setBodyTab("dsd", false); return; }
   const run = DEC_PAGES.find((p) => decRunning(p.key));
   if (run && !decPageSaved) setDecPage(run.key, false);
   setBodyTab(run ? "dec" : "scope");
@@ -2666,6 +2676,9 @@ function setBodyTab(tab, save = true) {
   if (tab === "scan" && save) store("scanOn", "1");     // the SCAN tab open → the SCAN key on
   for (const b of $("bodyTabs").querySelectorAll("button")) b.classList.toggle("on", b.dataset.tab === tab);
   $("decPane").hidden = tab !== "dec";
+  $("dabPane").hidden = tab !== "dab";
+  $("dsdPane").hidden = tab !== "dsd";
+  if (tab === "dsd") $("dsdTabDot").hidden = true;
   $("amsatPane").hidden = tab !== "sat";
   $("settingsCard").hidden = tab !== "set";
   $("memPane").hidden = tab !== "mem";
@@ -2695,9 +2708,9 @@ function setBodyTab(tab, save = true) {
 
 const DEC_PAGES = [
   { key: "ft8", title: "FT8" }, { key: "wefax", title: "WEFAX" }, { key: "cw", title: "CW" }, { key: "rtty", title: "RTTY" },
-  { key: "sstv", title: "SSTV" }, { key: "packet", title: "PACKET" }, { key: "acars", title: "ACARS" }, { key: "vdl2", title: "VDL2" }, { key: "hfdl", title: "HFDL" }, { key: "ais", title: "AIS" }, { key: "dab", title: "DAB" },
-  { key: "ism", title: "ISM" }, { key: "dsd", title: "DSD" },
-];
+  { key: "sstv", title: "SSTV" }, { key: "packet", title: "PACKET" }, { key: "acars", title: "ACARS" }, { key: "vdl2", title: "VDL2" }, { key: "hfdl", title: "HFDL" }, { key: "ais", title: "AIS" },
+  { key: "ism", title: "ISM" },
+];   // DAB and DSD are modes (MODE) with their own tabs
 // the open page is remembered for each VFO separately (decPage_A, decPage_B…)
 const decPageKey = () => (active ? `decPage_${active.name}` : "decPage");
 let decPage = "ft8";
@@ -2714,9 +2727,7 @@ $("decPages").replaceChildren(...DEC_PAGES.map((p) => {
 
 /** Is the decoder of the page on? By the checkboxes – valid right after the click, before the server confirms the state. */
 function decRunning(key) {
-  if (key === "dab") return !!(st && st.dab);
   if (key === "ism") return !!(st && st.ism);
-  if (key === "dsd") return !!(st && st.mode === "DSD");
   return $(key + "On").checked;
 }
 
@@ -2749,15 +2760,21 @@ function renderDecTab() {
   if (st) renderLinkBands();
   // the ACARS map was hidden (size 0); later: this also runs before the map variables are declared
   if (decPage === "acars" || decPage === "vdl2") setTimeout(() => { if (acarsMap) acarsMap.invalidateSize(); });
-  const dsdOff = decPage === "dsd" && !decRunning("dsd");
-  $("decEmpty").hidden = !na && !dsdOff;
+  $("decEmpty").hidden = !na;
   $("decEmpty").classList.toggle("dec-na", !!na);
-  $("decEmpty").textContent = na || DSD_OFF_TEXT;
+  $("decEmpty").textContent = na;
 }
 
-const DSD_OFF_TEXT = $("decEmpty").textContent;   // from index.html
+/** Tabs of the modes DAB and DSD: there only while the mode is selected; an open one closes with its mode. */
+function renderModeTabs() {
+  if (!st) return;
+  const dab = !!st.dab, dsd = st.mode === "DSD" && !dab;
+  $("dabTab").hidden = !dab;
+  $("dsdTab").hidden = !dsd;
+  if ((bodyTab === "dab" && !dab) || (bodyTab === "dsd" && !dsd)) setBodyTab("scope");
+}
 // decoders that need the raw samples, sample rate and centre of their own RTL-SDR dongle
-const DEC_RTL_ONLY = { vdl2: "VDL2", dab: "DAB", ism: "ISM" };
+const DEC_RTL_ONLY = { vdl2: "VDL2", ism: "ISM" };
 
 /** Why the decoder of the page cannot run on the receiver of the active VFO ("" = it can). */
 function decUnavailable(key) {
@@ -4912,7 +4929,7 @@ const dabWide = new Set(JSON.parse(recall("dabWide") || "[]"));
 
 const dabEsc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-/** DAB key in DECODE: DAB on (the server tunes the VFO to the saved channel at 2.048 MS/s). */
+/** DAB key in MODE: DAB on (the server tunes the VFO to the saved channel at 2.048 MS/s). */
 function dabOn() {
   if (noRtlDongle(st) || st.chain_owner) {
     adError(st.chain_owner ? `DAB needs its own dongle (this VFO shares the dongle of VFO ${st.chain_owner})`
@@ -4926,15 +4943,13 @@ function dabOn() {
     send({ dab: true });
   }
   renderDab(st);
-  setDecPage("dab");
-  setBodyTab("dec");
-  renderDecTab();
+  setBodyTab("dab");
 }
 
 function renderDab(s) {
   const on = !!s.dab;
-  $("dabCard").hidden = !on;
-  $("dabKey").classList.toggle("on", on);
+  renderControls();   // the DAB key of MODE
+  renderModeTabs();
   if (on && s.dab_channel && $("dabChannel").value !== s.dab_channel) $("dabChannel").value = s.dab_channel;
   renderDabInfo({ enabled: on, error: s.dab_error });
   if (on && !dabTimer) { pollDab(); dabTimer = setInterval(pollDab, 1000); }
@@ -5157,14 +5172,12 @@ function dabRecall(ch) {
   if (!noRtlDongle(st) && !st.chain_owner) dabSetChannel(ch);
   dabOn();
 }
-/** DAB off (DAB key again, another band button, or OFF in the card): the previous sample rate comes back. */
+/** DAB off (another mode in MODE, a band button or a memory): the previous sample rate comes back. */
 function dabOff() {
   st.dab = false;
   send({ dab: false });
   renderDab(st);
-  renderDecTab();
 }
-$("dabKey").addEventListener("click", () => { if (st) { if (st.dab) dabOff(); else dabOn(); } });
 
 $("acarsBands").addEventListener("click", onLinkBand);
 $("acarsRows").addEventListener("click", (e) => {
@@ -7010,10 +7023,10 @@ $("aisClear").addEventListener("click", () => {
   renderAisInfo({ count: 0, ships: 0, bad: 0 });
 });
 
-// ---------- DSD: digital voice (a mode, not a DECODE key: it replaces the audio) ----------
+// ---------- DSD: digital voice (a mode with its own DSD tab, not a DECODE key: it replaces the audio) ----------
 
 const DSD_MAX_ROWS = 300;
-let dsdModeWas = null;   // mode of this VFO in the last state: selecting DSD opens the DECODERS tab, a restored state does not
+let dsdModeWas = null;   // mode of this VFO in the last state: selecting DSD opens the DSD tab, a restored state does not
 
 function dsdPost(body) {
   return fetch(vbase + "/api/dsd", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
@@ -7055,10 +7068,10 @@ async function dsdLoad() {
 }
 
 function renderDsd(s) {
-  const on = s.mode === "DSD";
-  if (on && dsdModeWas === false) { setDecPage("dsd"); setBodyTab("dec"); }
+  const on = s.mode === "DSD", wasOff = dsdModeWas === false;
   dsdModeWas = on;
-  $("dsdCard").hidden = !on;
+  renderModeTabs();
+  if (on && wasOff && !s.dab) setBodyTab("dsd");
   const i = s.dsd;
   if (!on || !i) return;
   if (document.activeElement !== $("dsdProtocol")) $("dsdProtocol").value = i.protocol;
@@ -9332,7 +9345,7 @@ function connectEvents(v) {
   on("packetstate", renderPacketInfo);
   on("packeteye", drawPktEye);
   on("packetspec", drawPktSpec);
-  on("dsdcall", (c) => { addDsdCall(c); decActivity("dsd"); });
+  on("dsdcall", (c) => { addDsdCall(c); if (bodyTab !== "dsd") $("dsdTabDot").hidden = false; });
   on("acars", (m) => { acarsReceive(m); decActivity(st && st.vdl2 ? "vdl2" : "acars"); });
   on("cpdlc", (c) => { if (c.imi === "ATN") { addAtn(c, true); decActivity("vdl2"); } });   // others come inside "acars"
   on("ft8", () => decActivity("ft8"));
@@ -9608,7 +9621,7 @@ function renderVfoDisplays() {
     // without a state only make it invisible, so the layout does not shift
     mode.style.visibility = gain.style.visibility = sql.style.visibility = s ? "" : "hidden";
     if (s) {
-      mode.textContent = s.mode;
+      mode.textContent = s.dab ? "DAB" : s.mode;
       const smart = s.smart_agc && s.gain !== "auto";
       gain.textContent = s.gain === "auto" ? "AGC" : smart ? `+${gainLabel(s)}` : gainLabel(s);
       if (!gain.matches(":hover")) gain.title = smart ? `AGC+ ${gainLabel(s)}, A/D peak ${s.adc_peak} dBFS${s.adc_clip ? ", clipping" : ""}` : "RF gain";
