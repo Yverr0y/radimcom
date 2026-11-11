@@ -61,7 +61,7 @@ and the country flag from the ICAO address; a click on a message pauses the list
 
 - **Transceiver-style screen:** 7-segment frequency displays, function keys and band buttons (the **BAND** key hides the row of band buttons).
 - **Skins** (SET → SKINS): dark, black or light brushed aluminium, mahogany, or a panel sprayed in a RAL colour (or any colour). See [SET](controls.md).
-- **S-meter in seven layouts** (needle, bar graph, LED bar, VFD display, amber needle, 7-segment, peak bar), with the squelch level marked.
+- **S-meter in seven layouts** (amber needle by default, needle, bar graph, LED bar, VFD display, 7-segment, peak bar), with the squelch level marked.
   Under it small bars show the CPU load and memory use of the PC.
 - **All VFOs side by side:** the active VFO is lit, inactive ones are grey
   but show the actual tuned frequency. The waterfall of every VFO keeps running, so its history is visible
@@ -84,7 +84,7 @@ and the country flag from the ICAO address; a click on a message pauses the list
 - **DECODERS tab** with a page for each decoder, and the **SATELLITES** tab (also the **SAT** key), which shows the active linear, FM, image and other satellites from AMSAT, with clickable links.
 - **AD (additional display)** under the S-meter: error messages (red, accepted by OK, the frame blinks), the rotor AZ / EL (MONITOR) or RDS, by this priority.
 - **Rotor page** in SETTINGS: ON / OFF per VFO, polar plot and elevation column 0–180° with the antenna and its target, a click moves the antenna; STOP, RESET, MONITOR.
-- **SETTINGS tab** (gear key) with pages SDR DONGLE (BASIC with a block diagram of the receive chain, ADVANCED with the list of dongles and their VFOs), AUDIO, UI (SKINS, S-METER, TOUCHPAD), ROTOR, TX; **MEMORIES tab** (MEM key) with the pages CHANNELS (also the list to recall from), GROUPS, IMPORT, EXPORT.
+- **SETTINGS tab** (gear key) with pages SDR DONGLE (BASIC with a block diagram of the receive chain, ADVANCED with the list of dongles and their VFOs), AUDIO, UI (SKINS, S-METER, TOUCHPAD), LOCATION (station locator or latitude / longitude, also chosen on a map; used by the satellites, packet, HFDL and AIS), ROTOR, TX; **MEMORIES tab** (MEM key) with the pages CHANNELS (also the list to recall from), GROUPS, IMPORT, EXPORT.
 - **Clock** in local time or UTC (a click switches).
 - **The page scales with the browser window** (laid out for at least 1920 × 820 px), so the layout does not reflow in small windows.
 

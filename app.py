@@ -27,6 +27,7 @@ if __name__ == "__main__" and "--vfo" not in sys.argv and os.path.exists(VFOS_PA
     launcher.main()
     sys.exit(0)
 
+import location
 import memories
 import satellites
 import sysload
@@ -286,12 +287,12 @@ _qth_cache = [0.0, None]
 
 
 def own_station():
-    """(lat, lon) of the station from the SATELLITES setup, for the APRS distances; read at most once a minute."""
+    """(lat, lon) of the station (MENU › SETUP › LOCATION), for the APRS distances; read at most once a minute."""
     if time.monotonic() - _qth_cache[0] > 60:
         _qth_cache[0] = time.monotonic()
         try:
-            st_ = sattrack.load_setup() if sattrack is not None else None
-            _qth_cache[1] = (float(st_["lat"]), float(st_["lon"])) if st_ else None
+            st_ = location.load()
+            _qth_cache[1] = (float(st_["lat"]), float(st_["lon"]))
         except Exception:
             _qth_cache[1] = None
     return _qth_cache[1]
@@ -1101,10 +1102,24 @@ def api_sat_rotor():
     return jsonify(sat_tracker.info())
 
 
+@app.route("/api/location", methods=["GET", "POST"])
+def api_location():
+    """Station location (MENU › SETUP › LOCATION), shared by the satellites, packet, HFDL and AIS:
+    POST {"locator"} or {"lat", "lon"}, optionally "alt_m"; returns the whole location."""
+    if request.method == "POST":
+        body = request.get_json(force=True) or {}
+        try:
+            location.save({k: body[k] for k in ("locator", "lat", "lon", "alt_m") if k in body})
+        except (TypeError, ValueError) as e:
+            return jsonify({"error": str(e)}), 400
+        _qth_cache[0] = 0.0          # APRS distances use the new place at once
+    return jsonify(location.load())
+
+
 @app.route("/api/sat/setup", methods=["GET", "POST"])
 def api_sat_setup():
-    """Station location, minimum elevation and the satellites on the timeline (shared by all VFOs);
-    GET also lists all satellites of the orbital elements. POST {"refresh_tle": true} downloads the elements again."""
+    """Minimum elevation and the satellites on the timeline (shared by all VFOs), with the station location of
+    /api/location; GET also lists all satellites of the orbital elements. POST {"refresh_tle": true} downloads the elements again."""
     if sattrack is None:
         return jsonify(SGP4_MISSING), 503
     if request.method == "POST":

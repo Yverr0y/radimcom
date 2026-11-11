@@ -775,6 +775,11 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .sats-setup section { margin-bottom: 14px; }
 .sats-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 6px; }
 .sats-setup input[type="number"] { width: 90px; }
+/* SETUP › LOCATION: station place (fields in one row, the map below them) */
+.set-location { max-width: 1100px; }
+.set-location .setting input[type=number] { width: 110px; }
+.set-location .sats-pick { height: 420px; }
+.set-location .sats-pick.leaflet-container { background: #10151c; font: 12px system-ui, sans-serif; }
 .sats-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 2px 12px; max-height: 360px; overflow: auto; margin-top: 6px; }
 .sats-list label { display: flex; gap: 6px; align-items: baseline; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sats-list label.old b { color: var(--amber); }

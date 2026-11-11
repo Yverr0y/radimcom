@@ -89,6 +89,16 @@ Change log
 ----------
 (also in CHANGELOG.md)
 
+Ver. 0.114beta1
+(test beta, GitHub branch 0.114beta1)
+Main Features
+- Station location moved from SATELLITES -> SETUP to MENU -> SETUP -> LOCATION (locator or lat / lon,
+  CHOOSE ON MAP, altitude); used by the satellites, packet decoder (APRS), HFDL and AIS. data\location.json,
+  default 0.0 / 0.0 on a new installation, an older installation keeps its station.
+Minor Fixes
+- WFM filters 50, 75 and 150 kHz (default 150 kHz).
+- Default S-meter layout: amber needle.
+
 Ver. 0.113
 (after the test betas 0.113beta1 and 0.113beta2; memory editor by Brano, github.com/brjanicek)
 Main Features

@@ -1,5 +1,18 @@
 # Changelog
 
+## Ver. 0.114beta1
+
+Test beta (GitHub branch `0.114beta1`).
+
+### Main Features
+
+- **Station location moved to MENU › SETUP › LOCATION** (new page beside UI and ROTOR). The locator or latitude / longitude, **CHOOSE ON MAP** (OpenStreetMap) and the altitude were on SATELLITES › SETUP; now they are one setting for the whole receiver, used by the satellites (passes, Doppler, rotor tracking), the packet decoder (APRS distances and map), HFDL and AIS (maps). Saved in `data\location.json` (new module `location.py`, API `/api/location`); it works without the sgp4 package, so the decoder maps get the QTH even without satellite tracking. A new installation starts at **0.0 / 0.0**; an existing installation takes over the station saved in `sat_setup.json`. SATELLITES › SETUP shows the location with a **LOCATION…** key that opens the page, and a warning while it is 0.0 / 0.0; the minimum elevation of a pass stays there.
+
+### Minor Fixes
+
+- **WFM filters 50, 75 and 150 kHz** (were 100, 150 and 200 kHz); the default WFM width of a new configuration is 150 kHz. Stereo and RDS need 150 kHz; any width up to 250 kHz can still be set by dragging the filter edge.
+- **The default S-meter layout is the amber needle** (only when none was chosen in this browser yet; SET › UI › S-METER).
+
 ## Ver. 0.113
 
 Released after two test betas (GitHub branches `0.113beta1`, `0.113beta2`). The memory editor is contributed by **Brano, [brjanicek](https://github.com/brjanicek)**.

@@ -147,7 +147,7 @@
         </svg>
         </a>
         <!-- version under the logo (installer and update_check read it from .r-ver); a newer one blinks beside it -->
-        <span class="r-vers"><span class="r-ver">Ver. 0.113</span><a class="r-upd" id="updLink" href="https://github.com/om2amr/RADIMCOM/releases" target="_blank" rel="noopener noreferrer" hidden></a></span>
+        <span class="r-vers"><span class="r-ver">Ver. 0.114beta1</span><a class="r-upd" id="updLink" href="https://github.com/om2amr/RADIMCOM/releases" target="_blank" rel="noopener noreferrer" hidden></a></span>
         </div>
         <span id="status" class="pill" hidden><span class="dot"></span><span id="statusText"></span></span>
       </div>
@@ -334,7 +334,7 @@ ecordings), play them in the browser">RECS</button>
       <div class="ft8-table" id="packetStationsBox" hidden>
         <table>
           <colgroup><col class="c-utc"><col class="c-from"><col class="c-n"><col class="c-km"><col class="c-via"><col></colgroup>
-          <thead><tr><th title="Last heard">UTC</th><th>Station</th><th title="Number of APRS packets">N</th><th title="Distance and bearing from the station set in SATELLITES › SETUP">km / °</th><th title="Digipeaters of the last packet">Via</th><th>Last report</th></tr></thead>
+          <thead><tr><th title="Last heard">UTC</th><th>Station</th><th title="Number of APRS packets">N</th><th title="Distance and bearing from the station set in SETUP › LOCATION">km / °</th><th title="Digipeaters of the last packet">Via</th><th>Last report</th></tr></thead>
           <tbody id="packetStRows"></tbody>
         </table>
         <div id="packetStEmpty" class="ft8-empty">No APRS stations yet.</div>
@@ -865,7 +865,7 @@ ecordings.</p>
         </section>
       </div>
     </div>
-    <!-- SETTINGS tab (gear key): pages SDR DONGLE, AUDIO, UI, ROTOR, TX (some with sub-pages, so nothing has to scroll);
+    <!-- SETTINGS tab (gear key): pages SDR DONGLE, AUDIO, UI, LOCATION, ROTOR, TX (some with sub-pages, so nothing has to scroll);
          covers the spectrum and waterfall like the other tabs -->
     <div class="set-pane" id="settingsCard" hidden aria-label="Settings">
       <div class="amsat-head">
@@ -873,6 +873,7 @@ ecordings.</p>
           <button class="key small on" data-set-tab="dongle" role="tab" aria-selected="true">SDR DONGLE</button>
           <button class="key small" data-set-tab="audio" role="tab" aria-selected="false">AUDIO</button>
           <button class="key small" data-set-tab="ui" role="tab" aria-selected="false">UI</button>
+          <button class="key small" data-set-tab="location" role="tab" aria-selected="false">LOCATION</button>
           <button class="key small" data-set-tab="rotor" role="tab" aria-selected="false">ROTOR</button>
           <button class="key small" data-set-tab="tx" id="setTabTx" role="tab" aria-selected="false" hidden>TX</button>
         </div>
@@ -1143,6 +1144,27 @@ ecordings.</p>
               <p class="note">Tuning, zoom, LPF and HPF with touchpad scrolling. Left = slower, default 4. A mouse wheel notch is
                 always one step. Remembered in this browser, for all VFOs.</p>
             </div>
+          </div>
+        </div>
+        <!-- ===== LOCATION: station locator / latitude, longitude (also on an OpenStreetMap map), altitude ===== -->
+        <div class="set-panel set-location" data-set-panel="location" role="tabpanel" hidden>
+          <div class="setting">
+            <div class="row"><span>Station location</span><span class="value" id="locNow"></span></div>
+            <div class="sats-row"><label>Locator <input id="locLoc" maxlength="8" size="8" spellcheck="false"></label>
+              <span class="muted">or</span>
+              <label>Latitude <input id="locLat" type="number" step="0.0001" min="-90" max="90"></label>
+              <label>Longitude <input id="locLon" type="number" step="0.0001" min="-180" max="180"></label>
+              <label>Altitude <input id="locAlt" type="number" step="1" min="-500" max="9000"> m</label></div>
+            <div class="sats-row">
+              <button class="key small" id="locPickBtn" title="Choose the place on an OpenStreetMap map (needs internet)">CHOOSE ON MAP</button>
+              <button class="key small accent" id="locSave">SAVE</button>
+              <span class="note" id="locMsg"></span></div>
+            <div class="sats-pick" id="locPickMap" hidden></div>
+            <p class="note" id="locPickNote" hidden>Click the place of the antenna, then SAVE. Map tiles: OpenStreetMap, need internet.</p>
+            <p class="note">The location is used by the <b>satellites</b> (passes, Doppler, rotor tracking), the <b>packet decoder</b>
+              (APRS distances and map), <b>HFDL</b> and <b>AIS</b> (maps). The same location is used on all VFOs.</p>
+            <p class="note">A locator gives the centre of its square (JN88WQ: about 2 km from any point in it; enough for tracking).
+              Latitude and longitude give an exact point. A new installation starts at 0.0 / 0.0: set your own place.</p>
           </div>
         </div>
         <!-- ===== ROTOR: ON / OFF for this VFO; ON = port, position on a polar plot and an elevation column, calibration ===== -->

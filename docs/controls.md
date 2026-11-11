@@ -57,7 +57,7 @@ squelch gets a green underline, a transmitting one turns red.
 
 ## Function keys
 
-- **MODE**: demodulation. **FILTER**: bandwidth for the current mode.
+- **MODE**: demodulation. **FILTER**: bandwidth for the current mode (WFM: 50, 75 or 150 kHz, default 150 kHz; stereo and RDS need 150 kHz, the narrow ones help next to a strong neighbour; any width up to 250 kHz by dragging the filter edge).
 - **GAIN**: AGC switches automatic tuner gain on/off (manual gain with the RF GAIN slider or in SET). **AGC+** sets the tuner gain from the level of the A/D converter: as high as possible without clipping it (the tuner AGC of the R820T watches only its LNA and mixer, not the A/D). The gain flag under the display shows `+` and the gain; the AGC+ key gets a red underline while the A/D clips. With the squelch set, AGC+ makes it work as auto squelch (ASQ lights up), because a fixed level would not fit the changing gain; the slider then only turns it on / off, and ASQ pressed in this state turns the squelch off.
 - **TUNE**: **ATU** (autotune) in USB, LSB and AM. With ATU on, a click on a signal in the spectrum or waterfall tunes to the clicked point (without the step grid), listens for a moment and moves the tuning onto the carrier; the key blinks while listening and the passband label shows the shift (e.g. *ATU +130 Hz*) or *no signal*. Tuning by the wheel, the arrow keys, dragging or the VFO display digits starts it too, 0.7 s after the tuning rests, when it moved by at least 150 Hz. AM: the carrier is found within a few Hz in under 1 s. SSB: the edge of the voice band goes onto the red line (the tuned frequency): the lower edge in USB, the upper one in LSB, within a few Hz after ~2 s of speech (up to 6.5 s while nobody speaks). Tuning elsewhere while listening cancels it.
 - **STEP**: tuning step (10 Hz – 10 kHz). **Zoom** (1×–32×) is the bar in the top right corner of the frequency scale: − / +, a click on a cell, or the mouse wheel over it. **Waterfall speed** (WF, 1/8 – 4×) is the same bar in the top right corner of the waterfall: below 1× several rows are averaged into one line (slower, longer history), above 1× each row is drawn taller (faster); the setting is kept in the browser. **Waterfall settings**: the gear in a square above the speed bar; with the mouse over it a half transparent window opens with the **colour scheme** (Classic, Inferno, Viridis, Turbo, Ice; only new rows take the new colours), **colour range** and **colour offset**. Kept in the browser.
@@ -87,7 +87,7 @@ squelch gets a green underline, a transmitting one turns red.
     both at once (BAUD) and independent of the mode and filter (FM is demodulated from the baseband; 9600 Bd needs at
     least 1.536 MS/s). SCRAMBLER Auto tries 9600 Bd with and without the G3RUH scrambler. AFC shows the tuning error of
     the last 9600 Bd frame. Views: FRAMES (APRS meaning in blue over the raw text, binary telemetry as hex),
-    STATIONS (APRS stations with the distance and bearing from the station set in SATELLITES › SETUP) and MAP
+    STATIONS (APRS stations with the distance and bearing from the station set in SETUP › LOCATION) and MAP
     (OpenStreetMap; the □ key in its top right corner opens it alone in a new browser tab); the filter field narrows both. Frames with a wrong checksum are only counted.
     Graph on the right: SPECTRUM of the signal around the tuned frequency (averaged, MAX hold; S/N, 99 % bandwidth,
     live 9600 Bd AFC as a green line) or EYE, the eye diagram in real time (9600 / 1200 Bd), with the eye opening now
@@ -173,8 +173,12 @@ squelch gets a green underline, a transmitting one turns red.
     - **SKINS**: finish of the panel – dark brushed aluminium (default), black (darker) brushed aluminium, light brushed aluminium, mahogany or paint. A click on a colour of the RAL chart
       (36 common RAL Classic shades, screen approximations) or an own colour sprays the panel with it; on a light colour the print and the logo turn dark.
       Keys, displays and the screen stay the same. Remembered in the browser.
-    - **S-METER**: calibration (S9 level, per VFO) and layout (needle, bar graph, LED bar, VFD display, amber needle, 7-segment, peak bar).
+    - **S-METER**: calibration (S9 level, per VFO) and layout (needle, bar graph, LED bar, VFD display, amber needle (default), 7-segment, peak bar).
     - **TOUCHPAD**: touchpad wheel speed (1–10, default 4; left = slower), remembered in the browser for all VFOs. A mouse wheel notch is always one step.
+  - **LOCATION**: the station location, shared by all VFOs: Maidenhead **locator** (4, 6 or 8 characters; gives the centre of its square) or **latitude** and **longitude**,
+    the **altitude**, and **CHOOSE ON MAP** (an OpenStreetMap map, the tiles need internet: click the place of the antenna, then **SAVE**). Used by the satellites
+    (passes, Doppler, rotor tracking), the packet decoder (APRS distances and map), HFDL and AIS (maps). A new installation starts at 0.0 / 0.0; an older
+    installation takes over the station of SATELLITES › SETUP. Saved in `data\location.json`.
   - **ROTOR**: the antenna rotor of this VFO. **ON / OFF** at the top left: OFF only says that the rotor configuration of the VFO is off (the link is closed);
     ON opens the link with the serial port chosen under it and shows the rest: a **polar plot** (north up, centre = zenith) and beside it an **elevation column**
     0–180° (over 90° the antenna looks back over the top). The orange cross / orange arrow is the antenna now, the green ring the requested direction (only while the rotor is on its way); beside them the actual AZ / EL (orange) and the requested AZ / EL (green). The shown position is filtered, so the ~1 % noise of the readings does not flicker. A click on the polar plot

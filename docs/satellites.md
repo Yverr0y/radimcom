@@ -14,7 +14,7 @@ and the rotor work on one VFO each and go on with the page closed.
 | **PASSES** | Timeline of the passes of the chosen satellites over the next 12, 24 or 48 hours, and a list of them. A click on a pass shows its track on a polar plot, the elevation over time, the nearest distance, the Doppler shift at 145.9 and 435 MHz, the position now while it is on, and the transmitters of the satellite. |
 | **MAP** | World map (Natural Earth, works offline) with the satellites switched on by the keys above it (up to 20): each with its footprint (yellow while it is above our horizon), the night side and the station. A click on a key or a dot chooses the satellite whose ground track is drawn (half an orbit behind, one ahead); beside the map are its position, altitude, azimuth and elevation from here, distance, Doppler shift, the next pass and its transmitters, and **TRACK** opens it on the TRACK page. Moves every second. |
 | **TRACK** | Doppler correction and the rotor for one satellite of the timeline, below. |
-| **SETUP** | The station by Maidenhead locator or latitude and longitude (or **CHOOSE ON MAP**: an OpenStreetMap map, the tiles need internet), the altitude, the lowest highest-elevation of a pass shown, and the satellites on the timeline, chosen in tabs by CelesTrak group: Amateur Radio, Weather, CubeSats, Space & Earth Science, Galileo, GLONASS operational, GPS operational, Iridium NEXT (and Chosen). **SELECT ACTIVE** ticks the satellites of the AMSAT lists LINEAR, FM, IMAGE and MISC (matched by name; it lists those not in the orbital elements), **CLEAR** unticks all. |
+| **SETUP** | The station location (shown here; it is set in **MENU › SETUP › LOCATION**: locator or latitude and longitude, CHOOSE ON MAP, altitude; **LOCATION…** opens it), the lowest highest-elevation of a pass shown, and the satellites on the timeline, chosen in tabs by CelesTrak group: Amateur Radio, Weather, CubeSats, Space & Earth Science, Galileo, GLONASS operational, GPS operational, Iridium NEXT (and Chosen). **SELECT ACTIVE** ticks the satellites of the AMSAT lists LINEAR, FM, IMAGE and MISC (matched by name; it lists those not in the orbital elements), **CLEAR** unticks all. |
 | **LINEAR**, **FM**, **IMAGE**, **MISC** | Lists of active satellites from [AMSAT](https://www.amsat.org/), kept for 12 hours in `data\satellites.json`. |
 
 ![PASSES page: timeline of five satellites over 12 hours with bars shaded by the highest elevation, the list of passes, and the details of an FO-29 pass with its polar plot, AOS, LOS, nearest distance and Doppler shift](images/sat_passes.png)
@@ -31,7 +31,8 @@ Downloaded data (internet needed only for the download; the last copy is used of
 |---|---|---|
 | `sat_tle.txt`, `sat_groups.json` | orbital elements of the 8 CelesTrak groups above | once a day; elements older than 7 days are marked, older than 14 need a confirmation for tracking |
 | `sat_transmitters.json` | [SatNOGS DB](https://db.satnogs.org/): downlinks, modes, transponders | once a week |
-| `sat_setup.json` | the station and the choice of satellites | saved by SETUP |
+| `sat_setup.json` | the lowest elevation of a pass and the choice of satellites | saved by SETUP |
+| `location.json` | the station location (locator, latitude, longitude, altitude) | saved by MENU › SETUP › LOCATION |
 
 ## Doppler correction (TRACK)
 

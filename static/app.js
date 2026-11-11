@@ -24,7 +24,7 @@ window.addEventListener("resize", fitStage);   // before the other resize handle
 const BANDWIDTHS = {
   AM: [4000, 6000, 8000, 10000],
   FM: [500, 3000, 6000, 12000, 25000, 50000],
-  WFM: [100000, 150000, 200000],
+  WFM: [50000, 75000, 150000],
   LSB: [1800, 2400, 2700, 3000],
   USB: [1800, 2400, 2700, 3000],
   CW: [300, 500, 800, 1200],
@@ -868,7 +868,7 @@ const METER_STYLES = {
   },
 };
 
-let meterStyle = METER_STYLES[recall("meterStyle")] ? recall("meterStyle") : "needle";
+let meterStyle = METER_STYLES[recall("meterStyle")] ? recall("meterStyle") : "amber";
 let meterUpdate = () => {};
 
 function buildMeter() {
@@ -3548,23 +3548,15 @@ function renderSatSetup() {
   amsatInfo(d.tle.fetched ? `${d.sats.length} satellites in the orbital elements from ${new Date(d.tle.fetched * 1000).toLocaleString()}` : "No orbital elements yet", !d.tle.fetched || !!d.tle.error);
   const body = $("amsatBody");
   body.classList.add("satp-on");
-  if (satPick) { satPick.remove(); satPick = null; }
-  satQthMode = "latlon";
   const chosen = new Set(s.sats);
   body.innerHTML = `<div class="sats-setup">
     <section><h4>Station</h4>
-      <div class="sats-row"><label>Locator <input id="satLoc" value="${escHtml(s.locator)}" maxlength="8" size="8"></label>
-        <span class="muted">or</span>
-        <label>Latitude <input id="satLat" type="number" step="0.0001" value="${s.lat}"></label>
-        <label>Longitude <input id="satLon" type="number" step="0.0001" value="${s.lon}"></label>
-        <button class="key small" id="satPickBtn" title="Choose the place on an OpenStreetMap map (needs internet)">CHOOSE ON MAP</button></div>
-      <div class="sats-pick" id="satPickMap" hidden></div>
-      <p class="muted small" id="satPickNote" hidden>Click the place of the antenna, then SAVE. Map tiles: OpenStreetMap, need internet.</p>
-      <div class="sats-row"><label>Altitude <input id="satAlt" type="number" step="1" value="${s.alt_m}"> m</label>
-        <label>Passes from <input id="satMinEl" type="number" min="0" max="60" step="1" value="${s.min_el}">° of elevation</label>
-        <button class="key small" id="satSaveQth">SAVE</button></div>
-      <p class="muted small">A locator gives the centre of its square (JN88WQ: about 2 km from any point in it; enough for tracking). Latitude and longitude
-        give an exact point. The same station is used on all VFOs.</p></section>
+      <div class="sats-row"><span>${escHtml(s.locator)} · ${s.lat.toFixed(4)}°, ${s.lon.toFixed(4)}° · ${Math.round(s.alt_m)} m</span>
+        <span class="muted small">set in MENU › SETUP › LOCATION (shared with packet, HFDL and AIS)</span>
+        <button class="key small" id="satLocGo" title="Open SETUP › LOCATION">LOCATION…</button></div>
+      ${s.lat === 0 && s.lon === 0 ? `<p class="error small">The station location is not set yet (0.0 / 0.0): passes and Doppler are computed for that point.</p>` : ""}
+      <div class="sats-row"><label>Passes from <input id="satMinEl" type="number" min="0" max="60" step="1" value="${s.min_el}">° of elevation</label>
+        <button class="key small" id="satSaveQth">SAVE</button></div></section>
     <section><h4>Orbital elements</h4>
       <p>CelesTrak, ${(d.groups || []).length} groups (tabs below): ${d.sats.length} satellites${d.tle.fetched ? `, downloaded ${new Date(d.tle.fetched * 1000).toLocaleString()}` : ""}. Downloaded again after 24 hours.
         ${d.tle.error ? `<span class="error">Last download failed: ${escHtml(d.tle.error)}</span>` : ""}</p>
@@ -3655,14 +3647,11 @@ $("amsatBody").addEventListener("click", async (e) => {
     return;
   }
   if (e.target.id === "satSaveQth") {
-    const loc = $("satLoc").value.trim().toUpperCase(), body = { alt_m: Number($("satAlt").value), min_el: Number($("satMinEl").value) };
-    if (satQthMode === "loc" && loc) body.locator = loc;
-    else { body.lat = Number($("satLat").value); body.lon = Number($("satLon").value); }
-    if (await satSetupLoad(body)) amsatInfo("Saved");
+    if (await satSetupLoad({ min_el: Number($("satMinEl").value) })) amsatInfo("Saved");
     return;
   }
-  if (e.target.id === "satPickBtn") {
-    satPickOpen();
+  if (e.target.id === "satLocGo") {
+    openLocationSetup();
     return;
   }
   if (e.target.id === "satSelActive") { satSelectActive(); return; }
@@ -3705,8 +3694,6 @@ $("amsatBody").addEventListener("click", (e) => {
 });
 
 $("amsatBody").addEventListener("input", (e) => {
-  if (e.target.id === "satLoc") satQthMode = "loc";
-  if (e.target.id === "satLat" || e.target.id === "satLon") satQthMode = "latlon";
   if (e.target.id !== "satFilter") return;
   satChoiceFilter();
 });
@@ -4052,38 +4039,81 @@ window.addEventListener("resize", () => {
   if (bodyTab === "sat" && amsatPage === "map" && satMapData) satMapDraw();
 });
 
-// ---------- station on an OpenStreetMap map (SETUP) ----------
+// ---------- SETUP › LOCATION: station locator / latitude, longitude, altitude (location.py), shared by all VFOs ----------
 
-let satPick = null;     // Leaflet map
-let satQthMode = "latlon";   // which fields SAVE uses: "loc" after typing a locator, else latitude and longitude
+let locPick = null;          // Leaflet map of CHOOSE ON MAP
+let locMode = "latlon";      // which fields SAVE uses: "loc" after typing a locator, else latitude and longitude
 
-async function satPickOpen() {
-  const box = $("satPickMap");
-  if (!box) return;
+function locMsg(text, err) {
+  $("locMsg").textContent = text || "";
+  $("locMsg").classList.toggle("error", !!err);
+}
+
+function locFill(s) {
+  $("locLoc").value = s.locator;
+  $("locLat").value = s.lat;
+  $("locLon").value = s.lon;
+  $("locAlt").value = s.alt_m;
+  $("locNow").textContent = `${s.locator} · ${s.lat.toFixed(4)}°, ${s.lon.toFixed(4)}°`;
+  locMode = "latlon";
+}
+
+async function locLoad(body) {
+  try {
+    const s = await satFetch("/api/location", body ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {});
+    locFill(s);
+    if (body) satData = satMapData = satSetupData = null;    // passes, map and SETUP of the satellites depend on the place
+    locMsg(s.lat === 0 && s.lon === 0 ? "Not set yet: enter your locator or choose the place on the map." : "", s.lat === 0 && s.lon === 0);
+    return true;
+  } catch (e) {
+    locMsg(e.message, true);
+    return false;
+  }
+}
+
+/** Opens MENU › SETUP › LOCATION (from the SATELLITES › SETUP page). */
+function openLocationSetup() {
+  setBodyTab("set");
+  showSetTab("location");
+  store("setTab", "location");
+}
+
+$("locSave").addEventListener("click", async () => {
+  const loc = $("locLoc").value.trim().toUpperCase(), body = { alt_m: Number($("locAlt").value) };
+  if (locMode === "loc" && loc) body.locator = loc;
+  else { body.lat = Number($("locLat").value); body.lon = Number($("locLon").value); }
+  if (await locLoad(body)) locMsg("Saved");
+});
+$("locPickBtn").addEventListener("click", () => locPickOpen());
+$("locLoc").addEventListener("input", () => { locMode = "loc"; });
+for (const id of ["locLat", "locLon"]) $(id).addEventListener("input", () => { locMode = "latlon"; });
+
+async function locPickOpen() {
+  const box = $("locPickMap");
   box.hidden = false;
-  $("satPickNote").hidden = false;
+  $("locPickNote").hidden = false;
   try {
     await Promise.all([satAsset("/static/leaflet/leaflet.css"), satAsset("/static/leaflet/leaflet.js")]);
   } catch (e) {
-    $("satPickNote").textContent = e.message;
+    $("locPickNote").textContent = e.message;
     return;
   }
-  const lat = Number($("satLat").value), lon = Number($("satLon").value);
-  if (satPick) satPick.remove();
-  satPick = L.map(box, { worldCopyJump: true }).setView([lat, lon], 13);
+  const lat = Number($("locLat").value) || 0, lon = Number($("locLon").value) || 0;
+  if (locPick) locPick.remove();
+  locPick = L.map(box, { worldCopyJump: true }).setView([lat, lon], lat === 0 && lon === 0 ? 2 : 13);
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
-  }).addTo(satPick);
-  const mark = L.circleMarker([lat, lon], { radius: 7, color: "#000", weight: 2, fillColor: "#ffd84a", fillOpacity: 1 }).addTo(satPick);
-  satPick.on("click", (ev) => {
+  }).addTo(locPick);
+  const mark = L.circleMarker([lat, lon], { radius: 7, color: "#000", weight: 2, fillColor: "#ffd84a", fillOpacity: 1 }).addTo(locPick);
+  locPick.on("click", (ev) => {
     const p = ev.latlng.wrap();
     mark.setLatLng(p);
-    $("satLat").value = p.lat.toFixed(5);
-    $("satLon").value = p.lng.toFixed(5);
-    $("satLoc").value = satLocator(p.lat, p.lng);
-    satQthMode = "latlon";
-    amsatInfo(`Chosen ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)} (${satLocator(p.lat, p.lng)}): SAVE keeps it`);
+    $("locLat").value = p.lat.toFixed(5);
+    $("locLon").value = p.lng.toFixed(5);
+    $("locLoc").value = satLocator(p.lat, p.lng);
+    locMode = "latlon";
+    locMsg(`Chosen ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)} (${satLocator(p.lat, p.lng)}): SAVE keeps it`);
   });
 }
 
@@ -5151,11 +5181,11 @@ async function pktMapOpen() {
     return;
   }
   if (!pktMap) {
-    let qth = [48.6, 17.9];   // until the station of SATELLITES › SETUP is known
+    let qth = [48.6, 17.9];   // until the station of SETUP › LOCATION is known
     try {
-      const s = (await satFetch("/api/sat/setup")).setup;
+      const s = await satFetch("/api/location");
       if (s && Number.isFinite(s.lat) && Number.isFinite(s.lon)) qth = [s.lat, s.lon];
-    } catch { /* no sattrack */ }
+    } catch { /* server unreachable */ }
     pktMap = L.map($("packetMap"), { worldCopyJump: true }).setView(qth, 8);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19,
@@ -5942,10 +5972,10 @@ async function hfdlMapOpen() {
     mapPopout(hfdlMap, "hfdl");
     hfdlMapLayers = { gs: L.layerGroup().addTo(hfdlMap), tracks: L.layerGroup().addTo(hfdlMap), planes: L.layerGroup().addTo(hfdlMap), marks: new Map() };
     try {
-      const s = (await satFetch("/api/sat/setup")).setup;
+      const s = await satFetch("/api/location");
       if (s && Number.isFinite(s.lat) && Number.isFinite(s.lon))
         L.circleMarker([s.lat, s.lon], { radius: 6, color: "#000", weight: 2, fillColor: "#ff5a3c", fillOpacity: 1 }).bindTooltip("QTH").addTo(hfdlMap);
-    } catch { /* no sattrack */ }
+    } catch { /* server unreachable */ }
   }
   return true;
 }
@@ -6404,12 +6434,12 @@ async function aisMapOpen() {
     mapPopout(aisMap, "ais");
     aisMapLayers = { tracks: L.layerGroup().addTo(aisMap), ships: L.layerGroup().addTo(aisMap), marks: new Map() };
     try {
-      const s = (await satFetch("/api/sat/setup")).setup;
+      const s = await satFetch("/api/location");
       if (s && Number.isFinite(s.lat) && Number.isFinite(s.lon)) {
         L.circleMarker([s.lat, s.lon], { radius: 6, color: "#000", weight: 2, fillColor: "#ff5a3c", fillOpacity: 1 }).bindTooltip("QTH").addTo(aisMap);
         aisMap.setView([s.lat, s.lon], 8);
       }
-    } catch { /* no sattrack */ }
+    } catch { /* server unreachable */ }
   }
   return true;
 }
@@ -6739,6 +6769,7 @@ function showSetTab(name) {
   }
   for (const p of document.querySelectorAll("[data-set-panel]")) p.hidden = p.dataset.setPanel !== name;
   if (name === "rotor") setTimeout(pollRotor);      // the ROTOR page fills at once
+  if (name === "location") setTimeout(() => locLoad());
   if (name === "dongle") setTimeout(loadDongleList);   // ADVANCED: dongles and VFOs
 }
 // SDR DONGLE › BASIC block diagram: a block names its cards in data-blk-for; a click flashes the first shown one.
@@ -6786,7 +6817,7 @@ for (const page of ["dongle", "ui"]) {
 // DISPLAY and SKINS of older versions are on the UI page now.
 {
   const t = { display: "ui", skins: "ui" }[recall("setTab")] || recall("setTab");
-  if (["audio", "ui", "rotor"].includes(t)) showSetTab(t);
+  if (["audio", "ui", "location", "rotor"].includes(t)) showSetTab(t);
 }
 
 // ---------- ROTOR page of SETTINGS: K3NG rotor (rotor.py) ----------
