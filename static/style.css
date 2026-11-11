@@ -1958,7 +1958,7 @@ body.map-only .pkt-map.map-only-box { flex-direction: column; gap: 4px; }
 .med-bar select:disabled, .med-bar input:disabled { opacity: .4; cursor: default; }
 #medSearch { flex: 0 1 33%; min-width: 180px; }
 
-/* ---------- ROTOR CONTROL tab (RCTRL key): map to aim the rotor, overlays ---------- */
+/* ---------- ROTOR CONTROL tab (RCTRL key): map to aim the rotor, channels of MEMORIES by groups ---------- */
 .rot-pane .rc-beam { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
 .rot-pane .rc-beam input { width: 56px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: #000; color: var(--text); font-size: 12px; }
 #rcInfo.warn { color: #ff8a65; }
@@ -1972,10 +1972,20 @@ body.map-only .pkt-map.map-only-box { flex-direction: column; gap: 4px; }
 #rcNote { font-size: 12px; min-height: 16px; }
 .rc-side { width: 360px; flex: none; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
 .rc-side .recs-filter { width: auto; }
-.rc-ovs { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #000; font-size: 12px; }
+.rc-ovs { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: #000; font-size: 12px;
+  max-height: 40%; overflow: auto; flex: none; }
+.rc-ovs-head { display: flex; align-items: center; gap: 6px; color: var(--muted); margin-bottom: 2px; }
+.rc-ovs-head button:first-of-type { margin-left: auto; }
 .rc-ov { display: flex; align-items: center; gap: 6px; cursor: pointer; }
-.rc-ov i, .rc-row i, .rc-ov-title i { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #000; flex: none; display: inline-block; }
-.rc-list { flex: 1 1 0; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; font-size: 12px; }
+/* narrow scrollbars of the group box and the list (a third of the default width); Firefox: thin */
+#rotPane ::-webkit-scrollbar { width: 6px; height: 6px; }
+#rotPane ::-webkit-scrollbar-thumb { background: #3a424d; border-radius: 3px; }
+#rotPane ::-webkit-scrollbar-thumb:hover { background: #56606d; }
+#rotPane ::-webkit-scrollbar-track { background: transparent; }
+#rotPane ::-webkit-scrollbar-button { display: none; }
+@supports not selector(::-webkit-scrollbar) { #rotPane, #rotPane * { scrollbar-width: thin; } }
+.rc-ov i, .rc-row i { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #000; flex: none; display: inline-block; }
+.rc-list { position: relative; flex: 1 1 0; min-height: 0; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; font-size: 12px; }
 .rc-row { display: grid; grid-template-columns: 12px 1fr 40px 56px; grid-template-rows: auto auto; column-gap: 6px; align-items: center; padding: 3px 8px; cursor: pointer;
   border-bottom: 1px solid rgba(255, 255, 255, .04); }
 .rc-row:hover { background: rgba(255, 255, 255, .06); }
@@ -1986,38 +1996,11 @@ body.map-only .pkt-map.map-only-box { flex-direction: column; gap: 4px; }
 .rc-row .rc-inf { grid-column: 2 / 5; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 .leaflet-tooltip.rc-tip { white-space: normal; width: max-content; max-width: 340px; padding: 2px 6px; }
 .rc-tip-d { color: #aab4c0; }
-.rc-ovset { overflow: auto; display: flex; flex-direction: column; gap: 8px; }
-.rc-ov-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.rc-ov-card { display: flex; flex-direction: column; gap: 6px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .02); font-size: 13px; }
-.rc-ov-card .row { display: flex; gap: 6px; }
-.rc-ov-title { display: flex; align-items: center; gap: 8px; }
 @media (max-width: 900px) {
   .rc-map { flex-direction: column; }
   .rc-side { width: auto; max-height: 40%; }
-  .rc-ov-cards { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* ROTOR CONTROL: adding the map target to a group, the groups of points and their editor */
-.rc-add { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-.rc-add select { flex: 1 1 0; min-width: 0; padding: 3px 4px; border: 1px solid var(--line); border-radius: 4px; background: #000; color: var(--text); font-size: 12px; }
-.rc-ov-bar { display: flex; gap: 6px; flex-wrap: wrap; }
-.rc-ov-card.on { border-color: #4cff7a; }
-.rc-ov-card .row { flex-wrap: wrap; }
-.rc-edit { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid #4cff7a; border-radius: 8px; }
-.rc-edit[hidden] { display: none; }
-.rc-edit-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
-.rc-edit-head label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
-.rc-edit-head input[type="text"] { width: 220px; }
-.rc-edit-head input[type="color"] { width: 36px; height: 24px; padding: 0; border: 1px solid var(--line); background: #000; }
-.rc-edit-tab { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #000; }
-.rc-edit-tab table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.rc-edit-tab th { position: sticky; top: 0; background: #11151b; color: var(--muted); font-weight: normal; text-align: left; padding: 4px 6px; }
-.rc-edit-tab td { padding: 2px 4px; border-top: 1px solid rgba(255, 255, 255, .04); }
-.rc-edit-tab td:last-child { width: 1%; }
-.rc-edit-tab input, .rc-edit-head input[type="text"] { width: 100%; min-width: 60px; box-sizing: border-box; padding: 3px 6px; border: 1px solid var(--line);
-  border-radius: 4px; background: #0b0e12; color: var(--text); font-size: 12px; }
-.rc-edit-tab input.rc-loc { border-color: #4cff7a; }
-.rc-edit-tab .note { padding: 6px 8px; margin: 0; }
 .med-table .c-lat, .med-table .c-lon { width: 74px; }
 .med-table .c-az { width: 44px; }
 .med-table .c-dist { width: 64px; }

@@ -278,20 +278,6 @@ Scanner of the VFO (SCAN tab, `scanner.py`). It runs in the receiver of the VFO;
 
 The memory fields used by the scan: `"scan"` (false = never scanned), `"scan_sq"` (own level −120…0 dBFS or null), `"scan_asq"` (own ASQ margin 1–30 dB or null), `"scan_prio"` (0 / 1), set by PATCH `/api/memories/<id>`. Search & store adds memories in the group `Scan YYYY-MM-DD` and sends the event `memories`.
 
-## Rotor control overlays
-
-The groups of points of the ROTOR CONTROL map (RCTRL key), shared by all VFOs. `<id>`: `dab`, `fm`, `ham` (built-in defaults)
-or `g1`, `g2`, … (own groups).
-
-| Method | Path | Meaning |
-|---|---|---|
-| GET | `/api/overlays` | `{"groups": [...]}`, built-in first, then own groups in the order they were made; each `{"id", "name", "color", "source", "updated", "builtin", "custom" (edited / own file), "points": [{"name", "lat", "lon", "info", "detail", "freq", "cc"}], "error"}` |
-| POST | `/api/overlays` | new own group `{"name", "color"?, "points"?}`; returns it with its new `id` |
-| PUT (or POST) | `/api/overlays/<id>` | replace the group (edit or import): `{"name", "color", "source", "points": [...]}` or a list of points (`name`, `lat`, `lon` required); saved in `data\overlays\<id>.json`. Returns the group with `skipped` (invalid points); 400 with `error` when points were given but none is valid |
-| DELETE | `/api/overlays/<id>` | built-in group: back to the built-in list (`static/overlays/<id>.json`); own group: deleted |
-
-The changes are refused with 403 from a page of another host.
-
 ## Examples
 
 ```bash

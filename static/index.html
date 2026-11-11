@@ -202,7 +202,7 @@ ecordings), play them in the browser">RECS</button>
     </div></div>
     <div class="kgroup"><span class="klabel">TRACKING</span><div class="keys">
       <button id="satKey" class="key sat-key" aria-label="Satellite tracking" aria-controls="amsatPane" title="Satellite tracking: the SATELLITES tab (passes, map, Doppler, rotor)"><svg class="sat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.6 7C3.2 12.6 8.4 18.8 15 17.4Z"/><path d="M9.8 12.2L13.4 8.6"/><circle cx="14.6" cy="7.4" r="1.6"/><path d="M16.6 3.1A5 5 0 0 1 19 5.5"/><path d="M17.2.6A8 8 0 0 1 21.5 4.9"/><path d="M7.6 15.4L5.8 20.6M11 17.2L12.4 20.6M3.2 21.2H15"/></svg></button>
-      <button id="rctrlKey" class="key" aria-controls="rotPane" title="RCTRL: the ROTOR CONTROL tab – a map where a click turns the rotor to that place (azimuth from the QTH, elevation 0), with overlays of DAB+, FM and ham repeaters">RCTRL</button>
+      <button id="rctrlKey" class="key" aria-controls="rotPane" title="RCTRL: the ROTOR CONTROL tab – a map where a click turns the rotor to that place (azimuth from the QTH, elevation 0), with the MEMORIES channels that have a location, by groups">RCTRL</button>
     </div></div>
     <div class="kgroup"><span class="klabel">MENU</span><div class="keys">
       <button id="setKey" class="key set-key" aria-label="Settings" aria-controls="settingsCard" title="Settings: the SETTINGS tab (SDR dongle, audio, UI, rotor)"><svg class="gear-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.7h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
@@ -723,14 +723,11 @@ ecordings), play them in the browser">RECS</button>
       </div>
       <div class="amsat-body" id="amsatBody"></div>
     </div>
-    <!-- ROTOR CONTROL tab (RCTRL key, TRACKING group): MAP – a click on the map, on an overlay point or on a row of the list
-         turns the rotor of this VFO to that place (azimuth from the QTH, elevation 0); OVERLAYS – import / export / reset of the lists -->
+    <!-- ROTOR CONTROL tab (RCTRL key, TRACKING group): a map – a click on the map, on a channel point or on a row of the list
+         turns the rotor to that place (azimuth from the QTH, elevation 0). The points are the MEMORIES channels with LAT / LON,
+         shown by their groups (one checkbox per group beside the map). -->
     <div class="set-pane rot-pane" id="rotPane" hidden aria-label="Rotor control">
       <div class="amsat-head">
-        <div class="amsat-pages" id="rcTabs" role="tablist">
-          <button class="key small on" data-rc-tab="map" role="tab">MAP</button>
-          <button class="key small" data-rc-tab="overlays" role="tab">OVERLAYS</button>
-        </div>
         <label class="rc-beam" title="Beam width of the antenna (−3 dB), drawn on the map as a sector around the line to the target">BEAM <input id="rcBeam" type="number" min="1" max="360" step="1"> °</label>
         <button id="rcClear" class="key small" title="Remove the target (dashed line of the wanted azimuth) from the map; the rotor stays where it is">CLEAR</button>
         <button id="rcStop" class="key small" title="Stop both motors of the rotor">STOP</button>
@@ -740,29 +737,9 @@ ecordings), play them in the browser">RECS</button>
         <div class="rc-map-main"><div id="rcMap"></div><div id="rcNote" class="muted"></div></div>
         <div class="rc-side">
           <div class="rc-ovs" id="rcOvs"></div>
-          <div class="rc-add" title="Add the target point (the last click on the map) to a group of points; the groups are edited on the OVERLAYS page">
-            <span>Target →</span><select id="rcAddGroup"></select><button id="rcAddBtn" class="key small">+ ADD POINT</button>
-          </div>
-          <input id="rcFilter" class="recs-filter" type="search" placeholder="filter: name, MHz, place…" title="Shows only the points whose name or description contains the text">
+          <input id="rcFilter" class="recs-filter" type="search" placeholder="filter: name, MHz, group, note…" title="Shows only the channels whose name, frequency, groups or note contain the text">
           <div class="rc-list" id="rcList"></div>
         </div>
-      </div>
-      <div class="rc-body rc-ovset" id="rcOvBox" hidden>
-        <div class="rc-ov-bar">
-          <button id="rcNewGroup" class="key small" title="Make a new empty group of points (name it, then add points here or with + ADD POINT on the map)">+ NEW GROUP</button>
-          <button id="rcImportNew" class="key small" title="Load a JSON file as a new group">IMPORT AS NEW GROUP</button>
-        </div>
-        <div class="rc-ov-cards" id="rcOvCards"></div>
-        <div class="rc-edit setting" id="rcEdit" hidden></div>
-        <p class="note">Groups: the three built-in ones are the defaults; any group can be renamed, recoloured and its points edited (EDIT).
-          An edited built-in group is saved in data\overlays and RESET brings back the built-in list; own groups are deleted with DELETE.
-          A point needs a name and a position: latitude / longitude in degrees (WGS 84) or a QTH locator typed into the latitude field.</p>
-        <p class="note">Import: a JSON file <code>{"name", "color", "source", "points": [{"name", "lat", "lon", "info", "detail", "freq"}]}</code>
-          or just the list of points; <code>name</code>, <code>lat</code>, <code>lon</code> are required. IMPORT on a card replaces the points of that group,
-          EXPORT saves the group as a JSON file.</p>
-        <p class="note">Built-in lists (2026-11-11): DAB+ and FM from Wikipedia (sk/cs: the lists of transmitters and the pages of single transmitters –
-          main sites only, the frequencies may be out of date); ham repeaters from <a href="https://przemienniki.net" target="_blank" rel="noopener">przemienniki.net</a>
-          (working / testing) and <a href="https://cq.sk/zoznam-vkv-ukv-prevadzacov-a-majakov-v-sr/" target="_blank" rel="noopener">cq.sk</a>.</p>
       </div>
     </div>
     <!-- SCAN tab (SCAN key in MENU): the scanner of the active VFO (scanner.py, data\poznamky_scan.md). Pages SCAN (memories or a

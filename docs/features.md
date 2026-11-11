@@ -31,7 +31,7 @@
   30 MHz shows a warning whether the converter must be switched on (CONV) or set to BYPASS.
 - **Decoders:** 11 decoders, see [Decoders](#decoders) below.
 - **Satellite tracking:** pass prediction, world map, Doppler correction of the VFO and a K3NG antenna rotor over USB, planned for passes across the north; no other program needed. See [Satellite tracking](satellites.md).
-- **ROTOR CONTROL tab (RCTRL key):** a map where a click (or a click on a DAB+, FM or ham repeater point) turns the rotor to that azimuth from the QTH, with the wanted azimuth (dashed line) and the antenna now (beam sector turning with the rotor), from any VFO; editable groups of points (the built-in ones as defaults, own groups, import / export). See [Rotor control map](satellites.md#rotor-control-map).
+- **ROTOR CONTROL tab (RCTRL key):** a map where a click (or a click on a channel of MEMORIES with a location) turns the rotor to that azimuth from the QTH, with the wanted azimuth (dashed line) and the antenna now (beam sector turning with the rotor), from any VFO; the channels are shown by their groups (a checkbox per group beside the map). See [Rotor control map](satellites.md#rotor-control-map).
 - **REC and REC SQ:** record the audio of the selected VFO to MP3 files in `data\recordings` or an own folder (SETTINGS › GENERAL › RECORDINGS): everything, or only while the squelch is open.
 - **SCAN tab (SCAN key, MENU group): scanner** on one VFO. Every ~85 ms it measures all channels in the band of the dongle at once
   from the spectrum, the tuner moves only between windows; memories (ALL / FAVOURITES / group), a RANGE (FROM / TO / STEP / MODE / BW, presets
