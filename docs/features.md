@@ -35,7 +35,7 @@
 - **REC and REC SQ:** record the audio of the selected VFO to MP3 files in `data\recordings` or an own folder (SETTINGS › GENERAL › RECORDINGS): everything, or only while the squelch is open.
 - **SCAN tab (SCAN key, MENU group): scanner** on one VFO. Every ~85 ms it measures all channels in the band of the dongle at once
   from the spectrum, the tuner moves only between windows; memories (ALL / FAVOURITES / group), a RANGE (FROM / TO / STEP / MODE / BW, presets
-  such as airband 8.33 kHz) or the spectrum shown (VIEW); START / PAUSE / SKIP / LOCKOUT / ◀ ▶ / STOP; own squelch, own ASQ margin and priority
+  such as airband 8.33 kHz) the spectrum shown (VIEW) or the FM broadcast band (FM BCAST: 88–108 MHz, lands on the centre of each station, RDS PS as the name); START / PAUSE / SKIP / LOCKOUT / ◀ ▶ / STOP; own squelch, own ASQ margin and priority
   per memory (ASQ FOR ALL by default); resume DELAY / CARRIER / TIME; priority look into other windows, carrier lockout; activity LOG (CSV),
   WAV recording of each activity, search & store into a memory group, HEATMAP of the occupancy. See [MENU → SCAN](controls.md#scan).
 - **RECORDINGS tab (RECS key):** the recorded files in a table (start, memory, frequency, mode, length, size), played in the browser; NEXT plays the next older file, filter, delete. See [RECS](controls.md#function-keys).

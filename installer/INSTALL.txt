@@ -92,6 +92,12 @@ Change log
 Ver. 0.114beta1
 (test beta, GitHub branch 0.114beta1)
 Main Features
+- SCAN: new tile FM BCAST (right of RANGE) - searches 88-108 MHz in WFM for broadcast stations: grid 50 kHz, only
+  the core of each channel is measured and a station must be the strongest point +-100 kHz around, so the VFO lands
+  on the centre of the station. Each station is heard LISTEN s (8), then the next one up the band. STORE FOUND puts
+  the stations into the group "FM YYYY-MM-DD", named by their RDS PS. A station found is checked over 3 blocks
+  before tuning (no more the same station twice, once 50 kHz off).
+- SCAN: VISIBLE BAND and RANGE scan only in AM or FM (WFM, USB, LSB, CW keys removed).
 - DAB and DSD are modes with their own tabs (by Brano, brjanicek): MODE has a new key DAB (DAB on + DAB tab with the
   DAB+ card); another mode, a band button or a memory that is not DAB turns DAB off. DSD opens its own DSD tab.
   The DAB and DSD pages are gone from DECODERS.
@@ -145,6 +151,12 @@ Main Features
   spectrum blue, locked out grey. Decoder and recording of a memory are ignored; the decoders of the scanning VFO pause.
   scanner.py, /api/scan.
 Minor Fixes
+- SCAN: REC and the settings behind the gear changed while scanning now take effect at once (REC switched on
+  during a scan recorded nothing). WAV files: subfolder "scan" of the recordings folder.
+- SCAN -> CHANNELS: the x (LOCK OUT) is easy to hit while scanning (rows do not move under the mouse);
+  HEARD shows a speaker instead of the play arrow. New key LOCK OUT beside SKIP: the channel heard now is left
+  out until STOP.
+- SCAN -> ACTIVITY: a row at the frequency of a memory shows its name (when it has none) and its note.
 - AGC+ PRESETS above the sliders (SETTINGS -> VFO -> ADVANCED -> AGC+), the matching one lit: CAREFUL (the old
   behaviour, no clipping), MODERATE (new default: gain up to a -2...-5 dBFS peak, short clipping up to 100 ppm tolerated,
   2.5-4 dB more gain), BOLD (new setting "Bold: up while clipping <=": climbs into clipping up to 20 ppm, down above 300 ppm,

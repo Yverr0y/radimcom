@@ -6,7 +6,10 @@ power of all channels in the band the dongle receives now from the fine FFT of t
 applied when SP is on), so a whole tuner window is checked in one block (~85 ms at 1.536 MS/s). The tuner is retuned
 only to reach the next window; the channels are sorted into windows of SCAN_SPAN × sample rate.
 
-Sources: memories (ALL, FAVOURITES or a group) or a RANGE FROM / TO / STEP / MODE / BW (a grid of channels). VIEW
+Sources: memories (ALL, FAVOURITES or a group) or a RANGE FROM / TO / STEP / MODE / BW (a grid of channels; MODE only
+AM or FM: the modes a squelch can scan). FM BCAST: the broadcast band 88–108 MHz in WFM, its own algorithm (see FMBC_*):
+a station is found by the power of the core of its channel and must be the local maximum of its neighbours, so the VFO
+lands on the centre of the station and not on its side. VIEW
 (VISIBLE BAND) is a grid over the part of the spectrum shown by the page; the tuner is not moved for it (no windows:
 the spectrum and waterfall stay as they are), so only what the dongle receives now is scanned. All channels are kept in numpy arrays, so a range of
 thousands of channels costs only a few ms per block.
@@ -65,14 +68,30 @@ LOG_DIR = data("logs")
 LOG_FIELDS = ("time_utc", "vfo", "freq_hz", "name", "mode", "duration_s", "max_dbfs", "snr_db", "file", "note",
               "session")
 RESUME_MODES = ("delay", "carrier", "time")
-SOURCES = ("all", "fav", "group", "range", "view")
+# options a running scan takes over at once (the others choose what is scanned: they need START)
+LIVE_OPTS = ("asq", "margin", "resume", "hang_s", "time_s", "pick", "store", "rec", "carrier_min", "prio_s", "fm_s")
+SOURCES = ("all", "fav", "group", "range", "view", "fmbc")
+GRID_SOURCES = ("range", "view", "fmbc")
 MEM_SOURCES = ("all", "fav", "group")
 PICKS = ("next", "strongest")
-MODES = ("AM", "FM", "WFM", "LSB", "USB", "CW")
+MODES = ("AM", "FM")      # RANGE / VISIBLE BAND: SSB / CW have no carrier for a squelch, WFM has FM BCAST
+# FM BCAST: a grid of 50 kHz (the 100 kHz raster and the stations between it). Only the core ±FMBC_CORE/2 of a channel
+# is measured: the energy of a broadcast FM signal is the densest at its centre, so the channel on the station is
+# stronger than those 50 / 100 kHz beside it (on its side), and the cores of the neighbours do not overlap. The tuner
+# centre is put between two grid points (FMBC_DC_OFF), out of every core (DC spike). A station stays on the air for
+# good: it is heard fm_s seconds (LISTEN) and the scan goes on to the next station up the band (no carrier lockout,
+# the floor learns only from a quiet channel).
+FMBC_FROM, FMBC_TO, FMBC_STEP = 88e6, 108e6, 50000.0
+FMBC_CORE = 36000.0
+FMBC_NEAR = 2             # a station is the strongest of the grid channels ±FMBC_NEAR around it (±100 kHz)
+FMBC_CHECK = 3            # a station found: its centre = the strongest ±FMBC_NEAR summed over this many blocks (the
+                          # core power of FM goes up and down with the audio, one block could pick its side)
+FMBC_DC_OFF = 25000.0     # window centre: halfway between two grid points
+FMBC_BW_MIN = 150000.0    # tuned bandwidth: that of the VFO for WFM, at least this
 DEFAULTS = {"source": "all", "mem": "all", "group": "", "asq": True, "margin": 6.0, "resume": "delay", "hang_s": 2.0,
             "time_s": 10.0, "from_hz": 118e6, "to_hz": 136.99167e6, "step_hz": 25000 / 3, "mode": "AM",
             "bw": 8000.0, "pick": "next", "store": False, "rec": False, "carrier_min": 3.0,
-            "prio_s": 3.0, "keep_days": 31}
+            "prio_s": 3.0, "keep_days": 31, "fm_s": 8.0}
 # ranges offered by the page: (name, from, to, step, mode, bw)
 PRESETS = [
     ("Airband 118–137 MHz", 118e6, 136.99167e6, 25000 / 3, "AM", 8000),
@@ -102,7 +121,8 @@ def norm_opts(o, base=None):
             out[k] = bool(o[k])
     for k, lo, hi in (("margin", 1.0, 30.0), ("hang_s", 0.0, 60.0), ("time_s", 1.0, 600.0), ("from_hz", 0.0, 6e9),
                       ("to_hz", 0.0, 6e9), ("step_hz", 100.0, 1e6), ("bw", 100.0, 250000.0),
-                      ("carrier_min", 0.0, 120.0), ("prio_s", 0.0, 60.0), ("keep_days", 1, 365)):
+                      ("carrier_min", 0.0, 120.0), ("prio_s", 0.0, 60.0), ("keep_days", 1, 365),
+                      ("fm_s", 1.0, 600.0)):
         if k in o:
             v = float(o[k])
             if not lo <= v <= hi:
@@ -110,6 +130,8 @@ def norm_opts(o, base=None):
             out[k] = int(v) if k == "keep_days" else v
     if out["source"] in MEM_SOURCES:
         out["mem"] = out["source"]
+    if out["mode"] not in MODES:                    # saved by an older version (WFM, USB …)
+        out["mode"] = "FM" if out["mode"] == "WFM" else "AM"
     return out
 
 
@@ -117,6 +139,8 @@ def signature(o):
     """What is scanned: a scan of another source / range starts a new session (ACTIVITY and HEATMAP of THIS SCAN)."""
     if o["source"] in MEM_SOURCES:
         return f"mem:{o['source']}:{o['group'] if o['source'] == 'group' else ''}"
+    if o["source"] == "fmbc":
+        return "fmbc"
     return (f"range:{round(min(o['from_hz'], o['to_hz']))}-{round(max(o['from_hz'], o['to_hz']))}"
             f"/{round(o['step_hz'])}/{o['mode']}/{round(o['bw'])}")
 
@@ -234,6 +258,8 @@ class Scanner:
         self.windows = []             # tuner windows [{"center", "tune", "lo"}]; [] = the tuner is not moved
                                       # (chained VFO: band of the owner; VISIBLE BAND: the spectrum stays as shown)
         self.span = SCAN_SPAN         # part of the dongle band measured
+        self.fm = False               # FM BCAST (its own search, see FMBC_*)
+        self.fm_chk = None            # FM BCAST: a station found, its centre being checked
         self.win = 0
         self.cur = None               # index of the channel being listened to / held
         self.pos = -1                 # index of the last channel stopped on (round robin)
@@ -300,7 +326,8 @@ class Scanner:
         """Builds the channels (memories or a range); returns an error text, or None when the scan starts.
         session: id written with each activity (ACTIVITY / HEATMAP of THIS SCAN)."""
         try:
-            chans, excluded = (self._grid(opts, rx) if opts["source"] in ("range", "view")
+            chans, excluded = (self._fmbc(rx) if opts["source"] == "fmbc"
+                               else self._grid(opts, rx) if opts["source"] in GRID_SOURCES
                                else self._from_mems(mems, opts, rx))
         except ValueError as e:
             return str(e)
@@ -372,10 +399,25 @@ class Scanner:
                           "lo": 0.0 if rx.chained else rx.lo if fixed else rx.lo_for(f)})
         return chans, excluded
 
+    def _fmbc(self, rx):
+        """FM BCAST: 88–108 MHz every 50 kHz in WFM; mbw = the core measured, bw = the bandwidth tuned."""
+        bw = max(float((rx.cfg.get("bandwidth") or {}).get("WFM") or 200000), FMBC_BW_MIN)
+        chans, excluded = [], []
+        for k in range(int(round((FMBC_TO - FMBC_FROM) / FMBC_STEP)) + 1):
+            f = FMBC_FROM + k * FMBC_STEP
+            why = self._check(f, FMBC_CORE, rx)
+            if why:
+                excluded.append({"id": f"g{int(f)}", "name": "", "freq_hz": f, "mode": "WFM", "why": why})
+                continue
+            chans.append({"id": f"g{int(f)}", "name": "", "freq": f, "mode": "WFM", "bw": bw, "mbw": FMBC_CORE,
+                          "mem": False, "sq": None, "asq": None, "prio": False,
+                          "lo": 0.0 if rx.chained else rx.lo_for(f)})
+        return chans, excluded
+
     def _windows(self, fs):
         """Channels -> tuner windows: neighbours that fit into SCAN_SPAN × fs with the same upconverter LO. The centre
         avoids the channels when it can (DC spike; in a dense range it cannot, the floor of that channel learns it)."""
-        span = fs * SCAN_SPAN
+        span = fs * SCAN_SPAN - (2 * FMBC_DC_OFF if self.fm else 0.0)   # FM BCAST: room to move the centre
         out = []
         start, n = 0, self.n
         while start < n:
@@ -394,6 +436,8 @@ class Scanner:
                     best, best_gap = mid + d, gap
                 if gap >= DC_GAP_HZ:
                     break
+            if self.fm:                             # between two grid points: out of every core
+                best = round((best - FMBC_DC_OFF) / FMBC_STEP) * FMBC_STEP + FMBC_DC_OFF
             out.append({"center": max(float(best), fs / 2), "tune": float(self.f[start]), "lo": float(self.lo[start])})
             self.win_of[g] = len(out) - 1
             start += k
@@ -438,6 +482,9 @@ class Scanner:
             return
         # search: the active channels of the band (strongest of overlapping neighbours), priority first
         act = self._candidates(idx, now)
+        if self.fm:
+            self._fm_search(rx, act, backlog, now)
+            return
         if act:
             pick = [i for i in act if self.prio[i]] or act
             if self.opts["pick"] == "strongest":
@@ -450,6 +497,39 @@ class Scanner:
         if len(self.windows) > 1:
             self._goto(rx, (self.win + 1) % len(self.windows), backlog)
 
+    def _fm_search(self, rx, act, backlog, now):
+        """FM BCAST: the next station up the band in this window, else the next window (from its bottom after the top
+        of the band). A station is on the air for good: it is not looked for again in the same sweep."""
+        self.audio_open = False
+        chk = self.fm_chk
+        if chk is not None:                         # the centre: the strongest ±FMBC_NEAR over FMBC_CHECK blocks
+            js = chk["js"]
+            p = np.where(self.vis[js] & ~np.isnan(self.power[js]), self.power[js], -200.0)
+            chk["acc"] += 10 ** (p / 10)
+            chk["n"] += 1
+            if chk["n"] < FMBC_CHECK:
+                return
+            self.fm_chk = None
+            j = int(js[int(np.argmax(chk["acc"]))])
+            if j <= self.pos + 1 or self._locked(j, now):
+                j = chk["i"]                        # not back onto the station just heard
+            self._listen(rx, j, now)
+            return
+        # +1: the grid point just above the station heard is its side, not another station
+        ahead = [i for i in act if i > self.pos + (1 if self.pos >= 0 else 0)]
+        if ahead:
+            i = min(ahead)
+            js = np.arange(max(i - FMBC_NEAR, 0), min(i + FMBC_NEAR, self.n - 1) + 1)
+            self.fm_chk = {"i": i, "js": js, "acc": np.zeros(len(js)), "n": 0}
+            return
+        if len(self.windows) > 1:
+            k = (self.win + 1) % len(self.windows)
+            if k == 0:
+                self.pos = -1
+            self._goto(rx, k, backlog)
+        elif act:
+            self.pos = -1                           # one window: from the bottom again in the next block
+
     def _candidates(self, idx, now):
         """Active, not locked channels of the band; of overlapping neighbours only the strongest (a signal between
         two grid channels or leaking into the next one opens only one)."""
@@ -459,6 +539,13 @@ class Scanner:
             if self._locked(i, now):
                 continue
             ok = True
+            if self.fm:                             # FM BCAST: the strongest of its neighbours (the station centre)
+                for j in range(i - FMBC_NEAR, i + FMBC_NEAR + 1):
+                    if j != i and 0 <= j < self.n and self.vis[j] and self.power[j] > self.power[i]:
+                        ok = False
+                if ok:
+                    out.append(i)
+                continue
             for j in (i - 1, i + 1):
                 if (0 <= j < self.n and self.vis[j] and self.active[j] and self.power[j] > self.power[i]
                         and abs(self.f[j] - self.f[i]) < (self.bw[i] + self.bw[j]) / 2):
@@ -480,7 +567,11 @@ class Scanner:
         if self.act and not np.isnan(self.power[i]):
             self.act["max"] = max(self.act["max"], float(self.power[i]))
             self.act["snr"] = max(self.act["snr"], float(self.power[i] - self.floor[i]))
-        cm = self.opts["carrier_min"]
+        if self.fm and self.act and getattr(rx, "wfm", None) is not None and getattr(rx.wfm, "rds", None) is not None:
+            ps = rx.wfm.rds.info().get("ps", "").strip()
+            if ps:
+                self.act["ps"] = ps                 # RDS: the name of the station (ACTIVITY, STORE FOUND)
+        cm = 0 if self.fm else self.opts["carrier_min"]
         if cm > 0 and self.active[i] and now - self.since[i] > cm * 60:
             self.locked[i] = float("inf")           # an open carrier / spur: out until STOP
             if self.act:
@@ -495,10 +586,10 @@ class Scanner:
                 return
             if self._start_peek(rx, now, backlog):
                 return
-        r = self.opts["resume"]
+        r = "time" if self.fm else self.opts["resume"]
         hang = CARRIER_HANG_S if r == "carrier" else self.opts["hang_s"]
         done = (now - self.last_active > hang or self._locked(i, now)
-                or (r == "time" and now - self.listen_since > self.opts["time_s"]))
+                or (r == "time" and now - self.listen_since > self.opts["fm_s" if self.fm else "time_s"]))
         if not done:
             self.audio_open = bool(self.active[i])
             return
@@ -532,7 +623,7 @@ class Scanner:
         self.peek = None
         self._goto(rx, pk["ret"], backlog)
         i = self.cur
-        rx.scan_tune(self.f[i], self.meta[i]["mode"], self.bw[i])
+        rx.scan_tune(self.f[i], self.meta[i]["mode"], self.meta[i]["bw"])
         away = now - pk["t0"] + (SETTLE_BLOCKS + 1) * BLOCK_S
         self.last_active += away
         self.listen_since += away
@@ -569,7 +660,7 @@ class Scanner:
                 self._end_activity()
                 if self.peek and self.cur is not None:   # back on the channel heard before holding there
                     self._goto(rx, self.peek["ret"], backlog)
-                    rx.scan_tune(self.f[self.cur], self.meta[self.cur]["mode"], self.bw[self.cur])
+                    rx.scan_tune(self.f[self.cur], self.meta[self.cur]["mode"], self.meta[self.cur]["bw"])
                 self.peek = None
                 self.paused, self.state = True, "hold"
                 self.message = kw.get("why", "")
@@ -582,6 +673,13 @@ class Scanner:
                     self.locked[self.cur] = now + SKIP_S if action == "skip" else float("inf")
                     self.paused, self.message, self.peek = False, "", None
                     self._resume(rx, backlog)
+            elif action == "opts":                 # ⚙ / REC / STORE changed while scanning (not what is scanned)
+                for k in LIVE_OPTS:
+                    if k in kw["opts"]:
+                        self.opts[k] = kw["opts"][k]
+                if not self.opts["rec"]:
+                    self._rec_close()
+                self.rec_error = ""
             elif action == "session":              # CLR: the activities from now on belong to a new session
                 a = self.act
                 self._end_activity()
@@ -603,7 +701,16 @@ class Scanner:
                         self._resume(rx, backlog)
             elif action == "step":
                 self.peek = None
-                i = ((self.cur if self.cur is not None else self.pos) + int(kw.get("dir", 1))) % self.n
+                d = 1 if int(kw.get("dir", 1)) >= 0 else -1
+                i0 = self.cur if self.cur is not None else self.pos
+                i = (i0 + d) % self.n
+                if self.fm:                         # FM BCAST: to the next station found (else the next grid point)
+                    found = [j for j in range(self.n) if self.hits[j] or self.active[j]]
+                    nxt = [j for j in found if (j - i0) * d > 0]
+                    if nxt:
+                        i = min(nxt, key=lambda j: abs(j - i0))
+                    elif found:
+                        i = min(found) if d > 0 else max(found)
                 self._listen(rx, i, now, count=False)
                 self.paused, self.state, self.message = True, "hold", ""
             elif action == "update":                # a memory edited in the SCAN tab while scanning
@@ -627,9 +734,12 @@ class Scanner:
         self._arrays(len(chans))
         self.meta = [{k: c[k] for k in ("id", "name", "freq", "mode", "bw", "mem")} for c in chans]
         self.modes = sorted({c["mode"] for c in chans})
+        self.fm = kw["opts"].get("source") == "fmbc"
+        self.fm_chk = None
         for i, c in enumerate(chans):
-            self.f[i], self.bw[i], self.lo[i] = c["freq"], c["bw"], c["lo"]
-            self.a[i], self.b[i] = passband(c["freq"], c["mode"], c["bw"])
+            mbw = c.get("mbw", c["bw"])             # width measured (FM BCAST: the core of the channel)
+            self.f[i], self.bw[i], self.lo[i] = c["freq"], mbw, c["lo"]
+            self.a[i], self.b[i] = passband(c["freq"], c["mode"], mbw)
             self.sq[i] = np.nan if c["sq"] is None else float(c["sq"])
             self.asq[i] = np.nan if c["asq"] is None else float(c["asq"])
             self.prio[i] = c["prio"]
@@ -669,7 +779,7 @@ class Scanner:
         # the floor learns only from the quiet channel (a long transmission must not lift it and end itself); without
         # carrier lockout a channel open for RELEARN_S learns it (a carrier or a spur becomes its floor)
         act = self.active[idx]
-        learn = ~act if self.opts["carrier_min"] > 0 else (~act | (now - self.since[idx] > RELEARN_S))
+        learn = ~act if self.opts["carrier_min"] > 0 or self.fm else (~act | (now - self.since[idx] > RELEARN_S))
         li = idx[learn]
         self.hist[li, self.hpos[li]] = db[learn]
         self.hpos[li] = (self.hpos[li] + 1) % FLOOR_N
@@ -718,14 +828,14 @@ class Scanner:
             fl = float(self.floor[i]) if not np.isnan(self.floor[i]) else p
             self.act = {"i": i, "t0": time.time(), "m0": now, "m_last": now, "max": p, "snr": p - fl, "note": "",
                         "file": ""}
-        rx.scan_tune(self.f[i], self.meta[i]["mode"], self.bw[i])
+        rx.scan_tune(self.f[i], self.meta[i]["mode"], self.meta[i]["bw"])
 
     def _resume(self, rx, backlog):
         """After listening: search again; with more windows the next window first (so one busy band does not
         keep the scan for itself)."""
         self._end_activity()
-        self.state, self.cur, self.audio_open, self.peek = "search", None, False, None
-        if len(self.windows) > 1:
+        self.state, self.cur, self.audio_open, self.peek, self.fm_chk = "search", None, False, None, None
+        if len(self.windows) > 1 and not self.fm:   # FM BCAST: the next station of this window first
             self._goto(rx, (self.win + 1) % len(self.windows), backlog)
 
     def _goto(self, rx, k, backlog):
@@ -742,9 +852,10 @@ class Scanner:
         if not a:
             return
         m = self.meta[a["i"]]
+        name = m["name"] or a.get("ps", "")
         dur = max(a["m_last"] - a["m0"], 0.0) + BLOCK_S
         entry = {"time_utc": time.strftime("%Y-%m-%d %H:%M:%SZ", time.gmtime(a["t0"])), "vfo": self.vfo,
-                 "freq_hz": int(round(m["freq"])), "name": m["name"], "mode": m["mode"], "duration_s": round(dur, 1),
+                 "freq_hz": int(round(m["freq"])), "name": name, "mode": m["mode"], "duration_s": round(dur, 1),
                  "max_dbfs": round(a["max"], 1), "snr_db": round(a["snr"], 1), "file": a["file"], "note": a["note"],
                  "session": self.session}
         self.log.appendleft(entry)
@@ -764,8 +875,10 @@ class Scanner:
                 and self.on_store and not a["note"]):
             self._stored_ids.add(m["id"])
             self.stored += 1
-            self.on_store({"name": f"{m['freq'] / 1e6:.5f}".rstrip("0").rstrip("."), "freq_hz": int(round(m["freq"])),
-                           "mode": m["mode"], "bw": m["bw"], "groups": [f"Scan {time.strftime('%Y-%m-%d')}"]})
+            group = "FM" if self.fm else "Scan"
+            self.on_store({"name": name or f"{m['freq'] / 1e6:.5f}".rstrip("0").rstrip("."),
+                           "freq_hz": int(round(m["freq"])), "mode": m["mode"], "bw": m["bw"],
+                           "groups": [f"{group} {time.strftime('%Y-%m-%d')}"]})
 
     def audio(self, audio, fs):
         """Demodulated audio of this block before the squelch (receiver thread): recording of the activity heard.
@@ -833,7 +946,9 @@ class Scanner:
         cur = self.cur if self.on else None
         now = time.monotonic()
         o = self.opts
-        rng = [min(o["from_hz"], o["to_hz"]), max(o["from_hz"], o["to_hz"])] if o["source"] in ("range", "view") else None
+        rng = [min(o["from_hz"], o["to_hz"]), max(o["from_hz"], o["to_hz"])] if o["source"] in GRID_SOURCES else None
+        if o["source"] == "fmbc":
+            rng = [FMBC_FROM, FMBC_TO]
 
         def num(v):
             return None if v is None or np.isnan(v) else round(float(v), 1)
@@ -849,7 +964,7 @@ class Scanner:
                        "prio": bool(self.prio[cur])} if cur is not None else None}
         if full:
             rows = range(self.n) if self.on else []
-            if o["source"] in ("range", "view"):
+            if o["source"] in GRID_SOURCES:
                 rows = [i for i in rows if self.hits[i] or self.active[i] or i in self.locked or i == cur][:LIST_MAX]
             out["list"] = [{"id": self.meta[i]["id"], "name": self.meta[i]["name"], "freq_hz": float(self.f[i]),
                             "mode": self.meta[i]["mode"], "power": num(self.power[i]), "floor": num(self.floor[i]),

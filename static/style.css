@@ -1316,11 +1316,12 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 /* SCAN tab. Tiles = what is scanned; the lit one points (arrow) at the card with its settings, in its colour. */
 .scan-pane { --tile: var(--yellow); --scan-card: #0e1319; }
 .scan-top { display: flex; flex-direction: column; gap: 10px; max-width: 1240px; }
-.scan-src { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.scan-src { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
 .scan-tile { position: relative; display: flex; align-items: center; gap: 12px; min-width: 0; padding: 9px 14px; border: 1px solid var(--line); border-radius: 10px; background: linear-gradient(180deg, #12161c, #0b0e12); color: var(--muted); text-align: left; cursor: pointer; font: inherit; transition: border-color .15s, box-shadow .15s, background .15s; }
 .scan-tile.mem, .scan-card[data-tile="mem"] { --tile: #ffd84a; }
 .scan-tile.view, .scan-card[data-tile="view"] { --tile: #3cf07c; }
 .scan-tile.range, .scan-card[data-tile="range"] { --tile: #6fb7ff; }
+.scan-tile.fmbc, .scan-card[data-tile="fmbc"] { --tile: #ff8a4c; }
 .scan-tile:hover { border-color: color-mix(in srgb, var(--tile) 45%, var(--line)); }
 .scan-tile.on { border-color: var(--tile); color: var(--text); background: linear-gradient(180deg, color-mix(in srgb, var(--tile) 13%, #10141a), #0c1015); box-shadow: 0 0 16px color-mix(in srgb, var(--tile) 20%, transparent); }
 /* the arrow: a diamond on the top edge of the card, under the middle of the lit tile */
@@ -1413,11 +1414,13 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .scan-table tbody tr.scan-active td[data-live="power"] { color: var(--green); font-weight: 600; }
 .scan-pane .scan-table tbody tr.playing { background: #0c2015; color: var(--text); box-shadow: inset 3px 0 0 var(--green); }
 .scan-table td.scan-why { color: var(--muted); max-width: 300px; overflow: hidden; text-overflow: ellipsis; }
-.scan-table td.scan-x { color: var(--dim); cursor: pointer; text-align: center; }
+.scan-table td.scan-x { color: var(--dim); cursor: pointer; text-align: center; padding-left: 12px; padding-right: 12px; font-size: 14px; user-select: none; }
 .scan-table td.scan-x:hover { color: var(--red); }
 .scan-table td.scan-x.on { color: var(--red); font-weight: 700; text-shadow: 0 0 6px rgba(255, 75, 62, .6); }
 .scan-st { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; }
 .scan-st.heard { background: rgba(60, 240, 124, .15); color: var(--green); }
+.scan-spk { width: 13px; height: 13px; margin: -2px 4px -2px -2px; vertical-align: middle; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.scan-spk path:first-child { fill: currentColor; }
 .scan-st.hold { background: rgba(111, 183, 255, .15); color: #6fb7ff; }
 .scan-st.sig { color: var(--green); padding-left: 0; }
 .scan-st.lock { background: rgba(255, 75, 62, .15); color: var(--red); }
@@ -1428,8 +1431,16 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .scan-log tbody tr, .scan-heat tbody tr { cursor: pointer; }
 .scan-pane .scan-heat th.hh { text-align: center; padding: 5px 0; width: 22px; min-width: 22px; }
 .scan-pane .scan-heat td.hc { padding: 0; width: 22px; height: 20px; border-left: 1px solid #10151c; }
-#scanKey.scanning { animation: scan-key-blink 1s steps(1) infinite; }
-@keyframes scan-key-blink { 50% { color: var(--green); border-color: var(--green); } }
+/* SCAN key while the active VFO scans: only its LED blinks, in the colour of the lit legend (MENU group) (lit or not, the key itself stays as it is) */
+.r-keys .keys #scanKey.scanning { animation: scan-key-blink 1s steps(1) infinite;
+  background: linear-gradient(var(--led), var(--led)) var(--led-at),
+    radial-gradient(closest-side, color-mix(in srgb, var(--led) 55%, transparent), transparent) var(--led-glow),
+    linear-gradient(180deg, #4a5059 0%, #30343b 50%, #24272c 100%); }
+.r-keys .keys #scanKey.scanning.on {
+  background: linear-gradient(var(--led), var(--led)) var(--led-at),
+    radial-gradient(closest-side, color-mix(in srgb, var(--led) 55%, transparent), transparent) var(--led-glow),
+    linear-gradient(180deg, #3a3f47, #2a2e34); }
+@keyframes scan-key-blink { 0% { --led: var(--kc); } 50% { --led: color-mix(in srgb, var(--kc) 20%, #000); } }
 .set-panel { zoom: 1.1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
 .set-subpanel.set-tx { grid-template-columns: minmax(0, 1fr); }
 /* pages with sub-pages (GENERAL, VFO): a row of sub-page keys, the open sub-page under it */
@@ -2521,3 +2532,5 @@ body.map-only .pkt-map.map-only-box { flex-direction: column; gap: 4px; }
 .med-panel[data-med-panel=channels] .med-form { grid-column: 2; grid-row: 1 / 4; margin-left: 10px; }
 .med-panel[data-med-panel=channels] .med-form[hidden], .med-panel[data-med-panel=channels] .med-map[hidden],
 .med-panel[data-med-panel=channels] .med-table-wrap[hidden] { display: none; }
+.scan-lock-key:not(:disabled):hover { color: var(--red); border-color: var(--red); }
+.scan-log td.scan-note { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

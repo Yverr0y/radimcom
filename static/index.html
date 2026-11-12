@@ -797,6 +797,10 @@ ecordings), play them in the browser">RECS</button>
             <span class="scan-tile-ico"><svg viewBox="0 0 24 24"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg></span>
             <span class="scan-tile-txt"><b>RANGE</b><small id="scanSubRange"></small></span>
             <span class="scan-tile-n"><b id="scanNRange"></b><small>channels</small></span></button>
+          <button class="scan-tile fmbc" data-src="fmbc" role="radio" title="FM BCAST: search the FM broadcast band 88–108 MHz (WFM) for stations; the VFO lands on the centre of each station, listens LISTEN seconds and goes on up the band">
+            <span class="scan-tile-ico"><svg viewBox="0 0 24 24"><path d="M12 13v8M9 21h6"/><circle cx="12" cy="11" r="2"/><path d="M8.5 7.5a5 5 0 0 0 0 7M15.5 7.5a5 5 0 0 1 0 7M5.6 4.6a9 9 0 0 0 0 12.8M18.4 4.6a9 9 0 0 1 0 12.8"/></svg></span>
+            <span class="scan-tile-txt"><b>FM BCAST</b><small id="scanSubFm">88–108 MHz · WFM</small></span>
+            <span class="scan-tile-n"><b id="scanNFm"></b><small>channels</small></span></button>
         </div>
         <div class="scan-card" id="scanCard" data-tile="mem">
           <div class="scan-sub" data-sub="mem">
@@ -824,6 +828,14 @@ ecordings), play them in the browser">RECS</button>
               <label class="key small toggle" title="STORE FOUND: every frequency heard for at least 1 s is stored as a memory in the group &quot;Scan YYYY-MM-DD&quot; (not when a memory is already there)"><input id="scanStore" type="checkbox">STORE FOUND</label>
             </div>
           </div>
+          <div class="scan-sub" data-sub="fmbc" hidden>
+            <span class="scan-lbl">BAND</span><b class="scan-big">88–108 MHz</b>
+            <span class="scan-lbl" title="WFM with the bandwidth of the VFO for WFM; grid 50 kHz">MODE</span><b class="scan-big">WFM</b>
+            <label class="scan-opt" title="How long each station found is heard before the scan goes on up the band">LISTEN
+              <input id="scanFmS" type="number" min="1" max="600" step="1"> s</label>
+            <label class="key small toggle" title="STORE FOUND: every station heard is stored as a WFM memory in the group &quot;FM YYYY-MM-DD&quot;, named by its RDS PS when it has one"><input id="scanFmStore" type="checkbox">STORE FOUND</label>
+            <span class="amsat-info">A station is found by the centre of its signal (the strongest point ±100 kHz around it), so the VFO lands on its centre, not on its side.</span>
+          </div>
         </div>
       </div>
       <!-- 2. the keys and what the scan does now; HOLD / SKIP / ◀ ▶ only while scanning -->
@@ -832,6 +844,7 @@ ecordings), play them in the browser">RECS</button>
         <span class="scan-run" id="scanRun" hidden>
           <button id="scanPause" class="key" title="HOLD on the channel heard now / CONTINUE the scan">❚❚ HOLD</button>
           <button id="scanSkip" class="key" title="SKIP: leave the channel heard now for 5 minutes (✕ in the table locks a channel out until STOP)">SKIP</button>
+          <button id="scanLockout" class="key scan-lock-key" title="LOCK OUT: leave the channel heard now out of the scan until STOP (as ✕ in its row; a click on the red ✕ in the table scans it again)">✕ LOCK OUT</button>
           <button id="scanPrev" class="key" title="Hold on the previous channel">◀</button>
           <button id="scanNext" class="key" title="Hold on the next channel">▶</button>
         </span>

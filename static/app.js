@@ -10528,15 +10528,19 @@ setInterval(() => {
 let scanData = null;          // last GET /api/scan of the active VFO
 let scanOptsCur = null;       // options shown (saved on the server)
 let scanPresets = [];
-let scanRowsKey = "";         // the rows are rebuilt only when the memories / channels change (inputs keep focus)
+let scanRowsKey = "";
+let scanRowsHover = false;    // the mouse is over the CHANNELS table: no rebuild (the rows stay under the pointer)
+// HEARD in the State column: a speaker (what is heard now), not ▶ (that looks like a play key)
+const SCAN_SPK = `<svg class="scan-spk" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>`;         // the rows are rebuilt only when the memories / channels change (inputs keep focus)
 let scanPolling = false;
 let scanPage = "scan";
 let scanLogRows = [];
 let scanSession = "";         // session of THIS SCAN
-const SCAN_RANGE_SRC = ["range", "view"];
-const SCAN_MODES = ["AM", "FM", "WFM", "USB", "LSB", "CW"];
+const SCAN_RANGE_SRC = ["range", "view", "fmbc"];
+const SCAN_MODES = ["AM", "FM"];           // a squelch scan needs AM or FM (WFM: the FM BCAST tile)
+const SCAN_FM = { from_hz: 88e6, to_hz: 108e6, step_hz: 50000 };   // FM BCAST (scanner.py FMBC_*)
 
-/** Tile chosen: "mem" / "view" / "range". */
+/** Tile chosen: "mem" / "view" / "range" / "fmbc". */
 function scanTile() {
   const s = scanOptsCur ? scanOptsCur.source : "all";
   return SCAN_RANGE_SRC.includes(s) ? s : "mem";
@@ -10583,6 +10587,8 @@ function scanFillOpts(o) {
   car.value = String(+o.carrier_min);
   $("scanKeep").value = o.keep_days;
   $("scanRec").checked = !!o.rec;
+  $("scanFmS").value = o.fm_s;
+  $("scanFmStore").checked = !!o.store;
   scanResumeInput();
   scanTilesShown();
 }
@@ -10613,6 +10619,7 @@ function scanTilesShown() {
   $("scanViewBand").textContent = band;
   $("scanViewInfo").textContent = `BW ${scanNum(v.bw / 1e3, 2)} kHz · grid ${scanNum(v.step_hz / 1e3, 3)} kHz (the bandwidth of the VFO for ${v.mode}). `
     + `The band is taken at START: zoom or move the spectrum first.`;
+  $("scanNFm").textContent = scanChans(SCAN_FM);
   // RANGE
   $("scanNRange").textContent = scanChans(o);
   $("scanSubRange").textContent = `${scanMHz(Math.min(o.from_hz, o.to_hz))}–${scanMHz(Math.max(o.from_hz, o.to_hz))} MHz · ${o.mode}`;
@@ -10642,6 +10649,7 @@ function scanOptsFromInputs() {
   num("scanPrioS", 0, 60, "prio_s");
   num("scanCarrier", 0, 120, "carrier_min");
   num("scanKeep", 1, 365, "keep_days");
+  num("scanFmS", 1, 600, "fm_s");
   o.rec = $("scanRec").checked;
   // the range inputs show rounded values (8.333 kHz): an input left as shown keeps the exact value (25/3 kHz of a
   // preset), else the airband grid would drift by 0.3 Hz per channel
@@ -10651,7 +10659,7 @@ function scanOptsFromInputs() {
   edited("scanStep", 0.1, 1000, "step_hz", 1e3, 3);
   edited("scanBw", 0.1, 250, "bw", 1e3, 2);
   o.pick = $("scanPick").value;
-  o.store = $("scanStore").checked;
+  o.store = (scanTile() === "fmbc" ? $("scanFmStore") : $("scanStore")).checked;   // one option, a key in each card
   return o;
 }
 /** Options sent with START: VISIBLE BAND takes the spectrum shown now (mode: the one just chosen, else that of the VFO). */
@@ -10741,7 +10749,9 @@ function renderScanRows() {
     : list.map((m) => [m.id, m.name, m.freq_hz, m.mode, m.bw, m.scan, m.scan_sq, m.scan_asq, m.scan_prio].join(",")).join(";"));
   const body = $("scanRows");
   body.parentElement.classList.toggle("grid", range);   // a band / range: no memory columns (SCAN, Name, BW, SQ, ASQ, PRIO)
-  if (key !== scanRowsKey) {
+  // while the mouse is over the table the rows are not rebuilt (a new channel heard would move the row under the
+  // pointer and the ✕ aimed at would be missed); only the live cells change, the rebuild comes when it leaves
+  if (key !== scanRowsKey && !(scanRowsHover && body.rows.length)) {
     scanRowsKey = key;
     const num = (v) => (v === null || v === undefined ? "" : v);
     const live5 = `<td class="num" data-live="power"></td><td class="num" data-live="floor"></td><td class="num" data-live="level"></td>
@@ -10779,12 +10789,13 @@ function renderScanRows() {
     xc.title = !c ? "" : out ? "LOCKED OUT until STOP: the scan skips this channel. Click to scan it again."
       : "LOCK OUT: leave this channel out of the scan until STOP";
     let state = "", kind = "";
-    if (tr.dataset.id === cur) { state = scanData.paused ? "HOLD" : "▶ HEARD"; kind = scanData.paused ? "hold" : "heard"; }
+    if (tr.dataset.id === cur) { state = scanData.paused ? "HOLD" : "HEARD"; kind = scanData.paused ? "hold" : "heard"; }
     else if (c && c.locked) { state = c.lock_s === null ? "LOCKED OUT" : `SKIP ${Math.ceil(c.lock_s / 60)} min`; kind = c.lock_s === null ? "lock" : "skip"; }
     else if (c && c.active) { state = "● signal"; kind = "sig"; }
     else if (x) { state = x.why; kind = "why"; }
     const sc = cell("state");
-    const html = !state ? "" : kind === "why" ? escHtml(state) : `<span class="scan-st ${kind}">${escHtml(state)}</span>`;
+    const html = !state ? "" : kind === "why" ? escHtml(state)
+      : `<span class="scan-st ${kind}">${kind === "heard" ? SCAN_SPK : ""}${escHtml(state)}</span>`;
     if (sc._html !== html) { sc._html = html; sc.innerHTML = html; }
     sc.title = kind === "lock" ? "Locked out until STOP (by ✕ or by CARRIER LOCKOUT). A click on the red ✕ scans it again."
       : kind === "skip" ? "Skipped by SKIP; it comes back by itself" : state;
@@ -10809,6 +10820,7 @@ function renderScanNow() {
   $("scanPause").textContent = on && sc.paused ? "▶ CONTINUE" : "❚❚ HOLD";
   $("scanPause").classList.toggle("on", on && sc.paused);
   $("scanSkip").disabled = !(on && sc.cur);
+  $("scanLockout").disabled = !(on && sc.cur);
   const msg = sc && sc.message ? `<span class="scan-msg">${escHtml(sc.message)}</span>` : "";
   if (!sc || !on) {
     $("scanStatus").className = "scan-status";
@@ -10837,6 +10849,7 @@ $("scanGo").addEventListener("click", () => {
 });
 $("scanPause").addEventListener("click", () => scanPost(st && st.scan && st.scan.paused ? "resume" : "pause"));
 $("scanSkip").addEventListener("click", () => scanPost("skip"));
+$("scanLockout").addEventListener("click", () => scanPost("lockout"));
 $("scanPrev").addEventListener("click", () => scanPost("step", { dir: -1 }));
 $("scanNext").addEventListener("click", () => scanPost("step", { dir: 1 }));
 $("scanCfgKey").addEventListener("click", () => {
@@ -10852,7 +10865,7 @@ $("scanSrc").addEventListener("click", async (e) => {
   const tileBefore = scanTile();
   scanOptsCur = { ...scanOptsFromInputs(), source: b.dataset.src === "mem" ? scanOptsCur.mem : b.dataset.src };
   if (st && st.scan && st.scan.on && b.dataset.src !== tileBefore) await scanPost("stop");
-  await scanSourceChanged(b.dataset.src === "range" ? scanOptsCur.mode : null, true);
+  await scanSourceChanged(b.dataset.src === "range" ? scanOptsCur.mode : b.dataset.src === "fmbc" ? "WFM" : null, true);
 });
 /** After a tile / chip / mode key: show it, save it; a running scan restarts with it (not after a tile: stopped = true),
  *  else the VFO takes the mode. */
@@ -10887,7 +10900,7 @@ $("scanCard").addEventListener("click", async (e) => {
   await scanSourceChanged(mode);
 });
 for (const id of ["scanAsq", "scanMargin", "scanResumeS", "scanPrioS", "scanCarrier", "scanKeep", "scanRec",
-  "scanFrom", "scanTo", "scanStep", "scanBw", "scanPick", "scanStore"]) $(id).addEventListener("change", scanSaveOpts);
+  "scanFrom", "scanTo", "scanStep", "scanBw", "scanPick", "scanStore", "scanFmS", "scanFmStore"]) $(id).addEventListener("change", scanSaveOpts);
 $("scanResume").addEventListener("change", () => { scanResumeInput(); scanSaveOpts(); });
 // SCAN / SQ / ASQ / PRIO of a memory: saved at once (empty SQ / ASQ = null)
 $("scanRows").addEventListener("change", async (e) => {
@@ -10901,11 +10914,19 @@ $("scanRows").addEventListener("change", async (e) => {
   await memChanged(mems.map((x) => (x.id === r.data.id ? r.data : x)));
   renderScanRows();
 });
-// ✕ of a row: lock the channel out until STOP / back in
-$("scanRows").addEventListener("click", (e) => {
+// ✕ of a row: lock the channel out until STOP / back in. On pointerdown: a click (down + up) is lost when the row
+// changes between the two while scanning.
+$("scanRows").addEventListener("pointerdown", (e) => {
+  if (e.button !== 0) return;
   const x = e.target.closest(".scan-x"), tr = e.target.closest("tr[data-id]");
-  if (x && tr && x.textContent) scanPost(x.classList.contains("on") ? "unlock" : "lock", { id: tr.dataset.id });
+  if (!x || !tr || !x.textContent) return;
+  e.preventDefault();
+  const on = !x.classList.contains("on");
+  x.classList.toggle("on", on);                // shown at once, the next status confirms it
+  scanPost(on ? "lock" : "unlock", { id: tr.dataset.id });
 });
+$("scanRows").addEventListener("pointerenter", () => { scanRowsHover = true; });
+$("scanRows").addEventListener("pointerleave", () => { scanRowsHover = false; renderScanRows(); });
 setInterval(() => { if (bodyTab === "scan" && !document.hidden) scanPoll(); }, 500);
 
 // ACTIVITY and HEATMAP: THIS SCAN (session of this VFO) or the history of all VFOs
@@ -10935,9 +10956,23 @@ function scanLogShown() {
   const q = $("scanLogFilter").value.trim().toLowerCase();
   return !q ? scanLogRows : scanLogRows.filter((r) => [r.name, (r.freq_hz / 1e6).toFixed(4), r.vfo, r.note, r.mode].join(" ").toLowerCase().includes(q));
 }
+/** An activity at the frequency of a memory (nearest within 500 Hz, the same mode first; a RANGE / FM BCAST scan has
+ *  no names): its name when the row has none (RDS PS stays), its note before the note of the scan (carrier lockout). */
+function scanLogMem(r) {
+  const hz = +r.freq_hz;
+  let best = null, bestD = 501;
+  for (const m of mems) {
+    const d = Math.abs(m.freq_hz - hz) + (m.mode === r.mode ? 0 : 0.5);
+    if (d < bestD) { best = m; bestD = d; }
+  }
+  if (!best) return r;
+  const note = [best.note, r.note].map((x) => (x || "").trim()).filter(Boolean).join(" · ");
+  return { ...r, name: r.name || best.name || "", note, mem_note: best.note || "" };
+}
 async function loadScanLog() {
+  if (!mems.length) await loadMems();
   const r = await memApi(`/api/scan/log?${scanShowQuery()}`, undefined, "GET");
-  scanLogRows = r.ok ? r.data.rows : [];
+  scanLogRows = r.ok ? r.data.rows.map(scanLogMem) : [];
   if (!r.ok) adError(`SCAN activity: ${r.error}`);
   renderScanLog();
 }
@@ -10948,7 +10983,7 @@ function renderScanLog() {
     <td class="play">${r.file ? "▶" : ""}</td><td>${local(r.time_utc)}</td><td>${escHtml(r.vfo || "")}</td>
     <td class="num">${fmtMemFreq(+r.freq_hz)}</td><td class="scan-name" title="${escHtml(r.name || "")}">${escHtml(r.name || "")}</td><td>${escHtml(r.mode)}</td>
     <td class="num">${(+r.duration_s).toFixed(1)} s</td><td class="num">${r.max_dbfs}</td><td class="num">${r.snr_db}</td>
-    <td>${escHtml(r.note || "")}</td></tr>`).join("");
+    <td class="scan-note" title="${escHtml(r.note || "")}">${escHtml(r.note || "")}</td></tr>`).join("");
   $("scanActN").textContent = scanLogRows.length ? `(${scanLogRows.length})` : "";
   $("scanLogEmpty").hidden = rows.length > 0;
   $("scanLogEmpty").textContent = scanEmptyText();

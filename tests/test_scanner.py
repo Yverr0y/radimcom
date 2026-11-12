@@ -68,10 +68,15 @@ class ScannerTest(unittest.TestCase):
         n = sdr.WF_SEGMENTS * sdr.WF_FFT
         t = np.arange(n)
         iq = (self.rng.normal(size=n) + 1j * self.rng.normal(size=n)) * 1e-3
-        for f, a in tones:
+        for tone in tones:
+            f, a = tone[:2]
             off = f - self.rx.cfg["center_hz"]
             if abs(off) < self.rx.fs / 2:
-                iq += a * np.exp(2j * np.pi * off / self.rx.fs * t)
+                ph = 2 * np.pi * off / self.rx.fs * t
+                if len(tone) > 2:                          # ("fm"): broadcast FM, music-like modulation, 75 kHz peak
+                    m = np.convolve(self.rng.normal(size=n), np.ones(64) / 8, "same")
+                    ph = ph + 2 * np.pi * 75e3 * np.cumsum(np.clip(m / 3, -1, 1)) / self.rx.fs
+                iq += a * np.exp(1j * ph)
         segs = iq.reshape(sdr.WF_SEGMENTS, sdr.WF_FFT) * self.win
         return np.fft.fftshift(np.mean(np.abs(np.fft.fft(segs, axis=1)) ** 2, axis=0)) / self.win.sum() ** 2
 
@@ -275,6 +280,57 @@ class ScannerTest(unittest.TestCase):
             if self.cur() == "P":
                 break
         self.assertEqual(self.cur(), "P")
+
+    def test_rec_switched_on_while_scanning(self):
+        mems = [{"id": "a", "name": "A", "freq_hz": 121.5e6, "mode": "AM", "bw": 8000, "groups": []}]
+        self.sc.start(mems, norm_opts({"rec": False}), self.rx)
+        self.run_blocks(20, [])
+        self.sc.command("opts", opts=norm_opts({"rec": True, "source": "fav"}))
+        self.run_blocks(30, [(121.5e6, 0.05)])
+        self.assertTrue(self.sc.opts["rec"])
+        self.assertEqual(self.sc.opts["source"], "all")    # what is scanned changes only with START
+        self.assertTrue(self.sc.rec_file and os.listdir(os.path.join(self.tmp, "scan")))
+
+    def test_fm_bcast_finds_the_stations_again_in_every_pass(self):
+        # the core power of a station goes up and down with its audio (loud music spreads it): those dips must not be
+        # learned as the noise floor of the station, else it is not found in the next pass
+        self.assertIsNone(self.sc.start([], norm_opts({"source": "fmbc", "fm_s": 3.0}), self.rx))
+        heard, k = [], 0
+        for _ in range(900):
+            k += 1
+            a = 0.004 if k % 3 else 0.0015                 # −8.5 dB every third block
+            self.run_blocks(1, [(88.5e6, a, "fm"), (88.9e6, a, "fm"), (95.0e6, a, "fm")])
+            if self.sc.state == "listen" and (not heard or heard[-1] != self.rx.cfg["tune_hz"]):
+                heard.append(self.rx.cfg["tune_hz"])
+            if len(heard) == 9:
+                break
+        self.assertEqual(heard, [88.5e6, 88.9e6, 95.0e6] * 3)
+
+    def test_fm_bcast_lands_on_the_station_centre(self):
+        self.assertEqual(norm_opts({"mode": "AM"}, {"mode": "USB"})["mode"], "AM")
+        self.assertEqual(norm_opts(None, {"mode": "WFM"})["mode"], "FM")
+        with self.assertRaises(ValueError):
+            norm_opts({"mode": "WFM"})
+        stations = [(88.5e6, 0.02, "fm"), (89.85e6, 0.01, "fm"), (95.0e6, 0.02, "fm")]
+        self.assertIsNone(self.sc.start([], norm_opts({"source": "fmbc", "fm_s": 1.0, "store": True}), self.rx))
+        stored = []
+        self.sc.on_store = stored.append
+        self.run_blocks(1, stations)
+        self.assertEqual(self.sc.n, 401)
+        self.assertEqual(self.rx.cfg["mode"], "WFM")
+        self.assertGreaterEqual(self.rx.cfg["bandwidth"]["WFM"], scanner.FMBC_BW_MIN)
+        for w in self.sc.windows:                          # tuner centre halfway between two grid points
+            self.assertAlmostEqual((w["center"] - scanner.FMBC_DC_OFF) % scanner.FMBC_STEP, 0.0, delta=1)
+        heard = []
+        for _ in range(400):
+            self.run_blocks(1, stations)
+            if self.sc.state == "listen" and (not heard or heard[-1] != self.rx.cfg["tune_hz"]):
+                heard.append(self.rx.cfg["tune_hz"])
+            if len(heard) == 4:
+                break
+        self.assertEqual(heard, [88.5e6, 89.85e6, 95.0e6, 88.5e6])   # each centre, up the band, then again
+        self.assertEqual([e["freq_hz"] for e in stored], [88500000, 89850000, 95000000])
+        self.assertTrue(stored[0]["groups"][0].startswith("FM ") and stored[0]["mode"] == "WFM")
 
 
 if __name__ == "__main__":

@@ -1270,6 +1270,8 @@ def api_scan_cmd():
             saved = dict(opts, **{k: prev[k] for k in ("from_hz", "to_hz", "step_hz", "mode", "bw")})
         cfg["scan"] = saved
         save_config_later()
+        if action == "opts" and receiver.scan.on:   # REC, squelch, continue … take effect in the running scan at once
+            receiver.scan.command("opts", opts=opts)
     if action == "start":
         busy = [name for name, on in SCAN_RAW_DECODERS if on()]
         if busy:

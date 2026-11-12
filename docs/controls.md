@@ -217,21 +217,26 @@ of that VFO (orange LED): that VFO stays audible at CUE level while another VFO 
   chosen in the editor; a red ● before the name = recalling it starts a recording); click a tag to recall the memory.
 
 - <a id="scan"></a>**MENU → SCAN**: scanner. While the SCAN key is lit, the bottom part has a **SCAN** tab (one switch for all VFOs;
-  the tab shows the scan of the active VFO, the key blinks green while it scans and the tab has a green ●). The scan runs on the active VFO only,
+  the tab shows the scan of the active VFO, the LED of the key blinks (in the colour of its lit legend) while it scans and the tab has a green ●). The scan runs on the active VFO only,
   the other VFOs keep working. From the top:
-  - **What is scanned – three tiles** (each shows its number of channels); the one chosen is lit and points with an arrow at the card with its settings:
+  - **What is scanned – four tiles** (each shows its number of channels); the one chosen is lit and points with an arrow at the card with its settings:
     - **MEMORY**: the stored channels – **CHANNELS** chips: ALL, ★ FAVOURITES and one chip per memory group, each with the number of memories scanned.
       Mode and bandwidth come from each memory. Memories with SCAN unchecked, DAB and DSD memories and channels out of the range of the VFO are left out
       (the reason is in the State column).
-    - **VISIBLE BAND**: the part of the spectrum shown now, taken at START (zoom or move the spectrum first). **MODE** keys (AM / FM / WFM / USB / LSB / CW)
+    - **VISIBLE BAND**: the part of the spectrum shown now, taken at START (zoom or move the spectrum first). **MODE** keys (AM / FM; SSB and CW have no carrier for the squelch, WFM has FM BCAST)
       choose the demodulation and switch the VFO to it; the bandwidth is the one the VFO uses for that mode, the grid half of it. The tuner is **not moved**:
       the spectrum and waterfall stay as they are and the whole band shown is scanned at once (but ~6 % at each edge of the dongle band, listed as left out).
     - **RANGE**: **PRESET** chips (airband 118–137 MHz AM 8.33 kHz, PMR446, 2 m, 70 cm, LPD433, marine VHF, CB) fill FROM / TO MHz, STEP kHz, MODE and BW kHz;
       the **MODE** keys choose the demodulation (BW is set to the bandwidth the VFO uses for it) and switch the VFO to it too. A range wider than the band of
       the dongle is scanned window by window (the tuner moves).
       **STORE FOUND**: every frequency heard for at least 1 s becomes a memory in the group **Scan YYYY-MM-DD** (not when a memory is already there).
+    - **FM BCAST**: the FM broadcast band **88–108 MHz in WFM** (fixed), searched for stations with its own algorithm: grid 50 kHz, only the core ±18 kHz of
+      each channel is measured and a station is taken only where it is the strongest point ±100 kHz around, so the VFO lands on the **centre** of the station,
+      not on its side (the tuner centre sits halfway between two grid points, away from the DC spike). Each station is heard **LISTEN** s (8), then the scan
+      goes on to the next station up the band and after 108 MHz from 88 MHz again. **◀ ▶** step between the stations found. The bandwidth is that of the VFO
+      for WFM (at least 150 kHz). **STORE FOUND**: each station becomes a WFM memory in the group **FM YYYY-MM-DD**, named by its RDS PS when it has one.
     A click on another tile while scanning **stops the scan** (START scans the new source); a click on another chip or mode key continues the scan with it at once. At START of a VISIBLE BAND / RANGE scan the VFO shows the mode scanned.
-  - **Keys**: **START / STOP** is one key. Only while scanning: **HOLD / CONTINUE** (hold on the channel; the normal squelch of the VFO works), **SKIP** (leave the
+  - **Keys**: **START / STOP** is one key. Only while scanning: **HOLD / CONTINUE** (hold on the channel; the normal squelch of the VFO works), **✕ LOCK OUT** (leave the channel heard now out until STOP, as ✕ in its row), **SKIP** (leave the
     channel and skip it for 5 min), **◀ ▶** (hold on the previous / next channel). Tuning by hand or recalling a memory holds the scan too.
     **● REC**: each activity is recorded to a WAV file (subfolder `scan` of the recordings folder) with the 0.5 s before the signal came back.
   - **⚙** (the key shows a summary; a click opens the settings, mostly set once):
@@ -246,9 +251,10 @@ of that VFO (orange LED): that VFO stays audible at CUE level while another VFO 
     (yellow line), ● REC, and the numbers of the scan (channels, channels per second, tuner window, locked out, left out, stored).
   - Page **CHANNELS**: memories – **SCAN**, **SQ** (own level, dBFS), **ASQ** (own margin, dB) and **PRIO** are edited in place (saved in the memory, a running scan
     takes them at once); a band / range – only the channels heard, active or locked out, without the memory columns (SCAN, Name, BW, SQ, ASQ, PRIO). Level, Noise and SQL are the live values in dBFS, Hits = how many times it stopped
-    there, Last = time of the last activity. **✕** in a row locks the channel out until STOP (red ✕ and the state LOCKED OUT; a click again scans it again; the tooltip says which). The states are coloured labels (▶ HEARD, HOLD, ● signal, SKIP n min, LOCKED OUT). The columns are as wide as their content.
+    there, Last = time of the last activity. **✕** in a row locks the channel out until STOP (red ✕ and the state LOCKED OUT; a click again scans it again; the tooltip says which). The states are coloured labels (🔊 HEARD, HOLD, ● signal, SKIP n min, LOCKED OUT). The columns are as wide as their content.
   - Page **ACTIVITY**: what was heard – time, VFO, frequency, name, mode, length, max. level, SNR, note (carrier lockout); **▶** plays the recording, a double click
     tunes the frequency, **CSV** saves the rows shown. Page **HEATMAP**: seconds of activity per hour of the day (local time) for the 60 busiest frequencies; a click tunes.
+  - In **ACTIVITY** a row at the frequency of a memory (within 500 Hz) shows the name of the memory when it has none and the note of the memory in Note.
   - **SHOW** (both pages): **THIS SCAN** (default) = only what the scan of this VFO heard since it was started on this source. A START of **another source, group or
     range** (also another visible band) begins a new scan, so both pages start empty; a STOP and START of the same source continues it. **CLR** empties them by hand.
     Nothing is deleted from the disk: **TODAY / 7 DAYS / 31 DAYS / ALL KEPT** show the history of all VFOs (`data\logs\scan_YYYY-MM-DD.csv`), kept KEEP HISTORY days.
