@@ -53,6 +53,7 @@ RAW_WAIT_S = 1.5              # a RAW row waits this long for a decoded message 
 RESTART_HZ = 5000000          # a bigger retune restarts rtl_433 (its FSK detector depends on the frequency)
 RESTART_WAIT_S = 2.0          # at least this long between two starts, if rtl_433 keeps ending
 REPEAT_S = 2.0                # a device repeats its message: same text within this time = one row with a count
+REPEAT_ROWS = 50              # how many recent rows a repeat is looked for in
 SAME_PACKET_S = 0.5           # two decoders reporting one packet (same level and frequency) come this close together
 TCP_QUEUE = 64                # raw blocks waiting for rtl_433; more = it is stuck, drop
 MAX_HISTORY = 300
@@ -112,6 +113,7 @@ class Channel:
         self.log = collections.deque(maxlen=10)       # last lines rtl_433 printed (for errors)
         self.decoded = collections.deque(maxlen=50)   # (time, rssi, snr) of decoded packages, to tell RAW ones apart
         self.pending = []                             # RAW candidates waiting RAW_WAIT_S
+        self.plock = threading.Lock()
         self.attempts = 0                             # analyzer blocks with a demodulation attempt (stderr)
         self.n_codes = 0                              # their codes lines (stdout), in the same order
         self.codes = {}
@@ -150,7 +152,7 @@ class Channel:
         out[0::2] = y.real
         out[1::2] = y.imag
         out *= CH_GAIN
-        out += 127.5
+        out += 128.0                                 # + 127.5, and truncating below rounds
         np.clip(out, 0, 255, out=out)
         return out.astype(np.uint8).tobytes()
 
@@ -197,6 +199,7 @@ class Channel:
             pass
 
     def feed(self, raw):
+        self._raw_flush()
         if self.conn is None:
             return
         try:
@@ -285,16 +288,22 @@ class Channel:
     def _raw_block(self, b):
         if not b or "count" not in b or int(b["count"][0]) < RAW_MIN_PULSES:
             return
-        self.pending.append((time.time(), b))
+        with self.plock:
+            self.pending.append((time.time(), b))
         self._raw_flush()
 
     def _raw_flush(self):
+        """Also called with every block of samples, so the last RAW rows do not wait for the next package."""
+        if not self.pending:
+            return
         now = time.time()
-        while self.pending and now - self.pending[0][0] >= RAW_WAIT_S:
-            t, b = self.pending.pop(0)
-            if self._was_decoded(t, b):
-                continue
-            self.dec._handle_raw(b, self)
+        ready = []
+        with self.plock:
+            while self.pending and now - self.pending[0][0] >= RAW_WAIT_S:
+                ready.append(self.pending.pop(0))
+        for t, b in ready:
+            if not self._was_decoded(t, b):
+                self.dec._handle_raw(b, self)
 
     def _was_decoded(self, t, b):
         if "level" not in b:
@@ -441,9 +450,9 @@ class IsmDecoder:
         pkt = [mhz, j.get("rssi"), j.get("snr")]     # equal for every decoder that read the same packet
         with self.lock:
             m = None
-            for row in reversed(self.history):
+            for row in list(self.history)[-REPEAT_ROWS:][::-1]:
                 if now - row["last"] > REPEAT_S:
-                    break
+                    continue                          # rows are in order of their first message, not of their last
                 if now - row["last"] < SAME_PACKET_S and pkt == row["pkt"] and j.get("rssi") is not None:
                     if model in row["models"]:
                         m = dict(row, again=True)         # the same packet again: nothing new

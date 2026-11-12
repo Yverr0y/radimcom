@@ -133,3 +133,13 @@ RSSI: -12.1 dB SNR: 15.4 dB Noise: -27.5 dB
     assert "Pulse Width Modulation" in r["text"] and "{31}060000f6" in r["text"] and "34 pulses" in r["text"]
     assert r["freq_hz"] == 433920000 + 20800 and r["view"].startswith("https://triq.org/") and "OOK_PWM" in r["flex"]
     assert "SDR: something" in ch.log
+
+
+def test_repeat_found_behind_an_older_row(monkeypatch):
+    d, ch, _ = make()
+    now = [1000.0]
+    monkeypatch.setattr(ism.time, "time", lambda: now[0])
+    for t, model, dev, rssi in ((0, "A", 1, -5.0), (0.5, "B", 2, -9.0), (1.0, "A", 1, -5.5), (2.6, "A", 1, -5.7)):
+        now[0] = 1000.0 + t
+        d._handle(msg(model, rssi, dev=dev), ch)
+    assert [m["n"] for m in d.history] == [3, 1]
