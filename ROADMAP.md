@@ -7,5 +7,5 @@
 4. ~~**APRS decoder.**~~ (done: packet decoder on the DECODERS page, 1200 Bd AFSK and 9600 Bd G3RUH)
 5. ~~**AIS decoder.**~~ (done in 0.113: DECODERS › AIS, both channels 161.975 / 162.025 MHz at once, own GMSK decoder, ships on a map, see [AIS](docs/decoders/ais.md))
 6. ~~**HFDL decoder:** multichannel HFDL (High Frequency Data Link) decoder with dumphfdl.~~ (done in 0.113: DECODERS › HFDL, 2.9–22 MHz, all channels inside the band of the VFO, see [HFDL](docs/decoders/hfdl.md))
-7. **RTL-SDR Blog V4 support** - ~~remove the 24 MHz lower limit for the V4~~ (done in 0.113: tunes from 0.5 MHz, HF through its built-in upconverter); test receive range, HF, all modes and decoders, VDL2, DAB, ISM.
+7. ~~**RTL-SDR Blog V4 support** - remove the 24 MHz lower limit for the V4; test receive range, HF, all modes and decoders, VDL2, DAB, ISM.~~ (done: tunes from 0.5 MHz since 0.113, HF through its built-in upconverter; receive range, HF, all modes and decoders tested)
 
