@@ -24,12 +24,12 @@ Details, drivers and running from the git sources: [Installation](docs/installat
 | | RTL-SDR | RTL-SDR Blog V4 | LimeSDR Mini \* | Airspy R2 |
 |---|---|---|---|---|
 | Receive range | 24–1766 MHz | 0.5–1766 MHz (from 0.113) | 1–3500 MHz | 24–1750 MHz |
-| Receiver bandwidth (sample rate) in RADIMCOM | up to 2.4 MS/s | up to 2.4 MS/s, on the [roadmap](ROADMAP.md) | up to 2.4 MS/s | 2.5 MS/s (fixed) |
+| Receiver bandwidth (sample rate) in RADIMCOM | up to 2.4 MS/s | up to 2.4 MS/s | up to 2.4 MS/s | 2.5 MS/s (fixed) |
 | HF through an upconverter | yes | built-in upconverter, used by its driver below 28.8 MHz | yes | yes |
 | Transmit | – | – | yes (optional, off by default) | – |
-| All audio modes and FT8, WEFAX, CW, RTTY, SSTV, PACKET, ACARS | yes | on the [roadmap](ROADMAP.md) | yes | yes |
-| VDL2, DAB / DAB+, ISM | yes | on the [roadmap](ROADMAP.md) | – | – |
-| Driver | WinUSB (Zadig) | WinUSB (Zadig), on the [roadmap](ROADMAP.md) | FTDI D3XX | WinUSB |
+| All audio modes and FT8, WEFAX, CW, RTTY, SSTV, PACKET, ACARS | yes | yes | yes | yes |
+| VDL2, DAB / DAB+, ISM | yes | yes | – | – |
+| Driver | WinUSB (Zadig) | WinUSB (Zadig) | FTDI D3XX | WinUSB |
 
 \* Tested with LimeSDR Mini v1.x.
 
