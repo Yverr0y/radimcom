@@ -1972,6 +1972,8 @@ html.compact .r-keys .keys button { --led-at: left 3px top 2px / 6px 3px no-repe
 .r-keys .keys button, html.compact .r-keys .keys button, html.compact .r-keys .key {
   min-width: 50px; height: 28px; padding: 0 6px; }
 .r-keys .keys > button:only-child, html.compact .r-keys .keys > button:only-child { height: auto; }
+/* a key that does not work now (FILTER in DAB): stays in place, dimmed */
+.r-keys .keys button:disabled { opacity: .4; cursor: default; filter: none; transform: none; }
 /* keys as in design A: a flat LED window in the top middle of the key, the legend a little lower under it;
    a lit key has the legend glowing in the colour of its group */
 .r-keys .keys button, html.compact .r-keys .keys button { padding-top: 5px;

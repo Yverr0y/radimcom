@@ -196,9 +196,9 @@ function passband() {
   return [f - bw / 2, f + bw / 2];
 }
 
-function segButtons(el, items, active, label) {
+function segButtons(el, items, active, label, disabled = false) {
   // Redraw only on a change: replacing the button under the mouse causes flicker and lost clicks.
-  const html = items.map((v) => `<button data-v="${v}" class="${String(v) === String(active) ? "active" : ""}">${label(v)}</button>`).join("");
+  const html = items.map((v) => `<button data-v="${v}" class="${String(v) === String(active) ? "active" : ""}"${disabled ? " disabled" : ""}>${label(v)}</button>`).join("");
   if (el._html === html) return;
   el._html = html;
   el.innerHTML = html;
@@ -263,7 +263,8 @@ function renderControls() {
   segButtons($("modes"), MODE_KEYS, st.dab ? "DAB" : st.mode, (m) => m);
   // The buttons stay fixed; a width set by dragging the edge in the spectrum has no button (none is lit).
   const bw = st.bandwidth[st.mode];
-  segButtons($("bandwidths"), st.dab ? [] : BANDWIDTHS[st.mode], bw, fmtBw);   // DAB: the ensemble has a fixed width
+  // DAB: the ensemble has a fixed width – the keys stay in place, unlit and disabled
+  segButtons($("bandwidths"), BANDWIDTHS[st.mode] || BANDWIDTHS.WFM, st.dab ? null : bw, fmtBw, !!st.dab);
   const set = stepSet(st.mode);
   stepHz = stepMem[set];
   segButtons($("steps"), STEP_SETS[set], stepHz, fmtBw);
