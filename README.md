@@ -51,6 +51,7 @@ Up to four SDRs at once, each assigned to a VFO by its serial number; one dongle
 - **Digital-mode decoders:** FT8, WEFAX, CW, RTTY, SSTV and PACKET (AX.25 1200 / 9600 Bd, APRS with map). → [DECODE](docs/controls.md#function-keys)
 - **Aircraft data link:** ACARS and VDL2 with CPDLC and ADS-C decoded to plain text and a map of the aircraft, and **HFDL** on HF (2.9–22 MHz, all channels of a band at once). → [Aircraft](docs/decoders/aircraft.md) · [HFDL](docs/decoders/hfdl.md)
 - **AIS** ships on 161.975 / 162.025 MHz (own decoder, both channels at once) with a map of ships, base stations and aids to navigation. → [AIS](docs/decoders/ais.md)
+- **ADS-B** aircraft on 1090 MHz (own Mode S / ADS-B decoder) with a list, a map with tracks and the raw messages. → [ADS-B](docs/decoders/adsb.md)
 - **DAB / DAB+ radio**, **digital voice** (DMR, P25, D-Star, YSF, …; test version) and **ISM** 433 / 868 MHz devices. → [DAB](docs/decoders/dab.md) · [DSD](docs/decoders/dsd.md) · [ISM](docs/decoders/ism.md)
 - **Satellite tracking:** passes, world map, Doppler correction and a K3NG rotor, no other program needed. → [Satellites](docs/satellites.md)
 - **Rotor control map:** click a place or a memory channel with a location (LAT / LON) and the rotor turns there; channels shown by their MEMORIES groups; beam sector on the map turns with the antenna; page CONNECTION disconnects the SAT tracker, memory recall or the map from the rotor. → [Rotor control](docs/satellites.md#rotor-control-map)

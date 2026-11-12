@@ -218,7 +218,7 @@
 ecordings), play them in the browser">RECS</button>
     </div></div>
     <div class="kgroup" data-g="DECODE"><span class="klabel">DECODE</span><div class="keys">
-      <button id="decKey" class="key" aria-controls="decPane" title="DEC: decoders on/off – shows or hides the DECODERS tab, one page for each decoder (FT8, WEFAX, CW, RTTY, SSTV, PACKET, ACARS, VDL2, HFDL, AIS, ISM); DAB and DSD are modes with their own tabs">DEC</button>
+      <button id="decKey" class="key" aria-controls="decPane" title="DEC: decoders on/off – shows or hides the DECODERS tab, one page for each decoder (FT8, WEFAX, CW, RTTY, SSTV, PACKET, ACARS, VDL2, HFDL, AIS, ADS-B, ISM); DAB and DSD are modes with their own tabs">DEC</button>
     </div></div>
     <div class="kgroup" data-g="TRACKING"><span class="klabel">TRACKING</span><div class="keys">
       <button id="satKey" class="key sat-key" aria-label="Satellite tracking" aria-controls="amsatPane" title="Satellite tracking: the SATELLITES tab (passes, map, Doppler, rotor)"><svg class="sat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.6 7C3.2 12.6 8.4 18.8 15 17.4Z"/><path d="M9.8 12.2L13.4 8.6"/><circle cx="14.6" cy="7.4" r="1.6"/><path d="M16.6 3.1A5 5 0 0 1 19 5.5"/><path d="M17.2.6A8 8 0 0 1 21.5 4.9"/><path d="M7.6 15.4L5.8 20.6M11 17.2L12.4 20.6M3.2 21.2H15"/></svg></button>
@@ -656,6 +656,68 @@ ecordings), play them in the browser">RECS</button>
       <div class="ais-map" id="aisMapBox" hidden>
         <div class="ais-map-main"><div id="aisMap"></div><div id="aisMapNote" class="muted"></div></div>
         <div class="ais-map-list" id="aisMapList"></div>
+      </div>
+    </section>
+
+    <section class="card ft8 adsb" id="adsbCard" data-dec="adsb" hidden>
+      <div class="ft8-head">
+        <label class="key small toggle" data-dec-on="adsb" title="ADS-B (aircraft, 1090 MHz) on/off. Takes the VFO to 1090 MHz at 2.4 MS/s and decodes Mode S / ADS-B from the raw samples; mutes the audio of the VFO"><input id="adsbOn" type="checkbox">ON</label>
+        <div class="bands" id="adsbBands"></div>
+        <button id="adsbInfoKey" class="key small" title="Show / hide the description of the decoder (the table or map takes its place)">INFO</button>
+        <span id="adsbInfo" class="muted"></span>
+        <span id="adsbPaused" class="scroll-paused" hidden title="A click on a message holds the list still. Turn the mouse wheel over the messages to resume.">SCROLL PAUSED</span>
+        <div class="bands" id="adsbViews">
+          <button class="key small on" data-view="ac" title="Aircraft heard: the newest data of each">AIRCRAFT</button>
+          <button class="key small" data-view="map" title="Aircraft with a position, their tracks and the QTH on a map">MAP</button>
+          <button class="key small" data-view="msgs" title="The newest decoded Mode S / ADS-B messages">MESSAGES</button>
+        </div>
+        <label class="wf-opt" id="adsbRangeOpt" title="Range map: the farthest position decoded in each 2° sector, for aircraft up to 10000, 20000, 30000 ft and at any altitude. Collected all the time ADS-B runs and kept in data\adsb_range.json (also after a restart)"><input type="checkbox" id="adsbRange">RANGE</label>
+        <button id="adsbRangeClr" class="key small" title="Start the range map again (click twice: the collected range is deleted)">CLR RANGE</button>
+        <input id="adsbFilter" class="pkt-filter" type="search" placeholder="filter" title="Show only aircraft / messages containing this text (ICAO address, flight, squawk, country, category)">
+        <label class="wf-opt log-opt" title="Write to the daily log data\logs\adsb_YYYY-MM-DD.txt (UTC, shared by all VFOs; one line per aircraft at most once a minute)"><input type="checkbox" data-log="adsb">LOG</label>
+        <button id="adsbClear" class="key small" title="Clear the aircraft, the messages and the counters">CLR</button>
+      </div>
+      <p class="note" id="adsbNote" hidden>ADS-B and Mode S: the transponders of aircraft answer the radars and broadcast their identity, position,
+        altitude and speed on <b>1090 MHz</b> (pulse position modulation, 1 Mbit/s, 56 or 112 bits with a 24-bit CRC), decoded here in RADIMCOM
+        (no external program). ON takes the VFO to 1090.000 MHz at 2.4 MS/s (an Airspy stays at 2.5 MS/s); the audio is muted and
+        ACARS, VDL2, DAB, ISM, HFDL and AIS are turned off, because they need the dongle elsewhere. Turning ADS-B off gives the previous sample rate back.
+        Messages: <b>DF17 / DF18</b> ADS-B (flight, category, airborne and surface position, velocity, vertical rate, squawk and emergency,
+        selected altitude and QNH), <b>DF11</b> all-call replies and the radar replies <b>DF0 / 4 / 5 / 16 / 20 / 21</b> (altitude, squawk) of the
+        aircraft already heard. Positions are CPR-decoded from an even and an odd message (or from the last position); distance and azimuth
+        from the station location (SETTINGS › GENERAL › LOCATION). One or a few wrong bits of a known aircraft are corrected with the CRC (counted as "fixed").
+        Range: line of sight, 100–300 km with a 1090 MHz antenna outdoors; a short whip indoors hears the nearest aircraft only.
+        Country from the ICAO address; a click on the ICAO address opens globe.adsb.fi, on the flight adsb.lol, in a new tab.
+        An aircraft not heard for 1 min is grey, after 10 min it is removed.
+        <b>RANGE</b> (MAP) draws the farthest position decoded in each 2° sector from the station, for aircraft up to
+        10000 ft (green), 20000 ft (yellow), 30000 ft (orange) and at any altitude (violet); it is collected the whole time ADS-B
+        runs, kept in <code>data\adsb_range.json</code> between restarts, and starts again when the station location moves.
+        Only positions confirmed by an earlier position of the same aircraft count. CLR RANGE (twice) starts it again.
+        Registration and type of each aircraft are looked up once on adsb.fi (adsb.lol when adsb.fi does not answer; needs internet);
+        an aircraft heard here without a position of its own (radar replies only, or no position messages yet) gets the position
+        adsb.fi sees, every 30 s: <span class="ext">blue</span> in the list and a blue aircraft on the map.</p>
+      <div class="ais-status">
+        <div id="adsbStatus" class="muted"></div>
+      </div>
+      <div class="ft8-table" id="adsbAcBox">
+        <table class="adsb-ac-table">
+          <colgroup><col class="c-cty"><col class="c-icao"><col class="c-flt"><col class="c-reg"><col class="c-sqk"><col class="c-alt"><col class="c-vr"><col class="c-gs"><col class="c-trk"><col class="c-pos"><col class="c-dist"><col class="c-az"><col class="c-cat"><col class="c-sig"><col class="c-n"><col class="c-age"></colgroup>
+          <thead><tr><th>Country</th><th title="24-bit ICAO address; click for globe.adsb.fi">ICAO</th><th title="Flight number / call sign; click for adsb.lol">Flight</th><th title="Registration and aircraft type from adsb.fi (looked up once for each aircraft; needs internet)">Reg / Type</th><th title="Mode A code (7500 hijack, 7600 radio failure, 7700 emergency: red)">Squawk</th><th title="Barometric altitude, feet (GNSS height when only that is known: marked G); ▲▼ climbing / descending">Alt ft</th><th title="Vertical rate, feet per minute">V/S</th><th title="Ground speed, knots (IAS / TAS when only that is known)">GS kt</th><th title="Track over ground (heading when only that is known)">Track</th><th title="Newest position decoded here; in blue: from adsb.fi / adsb.lol for an aircraft without a position of its own (looked up every 30 s). Click to show it on the MAP">Position</th><th title="Distance from the station location">Dist</th><th title="Azimuth from the station location">Az</th><th title="Emitter category">Category</th><th title="Level of the last message, dBFS">Signal</th><th title="Number of messages">Msgs</th><th title="Time since the last message">Seen</th></tr></thead>
+          <tbody id="adsbAcRows"></tbody>
+        </table>
+        <div id="adsbAcEmpty" class="ft8-empty">No aircraft yet. Turn ADS-B on with a 1090 MHz antenna (a 6.9 cm whip will do for the nearest aircraft);
+          an airliner sends several messages a second.</div>
+      </div>
+      <div class="ais-map" id="adsbMapBox" hidden>
+        <div class="ais-map-main"><div id="adsbMap"></div><div id="adsbMapNote" class="muted"></div></div>
+        <div class="ais-map-list" id="adsbMapList"></div>
+      </div>
+      <div class="ft8-table" id="adsbMsgBox" hidden>
+        <table class="adsb-msg-table">
+          <colgroup><col class="c-utc"><col class="c-sig"><col class="c-icao"><col class="c-df"><col class="c-kind"><col class="c-data"><col class="c-hex"></colgroup>
+          <thead><tr><th>UTC</th><th title="Level of the message, dBFS">Signal</th><th>ICAO</th><th title="Downlink format">DF</th><th>Message</th><th>Data</th><th title="The message in hex (with the corrected bits)">Hex</th></tr></thead>
+          <tbody id="adsbMsgRows"></tbody>
+        </table>
+        <div id="adsbMsgEmpty" class="ft8-empty">No messages yet.</div>
       </div>
     </section>
 
@@ -1160,7 +1222,7 @@ ecordings, played in the browser -->
               <div class="sats-pick" id="locPickMap" hidden></div>
               <p class="note" id="locPickNote" hidden>Click the place of the antenna, then SAVE. Map tiles: OpenStreetMap, need internet.</p>
               <p class="note">The location is used by the <b>satellites</b> (passes, Doppler, rotor tracking), the <b>packet decoder</b>
-                (APRS distances and map), <b>ACARS / VDL2</b>, <b>HFDL</b> and <b>AIS</b> (maps). The same location is used on all VFOs.</p>
+                (APRS distances and map), <b>ACARS / VDL2</b>, <b>HFDL</b>, <b>AIS</b> and <b>ADS-B</b> (maps, distances). The same location is used on all VFOs.</p>
               <p class="note">A locator gives the centre of its square (JN88WQ: about 2 km from any point in it; enough for tracking).
                 Latitude and longitude give an exact point. A new installation starts at 0.0 / 0.0: set your own place.</p>
             </div>
