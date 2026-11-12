@@ -275,7 +275,7 @@ body {
 .ann { display: inline-flex; align-items: center; padding: .1em .22em; border-radius: 2px; font: 700 1em/1.1 system-ui, sans-serif;
   letter-spacing: .04em; color: #1e252d; }
 .ann.on { color: var(--green); text-shadow: 0 0 5px rgba(60, 240, 124, .6); }
-.ann.vfo-mode { color: var(--green); text-shadow: 0 0 5px rgba(60, 240, 124, .6); min-width: 3em; justify-content: center; }
+.ann.vfo-mode { color: var(--green); text-shadow: 0 0 5px rgba(60, 240, 124, .6); min-width: 3em; }   /* left edge in line with RX above it */
 .ann.agc { min-width: 3.2em; justify-content: center; }
 /* AGC+: the + is always in place, unlit unless AGC+ is on */
 .ann.agc i { font-style: normal; color: #1e252d; text-shadow: none; }
@@ -294,9 +294,8 @@ body {
 .vfo-row:not(.active) .ann.afi.on { animation: none; }
 
 /* tone squelch row between the frequency and the info row: set CTCSS tone and DCS code.
- * grey = off (or not FM), orange = on, glowing = the tone / code is received now */
+ * dark like the unlit annunciators = off (or not FM), orange = on, glowing = the tone / code is received now */
 .vfo-tone { display: flex; align-items: center; gap: .8em; height: 1.45em; font-size: clamp(8px, .84cqw, 10.5px); white-space: nowrap; }
-.vfo-tone .tsq { color: #5f6874; }
 .vfo-tone .tsq b { margin-left: .35em; font-weight: 700; }
 .vfo-tone .ctcss b { min-width: 2.6em; }
 .vfo-tone .dcs b { min-width: 2.4em; }

@@ -39,7 +39,7 @@ squelch gets a green underline, a transmitting one turns red.
   blinking orange = connecting (waiting, opening the dongle, LimeSDR calibration), grey = disconnected or error
   (hover for details). A chained VFO shows CHAIN, one out of the range of its dongle owner OOR.
 - **Frequency** in the middle.
-- **Tone squelch row** under it: the set **CTCSS** tone and **DCS** code (keys TSQ-C / TSQ-D): grey = off or not FM,
+- **Tone squelch row** under it: the set **CTCSS** tone and **DCS** code (keys TSQ-C / TSQ-D): dark like the unlit annunciators = off or not FM,
   orange = on, lit orange box = the tone / code is received now.
 - **Info row** under that (each item has a fixed place): RX / TX (red while transmitting), the filter width, the audio
   **HPF** and **LPF** with their cutoffs (lit when on), **ST** (WFM: lit while stereo is decoded, grey without the 19 kHz pilot or with S/M set to mono),

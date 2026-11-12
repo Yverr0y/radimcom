@@ -9463,7 +9463,7 @@ const PASS_ICON = {
   hpf: `<svg class="inf-ico" viewBox="60 180 680 440" aria-hidden="true"><path d="M100 576H150Q190 576 215 535L390 265Q415 228 460 228H695"/></svg>`,
   lpf: `<svg class="inf-ico" viewBox="60 180 680 440" aria-hidden="true"><path d="M100 228H340Q390 228 415 270L580 540Q610 576 650 576H695"/></svg>`,
 };
-// Tone squelch row under the frequency: the set CTCSS tone and DCS code, grey = off, orange = on (FM), glowing = received.
+// Tone squelch row under the frequency: the set CTCSS tone and DCS code, dark (as an unlit annunciator) = off, orange = on (FM), glowing = received.
 const vfoToneHtml = () => `<div class="vfo-tone"><span class="ann tsq ctcss">CTCSS<b></b></span>` +
   `<span class="ann tsq dcs">DCS<b></b></span></div>`;
 function renderVfoTone(row, s) {
