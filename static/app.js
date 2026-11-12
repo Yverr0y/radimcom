@@ -7976,6 +7976,8 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && bo
 
 // A click on the clock switches UTC / local time (LOC); the choice is remembered.
 let clockLocal = recall("clockLocal") === "1";
+const CLOCK_DAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+const CLOCK_MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
 function tickClock() {
   const d = new Date();
@@ -7986,6 +7988,12 @@ function tickClock() {
   $("clock").setAttribute("aria-label", `${t} ${clockLocal ? "local time" : "UTC"}`);
   $("zoneLoc").classList.toggle("on", clockLocal);
   $("zoneUtc").classList.toggle("on", !clockLocal);
+  // date under the digits, of the same zone as the time
+  const [wd, day, mon, year] = clockLocal
+    ? [d.getDay(), d.getDate(), d.getMonth(), d.getFullYear()]
+    : [d.getUTCDay(), d.getUTCDate(), d.getUTCMonth(), d.getUTCFullYear()];
+  const date = `${CLOCK_DAYS[wd]} ${String(day).padStart(2, "0")} ${CLOCK_MONTHS[mon]} ${year}`;
+  if ($("clockDate").textContent !== date) $("clockDate").textContent = date;
 }
 function toggleClock() {
   clockLocal = !clockLocal;
@@ -10732,18 +10740,37 @@ const VU_REF_DBFS = -6;
 let vuAnalysers = null;
 const vuLevel = [-99, -99];
 const vuBuf = new Float32Array(1024);
+// Above each column a round CLIP LED (0 dBFS reached, held 1.5 s); between the columns the dB numbers of the LEDs.
+// Peak hold: the highest LED reached stays lit for 1 s, then falls.
+const VU_LABELS = { "-40": "40", "-20": "20", "-12": "12", "-6": "6", "0": "0" };
 for (const col of document.querySelectorAll(".vu-ch")) {
-  col.innerHTML = VU_STEPS.map((d) => `<i class="${d > 3 ? "red" : d > 0 ? "yellow" : ""}"></i>`).join("");
+  col.innerHTML = VU_STEPS.map((d) => `<i class="${d > 3 ? "red" : d > 0 ? "yellow" : ""}"></i>`).join("") + `<i class="clip"></i>`;
 }
-const vuLeds = [...document.querySelectorAll(".vu-ch")].map((c) => [...c.children]);
+for (const col of document.querySelectorAll(".vu-db")) {
+  col.innerHTML = VU_STEPS.map((d) => `<b>${VU_LABELS[d] ?? ""}</b>`).join("") + `<b class="clip">CLIP</b>`;
+}
+const vuLeds = [...document.querySelectorAll(".vu-ch")].map((c) => [...c.children].slice(0, VU_STEPS.length));
+const vuClip = [...document.querySelectorAll(".vu-ch")].map((c) => c.lastElementChild);
+const vuPeak = [-99, -99], vuPeakAt = [0, 0], vuClipAt = [-1e9, -1e9];
 function animateVu() {
+  const now = performance.now();
   vuAnalysers?.forEach((a, ch) => {
     a.getFloatTimeDomainData(vuBuf);
     let peak = 0;
     for (const x of vuBuf) peak = Math.max(peak, Math.abs(x));
     const db = 20 * Math.log10(peak + 1e-9) - VU_REF_DBFS;
     vuLevel[ch] = Math.max(db, vuLevel[ch] - 0.8);   // fast attack, slow decay (~48 dB/s)
-    vuLeds[ch].forEach((led, i) => led.classList.toggle("on", vuLevel[ch] >= VU_STEPS[i]));
+    if (db >= vuPeak[ch]) { vuPeak[ch] = db; vuPeakAt[ch] = now; }
+    else if (now - vuPeakAt[ch] > 1000) vuPeak[ch] -= 0.8;
+    if (peak >= 0.999) vuClipAt[ch] = now;
+    let pk = -1;
+    for (let i = 0; i < VU_STEPS.length; i++) if (vuPeak[ch] >= VU_STEPS[i]) pk = i;
+    vuLeds[ch].forEach((led, i) => {
+      const on = vuLevel[ch] >= VU_STEPS[i];
+      led.classList.toggle("on", on);
+      led.classList.toggle("pk", i === pk && !on);
+    });
+    vuClip[ch].classList.toggle("on", now - vuClipAt[ch] < 1500);
   });
   requestAnimationFrame(animateVu);
 }

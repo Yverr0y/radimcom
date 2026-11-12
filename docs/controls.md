@@ -140,8 +140,9 @@ squelch gets a green underline, a transmitting one turns red.
 - **TRACKING** group:
   - **SAT**: the satellite key switches to the SATELLITES tab and back, see [Satellite tracking](satellites.md).
   - **RCTRL**: shows or hides the **ROTOR CONTROL** tab (for all VFOs, remembered in the browser): a map to aim the rotor at a place, see [Rotor control map](satellites.md#rotor-control-map).
-- **Volume** (top right): vertical MAIN (active VFO) and CUE faders, stereo L/R level meter. Below them the speaker button
-  is MUTE (green = sound on, red = muted). Under it are two recording keys for the active VFO, which work independently of each other and go on with the page closed:
+- **Volume** (top right, MONITOR): vertical MAIN (active VFO) and CUE faders with a dB scale between them (+3 … −∞ dB; 0 = no gain),
+  stereo L/R level meter with the dB numbers (0 dB = −6 dBFS), a peak hold of 1 s and a round CLIP LED above each column (0 dBFS reached).
+  Below them the speaker key is MUTE (green LED = sound on, red = muted). Under it are two recording keys for the active VFO, which work independently of each other and go on with the page closed:
   - **REC** records everything until switched off, also the silence of a closed squelch. After 15 minutes it continues in a new file.
   - **REC SQ** records only while there is audio (open squelch), each session in its own file. A session ends when the squelch stays closed for 1 s; that silence is not saved, and a burst shorter than 0.3 s is dropped. In modes without a squelch, or with the squelch off, one session runs until the key is switched off, with no length limit.
 
@@ -266,7 +267,7 @@ squelch gets a green underline, a transmitting one turns red.
    and the DLS text (artist / song) under them; a text wider than the window runs to its end and back (the whole text is in the tooltip).
 4. **RDS** (station name, RadioText, PI, PTY, TP/TA); empty without RDS.
 
-The clock (top right) switches between local time and UTC with a click. Small bars under the S-meter show the CPU load and
+The clock (top right) switches between local time and UTC with a click; the date under it is of the same zone. Small bars under the S-meter show the CPU load and
 memory use of the PC running RADIMCOM (amber over 70 %, red over 90 %). A click on the RADIMCOM logo opens the project on GitHub. When a newer version is released, the logo turns red; hovering shows the new version and a click opens its release page in a new tab.
 The page is laid out for at least 1920 × 820 px and scaled to the browser window, so the layout does not reflow in small windows.
 

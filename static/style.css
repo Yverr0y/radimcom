@@ -145,9 +145,11 @@ body {
 .r-brand small { color: var(--yellow); letter-spacing: 0; }
 .logo { color: var(--green); }
 /* RADIMCOM logo above the clock, centred in its column, the version under it.
- * Letters: white vinyl stuck on the aluminium – thin, with only a small shadow at the edge (SVG units: 1 screen px ≈ 5 units). */
+ * Letters: print on the panel in the colour of the other legends (--ink), engraved like them – no raised side, no glow
+ * (SVG units: 1 screen px ≈ 5 units). */
 .r-logo { display: block; height: 36px; width: auto; max-width: 100%; color: #e8edf2; margin: 6px 0 0; overflow: visible; }
-.r-logo-letters { filter: drop-shadow(0 4px 0 #b3bcc6) drop-shadow(0 4px 0 #6a7480) drop-shadow(0 3px 0 #2b3138) drop-shadow(0 10px 8px rgba(0, 0, 0, .8)); }
+.r-logo-letters > g { stroke: var(--ink, #b4bdc8); }
+.r-logo-letters { filter: drop-shadow(0 -5px 0 rgba(0, 0, 0, .9)) drop-shadow(0 5px 0 rgba(255, 255, 255, .1)); }
 /* ring LED above the I, raised like the letters: the unlit body carries the 3D side and the shadow, the lit ring pulses over it */
 .r-logo-led-body { filter: drop-shadow(0 4px 0 #0b5a28) drop-shadow(0 4px 0 #063218) drop-shadow(0 3px 0 #021a0b) drop-shadow(0 10px 8px rgba(0, 0, 0, .8)); }
 /* opacity only, so the shading and glow fade together and the filter does not have to be animated */
@@ -157,7 +159,6 @@ body {
 .r-logo-link { display: contents; cursor: pointer; }   /* the logo opens GitHub; the link adds no box of its own */
 /* a newer version is released: red letters; a click opens its release page */
 .r-logo-link.outdated .r-logo-letters > g { stroke: url(#logoFaceOld); }
-.r-logo-link.outdated .r-logo-letters { filter: drop-shadow(0 4px 0 #a33a3a) drop-shadow(0 4px 0 #6a1c1c) drop-shadow(0 3px 0 #3a0e0e) drop-shadow(0 10px 8px rgba(0, 0, 0, .8)); }
 /* logo and version centred in the column above the clock */
 .r-info-text .r-brandline { order: -1; align-self: stretch; display: flex; flex-direction: column; align-items: center; gap: 2px; }
 /* version under the logo; a newer one blinks beside it, out of the flow, so the version stays centred */
@@ -1769,11 +1770,154 @@ html.compact .r-bands .bands button { min-width: 36px; padding-left: 5px; paddin
   border: 1px solid #1d2024; box-shadow: 0 3px 4px rgba(0, 0, 0, .75), inset 0 1px 0 #fff;
 }
 
+/* ---------- front panel details: legends, clock window, fader scale, meter, LED windows in the keys ---------- */
+/* legend of a group printed on the panel: the name in a bracket that spans the group (TIME, MONITOR, RECORD) */
+.r-gh { align-self: stretch; display: flex; align-items: flex-end; gap: 5px; font: 700 8px/1 system-ui, sans-serif;
+  letter-spacing: .18em; color: var(--ink); text-shadow: var(--engrave); white-space: nowrap; }
+.r-gh::before, .r-gh::after { content: ""; flex: 1; min-width: 6px; height: 4px; border-top: 1px solid color-mix(in srgb, var(--ink) 55%, transparent); }
+.r-gh::before { border-left: 1px solid color-mix(in srgb, var(--ink) 55%, transparent); }
+.r-gh::after { border-right: 1px solid color-mix(in srgb, var(--ink) 55%, transparent); }
+/* the legend stays clear of the window under it (the milled edge of the window is drawn 1 px outside its box) */
+.r-grp { display: flex; flex-direction: column; gap: 6px; }
+.vol > .r-gh { margin-bottom: 2px; }
+.vol > .spk + .r-gh { margin-top: 5px; }   /* under the raised speaker key and its shadow */
+
+/* clock: unlit segments faintly visible, under the digits the date and the LOC / UTC annunciators */
+.r-clock { flex-direction: column; align-items: stretch; gap: 5px; padding: 8px 12px 6px; }
+#clock { justify-content: center; }
+#clock polygon, #clock circle { fill: rgba(190, 225, 200, .07); }
+#clock .on { fill: rgba(190, 225, 200, .55); }
+.clock-sub { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  font: 700 10px/1 system-ui, sans-serif; letter-spacing: .12em; color: rgba(190, 225, 200, .5); }
+.clock-zone { flex-direction: row; gap: 8px; }
+.clock-zone small { font-size: 10px; letter-spacing: .08em; color: rgba(190, 225, 200, .09); }
+#zoneLoc.on { text-shadow: 0 0 5px rgba(255, 181, 71, .55); }
+#zoneUtc.on { text-shadow: 0 0 5px rgba(60, 240, 124, .55); }
+
+/* under the logo: the type of the set between two lines, the version small */
+.r-tag { align-self: stretch; display: flex; align-items: center; gap: 6px; margin-top: 3px; white-space: nowrap;
+  font: 700 7.5px/1 system-ui, sans-serif; letter-spacing: .2em; color: var(--ink); text-shadow: var(--engrave); }
+.r-tag::before, .r-tag::after { content: ""; flex: 1; height: 1px; background: color-mix(in srgb, var(--ink) 50%, transparent); }
+.r-ver { font-size: 8px; letter-spacing: .1em; color: var(--ink-dim); }
+
+/* faders: an empty slot (no level colours), a dark ribbed cap with a line (white MAIN, orange CUE), the dB scale between them */
+.vol-sliders { gap: 4px; }
+.vol input[type=range] { --track: #030405; }
+#cueVolume { --cap-line: var(--orange); }
+.vol input[type=range]::-webkit-slider-thumb {
+  background: linear-gradient(180deg, transparent 4px, var(--cap-line, #f2f4f6) 4px, var(--cap-line, #f2f4f6) 6px, transparent 6px),
+              repeating-linear-gradient(180deg, rgba(0, 0, 0, .5) 0, rgba(0, 0, 0, .5) 1px, transparent 1px, transparent 2px),
+              linear-gradient(180deg, #7a828c, #3a3f46 50%, #1b1e22);
+  border: 1px solid #0b0c0e; border-top-color: #9aa2ac; box-shadow: 0 3px 4px rgba(0, 0, 0, .75), inset 0 1px 0 rgba(255, 255, 255, .3);
+}
+.vol input[type=range]::-moz-range-thumb {
+  background: linear-gradient(180deg, transparent 3px, var(--cap-line, #f2f4f6) 3px, var(--cap-line, #f2f4f6) 5px, transparent 5px),
+              repeating-linear-gradient(180deg, rgba(0, 0, 0, .5) 0, rgba(0, 0, 0, .5) 1px, transparent 1px, transparent 2px),
+              linear-gradient(180deg, #7a828c, #3a3f46 50%, #1b1e22);
+  border: 1px solid #0b0c0e; border-top-color: #9aa2ac; box-shadow: 0 3px 4px rgba(0, 0, 0, .75), inset 0 1px 0 rgba(255, 255, 255, .3);
+}
+/* scale: the middle of the 12 px cap travels 84 px in the 96 px slot */
+.vol-scale { display: flex; flex-direction: column; align-items: center; gap: 3px;
+  font: 700 9px system-ui, sans-serif; letter-spacing: .06em; color: var(--ink-dim); text-shadow: var(--engrave); }
+.vol-scale > div { position: relative; width: 17px; height: 96px; }
+.vol-scale i { position: absolute; left: 0; right: 0; bottom: calc(6px + var(--f) * 84px); height: 8px; transform: translateY(50%);
+  font: 700 7.5px/8px system-ui, sans-serif; letter-spacing: 0; text-align: center; color: var(--ink); }
+.vol-scale i::before, .vol-scale i::after { content: ""; position: absolute; top: 50%; width: 3px; height: 1px; background: var(--ink); }
+.vol-scale i::before { left: 0; }
+.vol-scale i::after { right: 0; }
+.vol-scale i.m::before, .vol-scale i.m::after { width: 2px; opacity: .6; }
+
+/* meter: 12 LEDs and a round CLIP LED in each column, the dB numbers between the columns, peak hold */
+.vu-ch i { height: 5px; }
+.vu-ch i.clip { width: 5px; align-self: center; border-radius: 50%; background: #3a1412; }
+.vu-ch i.clip.on { background: var(--red); box-shadow: 0 0 5px rgba(255, 75, 62, .9); }
+.vu-ch i.pk { background: var(--green); }
+.vu-ch i.yellow.pk { background: var(--yellow); }
+.vu-ch i.red.pk { background: var(--red); }
+.vu-db { display: flex; flex-direction: column-reverse; justify-content: space-between; width: 14px; }
+.vu-db b { display: block; height: 5px; font: 700 6.5px/5px system-ui, sans-serif; letter-spacing: 0; text-align: center;
+  color: var(--ink); text-shadow: none; white-space: nowrap; }
+.vu-db b.clip { font-size: 5.5px; }
+
+/* LED window in every key of the head (function keys, band keys, VFO keys): a small recessed window in the top left
+ * corner, above the legend, dark while off, lit in the colour of --led while the key is on. It is a background layer,
+ * so the key keeps its size. The lit key stays pressed in; the LED line along its bottom is gone. */
+.r-keys .keys button, .r-bands .bands button, .vfo-keys .vfo-sel, .spk, .rec {
+  --led-at: left 4px top 2px / 8px 3px no-repeat;
+  --led-glow: left -2px top -4px / 20px 15px no-repeat;
+  --key-lit: inset 0 2px 3px rgba(0, 0, 0, .55), 0 1px 0 #08090a;
+}
+html.compact .r-keys .keys button { --led-at: left 3px top 2px / 6px 3px no-repeat; --led-glow: left -3px top -4px / 18px 15px no-repeat; }
+.r-keys .keys button, .r-bands .bands button, .vfo-keys .vfo-sel {
+  background: linear-gradient(180deg, #050607 1px, #15181b 1px) var(--led-at),
+    linear-gradient(180deg, #4a5059 0%, #30343b 50%, #24272c 100%);
+}
+.r-keys .keys button.active, .r-keys .keys button.on, .r-keys #atuKey.busy, .r-bands .bands button.active, .vfo-keys .vfo-sel.on {
+  background: linear-gradient(var(--led), var(--led)) var(--led-at),
+    radial-gradient(closest-side, color-mix(in srgb, var(--led) 55%, transparent), transparent) var(--led-glow),
+    linear-gradient(180deg, #3a3f47, #2a2e34);
+  box-shadow: var(--key-lit);
+}
+#agcPlusKey.on.clip, #spurKey.on.learning, #satKey.on { box-shadow: var(--key-lit); }
+/* each group of function keys has its own colour of the LED and of the lit legend (--kc; the band and VFO keys stay yellow).
+ * Red is left out: it means clipping (AGC+) and learning (SP). */
+.r-keys .kgroup { --kc: var(--yellow); }
+.r-keys .kgroup[data-g="VIEW"] { --kc: #e6edf5; }
+.r-keys .kgroup[data-g="MODE"] { --kc: #ffd84a; }
+.r-keys .kgroup[data-g="FILTER"] { --kc: #ff9a3c; }
+.r-keys .kgroup[data-g="GAIN"] { --kc: #3cf07c; }
+.r-keys .kgroup[data-g="STEP"] { --kc: #40d8ff; }
+.r-keys .kgroup[data-g="TUNE"] { --kc: #b8ef3a; }
+.r-keys .kgroup[data-g="AUDIO"] { --kc: #b693ff; }
+.r-keys .kgroup[data-g="DECODE"] { --kc: #ff7ad1; }
+.r-keys .kgroup[data-g="TRACKING"] { --kc: #6db3ff; }
+.r-keys .kgroup[data-g="MENU"] { --kc: #2fe0c0; }
+.r-keys .keys button { --led: var(--kc); }
+.r-keys .keys button.active, .r-keys .keys button.on, .r-keys #atuKey.busy { color: var(--kc); }
+/* blinking keys (AFI on, ATU listening): the group colour dimmed, legend and LED together */
+@keyframes afi-key-blink { 50% { color: color-mix(in srgb, var(--kc, #ffd84a) 40%, #000); --led: color-mix(in srgb, var(--kc, #ffd84a) 40%, #000); } }
+/* VFO key with the squelch open on an inactive VFO: green LED, the key not pressed */
+.vfo-keys .vfo-sel.busy { --led: var(--green); box-shadow: var(--key-raised);
+  background: linear-gradient(var(--led), var(--led)) var(--led-at),
+    radial-gradient(closest-side, color-mix(in srgb, var(--led) 55%, transparent), transparent) var(--led-glow),
+    linear-gradient(180deg, #4a5059 0%, #30343b 50%, #24272c 100%); }
+.vfo-keys .vfo-sel.on.busy { box-shadow: var(--key-lit); }
+.vfo-keys .vfo-sel.tx { background: var(--red); box-shadow: 0 0 12px rgba(255, 75, 62, .7); }
+
+/* speaker and REC keys: a wider LED window. Speaker: green = sound on, pressed with a red LED = muted.
+ * REC / REC SQ: pressed with a red LED while recording (blinking while a file is written, steady while REC SQ waits). */
+.spk, .rec { --led-at: left 8px center / 13px 5px no-repeat; --led-glow: left 0 center / 29px 17px no-repeat; }
+.rec-dot { display: none; }
+.spk { --led: var(--green); color: #eef1f5; box-shadow: var(--key-raised);
+  background: linear-gradient(var(--led), var(--led)) var(--led-at),
+    radial-gradient(closest-side, color-mix(in srgb, var(--led) 55%, transparent), transparent) var(--led-glow),
+    linear-gradient(180deg, #4a5059 0%, #30343b 50%, #24272c 100%); }
+.spk.on { --led: var(--red); box-shadow: var(--key-lit);
+  background: linear-gradient(var(--led), var(--led)) var(--led-at),
+    radial-gradient(closest-side, color-mix(in srgb, var(--led) 55%, transparent), transparent) var(--led-glow),
+    linear-gradient(180deg, #3a3f47, #2a2e34); }
+.rec { background: linear-gradient(180deg, #050607 2px, #2a0d0b 2px) var(--led-at),
+    linear-gradient(180deg, #4a5059 0%, #30343b 50%, #24272c 100%); }
+.rec.on, .rec.armed { --led: var(--rec-red); box-shadow: var(--key-lit);
+  background: linear-gradient(var(--led), var(--led)) var(--led-at),
+    radial-gradient(closest-side, color-mix(in srgb, var(--led) 55%, transparent), transparent) var(--led-glow),
+    linear-gradient(180deg, #3a3f47, #2a2e34); }
+.rec.on { animation: rec-led-blink 1s steps(1) infinite; }
+@keyframes rec-led-blink { 50% { --led: #5a1512; } }
+
 /* ---------- tabs drawn on the screen ---------- */
 .body-tabs { padding: 4px 8px 0; background: #070b10; border-bottom-color: #1d2733; }
 .body-tabs button { border-color: transparent; background: transparent; color: #6b7684; }
 .body-tabs button:hover { color: #aab4c0; }
-.body-tabs button.on { background: #0f1620; color: var(--yellow); border-color: #1d2733; box-shadow: inset 0 2px 0 var(--yellow); }
+/* the lit tab has the colour of the key group that opens it (--kc of .r-keys): DAB / DSD = MODE, DECODERS = DECODE,
+   SATELLITES / ROTOR CONTROL = TRACKING, RECORDINGS = AUDIO (RECS), MEMORIES / SCAN / SETTINGS = MENU; SPECTRUM stays yellow */
+.body-tabs button { --tc: var(--yellow); }
+.body-tabs button[data-tab="dab"], .body-tabs button[data-tab="dsd"] { --tc: #ffd84a; }
+.body-tabs button[data-tab="dec"] { --tc: #ff7ad1; }
+.body-tabs button[data-tab="sat"], .body-tabs button[data-tab="rot"] { --tc: #6db3ff; }
+.body-tabs button[data-tab="recs"] { --tc: #b693ff; }
+.body-tabs button[data-tab="mem"], .body-tabs button[data-tab="scan"], .body-tabs button[data-tab="set"] { --tc: #2fe0c0; }
+.body-tabs button.on { background: #0f1620; color: var(--tc); border-color: #1d2733; box-shadow: inset 0 2px 0 var(--tc); }
 
 /* ---------- MEM window: aluminium title bar ---------- */
 .drawer { border-color: #000; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 20px 60px rgba(0, 0, 0, .75); }
@@ -1825,7 +1969,7 @@ html[data-skin="paint"][data-ink="dark"] {
 }
 html[data-skin="alu-light"] #logoFace stop, html[data-ink="dark"] #logoFace stop { stop-color: #20252b; }
 html[data-skin="alu-light"] .r-logo-letters, html[data-ink="dark"] .r-logo-letters {
-  filter: drop-shadow(0 4px 0 #3a4048) drop-shadow(0 4px 0 #15181c) drop-shadow(0 3px 0 rgba(0, 0, 0, .35)) drop-shadow(0 6px 6px rgba(0, 0, 0, .35)); }
+  filter: drop-shadow(0 5px 0 rgba(255, 255, 255, .55)) drop-shadow(0 -5px 0 rgba(0, 0, 0, .12)); }
 /* lighter panels: softer shadows of the milled key beds and grooves */
 html[data-skin="alu-light"] .keys, html[data-skin="alu-light"] .r-bands .bands,
 html[data-ink="dark"] .keys, html[data-ink="dark"] .r-bands .bands {
