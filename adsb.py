@@ -26,6 +26,7 @@ import threading
 import time
 
 import numpy as np
+from scipy.ndimage import maximum_filter1d
 
 FREQ_HZ = 1090000000
 RATE = 2400000            # RTL dongle: 2.4 MS/s
@@ -41,10 +42,12 @@ CPR_PAIR_S = 10           # an even and an odd position at most this far apart g
 PHASES = (-0.4, -0.2, 0.0, 0.2, 0.4)   # sub-sample phases tried for each preamble (in samples)
 PREAMBLE_SNR = 1.7        # pulse energy / gap energy of a preamble
 MIN_LEVEL = 2.0           # and the pulses this far above the median level of the block
+PULSE_SNR = 1.3          # and each of the 4 pulses this far above the gaps
 MAX_PICKS = 20000         # preamble candidates tried per block at most
 
 POLY = 0xFFF409
 
+KNOWN_DF = (0, 4, 5, 11, 16, 17, 18, 20, 21)
 LONG_DF = (16, 17, 18, 19, 20, 21, 22, 24)
 SHORT_DF = (0, 4, 5, 11)
 DF_NAMES = {0: "Short air-air surveillance", 4: "Altitude reply", 5: "Identity reply", 11: "All-call reply",
@@ -95,6 +98,7 @@ SYN112 = _bit_syndromes(112)
 SYN56 = _bit_syndromes(56)
 FIX112 = {int(s): k for k, s in enumerate(SYN112) if k >= 5}     # syndrome of a single wrong bit (not in the DF) -> bit
 FIX56 = {int(s): k for k, s in enumerate(SYN56) if k >= 5}
+FIX112_KEYS = np.array(sorted(FIX112), np.int64)
 
 
 # ---------------------------------------------------------------- field decoding
@@ -460,37 +464,42 @@ class Demod:
             return at(a_us) - at(b_us)
 
         # pulses at 0, 1, 3.5, 4.5 µs (0.5 µs each); quiet at 0.5–1, 1.5–3.5, 5–7.5 µs
-        hi = (energy(0.5, 0) + energy(1.5, 1.0) + energy(4.0, 3.5) + energy(5.0, 4.5)) / (2.0 * spu)
+        p1, p2, p3, p4 = energy(0.5, 0), energy(1.5, 1.0), energy(4.0, 3.5), energy(5.0, 4.5)
+        hi = (p1 + p2 + p3 + p4) / (2.0 * spu)
         lo = (energy(1.0, 0.5) + energy(3.5, 1.5) + energy(7.5, 5.0)) / (5.0 * spu)
-        noise = float(np.median(buf)) + 1e-9
-        ok = (hi > PREAMBLE_SNR * lo) & (hi > MIN_LEVEL * noise)
-        cand = np.flatnonzero(ok)
-        out = []
-        if len(cand):
-            score = hi[cand] / (lo[cand] + 1e-9)
-            # one per pulse group: the best score within 1 µs
-            order = np.argsort(-score)
-            taken = np.zeros(m, bool)
-            picks = []
-            w = max(1, int(round(spu)))
-            for i in order[:MAX_PICKS]:
-                s = cand[i]
-                if taken[s]:
-                    continue
-                taken[max(0, s - w):s + w + 1] = True
-                picks.append(s)
-            picks.sort()
-            starts = np.repeat(np.asarray(picks, np.float64), len(PHASES)) + np.tile(PHASES, len(picks))
-            base = starts[:, None]
-            e1 = _interp(c, base + self.b1) - _interp(c, base + self.b0)
-            e2 = _interp(c, base + self.b2) - _interp(c, base + self.b1)
-            bits = (e1 > e2).astype(np.uint8)
-            conf = np.abs(e1 - e2) / (e1 + e2 + 1e-12)
-            level = (hi[np.repeat(picks, len(PHASES))])
-            for j in range(len(starts)):
-                out.append((bits[j], conf[j], float(level[j]), float(starts[j]), t0 + starts[j] / self.fs))
+        noise = float(np.median(buf[::4])) + 1e-9
+        # every pulse on its own above the quiet parts (the average alone lets noise spikes through)
+        pmin = np.minimum(np.minimum(p1, p2), np.minimum(p3, p4)) / (0.5 * spu)
+        ok = (hi > PREAMBLE_SNR * lo) & (pmin > PULSE_SNR * lo) & (hi > MIN_LEVEL * noise)
         self.tail = buf[m:]
-        return out
+        if not ok.any():
+            return None
+        # one per pulse group: the best score within ±1 µs (non-maximum suppression, vectorized)
+        w = max(1, int(round(spu)))
+        score = np.where(ok, hi / (lo + 1e-9), 0.0)
+        mx = maximum_filter1d(score, size=2 * w + 1, mode="constant")
+        picks = np.flatnonzero(ok & (score >= mx))
+        if len(picks) > 1:
+            picks = picks[np.diff(picks, prepend=-10 * w) > w]
+        picks = picks[:MAX_PICKS]
+        nph = len(PHASES)
+        starts = np.repeat(picks.astype(np.float64), nph) + np.tile(PHASES, len(picks))
+        group = np.repeat(np.arange(len(picks)), nph)
+        # first the 5 bits of the downlink format: only known formats are sliced further
+        base = starts[:, None]
+        e1 = _interp(c, base + self.b1[:5]) - _interp(c, base + self.b0[:5])
+        e2 = _interp(c, base + self.b2[:5]) - _interp(c, base + self.b1[:5])
+        b5 = (e1 > e2)
+        df = (b5[:, 0] * 16 + b5[:, 1] * 8 + b5[:, 2] * 4 + b5[:, 3] * 2 + b5[:, 4]).astype(np.int64)
+        keep = np.isin(df, KNOWN_DF)
+        if not keep.any():
+            return None
+        starts, group = starts[keep], group[keep]
+        base = starts[:, None]
+        e1 = _interp(c, base + self.b1) - _interp(c, base + self.b0)
+        e2 = _interp(c, base + self.b2) - _interp(c, base + self.b1)
+        return {"bits": (e1 > e2).astype(np.uint8), "conf": np.abs(e1 - e2) / (e1 + e2 + 1e-12),
+                "level": hi[picks[group]], "start": starts, "time": t0 + starts / self.fs, "group": group}
 
 
 _u = (np.arange(256, dtype=np.float32) - 127.5) / 127.5
@@ -669,24 +678,37 @@ class AdsbDecoder:
     # ---------- messages ----------
 
     def _block(self, demod, mag, t):
-        cands = demod.process(mag, t)
-        if not cands:
+        r = demod.process(mag, t)
+        if r is None:
             return
-        bits = np.array([c[0] for c in cands], np.uint8)
+        bits = r["bits"]
         df, nbits, syn = check(bits)
-        flips = lowconf_fix(bits, np.array([c[1] for c in cands]), df, syn)
         now = time.time()
-        last_end = -1e9
         with self.lock:
             known = {k for k, a in self.aircraft.items() if now - a["last"] < KNOWN_S}
-        np_ = len(PHASES)
-        for g in range(0, len(cands), np_):
-            # the phases of one preamble: a clean one first, then the corrected ones
-            for j in sorted(range(g, min(g + np_, len(cands))), key=lambda j: syn[j] != 0):
-                got = self._try(j, cands[j], bits[j], int(df[j]), int(nbits[j]), int(syn[j]), flips.get(j), known, now, last_end)
-                if got:
-                    last_end = cands[j][3] + (8 + int(nbits[j])) * demod.spu
-                    break
+        known_int = np.array([int(k, 16) for k in known], np.int64)
+        flips = lowconf_fix(bits, r["conf"], df, syn)
+        flipped = np.zeros(len(df), bool)
+        if flips:
+            flipped[list(flips)] = True
+        es = (df == 17) | (df == 18)
+        good = (es & ((syn == 0) | np.isin(syn, FIX112_KEYS) | flipped)) | ((df == 11) & ((syn & ~0x7F) == 0)) \
+            | (np.isin(df, (0, 4, 5, 16, 20, 21)) & np.isin(syn, known_int))
+        rows = np.flatnonzero(good)
+        if not len(rows):
+            return
+        # the phases of one preamble: a clean one first, then the corrected ones
+        rows = rows[np.lexsort((syn[rows] != 0, r["group"][rows]))]
+        last_end = -1e9
+        done = -1
+        for j in rows:
+            g = int(r["group"][j])
+            if g == done:
+                continue
+            cand = (None, None, float(r["level"][j]), float(r["start"][j]), float(r["time"][j]))
+            if self._try(j, cand, bits[j], int(df[j]), int(nbits[j]), int(syn[j]), flips.get(int(j)), known, now, last_end):
+                last_end = cand[3] + (8 + int(nbits[j])) * demod.spu
+                done = g
 
     def _try(self, j, cand, bits, d, nb, s, flip, known, now, last_end):
         """Accepts one candidate if its parity is right (or made right by correcting bits of an aircraft already heard)."""
