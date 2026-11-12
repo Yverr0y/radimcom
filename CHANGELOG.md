@@ -50,7 +50,7 @@ Released after the test beta (GitHub branch `0.114beta1`). Many parts are contri
 
 ### Minor Fixes
 
-- **New screenshots in the docs** for the 0.114 look: main screen, all SATELLITES pages, and new ones of SCAN, ROTOR CONTROL (MAP, CONNECTION), MEMORIES (CHANNELS, GROUPS), RECORDINGS, SETTINGS (SKINS, S-METER, VFO) and the SSTV / WEFAX galleries; README has four more in Screenshots.
+- **New screenshots in the docs** for the 0.114 look: main screen and WFM with RDS (with the whole waterfall), all SATELLITES pages, and new ones of SCAN, ROTOR CONTROL (MAP, CONNECTION), MEMORIES (CHANNELS, GROUPS), RECORDINGS, SETTINGS (SKINS, S-METER, VFO) and the SSTV / WEFAX galleries; README has four more in Screenshots.
 - **RECS key tooltip** showed a broken path (`data` + line break + `ecordings`); it says `data\recordings` again.
 - **Keys inside the tabs in the colour of the tab:** the lit keys of the `.bands` kind (the band and view keys of the decoders: FT8, ACARS, HFDL, AIS, ADS-B, WEFAX, ISM, SSTV, PACKET) had a yellow LED line instead of the colour of the tab; the gold keys in RECORDINGS (play) and SETTINGS (SAVE of the location and the recordings folder) are keys like the others with the legend in the colour of the tab, and the new row flash in the decoder tables, the edited row in MEMORIES and the block diagram in SETTINGS follow the tab colour too.
 - **DECODERS: page keys in groups** (by Brano, brjanicek). The page keys are ordered CW, FT8, PACKET, RTTY, SSTV, WEFAX | ACARS, ADS-B, HFDL, VDL2 | AIS | ISM, with a thin vertical separator between the groups (HF digital modes, aircraft, ships, ISM). The default page of a VFO without a saved page stays FT8.

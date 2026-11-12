@@ -166,7 +166,7 @@ Main Features
   approximate position from XID frames), tracks, VDL2 ground stations, list beside the map; the square key in the top
   right corner opens the map alone in a new browser tab.
 Minor Fixes
-- Docs: new screenshots for the 0.114 look (main screen, SATELLITES, SCAN, ROTOR CONTROL, MEMORIES,
+- Docs: new screenshots for the 0.114 look (main screen, WFM with RDS, SATELLITES, SCAN, ROTOR CONTROL, MEMORIES,
   RECORDINGS, SETTINGS, SSTV / WEFAX galleries).
 - RECS key tooltip: the broken path data\recordings fixed.
 - Keys inside the tabs in the colour of the tab: lit band keys (e.g. 433.92 in ISM) had a yellow LED line; the gold
