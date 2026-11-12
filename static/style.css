@@ -1976,6 +1976,15 @@ html.compact .r-keys .keys button { --led-at: left 3px top 2px / 6px 3px no-repe
 .r-keys .keys button, html.compact .r-keys .keys button, html.compact .r-keys .key {
   min-width: 50px; height: 28px; padding: 0 6px; }
 .r-keys .keys > button:only-child, html.compact .r-keys .keys > button:only-child { height: auto; }
+/* ATU and DEC: alone in their group, but as high as the other keys, in the upper row */
+.r-keys #atuKey, .r-keys #decKey { grid-row: 1; height: 28px; }
+/* their bed only as high as the one key, the group at the top of the row (legend in line with the others) */
+.r-keys .keys:has(> #atuKey), .r-keys .keys:has(> #decKey) { grid-template-rows: 28px; }
+.r-keys .kgroup:has(#atuKey), .r-keys .kgroup:has(#decKey) { align-self: flex-start; }
+/* HPF / LPF: the curve and the cutoff under the LED window, not into it */
+.r-keys .keys button.pass-key, html.compact .r-keys .keys button.pass-key { gap: 0; padding-top: 7px; padding-bottom: 1px; }
+.r-keys .pass-icon { height: 9px; }
+.r-keys .pass-val { line-height: 9px; }
 /* a key that does not work now (FILTER in DAB): stays in place, dimmed */
 .r-keys .keys button:disabled { opacity: .4; cursor: default; filter: none; transform: none; }
 /* keys as in design A: a flat LED window in the top middle of the key, the legend a little lower under it;
