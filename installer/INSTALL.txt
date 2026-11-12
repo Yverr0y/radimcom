@@ -167,6 +167,8 @@ Main Features
   right corner opens the map alone in a new browser tab.
 Minor Fixes
 - RECS key tooltip: the broken path data\recordings fixed.
+- Keys inside the tabs in the colour of the tab: lit band keys (e.g. 433.92 in ISM) had a yellow LED line; the gold
+  keys in RECORDINGS and SETTINGS are keys like the others; row highlights follow the tab colour.
 - DECODERS (by Brano, brjanicek): page keys in groups with separators - CW, FT8, PACKET, RTTY, SSTV, WEFAX |
   ACARS, ADS-B, HFDL, VDL2 | AIS | ISM.
 - AGC+ PRESETS above the sliders (SETTINGS -> VFO -> ADVANCED -> AGC+), the matching one lit: CAREFUL (the old
