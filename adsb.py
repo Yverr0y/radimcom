@@ -22,6 +22,7 @@ heard in DF11 / DF17).
 import collections
 import json
 import math
+import os
 import queue
 import threading
 import time
@@ -279,6 +280,110 @@ def bearing(lat1, lon1, lat2, lon2):
     y = math.sin(dl) * math.cos(p2)
     x = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
     return (math.degrees(math.atan2(y, x)) + 360) % 360
+
+
+# ---------------------------------------------------------------- range (coverage) per azimuth, kept between runs
+
+RANGE_BANDS = (("10000", 10000), ("20000", 20000), ("30000", 30000), ("max", None))   # up to this altitude (ft); max = any
+RANGE_BIN_DEG = 2                 # azimuth sectors
+RANGE_SAVE_S = 60                 # written to the file at most this often (and when ADS-B is turned off)
+RANGE_QTH_KM = 2.0                # the station moved more than this: the old range no longer applies
+
+
+class RangeMap:
+    """The farthest position decoded in each 2° azimuth sector from the station, for altitudes up to 10000, 20000,
+    30000 ft and for any altitude. Saved as JSON (merged with the file, so two runs do not overwrite each other's best)."""
+
+    def __init__(self, path=None):
+        self.path = path
+        self.lock = threading.Lock()
+        self.qth = None
+        self.bands = {}                   # name -> {bin: [dist_km, lat, lon, alt, time]}
+        self.changed = False
+        self.saved = 0.0
+        self.since = None
+        self.reload()
+
+    def _empty(self):
+        return {name: {} for name, _ in RANGE_BANDS}
+
+    def _read(self):
+        if not self.path or not os.path.exists(self.path):
+            return None
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                d = json.load(f)
+            return {"qth": d.get("qth"), "since": d.get("since"),
+                    "bands": {name: {int(k): v for k, v in (d.get("bands", {}).get(name) or {}).items()} for name, _ in RANGE_BANDS}}
+        except (OSError, ValueError, TypeError, AttributeError):
+            return None
+
+    def reload(self):
+        d = self._read()
+        self.bands = d["bands"] if d else self._empty()
+        self.qth = tuple(d["qth"]) if d and d.get("qth") else None
+        self.since = d.get("since") if d else None
+
+    def add(self, qth, lat, lon, alt, now):
+        if not qth:
+            return
+        with self.lock:
+            if self.qth is None or distance_km(self.qth[0], self.qth[1], *qth) > RANGE_QTH_KM:
+                self.qth, self.bands, self.since = (round(qth[0], 5), round(qth[1], 5)), self._empty(), round(now)
+                self.changed = True
+            if self.since is None:
+                self.since = round(now)
+            dist = distance_km(qth[0], qth[1], lat, lon)
+            b = int(bearing(qth[0], qth[1], lat, lon) // RANGE_BIN_DEG) % (360 // RANGE_BIN_DEG)
+            for name, top in RANGE_BANDS:
+                if top is not None and (alt is None or alt > top):
+                    continue
+                cur = self.bands[name].get(b)
+                if cur is None or dist > cur[0]:
+                    self.bands[name][b] = [round(dist, 1), round(lat, 4), round(lon, 4), alt, round(now)]
+                    self.changed = True
+
+    def info(self):
+        with self.lock:
+            return {"qth": self.qth, "since": self.since, "bin_deg": RANGE_BIN_DEG,
+                    "bands": {name: {str(k): v for k, v in sorted(self.bands[name].items())} for name, _ in RANGE_BANDS},
+                    "max_km": {name: max((v[0] for v in self.bands[name].values()), default=None) for name, _ in RANGE_BANDS}}
+
+    def clear(self):
+        with self.lock:
+            self.bands, self.since, self.changed = self._empty(), round(time.time()), False
+        self._write(merge=False)
+
+    def save(self, force=False):
+        if not self.changed or not self.path or (not force and time.time() - self.saved < RANGE_SAVE_S):
+            return
+        self._write(merge=True)
+
+    def _write(self, merge):
+        if not self.path:
+            return
+        with self.lock:
+            if merge:
+                old = self._read()
+                if old and old.get("qth") and self.qth and distance_km(old["qth"][0], old["qth"][1], *self.qth) <= RANGE_QTH_KM:
+                    for name, _ in RANGE_BANDS:
+                        for b, v in old["bands"][name].items():
+                            if b not in self.bands[name] or v[0] > self.bands[name][b][0]:
+                                self.bands[name][b] = v
+                    if old.get("since") and (self.since is None or old["since"] < self.since):
+                        self.since = old["since"]
+            d = {"qth": self.qth, "since": self.since, "bin_deg": RANGE_BIN_DEG,
+                 "bands": {name: {str(k): v for k, v in sorted(self.bands[name].items())} for name, _ in RANGE_BANDS}}
+            self.changed = False
+            self.saved = time.time()
+        try:
+            os.makedirs(os.path.dirname(self.path), exist_ok=True)
+            tmp = self.path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(d, f, separators=(",", ":"))
+            os.replace(tmp, self.path)
+        except OSError:
+            self.changed = True
 
 
 # ---------------------------------------------------------------- one message
@@ -604,12 +709,13 @@ def lowconf_fix(bits, conf, df, syn):
 # ---------------------------------------------------------------- the decoder
 
 class AdsbDecoder:
-    def __init__(self, on_event, on_state, station=None):
+    def __init__(self, on_event, on_state, station=None, range_path=None):
         self.on_event = on_event          # on_event("adsb", {"ac": [...], "msgs": [...]}) once a second
         self.on_state = on_state
         self.station = station or (lambda: None)   # () -> (lat, lon) of the receiver or None
         self.enabled = False
         self.error = None
+        self.range = RangeMap(range_path)
         self.count = 0                    # messages accepted
         self.fixed = 0                    # of them with one bit corrected
         self.dropped = 0
@@ -641,6 +747,8 @@ class AdsbDecoder:
             self.key = None
             self.demod = None
             self.error = None
+        if not on:
+            self.range.save(force=True)
         self._emit_state(force=True)
 
     def info(self):
@@ -929,6 +1037,9 @@ class AdsbDecoder:
         if qth:
             a["dist_km"] = round(distance_km(qth[0], qth[1], *pos), 1)
             a["az"] = round(bearing(qth[0], qth[1], *pos))
+            if a["_trail"] and now - a["_trail"][-1][2] < 120:
+                # range map: only a position confirmed by an earlier one of the same aircraft (a single bad decode cannot stretch it)
+                self.range.add(qth, pos[0], pos[1], a["alt"] if a["alt"] is not None else a["alt_geo"], now)
         a["_trail"].append((a["lat"], a["lon"], round(now, 1), a["alt"]))
         return pos
 
@@ -989,6 +1100,7 @@ class AdsbDecoder:
         if now - self._last_emit < 1.0:
             return
         self._last_emit = now
+        self.range.save()
         with self.lock:
             stale = [k for k, a in self.aircraft.items() if now - a["last"] > STALE_S]
             for k in stale:

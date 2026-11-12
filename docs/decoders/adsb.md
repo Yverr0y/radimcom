@@ -63,6 +63,13 @@ address belongs to an aircraft heard within the last minute (in DF11 or DF17).
   selected = red; grey after a minute) with flight and altitude, their decoded positions as a white trail, the QTH with
   rings at 50, 100, 200 and 300 km, and the list beside it (a click centres the aircraft and opens its details). The
   □ key opens the map alone in a new browser tab (`?map=adsb`).
+- **RANGE** (a checkbox shown with the MAP): the long-term coverage of the station. Each decoded position is put in a 2°
+  sector around the station location; the farthest one in each sector is kept for aircraft up to **10 000 ft** (green),
+  **20 000 ft** (yellow), **30 000 ft** (orange) and at any altitude (**max**, violet), and drawn as an outline; a dot marks
+  the farthest point of each band (distance, altitude and UTC time in the tooltip). Only a position confirmed by a previous
+  one of the same aircraft (less than 2 minutes before) counts. Kept in `data\adsb_range.json` over restarts (saved once
+  a minute and at OFF, merged with what is in the file); a station location moved more than 2 km starts it again.
+  **CLR RANGE** (click twice, SURE?) empties it.
 - **adsb.fi**: each aircraft is looked up once on adsb.fi (adsb.lol when adsb.fi does not answer; at most one request a
   second, needs internet): registration and type go to the **Reg / Type** column (description in the tooltip). An aircraft
   heard here without a position of its own – it answered only the radars (DF0 / 4 / 5 / 11 …) or no position message has
@@ -75,5 +82,6 @@ address belongs to an aircraft heard within the last minute (in DF11 or DF17).
 
 ## HTTP API
 
-`GET /api/adsb` (state, last messages, aircraft with their trails), `POST /api/adsb {"action": "clear"}`,
+`GET /api/adsb` (state, last messages, aircraft with their trails), `POST /api/adsb {"action": "clear"}` or
+`{"action": "clear_range"}`, `GET /api/adsb_range` (the range map: station, bands, sectors),
 `POST /api/set {"adsb": true|false}`; events `adsb` (once a second) and `adsbstate`. See [API](../../API/API.md).

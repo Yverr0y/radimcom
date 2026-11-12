@@ -2360,6 +2360,7 @@ html[data-ink="dark"] .r-top, html[data-ink="dark"] .r-keys { border-bottom-colo
 .adsb-ml.emerg { box-shadow: inset 3px 0 0 #d83a2e; }
 .adsb-plane.ground svg { fill: #c9a227; }
 .adsb-plane.emerg svg { fill: #ff4bd8; }
+#adsbRangeClr.sure { background: #d83a2e; color: #fff; }
 .adsb-plane.net svg { fill: #6cb8ff; opacity: .85; }
 .adsb .ext, .adsb-ml .ext, .adsb td.flt .ext { color: #6cb8ff; }
 /* narrow scrollbars in the ADS-B card (like MEMORIES and ROTOR CONTROL) */

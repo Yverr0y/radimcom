@@ -113,7 +113,9 @@ the newest data of its station; `aisstate` the decoder state. ADS-B: `adsb_freq`
 (`icao`, `flight`, `category`, `cat`, `squawk`, `emergency`, `alt`, `alt_geo`, `gs`, `track`, `hdg`, `ias`, `tas`, `vrate`, `sel_alt`, `qnh`,
 `lat`, `lon`, `pos_time`, `dist_km`, `az`, `ground`, `tisb`, `level`, `n`, `first`, `last`, `net` (adsb.fi / adsb.lol: `found`, `src`,
 `reg`, `type`, `desc`, `callsign`, `lat`, `lon`, `seen_pos`, `alt`, `gs`, `track`, `dist_km`, `az`, `time`; null before the lookup) and `trail`, the last 200 positions as
-`[lat, lon, time, alt]`); `POST /api/adsb` with `{"action": "clear"}` clears them. The event `adsb` comes once a second with `ac` (the
+`[lat, lon, time, alt]`); `POST /api/adsb` with `{"action": "clear"}` clears them, `{"action": "clear_range"}` clears the range map. `GET /api/adsb_range` gives the
+range map (kept in `data\adsb_range.json`): `qth`, `since`, `bin_deg` (2), `bands` (`10000`, `20000`, `30000`, `max`: sector → the farthest
+position in it) and `max_km` of each band. The event `adsb` comes once a second with `ac` (the
 aircraft changed since the last one, without `trail`), `msgs` (new messages, at most 60), `gone` (ICAO addresses dropped after 10 min) and `info`;
 `adsbstate` the decoder state.
 

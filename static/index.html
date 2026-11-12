@@ -671,6 +671,8 @@ ecordings), play them in the browser">RECS</button>
           <button class="key small" data-view="map" title="Aircraft with a position, their tracks and the QTH on a map">MAP</button>
           <button class="key small" data-view="msgs" title="The newest decoded Mode S / ADS-B messages">MESSAGES</button>
         </div>
+        <label class="wf-opt" id="adsbRangeOpt" title="Range map: the farthest position decoded in each 2° sector, for aircraft up to 10000, 20000, 30000 ft and at any altitude. Collected all the time ADS-B runs and kept in data\adsb_range.json (also after a restart)"><input type="checkbox" id="adsbRange">RANGE</label>
+        <button id="adsbRangeClr" class="key small" title="Start the range map again (click twice: the collected range is deleted)">CLR RANGE</button>
         <input id="adsbFilter" class="pkt-filter" type="search" placeholder="filter" title="Show only aircraft / messages containing this text (ICAO address, flight, squawk, country, category)">
         <label class="wf-opt log-opt" title="Write to the daily log data\logs\adsb_YYYY-MM-DD.txt (UTC, shared by all VFOs; one line per aircraft at most once a minute)"><input type="checkbox" data-log="adsb">LOG</label>
         <button id="adsbClear" class="key small" title="Clear the aircraft, the messages and the counters">CLR</button>
@@ -686,6 +688,10 @@ ecordings), play them in the browser">RECS</button>
         Range: line of sight, 100–300 km with a 1090 MHz antenna outdoors; a short whip indoors hears the nearest aircraft only.
         Country from the ICAO address; a click on the ICAO address opens globe.adsb.fi, on the flight adsb.lol, in a new tab.
         An aircraft not heard for 1 min is grey, after 10 min it is removed.
+        <b>RANGE</b> (MAP) draws the farthest position decoded in each 2° sector from the station, for aircraft up to
+        10000 ft (green), 20000 ft (yellow), 30000 ft (orange) and at any altitude (violet); it is collected the whole time ADS-B
+        runs, kept in <code>data\adsb_range.json</code> between restarts, and starts again when the station location moves.
+        Only positions confirmed by an earlier position of the same aircraft count. CLR RANGE (twice) starts it again.
         Registration and type of each aircraft are looked up once on adsb.fi (adsb.lol when adsb.fi does not answer; needs internet);
         an aircraft heard here without a position of its own (radar replies only, or no position messages yet) gets the position
         adsb.fi sees, every 30 s: <span class="ext">blue</span> in the list and a blue aircraft on the map.</p>

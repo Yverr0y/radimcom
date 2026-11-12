@@ -358,7 +358,8 @@ dab = DabDecoder(on_tune=dab_tune, on_state=lambda i: hub.event("dabstate", i))
 ism = IsmDecoder(on_event=decoder_event, on_state=lambda i: hub.event("ismstate", i))
 hfdl = HfdlDecoder(on_event=decoder_event, on_state=lambda i: hub.event("hfdlstate", i))
 ais = AisDecoder(on_event=decoder_event, on_state=lambda i: hub.event("aisstate", i))
-adsb = AdsbDecoder(on_event=decoder_event, on_state=lambda i: hub.event("adsbstate", i), station=own_station)
+adsb = AdsbDecoder(on_event=decoder_event, on_state=lambda i: hub.event("adsbstate", i), station=own_station,
+                   range_path=data("adsb_range.json"))     # the range map is one for the station (all VFOs)
 _saved_logged.update(wefax=getattr(wefax, "saved", None), sstv=getattr(sstv, "saved", None))
 
 
@@ -974,9 +975,21 @@ def api_adsb():
 
 @app.route("/api/adsb", methods=["POST"])
 def api_adsb_cmd():
-    if request.get_json(force=True).get("action") == "clear":
+    action = request.get_json(force=True).get("action")
+    if action == "clear":
         adsb.clear()
+    elif action == "clear_range":
+        adsb.range.clear()
     return jsonify(adsb.info())
+
+
+@app.route("/api/adsb_range", methods=["GET"])
+def api_adsb_range():
+    if adsb.enabled:
+        adsb.range.save(force=True)
+    else:
+        adsb.range.reload()               # the VFO that runs ADS-B writes the file: show what it has saved
+    return jsonify(adsb.range.info())
 
 
 def set_adsb(on, changes):

@@ -146,6 +146,28 @@ class Demodulator(unittest.TestCase):
         self.assertEqual(d.count, 0)
 
 
+class Range(unittest.TestCase):
+    def test_bands_and_merge(self):
+        import tempfile
+        path = os.path.join(tempfile.mkdtemp(), "adsb_range.json")
+        qth, now = (48.15, 17.1), time.time()
+        r = adsb.RangeMap(path)
+        r.add(qth, 48.9, 17.8, 38000, now)          # high: only "max"
+        r.add(qth, 48.3, 17.2, 8000, now)           # low: every band
+        r.save(force=True)
+        mk = adsb.RangeMap(path).info()["max_km"]
+        self.assertLess(mk["10000"], 30)
+        self.assertGreater(mk["max"], 90)
+        other = adsb.RangeMap(path)                 # another run finds a farther one
+        other.add(qth, 49.5, 17.1, 9000, now)
+        other.save(force=True)
+        r.add(qth, 48.2, 17.1, 5000, now)
+        r.save(force=True)                          # merged with the file: the farther one stays
+        self.assertGreater(adsb.RangeMap(path).info()["max_km"]["10000"], 140)
+        r.add((50.0, 14.4), 50.1, 14.4, 5000, now)  # the station moved: starts again
+        self.assertLess(r.info()["max_km"]["max"], 20)
+
+
 class NetLookup(unittest.TestCase):
     def test_parse_adsb_fi_answer(self):
         import io

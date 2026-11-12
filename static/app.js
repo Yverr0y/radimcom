@@ -7372,7 +7372,7 @@ async function adsbMapOpen() {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
     }).addTo(adsbMap);
     mapPopout(adsbMap, "adsb");
-    adsbMapLayers = { rings: L.layerGroup().addTo(adsbMap), tracks: L.layerGroup().addTo(adsbMap), planes: L.layerGroup().addTo(adsbMap), marks: new Map() };
+    adsbMapLayers = { range: L.layerGroup().addTo(adsbMap), rings: L.layerGroup().addTo(adsbMap), tracks: L.layerGroup().addTo(adsbMap), planes: L.layerGroup().addTo(adsbMap), marks: new Map() };
     try {
       const s = await satFetch("/api/location");
       if (s && Number.isFinite(s.lat) && Number.isFinite(s.lon) && (s.lat || s.lon)) {
@@ -7391,6 +7391,8 @@ async function adsbMapOpen() {
 async function renderAdsbMap() {
   if (!(await adsbMapOpen())) return;
   adsbMap.invalidateSize();
+  if (adsbRangeOn) await adsbRangeLoad(false);
+  renderAdsbRange();
   const lay = adsbMapLayers;
   lay.tracks.clearLayers();
   const list = adsbList().filter((a) => adsbPos(a));
@@ -7426,8 +7428,70 @@ async function renderAdsbMap() {
         `<b>${escHtml(adsbLabel(a))}</b><span class="mmsi">${a.icao}</span><span class="stype">${adsbAlt(a)}</span>` +
         `<span${p.net ? ' class="ext"' : ""}>${p.dist == null ? "" : `${Math.round(p.dist)} km`}</span><span class="age">${adsbAge(a.last)}</span></div>`;
     }).join("");
-  $("adsbMapNote").textContent = `${list.length} with a position · yellow = aircraft turned to its track · blue = position from adsb.fi (not received here) · red = selected · grey = not heard for 1 min · white trail = decoded positions${adsbQth ? " · blue rings 50 / 100 / 200 / 300 km" : ""} · map © OpenStreetMap`;
+  $("adsbMapNote").textContent = `${list.length} with a position · yellow = aircraft turned to its track · blue = position from adsb.fi (not received here) · red = selected · grey = not heard for 1 min · white trail = decoded positions${adsbQth ? " · blue rings 50 / 100 / 200 / 300 km" : ""}${adsbRangeNote()} · map © OpenStreetMap`;
 }
+
+// ----- RANGE: the farthest decoded position per 2° sector and altitude band (adsb.py RangeMap, data\adsb_range.json) -----
+
+const ADSB_RANGE_BANDS = [["max", "any altitude", "#c79bff"], ["30000", "≤ 30000 ft", "#ff9a3c"], ["20000", "≤ 20000 ft", "#ffd84a"], ["10000", "≤ 10000 ft", "#6cff9c"]];
+let adsbRangeOn = recall("adsbRange") !== "0", adsbRangeData = null, adsbRangeAt = 0;
+
+async function adsbRangeLoad(force) {
+  if (!force && Date.now() - adsbRangeAt < 30000) return;
+  adsbRangeAt = Date.now();
+  try { adsbRangeData = await fetch(vbase + "/api/adsb_range").then((r) => r.json()); } catch { adsbRangeData = null; }
+}
+
+function renderAdsbRange() {
+  if (!adsbMapLayers) return;
+  const lay = adsbMapLayers.range;
+  lay.clearLayers();
+  const d = adsbRangeData;
+  if (!adsbRangeOn || !d || !d.bands) return;
+  for (const [name, label, color] of ADSB_RANGE_BANDS) {
+    const bins = d.bands[name] || {};
+    const pts = Object.keys(bins).map(Number).sort((x, y) => x - y).map((k) => bins[k]);
+    if (pts.length < 3) continue;
+    L.polygon(pts.map((v) => [v[1], v[2]]), { color, weight: 1.5, opacity: 0.85, fillColor: color, fillOpacity: 0.05, interactive: false }).addTo(lay);
+    const far = pts.reduce((x, y) => (y[0] > x[0] ? y : x));
+    L.circleMarker([far[1], far[2]], { radius: 3, color, weight: 1, fillColor: color, fillOpacity: 1 })
+      .bindTooltip(`${label}: farthest ${Math.round(far[0])} km${far[3] != null ? ` at ${far[3].toLocaleString("en-US")} ft` : ""} (${new Date(far[4] * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC)`, { className: "ais-label" })
+      .addTo(lay);
+  }
+}
+
+function adsbRangeNote() {
+  const d = adsbRangeData;
+  if (!adsbRangeOn || !d || !d.max_km) return "";
+  const mk = d.max_km;
+  const parts = ADSB_RANGE_BANDS.slice().reverse().map(([name, label]) => (mk[name] != null ? `${label} ${Math.round(mk[name])} km` : "")).filter(Boolean);
+  return parts.length ? ` · RANGE (green ≤ 10000, yellow ≤ 20000, orange ≤ 30000 ft, violet any) max: ${parts.join(", ")}${d.since ? ` since ${new Date(d.since * 1000).toISOString().slice(0, 10)}` : ""}` : " · RANGE: nothing collected yet";
+}
+
+$("adsbRange").checked = adsbRangeOn;
+$("adsbRange").addEventListener("change", async () => {
+  adsbRangeOn = $("adsbRange").checked;
+  store("adsbRange", adsbRangeOn ? "1" : "0");
+  if (adsbRangeOn) await adsbRangeLoad(true);
+  renderAdsbMap();
+});
+let adsbRangeSure = null;
+$("adsbRangeClr").addEventListener("click", async () => {
+  const b = $("adsbRangeClr");
+  if (!adsbRangeSure) {            // the first click only arms it: the collected range would be lost
+    b.classList.add("sure");
+    b.textContent = "SURE?";
+    adsbRangeSure = setTimeout(() => { adsbRangeSure = null; b.classList.remove("sure"); b.textContent = "CLR RANGE"; }, 3000);
+    return;
+  }
+  clearTimeout(adsbRangeSure);
+  adsbRangeSure = null;
+  b.classList.remove("sure");
+  b.textContent = "CLR RANGE";
+  await fetch(vbase + "/api/adsb", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"action":"clear_range"}' });
+  await adsbRangeLoad(true);
+  renderAdsbMap();
+});
 
 function adsbSelect(icao, pan = true) {
   adsbSel = icao;
@@ -7446,6 +7510,7 @@ function setAdsbView(v) {
   $("adsbAcBox").hidden = v !== "ac";
   $("adsbMapBox").hidden = v !== "map";
   $("adsbMsgBox").hidden = v !== "msgs";
+  $("adsbRangeOpt").hidden = $("adsbRangeClr").hidden = v !== "map";
   renderAdsbView();
 }
 
