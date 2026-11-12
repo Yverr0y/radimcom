@@ -2824,18 +2824,23 @@ function setBodyTab(tab, save = true) {
 
 // ---------- DECODERS tab: a page for each decoder (like the pages of SATELLITES) ----------
 
-const DEC_PAGES = [
-  { key: "ft8", title: "FT8" }, { key: "wefax", title: "WEFAX" }, { key: "cw", title: "CW" }, { key: "rtty", title: "RTTY" },
-  { key: "sstv", title: "SSTV" }, { key: "packet", title: "PACKET" }, { key: "acars", title: "ACARS" }, { key: "vdl2", title: "VDL2" }, { key: "hfdl", title: "HFDL" }, { key: "ais", title: "AIS" },
-  { key: "adsb", title: "ADS-B" }, { key: "ism", title: "ISM" },
+// order of the page keys; "|" = a vertical separator between the groups (HF digital, aircraft, ships, ISM)
+const DEC_LAYOUT = [
+  { key: "cw", title: "CW" }, { key: "ft8", title: "FT8" }, { key: "packet", title: "PACKET" }, { key: "rtty", title: "RTTY" },
+  { key: "sstv", title: "SSTV" }, { key: "wefax", title: "WEFAX" }, "|",
+  { key: "acars", title: "ACARS" }, { key: "adsb", title: "ADS-B" }, { key: "hfdl", title: "HFDL" }, { key: "vdl2", title: "VDL2" }, "|",
+  { key: "ais", title: "AIS" }, "|",
+  { key: "ism", title: "ISM" },
 ];   // DAB and DSD are modes (MODE) with their own tabs
+const DEC_PAGES = DEC_LAYOUT.filter((p) => p !== "|");
 // the open page is remembered for each VFO separately (decPage_A, decPage_B…)
 const decPageKey = () => (active ? `decPage_${active.name}` : "decPage");
 let decPage = "ft8";
 let decPageSaved = false;        // false: the first running decoder of the VFO decides (guessBodyTab)
 const decNewPages = new Set();   // pages with a message not seen yet
 
-$("decPages").replaceChildren(...DEC_PAGES.map((p) => {
+$("decPages").replaceChildren(...DEC_LAYOUT.map((p) => {
+  if (p === "|") { const d = document.createElement("span"); d.className = "dec-sep"; return d; }
   const b = document.createElement("button");
   b.className = "key small";
   b.dataset.page = p.key;
@@ -2863,7 +2868,7 @@ function setDecPage(key, save = true) {
 function renderDecTab() {
   const n = DEC_PAGES.filter((p) => decRunning(p.key)).length;
   $("decCount").textContent = n ? `(${n})` : "";
-  for (const b of $("decPages").children) {
+  for (const b of $("decPages").querySelectorAll("button[data-page]")) {
     const k = b.dataset.page, na = decUnavailable(k);
     b.classList.toggle("on", k === decPage);
     b.classList.toggle("new", decNewPages.has(k));
