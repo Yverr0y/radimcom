@@ -40,7 +40,7 @@ body {
    the content size depends only on the window size. .scroller scrolls (not the document), so that the
    sticky panel works; fixed elements (drawers) are outside it and stay in place. */
 .stage {
-  position: fixed; top: 0; left: 0; width: var(--vw); height: var(--vh);
+  position: fixed; top: 0; left: var(--stage-x, 0px); width: var(--vw); height: var(--vh);
   transform: scale(var(--k)); transform-origin: 0 0;
   background: radial-gradient(1200px 600px at 50% -20%, #161b22, var(--bg) 70%);
 }
@@ -1905,6 +1905,112 @@ html.compact .r-keys .keys button { --led-at: left 3px top 2px / 6px 3px no-repe
 .rec.on { animation: rec-led-blink 1s steps(1) infinite; }
 @keyframes rec-led-blink { 50% { --led: #5a1512; } }
 
+/* =====================================================================================================
+ * LAYOUT OF THE HEAD (design A "Reference"): one glass over all the displays (S-meter | VFO windows | clock with
+ * the AD), the VFO keys under their windows, the function keys as modules of two rows, the master section (logo,
+ * MONITOR, RECORD) in a column at the right, the band keys across the whole width.
+ * ===================================================================================================== */
+.radio-head { display: grid; grid-template-columns: minmax(0, 1fr) 272px; column-gap: 20px;
+  --glass-cols: 256px minmax(0, 1fr) 246px; }   /* cells of the glass; the row of VFO keys under it uses the same */
+.r-top { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 4px 0 0; }
+.r-keys { grid-column: 1; grid-row: 2; }
+.r-master { grid-column: 2; grid-row: 1 / span 2; }
+.r-bands { grid-column: 1 / -1; grid-row: 3; }
+.r-top, .r-keys { border-bottom: 0; box-shadow: none; }
+
+/* the glass: one recessed window, the cells parted by thin lines; the cells have no windows of their own */
+.r-glass { display: grid; grid-template-columns: var(--glass-cols); border: 1px solid #000; border-radius: 3px;
+  background: var(--glass), var(--well); box-shadow: var(--well-shadow); }
+.r-glass > .meter-box { order: 0; padding: 8px 8px 6px; }
+.r-glass > .freq-center { order: 1; border-left: 1px solid rgba(255, 255, 255, .08); }
+.r-glass > .r-aux { order: 2; display: flex; flex-direction: column; gap: 7px; padding: 8px 10px 8px;
+  border-left: 1px solid rgba(255, 255, 255, .08); }
+#smeter { padding: 0; border: 0; border-radius: 2px; background: none; box-shadow: none; }
+.r-glass .meter-info, .r-glass .r-clock, .r-glass .mfd { border: 0; border-radius: 0; background: none; box-shadow: none; }
+.r-glass .meter-info { padding: 3px 0 0; }
+.r-glass .r-clock { padding: 2px 2px 0; }
+.r-glass .mfd { flex: 1; height: auto; min-height: 42px; padding: 6px 0 0; border-top: 1px solid rgba(255, 255, 255, .08); }
+/* the frame of an alarm in the AD: a red ring around its part of the glass */
+@keyframes ad-alarm { 0% { box-shadow: 0 0 0 2px #ff3b30, 0 0 10px rgba(255, 59, 48, .7); } 50% { box-shadow: none; } }
+
+/* VFO windows: cells of the glass side by side; the active one faintly lit, with a yellow line towards its key */
+.r-glass .vfo-list { gap: 0; }
+.r-glass .vfo-row { padding: 8px 10px 7px; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.r-glass .vfo-row + .vfo-row { border-left: 1px solid rgba(255, 255, 255, .08); }
+.r-glass .vfo-row.active { background: linear-gradient(180deg, rgba(255, 216, 74, .06), rgba(255, 216, 74, 0) 45%);
+  box-shadow: inset 0 -2px 0 rgba(255, 216, 74, .55); }
+
+/* VFO keys: one under each VFO window, as wide as it, the LED window at the left */
+.r-sel { display: grid; grid-template-columns: var(--glass-cols); }
+.r-sel .vfo-keys { grid-column: 2; align-self: auto; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0; }
+/* under each window a pair of keys as high as the function keys, the LED in the top middle like theirs:
+   the VFO key and beside it CUE of that VFO (orange) */
+.vfo-pair { display: flex; gap: 4px; margin: 0 6px; }   /* the pair as wide as its VFO window */
+.vfo-keys .vfo-sel, .vfo-keys .vfo-cuekey { height: 28px; padding: 5px 0 0; letter-spacing: .12em;
+  --led-at: center top 3px / 14px 3px no-repeat; --led-glow: center top -4px / 36px 14px no-repeat; }
+.vfo-keys .vfo-sel { flex: 1 1 auto; min-width: 0; }
+.vfo-keys .vfo-cuekey { flex: none; width: 54px; min-width: 0; letter-spacing: .04em; --led: var(--orange);
+  background: linear-gradient(180deg, #050607 1px, #15181b 1px) var(--led-at),
+    linear-gradient(180deg, #4a5059 0%, #30343b 50%, #24272c 100%); }
+.vfo-keys .vfo-cuekey.on { color: var(--orange); text-shadow: 0 0 6px rgba(255, 140, 26, .6); box-shadow: var(--key-lit);
+  background: linear-gradient(var(--led), var(--led)) var(--led-at),
+    radial-gradient(closest-side, color-mix(in srgb, var(--led) 55%, transparent), transparent) var(--led-glow),
+    linear-gradient(180deg, #3a3f47, #2a2e34); }
+.vfo-keys .vfo-sel.on { text-shadow: 0 0 6px rgba(255, 216, 74, .55); }
+
+/* function keys: every group a module of two rows under its legend, the keys of one size */
+.r-keys { justify-content: space-between; align-items: flex-end; gap: 6px 10px; padding: 8px 0 10px; }
+.r-keys .kgroup { align-items: center; gap: 4px; }
+.r-keys .keys { display: grid; grid-template-columns: repeat(var(--cols, 1), 1fr); grid-template-rows: repeat(2, 28px); gap: 3px; padding: 4px; }
+.r-keys .keys:has(> :nth-child(3)) { --cols: 2; }
+.r-keys .keys:has(> :nth-child(5)) { --cols: 3; }
+.r-keys .keys:has(> :nth-child(7)) { --cols: 4; }
+.r-keys .keys:has(> :nth-child(9)) { --cols: 5; }
+.r-keys .keys:has(> :nth-child(11)) { --cols: 6; }
+.r-keys .keys:has(> :nth-child(13)) { --cols: 7; }
+.r-keys .keys > :only-child { grid-row: span 2; }   /* a group of one key: one tall key */
+.r-keys .keys button, html.compact .r-keys .keys button, html.compact .r-keys .key {
+  min-width: 50px; height: 28px; padding: 0 6px; }
+.r-keys .keys > button:only-child, html.compact .r-keys .keys > button:only-child { height: auto; }
+/* keys as in design A: a flat LED window in the top middle of the key, the legend a little lower under it;
+   a lit key has the legend glowing in the colour of its group */
+.r-keys .keys button, html.compact .r-keys .keys button { padding-top: 5px;
+  --led-at: center top 3px / 14px 3px no-repeat; --led-glow: center top -4px / 36px 14px no-repeat; }
+.r-keys .keys button.active, .r-keys .keys button.on, .r-keys #atuKey.busy { text-shadow: 0 0 6px color-mix(in srgb, var(--kc) 70%, transparent); }
+.spk, .rec { padding-top: 4px; --led-at: center top 3px / 16px 3px no-repeat; --led-glow: center top -4px / 40px 14px no-repeat; }
+html.compact .r-keys .keys button.pass-key { width: auto; padding-left: 6px; padding-right: 6px; }
+html.compact .r-keys .keys, html.compact .r-keys .keys:has(.pass-key) { gap: 3px; padding: 4px; }
+html.compact .r-keys { column-gap: 10px; padding-left: 0; padding-right: 0; }
+
+/* band keys: across the whole width, the keys of each group share its width */
+.r-bands { flex-wrap: nowrap; gap: 14px; padding: 8px 0 10px; border-top: 1px solid rgba(0, 0, 0, .75);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06); }
+.r-bands.bands-off { border-top-width: 0; }
+.r-bands .bgroup { flex: 1 1 auto; min-width: 0; }
+.r-bands .bands { flex-wrap: nowrap; }
+.r-bands .bands button { flex: 1 1 auto; }
+html[data-skin="alu-light"] .r-bands, html[data-ink="dark"] .r-bands { border-top-color: rgba(0, 0, 0, .35); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .45); }
+
+/* master section: logo, type and version at the top; MONITOR with the faders and the meter at the left,
+   the speaker and RECORD beside them */
+.r-master { display: flex; flex-direction: column; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0 10px; }
+.r-master .r-brandline { align-self: stretch; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.r-master .r-logo { height: 42px; margin: 4px 0 0; }
+.r-master .vol { align-self: stretch; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 6px 16px; }
+.vol > .r-gh:first-child { grid-column: 1 / -1; margin-bottom: 0; }
+.vol > .vol-sliders { grid-column: 1; grid-row: 2 / span 4; }
+.vol > .spk { grid-column: 2; grid-row: 2; }
+.vol > .spk + .r-gh { grid-column: 2; grid-row: 3; margin-top: 8px; }
+.vol > #recBtn { grid-column: 2; grid-row: 4; }
+.vol > #recSqBtn { grid-column: 2; grid-row: 5; }
+.spk, .rec { height: 26px; }
+
+/* the lower part is a display sunk deeper into the panel: a stepped milled edge (dark wall, bright lower lip)
+   and a stronger shadow inside */
+.radio-body::after {
+  box-shadow: inset 0 5px 12px rgba(0, 0, 0, .9), inset 0 0 0 1px #000, inset 0 0 26px rgba(0, 0, 0, .4),
+    0 0 0 1px #000, 0 -2px 2px 2px rgba(0, 0, 0, .7), 0 0 0 4px rgba(0, 0, 0, .3), 0 2px 0 4px rgba(255, 255, 255, .08); }
+
 /* ---------- tabs drawn on the screen ---------- */
 .body-tabs { padding: 4px 8px 0; background: #070b10; border-bottom-color: #1d2733; }
 .body-tabs button { border-color: transparent; background: transparent; color: #6b7684; }
@@ -1925,11 +2031,11 @@ html.compact .r-keys .keys button { --led-at: left 3px top 2px / 6px 3px no-repe
 #recsPane { --yellow: #b693ff; }
 #memPane, #scanPane, #settingsCard { --yellow: #2fe0c0; }
 .radio-body .key, .radio-body .keys button { --led: var(--yellow); }
-/* MEMORIES: the main action keys (SAVE CURRENT, SAVE, ADD GROUP, IMPORT SELECTED, DOWNLOAD) are keys like all the others,
+/* MEMORIES and SCAN: the main action keys (SAVE CURRENT, SAVE, ADD GROUP, IMPORT SELECTED, DOWNLOAD; START) are keys like all the others,
    not gold ones; only their legend has the colour of the tab */
-#memPane .key.accent { color: var(--yellow); border: 1px solid #0b0c0e; border-top-color: #4d535c;
+#memPane .key.accent, #scanPane .key.accent { color: var(--yellow); border: 1px solid #0b0c0e; border-top-color: #4d535c;
   background: linear-gradient(180deg, #4a5059 0%, #30343b 50%, #24272c 100%); box-shadow: var(--key-raised); }
-#memPane .key.accent:active { box-shadow: inset 0 1px 2px rgba(0, 0, 0, .6), 0 0 0 #08090a, 0 1px 1px rgba(0, 0, 0, .6); }
+#memPane .key.accent:active, #scanPane .key.accent:active { box-shadow: inset 0 1px 2px rgba(0, 0, 0, .6), 0 0 0 #08090a, 0 1px 1px rgba(0, 0, 0, .6); }
 
 /* ---------- MEM window: aluminium title bar ---------- */
 .drawer { border-color: #000; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 20px 60px rgba(0, 0, 0, .75); }

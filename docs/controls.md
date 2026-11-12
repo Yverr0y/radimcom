@@ -29,9 +29,10 @@ receive it (e.g. an HF band to the VFO with the converter).
 
 ## VFO window
 
-Each VFO is one dark display window; a click on an inactive window or on its **VFO** key beside the S-meter selects
-that VFO. The active one has a yellow rim and its key is lit (yellow underline); the key of an inactive VFO with an open
-squelch gets a green underline, a transmitting one turns red.
+Each VFO is one dark display window; a click on an inactive window or on its **VFO** key under the window selects
+that VFO. The active one is faintly lit with a yellow line towards its key, and its key is lit (yellow LED); the key of an
+inactive VFO with an open squelch gets a green LED, a transmitting one turns red. Beside each VFO key is the **CUE** key
+of that VFO (orange LED): that VFO stays audible at CUE level while another VFO is selected (the same as CUE in the window).
 
 - **Top row:** VFO-x (boxed and yellow on the active VFO, green on an inactive one with an open squelch), the name of the
   memory / band plan / satellite transponder (lit on the active VFO; a memory with its own tag colour shows its name in that colour), a red dot while recording, a red struck-through speaker
@@ -175,9 +176,9 @@ squelch gets a green underline, a transmitting one turns red.
       **RESET** (clears a fault, orange while there is one) and **MONITOR** (shows AZ / EL in the AD, see below; one switch for all VFOs, remembered in the browser).
       Then the **azimuth calibration**. The settings are in `data\rotor.json`; the serial port is held by the receiver of the first VFO in `vfos.json`,
       the page sends the rotor commands there whichever VFO is active. See [Satellite tracking](satellites.md).
-  - **VFO**: settings of one VFO. On the left the keys **VFO-A … VFO-D** (like the VFO keys beside the S-meter; one without an SDR is grey);
+  - **VFO**: settings of one VFO. On the left the keys **VFO-A … VFO-D** (like the VFO keys under the VFO windows; one without an SDR is grey);
     the lit one is the active VFO and is joined to the card on the right, which holds its settings. A press on another key switches the
-    active VFO (as beside the S-meter) and SETTINGS stays open. The card has the pages:
+    active VFO (as the keys under the VFO windows) and SETTINGS stays open. The card has the pages:
     - **SDR DONGLE**
       - **Block diagram** at the top: the path of the signal antenna → upconverter → bias-tee → tuner → A/D (RTL2832) → USB → DC removal → SP spurs removal → spectrum / VFOs,
         with the crystal (ppm) clocking the tuner and the A/D, and AGC+, which reads the A/D level and sets the tuner gain (green dashed loop).
@@ -257,7 +258,7 @@ squelch gets a green underline, a transmitting one turns red.
 - **VIEW** (far left of the key row): hides the whole lower part with the tabs (SPECTRUM, DECODERS …) with a slide and shows it again; lit while hidden. A key that opens a tab (DECODE, MEM, SCAN …) shows it again. Remembered in the browser.
 - **MENU → BAND**: shows or hides the row of band keys; the spectrum and waterfall take the freed space. Remembered in the browser.
 
-**AD (additional display)**: the dark window under the S-meter and the VFO keys shows one thing at a time, by priority:
+**AD (additional display)**: the part of the glass under the clock shows one thing at a time, by priority:
 
 1. **Error messages** (red), e.g. a refused setting, TX, a recording error, DAB on a dongle that cannot do it. A message stays until it is
    accepted by the small framed **OK**; the frame of the window blinks red (period 0.5 s) meanwhile. More waiting messages show *+n*, the next one comes after OK.

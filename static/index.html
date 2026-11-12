@@ -27,9 +27,11 @@
 
 <!-- ===== transceiver screen: the top part (displays, keys, bands) stays fixed when the page scrolls ===== -->
 <section class="radio radio-head" id="radioHead">
+  <!-- head laid out as a grid (style.css): displays and keys at the left, the master section (logo, MONITOR, RECORD)
+       at the right over both, the band keys across the whole width -->
   <div class="r-top">
-    <!-- left block: S-meter with its readout window, the VFO keys beside it, the multifunction display under both -->
-    <div class="r-left">
+    <!-- one glass over all the displays: S-meter | VFO windows | clock with the AD (the order of the cells is set in style.css) -->
+    <div class="r-glass">
     <div class="meter-box">
       <svg id="smeter" class="meter-face" viewBox="0 0 260 100" aria-label="S-meter"></svg>
       <!-- dark window under the S-meter: S reading and the load of the PC -->
@@ -42,12 +44,14 @@
       </div>
     </div>
 
-    <!-- VFO keys beside the S-meter, one under another (filled by app.js); a click on a VFO window selects it too -->
-    <div class="vfo-keys" id="vfoKeys"></div>
-
-    <!-- AD = additional display under the S-meter and the VFO keys (as wide as both). Shows one thing, by priority:
-         1. error messages (red, confirmed by OK), 2. rotor AZ / EL (MONITOR in SETTINGS › GENERAL › ROTOR),
-         3. DAB now on air (station, SNR, DLS text), 4. RDS -->
+    <!-- right cell of the glass: the clock (digits, under them the date and LOC / UTC), under it the AD = additional display.
+         The AD shows one thing, by priority: 1. error messages (red, confirmed by OK), 2. rotor AZ / EL (MONITOR in
+         SETTINGS › GENERAL › ROTOR), 3. DAB now on air (station, SNR, DLS text), 4. RDS -->
+    <div class="r-aux">
+    <div class="r-clock" id="clockBox" role="button" tabindex="0" title="Click to switch UTC / local time">
+      <span id="clock">--:--:--</span>
+      <span class="clock-sub"><span id="clockDate"></span><span class="clock-zone"><small id="zoneLoc">LOC</small><small id="zoneUtc">UTC</small></span></span>
+    </div>
     <div class="mfd" id="mfd">
       <div class="ad-err" id="adErr" hidden role="alert">
         <span class="ad-err-text" id="adErrText"></span><span class="ad-err-more" id="adErrMore"></span>
@@ -92,16 +96,13 @@
       </div>
     </div>
 
-    <div class="r-info">
-      <div class="r-info-text">
-        <!-- clock window under its legend: digits, under them the date and the LOC / UTC annunciators -->
-        <div class="r-grp">
-          <span class="r-gh">TIME</span>
-          <div class="r-clock" id="clockBox" role="button" tabindex="0" title="Click to switch UTC / local time">
-            <span id="clock">--:--:--</span>
-            <span class="clock-sub"><span id="clockDate"></span><span class="clock-zone"><small id="zoneLoc">LOC</small><small id="zoneUtc">UTC</small></span></span>
-          </div>
-        </div>
+    </div>
+    <!-- VFO keys under the glass, each one under its own VFO window (filled by app.js); a click on a VFO window selects it too -->
+    <div class="r-sel"><div class="vfo-keys" id="vfoKeys"></div></div>
+  </div>
+
+  <!-- master section at the right: logo, type and version, MONITOR faders with the level meter, mute, RECORD -->
+  <div class="r-master">
         <!-- RADIMCOM logo: geometric letters made of strokes (height 100, stroke 18), green ring above the I -->
         <div class="r-brandline">
         <a class="r-logo-link" href="https://github.com/om2amr/RADIMCOM" target="_blank" rel="noopener noreferrer" title="RADIMCOM on GitHub">
@@ -161,9 +162,8 @@
         <span class="r-vers"><span class="r-ver">Ver. 0.114beta1</span><a class="r-upd" id="updLink" href="https://github.com/om2amr/RADIMCOM/releases" target="_blank" rel="noopener noreferrer" hidden></a></span>
         </div>
         <span id="status" class="pill" hidden><span class="dot"></span><span id="statusText"></span></span>
-      </div>
-      <!-- volume: vertical sliders at the right edge (CUE = other VFOs with CUE on, MAIN = active VFO),
-           speaker under them -->
+      <!-- volume: vertical sliders (CUE = other VFOs with CUE on, MAIN = active VFO) with the level meter at the left,
+           the speaker and the REC keys beside them -->
       <div class="vol">
         <span class="r-gh">MONITOR</span>
         <div class="vol-sliders">
@@ -185,10 +185,9 @@
         <button id="recBtn" class="rec"><span class="rec-dot"></span><span id="recTime">REC</span></button>
         <button id="recSqBtn" class="rec"><span class="rec-dot"></span><span id="recSqTime">REC SQ</span></button>
       </div>
-    </div>
   </div>
 
-  <!-- function keys -->
+  <!-- function keys: one module of two rows for each group -->
   <div class="r-keys">
     <div class="kgroup" data-g="VIEW"><span class="klabel">VIEW</span><div class="keys">
       <button id="bodyKey" class="key" aria-label="Hide the lower part" aria-controls="radioBody" title="Hide / show the whole lower part with the tabs (SPECTRUM, DECODERS, SATELLITES …); lit while it is hidden"><svg class="body-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3.5" width="18" height="17" rx="2"/><path d="M3 9.5H21"/><path class="body-chev" d="M9 13.5L12 16.5L15 13.5"/></svg></button>

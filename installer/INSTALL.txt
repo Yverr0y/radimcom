@@ -142,7 +142,10 @@ Main Features
 Minor Fixes
 - VIEW key at the far left of the key row: hides the whole lower part with the tabs (slides closed) and shows it
   again; lit while hidden. A key that opens a tab (DECODE, MEM, SCAN ...) shows it again. Remembered in the browser.
+  Hidden: the window can be as low as the head; a lower or narrower window shrinks the panel whole (aspect kept).
 - Rack mount look: a narrow ear at the left and right edge of the panel, with the corner screws in it.
+- The keys no longer overflow into a second line in a window wider than 1920 x 820, nor on macOS (wider system
+  font): the whole panel is drawn a little smaller instead.
 - Front panel like a real set: the clock shows the unlit segments faintly, with the date and LOC / UTC under the
   digits; faders with a dB scale (+3 ... -inf dB) and ribbed caps, no level colours in the slot; level meter with dB
   numbers, peak hold (1 s) and a CLIP LED for each channel; the logo printed on the panel with SDR COMMUNICATIONS
@@ -152,8 +155,11 @@ Minor Fixes
   has its own colour of the LED and the lit legend (VIEW white, MODE yellow, FILTER orange, GAIN green, STEP cyan,
   TUNE lime, AUDIO violet, DECODE pink, TRACKING blue, MENU teal); the lit tab of the lower part has the colour of
   the group whose key opens it, and the same colour is the accent inside the tab (lit sub-tab keys, headings,
-  table heads, values); the main action keys of MEMORIES are keys like the others, not gold. Speaker, REC and REC SQ have a wider LED window
+  table heads, values); the main action keys of MEMORIES and SCAN are keys like the others, not gold. Speaker, REC and REC SQ have a wider LED window
   at the left.
+- New layout of the head: one glass over all the displays (S-meter, VFO windows, clock with the additional
+  display), the VFO keys under their windows (each with a CUE key of that VFO), the function keys as modules of two rows (LED in the top middle), the logo, MONITOR and
+  RECORD in a column at the right, the band keys across the whole width; the lower part sunk deeper into the panel.
 - VFO windows: the mode (LSB, FM ...) starts at the same left edge as RX above it; CTCSS / DCS that are off are as
   dark as the other unlit annunciators (AFI, ASQ ...).
 - WFM filters 50, 75, 150 and 200 kHz (default 200 kHz).

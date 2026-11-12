@@ -9,17 +9,62 @@ const $ = (id) => document.getElementById(id);
 // window gets longer (wider / taller) and the layout stretches.
 const STAGE_W = 1920, STAGE_H = 820;
 let uiScale = 1;
+// Lower part hidden (VIEW key): the stage is only as high as the head + the bottom strip with the screws
+// (26 px) + the .rig padding (2 × 6 px), so the window can be made as low as the head and then it scales down
+// as a whole (same aspect ratio), like the full panel does under STAGE_H.
+const BODY_STRIP_H = 26 + 12;
+const keysWrap = () => {   // the key row overflowed into a second line
+  const g = document.querySelectorAll(".r-keys > .kgroup");
+  return g.length > 1 && g[g.length - 1].offsetTop !== g[0].offsetTop;
+};
+// Stage width the key row needs on one line. The system font differs (SF Pro on macOS is wider than Segoe UI
+// on Windows), so it is measured: the sum of the groups, their gaps and the margins of the row.
+const keysNeedW = (vw) => {
+  const keys = document.querySelector(".r-keys"), cs = getComputedStyle(keys);
+  const g = [...keys.querySelectorAll(":scope > .kgroup")];
+  const row = g.reduce((s, e) => s + e.getBoundingClientRect().width / uiScale, 0)
+    + (parseFloat(cs.columnGap) || 0) * (g.length - 1) + parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+  return Math.ceil(vw - keys.clientWidth + row) + 12;   // a little reserve for rounding of another font
+};
 function fitStage() {
-  const w = window.innerWidth, h = window.innerHeight;
-  // lower part hidden (VIEW key): only the head is left, so the scale follows the window width alone –
-  // a lower window does not shrink it
-  const headOnly = document.documentElement.classList.contains("body-off");
-  uiScale = (headOnly ? w / STAGE_W : Math.min(w / STAGE_W, h / STAGE_H)) || 1;
-  const root = document.documentElement, vw = w / uiScale;
-  root.style.setProperty("--k", uiScale);
-  root.style.setProperty("--vw", `${vw}px`);
-  root.style.setProperty("--vh", `${h / uiScale}px`);
-  root.classList.toggle("compact", vw <= 2100);
+  const w = window.innerWidth, h = window.innerHeight, root = document.documentElement;
+  const head = document.getElementById("radioHead");
+  const headOnly = root.classList.contains("body-off") && head;
+  let baseW = STAGE_W;   // design width of the panel; wider if the keys do not fit on one line in it
+  const apply = (k) => {
+    uiScale = k || 1;
+    // hidden lower part: the panel keeps its width (baseW), a low window shrinks it whole and centres it;
+    // the full panel stretches over the whole window width as before
+    const vw = headOnly ? baseW : w / uiScale;
+    root.style.setProperty("--stage-x", headOnly ? `${Math.max(0, (w - vw * uiScale) / 2)}px` : "0px");
+    root.style.setProperty("--k", uiScale);
+    root.style.setProperty("--vw", `${vw}px`);
+    root.style.setProperty("--vh", `${h / uiScale}px`);
+    // compact keys in a narrow stage, and also in a wider one where the full-size keys do not fit on one line
+    root.classList.remove("compact");
+    if (vw <= 2100 || keysWrap()) root.classList.add("compact");
+  };
+  // the keys wrap even compact (a wider system font): the stage gets as wide as they need, so the whole
+  // panel is drawn a little smaller instead of a second row of keys
+  const widen = () => {
+    if (!head || !keysWrap()) return false;
+    baseW = Math.max(baseW, keysNeedW(parseFloat(root.style.getPropertyValue("--vw"))));
+    return true;
+  };
+  if (!headOnly) {
+    const k = Math.min(w / STAGE_W, h / STAGE_H);
+    apply(k);
+    if (widen()) apply(Math.min(k, w / baseW));
+    return;
+  }
+  // the head height depends on the stage width (compact keys): fit, measure again, fit once more
+  let stageH = 0;
+  for (let i = 0; i < 4; i++) {
+    const hh = head.offsetHeight + BODY_STRIP_H;
+    if (hh === stageH && !widen()) break;
+    stageH = hh;
+    apply(Math.min(w / baseW, h / stageH));
+  }
 }
 fitStage();
 window.addEventListener("resize", fitStage);   // before the other resize handlers (redraw)
@@ -7270,7 +7315,7 @@ function renderSetVfoKeys() {
   const named = vfos.filter((v) => v.name);
   box.hidden = !named.length;           // a receiver without VFOs: only the card
   $("setVfoCard").classList.toggle("solo", !named.length);
-  const src = [...$("vfoKeys").children];
+  const src = [...$("vfoKeys").querySelectorAll(".vfo-sel")];
   if (box.children.length !== src.length) box.innerHTML = src.map(() => `<button class="key set-vfo-key" role="tab"></button>`).join("");
   src.forEach((s, i) => {
     const b = box.children[i];
@@ -9561,29 +9606,38 @@ function renderVfoInfo(row, s) {
   conv.classList.toggle("warn", has && !need);
 }
 
-/** VFO keys beside the S-meter, one for each VFO window (also the free ones, disabled); the active one is lit. */
+/** Keys under the VFO windows, a pair for each window (also the free ones, disabled): the VFO key (the active one lit)
+ *  and beside it CUE of that VFO (lit = it stays audible at CUE level while another VFO is selected). */
 function renderVfoKeys() {
   const box = $("vfoKeys");
   if (!box) return;
   const rows = [...$("vfoList").querySelectorAll(".vfo-row")].filter((r) => r.querySelector(".vfo-key"));
-  if (box.children.length !== rows.length) box.innerHTML = rows.map(() => `<button class="key vfo-sel"></button>`).join("");
+  if (box.children.length !== rows.length) box.innerHTML = rows.map(() =>
+    `<div class="vfo-pair"><button class="key vfo-sel"></button><button class="key vfo-cuekey">CUE</button></div>`).join("");
   rows.forEach((r, i) => {
-    const b = box.children[i], name = r.querySelector(".vfo-key").textContent;
+    const pair = box.children[i], b = pair.querySelector(".vfo-sel"), c = pair.querySelector(".vfo-cuekey");
+    const name = r.querySelector(".vfo-key").textContent, spare = r.classList.contains("spare");
+    const v = vfos.find((x) => String(x.name) === r.dataset.vfo);
     if (b.textContent !== name) b.textContent = name;
-    b.dataset.vfo = r.dataset.vfo;
-    b.disabled = r.classList.contains("spare");
+    b.dataset.vfo = c.dataset.vfo = r.dataset.vfo;
+    b.disabled = c.disabled = spare;
     b.classList.toggle("on", r.classList.contains("active"));
     b.classList.toggle("busy", r.classList.contains("busy"));
     b.classList.toggle("tx", r.classList.contains("tx"));
-    b.title = r.classList.contains("spare") ? r.title : `Select ${name.replace("-", " ")}`;
+    b.title = spare ? r.title : `Select ${name.replace("-", " ")}`;
+    c.classList.toggle("on", !!(v && v.cue));
+    c.title = spare ? r.title : v && v.cue ? `CUE on: ${name.replace("-", " ")} stays audible at CUE level (click to turn off)`
+      : `CUE off (click to keep hearing ${name.replace("-", " ")} when another VFO is selected)`;
   });
   renderSetVfoKeys();
 }
 $("vfoKeys").addEventListener("click", (e) => {
-  const b = e.target.closest(".vfo-sel");
+  const b = e.target.closest(".vfo-sel, .vfo-cuekey");
   if (!b || b.disabled) return;
   const v = vfos.find((x) => String(x.name) === b.dataset.vfo);
-  if (v) selectVfo(v);
+  if (!v) return;
+  if (b.classList.contains("vfo-cuekey")) setCue(v, !v.cue);   // CUE does not switch the VFO
+  else selectVfo(v);
 });
 
 /** Lit part of an RF / SQL segment bar = position of its value (CSS --p). */
@@ -9999,6 +10053,7 @@ function setCue(v, on) {
   store("cue_" + v.name, on ? "1" : "");
   syncCue();
   renderVfoDisplays();
+  renderVfoKeys();
   renderCueKey();
 }
 
