@@ -991,6 +991,9 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .ism td.dev, .ism td.id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ism td.data { white-space: normal; word-break: break-word; }
 .ism .rep { color: var(--muted); margin-left: 6px; }
+.ism tr.raw td { color: var(--muted); }
+.ism tr.raw td.data { font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+.ism a.pdv { margin-left: 6px; text-decoration: none; }
 /* HFDL: channels decoded now, ground stations heard, the station / frequency table, messages */
 .hfdl-status { flex: none; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 .hfdl-status summary { cursor: pointer; color: var(--muted); }

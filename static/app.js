@@ -6121,19 +6121,21 @@ const ISM_TITLE = $("ismKey").title;   // tooltip from index.html (replaced on a
 let ismLast = {};   // the status sends only on/off and the error; the counts come from ismstate
 
 function ismRow(tr, m) {
+  tr.classList.toggle("raw", !!m.raw);
   const level = m.rssi == null ? "-" : `${Number(m.rssi).toFixed(1)} / ${Number(m.snr).toFixed(1)} dB`;
   tr.innerHTML = `<td>${new Date(m.time * 1000).toISOString().slice(11, 19)}</td><td>${fmtMHz(m.freq_hz, 3)}</td>` +
-    `<td class="dev" title="${escHtml(m.model)}${m.protocol ? ` · rtl_433 protocol ${escHtml(m.protocol)}` : ""}">${escHtml(m.model)}</td>` +
+    `<td class="dev" title="${escHtml(m.model)}${m.protocol ? ` · rtl_433 protocol ${escHtml(m.protocol)}` : ""}${(m.models || []).length > 1 ? " · the same packet read by more decoders of rtl_433" : ""}">${escHtml(m.model)}</td>` +
     `<td class="id" title="${escHtml(m.dev_id)}">${escHtml(m.dev_id || "-")}</td><td>${escHtml(m.channel || "-")}</td>` +
     `<td title="${escHtml(m.mod)}">${level}</td>` +
-    `<td class="data" title="${escHtml(m.mic ? `Check: ${m.mic}` : "")}">${escHtml(m.text)}` +
-    `${m.n > 1 ? `<span class="rep" title="Same message received ${m.n} times in a row">×${m.n}</span>` : ""}</td>`;
+    `<td class="data" title="${escHtml(m.raw ? `Not decoded${m.flex ? ` · rtl_433 flex decoder: ${m.flex}` : ""}` : m.mic ? `Check: ${m.mic}` : "")}">${escHtml(m.text)}` +
+    `${m.view ? `<a class="pdv" href="${escHtml(m.view)}" target="_blank" rel="noopener" title="Show the pulses at triq.org/pdv">⧉</a>` : ""}` +
+    `${m.n > 1 ? `<span class="rep" title="Same message received ${m.n} times">×${m.n}</span>` : ""}</td>`;
 }
 
 function addIsm(m) {
   const tb = $("ismRows");
-  let tr = tb.firstElementChild;
-  if (!tr || Number(tr.dataset.id) !== m.id) {
+  let tr = tb.querySelector(`tr[data-id="${m.id}"]`);   // a repeat or a second decoder of an earlier row
+  if (!tr) {
     tr = document.createElement("tr");
     tr.dataset.id = m.id;
     tb.prepend(tr);
@@ -6167,7 +6169,8 @@ function renderIsmInfo(d) {
   el.classList.toggle("err", !!i.error);
   if (i.error) { el.textContent = `ISM: ${i.error}`; return; }
   el.textContent = !i.enabled ? "" : i.running === false ? "starting rtl_433…"
-    : `${i.count || 0} messages${i.dropped ? ` · ${i.dropped} blocks dropped` : ""}`;
+    : `${i.count || 0} messages${i.raw_count ? ` · ${i.raw_count} raw` : ""}${i.dropped ? ` · ${i.dropped} blocks dropped` : ""}`;
+  if (i.channels && i.channels.length) el.title = `rtl_433 channels (256 kHz): ${i.channels.map((f) => fmtMHz(f, 3)).join(", ")} MHz`;
 }
 
 function renderIsm(s) {
@@ -6179,6 +6182,7 @@ function renderIsm(s) {
   $("ismKey").title = s.chain_owner ? `ISM needs its own dongle (this VFO shares the dongle of VFO ${s.chain_owner})`
     : noRtlDongle(s) ? `ISM is not supported on ${DEVICE_NAMES[s.driver]} (RTL-SDR only)` : ISM_TITLE;
   for (const b of $("ismBands").children) b.classList.toggle("active", Number(b.dataset.f) === s.center_hz);
+  $("ismRaw").checked = !!s.ism_raw;
   renderIsmInfo({ enabled: on, error: s.ism_error });
 }
 
@@ -6205,6 +6209,7 @@ $("ismBands").addEventListener("click", (e) => {
   const b = e.target.closest("[data-f]");
   if (b && st) send({ ism_hz: Number(b.dataset.f) });
 });
+$("ismRaw").addEventListener("change", (e) => { if (st) { st.ism_raw = e.target.checked; send({ ism_raw: st.ism_raw }); } });
 $("ismClear").addEventListener("click", () => {
   fetch(vbase + "/api/ism", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"action":"clear"}' });
   ismReset();
