@@ -89,6 +89,107 @@ Change log
 ----------
 (also in CHANGELOG.md)
 
+Ver. 0.114beta1
+(test beta, GitHub branch 0.114beta1)
+Main Features
+- DYN key (AUDIO, right of ALC) for AM/LSB/USB/CW: weak voices out of the noise - the noise between words
+  is turned down, speech stays at full level. EXP = expander with a voice detector (speech harmonics stand
+  out of the flat HF noise), EXP AUTO (default) sets sensitivity, hold and depth by itself (settles in 2-3 s),
+  LIM = soft limiter instead of hard clipping (+4 dB with ALC). Parts in SETTINGS -> AUDIO -> DYN.
+  Smooth ALC gain (no clicks): SETTINGS -> SDR DONGLE -> ADVANCED, on by default. SETTINGS -> AUDIO
+  rearranged; smaller gaps between key groups.
+- New look - a front panel like a real rack receiver: one glass over all the displays, the VFO keys (each with its
+  CUE key) under their windows, function keys as two-row modules, logo / MONITOR / RECORD in a column at the right,
+  band keys across the whole width, rack ears with screws. Keys with an LED window, each key group in its own colour
+  (DECODE fuchsia), the lit tab and its accents in the colour of its group. Clock with faint unlit segments and the
+  date, faders with a dB scale, level meter with peak hold and CLIP LEDs.
+- ISM (by Brano, brjanicek): about twice as many messages - narrow 256 kS/s channels cut out of the dongle
+  samples, one rtl_433 each (433.92 + 433.42 MHz, or 868.30 MHz), about 6x less CPU. RAW checkbox: packages
+  no decoder read shown as grey rows (pulses, bits, link to triq.org/pdv). One packet read by two decoders
+  = one row, repeats merged (xN), SI units.
+- SCAN: scanner of memories, ranges and the FM broadcast band. New key SCAN in the MENU group -> SCAN tab. All
+  channels in the band of the dongle are measured at once from the spectrum; the tuner moves only between windows.
+  What is scanned = four tiles: MEMORY (all / favourites / a group, as chips; each channel in its own mode),
+  VISIBLE BAND (the spectrum shown; the tuner is not moved), RANGE FROM-TO-STEP-MODE-BW (presets: airband 8.33 kHz,
+  PMR446, 2 m, 70 cm, LPD433, marine VHF, CB; STORE FOUND = found frequencies into the memory group
+  "Scan YYYY-MM-DD"); VISIBLE BAND and RANGE in AM or FM only, the MODE keys switch the VFO too. FM BCAST searches
+  88-108 MHz in WFM: grid 50 kHz, only the core of each channel is measured and a station must be the strongest point
+  +-100 kHz around (checked over 3 blocks), so the VFO lands on its centre; each station is heard LISTEN s (8), then
+  the next one up the band; STORE FOUND puts them into the group "FM YYYY-MM-DD", named by their RDS PS.
+  Keys: START/STOP; HOLD, SKIP (5 min), LOCK OUT (the channel heard now, until STOP), prev / next only while
+  scanning; REC = WAV of each activity with 0.5 s before the signal came back (recordings folder\scan). Settings
+  behind the gear key: AUTO SQUELCH (noise floor of each channel + MARGIN), CONTINUE after signal / at once / after
+  time, PRIORITY EVERY x s, CARRIER LOCKOUT (30 s - 30 min), PICK next / strongest, KEEP HISTORY days; REC and these
+  settings changed while scanning take effect at once. Pages: CHANNELS (per memory SCAN on/off, own SQ, own ASQ
+  margin, PRIO, edited in place; x in a row = locked out until STOP, easy to hit while scanning; the channel heard
+  has a speaker icon), ACTIVITY (what was heard, with the name and note of a memory at that frequency; CSV export,
+  play), HEATMAP (frequency x hour of the day). Both show THIS SCAN: a START of another source / range begins a new
+  one, so they start empty; CLR empties them by hand; the history of all VFOs (data\logs\scan_YYYY-MM-DD.csv) is
+  kept KEEP HISTORY days (31). Range in the spectrum blue, locked out grey. Decoder and recording of a memory are
+  ignored; the decoders of the scanning VFO pause. scanner.py, /api/scan.
+- DAB and DSD are modes with their own tabs (by Brano, brjanicek): MODE has a new key DAB (DAB on + DAB tab with the
+  DAB+ card); another mode, a band button or a memory that is not DAB turns DAB off. DSD opens its own DSD tab.
+  The DAB and DSD pages are gone from DECODERS.
+- MEMORIES: modes DAB and DSD (by Brano, brjanicek). A DAB memory has the DAB channel chosen in the form (frequency =
+  its centre), recall turns DAB on with it; DAB and DSD have a fixed width. Older memories with a DAB channel are
+  read as DAB. IMPORT / EXPORT lists: a DAB row has a dropdown of the DAB channels.
+- MEMORIES: simpler channel form (by Brano, brjanicek): name, mode, frequency (or DAB channel) and groups; ADVANCED
+  (remembered in the browser) shows the other fields under them.
+- DAB now on air in the AD window (in the place of RDS, same colours): DAB / DAB+ tag, station name, SNR (green /
+  yellow / red) and the DLS text (artist / song), running when wider than the window. AD priority: 1. errors,
+  2. rotor AZ / EL (MONITOR), 3. DAB, 4. RDS.
+- ROTOR CONTROL: new page CONNECTION (beside MAP) - a block diagram of the sources of the wanted AZ / EL: SAT TRACKER,
+  MEMORY RECALL and RCTRL MAP, each with a switch to the ROTOR. A click connects / disconnects a source; the rotor
+  block glows green while at least one is connected, grey when none is. Disconnected: the tracker only calculates
+  (CALC ONLY), a recalled memory only tunes (the antenna does not turn), a map click only draws the target.
+  For the whole station (data\rotor.json).
+- Recalling a MEMORIES channel with a location (LAT / LON) opens the ROTOR CONTROL tab (RCTRL on), centres the map
+  on it and turns the rotor to its azimuth from the QTH (elevation 0).
+- Station location moved from SATELLITES -> SETUP to SETTINGS -> GENERAL -> LOCATION (locator or lat / lon,
+  CHOOSE ON MAP, altitude); used by the satellites, packet decoder (APRS), HFDL and AIS. data\location.json,
+  default 0.0 / 0.0 on a new installation, an older installation keeps its station.
+- SETTINGS split into GENERAL (SKINS, S-METER, TOUCHPAD, LOCATION, ROTOR, RECORDINGS: the whole station) and VFO (keys VFO-A..D on the left,
+  the lit one joined to its card: SDR DONGLE, ADVANCED, AUDIO, TX). S9 calibration moved to VFO -> ADVANCED.
+- One rotor for the whole station: settings in data\rotor.json (moved from config_X.json at the first start),
+  run by the receiver of the first VFO whichever VFO is active; MONITOR is one switch for all VFOs.
+- ROTOR CONTROL tab (new key RCTRL in the key group TRACKING, formerly SAT): a click on the map, on a channel point
+  or on a list row turns the station rotor (from any VFO) to that azimuth from the QTH (elevation 0); dashed line =
+  wanted azimuth to the target, green sector (BEAM width) = antenna now, turning with the rotor. The points are the
+  MEMORIES channels with a location (LAT / LON); GROUPS beside the map: a checkbox per group (ALL / NONE).
+- Folder of the MP3 recordings selectable: SETTINGS -> GENERAL -> RECORDINGS (full path, created if missing,
+  DEFAULT = data\recordings); one folder for all VFOs, used by REC / REC SQ and the RECORDINGS tab. data\recordings.json.
+- Tone squelch in FM: keys TSQ-C (CTCSS, 50 tones) and TSQ-D (DCS, 104 codes, N / I) in the AUDIO group, in addition
+  to the SQL bar or ASQ. Tone / code in SETTINGS -> VFO -> AUDIO or with the mouse wheel over the key; shown in the
+  VFO window under the frequency (dark = off, orange = on, lit orange box = received). The tone is filtered out of the audio.
+- ACARS / VDL2: MESSAGES / AIRCRAFT / MAP views like HFDL. AIRCRAFT = newest data of each aircraft heard
+  (ADS-B data, position with its source and age, ground station, message count). MAP = aircraft with a known position (ADS-B, ADS-C, and on VDL2 the
+  approximate position from XID frames), tracks, VDL2 ground stations, list beside the map; the square key in the top
+  right corner opens the map alone in a new browser tab.
+Minor Fixes
+- RECS key tooltip: the broken path data\recordings fixed.
+- DECODERS (by Brano, brjanicek): page keys in groups with separators - CW, FT8, PACKET, RTTY, SSTV, WEFAX |
+  ACARS, ADS-B, HFDL, VDL2 | AIS | ISM.
+- AGC+ PRESETS above the sliders (SETTINGS -> VFO -> ADVANCED -> AGC+), the matching one lit: CAREFUL (the old
+  behaviour, no clipping), MODERATE (new default: gain up to a -2...-5 dBFS peak, short clipping up to 100 ppm tolerated,
+  2.5-4 dB more gain), BOLD (new setting "Bold: up while clipping <=": climbs into clipping up to 20 ppm, down above 300 ppm,
+  3-7 dB more; a gain that clipped is not tried again for 1 min). WFM: the blocks around an AGC+ gain step are played in mono, so the stereo no longer turns to noise.
+  Fixed: AGC+ no longer stays low when the next tuner gain step is bigger than the wanted one.
+- RF bar red on A/D clipping: with AGC and AGC+ off (manual RF gain) the whole RF bar and its dB value in the
+  VFO window turn red while the A/D converter clips (held 1 s); A/D peak in the tooltip.
+- VIEW key at the far left of the key row: hides the whole lower part with the tabs (slides closed) and shows it
+  again; lit while hidden. A key that opens a tab (DECODE, MEM, SCAN ...) shows it again. Remembered in the browser.
+  Hidden: the window can be as low as the head; a lower or narrower window shrinks the panel whole (aspect kept).
+- The keys no longer overflow into a second line in a window wider than 1920 x 820, nor on macOS (wider system
+  font): the whole panel is drawn a little smaller instead.
+- WFM filters 50, 75, 150 and 200 kHz (default 200 kHz).
+- Memory channel location: LAT / LON (decimal degrees) or CHOOSE ON MAP in the channel form, saved in memories.json and
+  in the JSON / CSV export and import; the CHANNELS table shows LAT, LON, azimuth and distance from the
+  station location (SETTINGS -> GENERAL -> LOCATION).
+- STEP keys: 10 Hz / 100 Hz / 1 kHz / 10 kHz in every mode, WFM included (WFM remembers its own chosen step).
+- Default S-meter layout: amber needle.
+- Docs: annotated screenshots (main screen, SATELLITES > TRACK, DAB) with callouts to each part, drawn by
+  docs/annotate.py.
+
 Ver. 0.113
 (after the test betas 0.113beta1 and 0.113beta2; memory editor by Brano, github.com/brjanicek)
 Main Features
@@ -109,6 +210,9 @@ Main Features
 - Waterfall speed (vertical zoom): vertical bar in the top right corner of the waterfall, 1/8 - 4x.
 - Waterfall settings: gear above the speed bar, window on mouse hover: colour scheme (Classic, Inferno,
   Viridis, Turbo, Ice), colour range and offset (moved from SET -> DISPLAY).
+- Spectrum settings: the same gear and bar in the top right corner of the spectrum. Bar = zero (bottom
+  edge) against the noise floor, -20 ... +20 dB in 5 dB steps; gear = colour schemes background gradient /
+  curve (Graphite, Waterfall, Night blue, Phosphor, Amber, Dusk, Ember, Steel).
 - SETTINGS tab instead of the floating SET window: the SET key is a gear; while lit, the bottom part has
   a SETTINGS tab (beside DECODERS) with pages SDR DONGLE (BASIC, ADVANCED: SP and AGC+), AUDIO, UI (SKINS,
   S-METER, TOUCHPAD), ROTOR (TX); no scrolling. Bandwidth moved to SDR DONGLE. AUDIO without the squelch

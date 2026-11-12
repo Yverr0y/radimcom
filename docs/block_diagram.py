@@ -48,7 +48,7 @@ def label(x,y,s,kind=None,anchor="middle",size=13,rot=None):
 
 # Title
 text(40,50,"RADIMCOM: block diagram of all components",32,weight=700)
-text(40,78,"Signal flows from the hardware at the bottom up to the browser at the top. Ver. 0.112",16,MUTE)
+text(40,78,"Signal flows from the hardware at the bottom up to the browser at the top. Ver. 0.114beta1",16,MUTE)
 
 # ---------- top row ----------
 group(40,115,300,215,"VFO launcher",FILL["srv"])
@@ -85,19 +85,20 @@ text(640,488,"one process per VFO, :8441–:8444, config_X.json. Flask, NumPy, S
 # API row
 Y=500;HA=58
 box(110,Y,320,HA,"/api/set /state /tx /devices /mpx",["tuning, mode, gain, PTT, MPX spectrum"],size=14)
-box(450,Y,500,HA,"/api/ft8 /wefax /sstv /cw /rtty /acars /cpdlc",["decoder on/off, options, messages and images"],size=14)
+box(450,Y,500,HA,"/api/ft8 /wefax /sstv /cw /rtty /packet /acars /cpdlc",["decoder on/off, options, messages and images"],size=14)
 box(1140,Y,98,HA,"/events",["SSE"],size=14)
 box(1248,Y,98,HA,"/audio",["16-bit PCM"],size=14)
-box(1362,Y,230,HA,"/api/vdl2 /dab/* /dsd /ism",["DAB data, calls; /rotor /sat/*"],size=13.5)
+box(1362,Y,230,HA,"/api/vdl2 /hfdl /ais /adsb",["/dab/* /dsd /ism /scan","/rotor /sat/*"],size=13.5)
 box(1612,Y,150,HA,"/api/memories",["list, edit, import"],size=14)
-text(960,533,"Flask API in app.py",13.5,MUTE)
+text(960,527,"Flask API in app.py",13.5,MUTE)
+text(960,547,"sysload.py: CPU, RAM",13,MUTE)
 box(1140,590,206,46,"Hub",["broadcast to browsers"],size=14)
 
 # Decoders
 group(110,680,850,195,"Decoders on baseband (on_baseband)",FILL["dec"],tx=126)
-BW=196
-for i,(n,l) in enumerate([("ft8.py",["needs PyFT8"]),("wefax.py",["radio fax, PNG images"]),("cw.py",["Morse, AFC, speed"]),("rtty.py",["Baudot, auto shift, speed"])]):
-    box(126+i*(BW+10),716,BW,60,n,l)
+BW=157
+for i,(n,l) in enumerate([("ft8.py",["needs PyFT8"]),("wefax.py",["radio fax, PNG"]),("cw.py",["Morse, AFC, speed"]),("rtty.py",["Baudot, auto shift"]),("packet.py",["AX.25 1k2 / 9k6","aprs.py: APRS"])]):
+    box(126+i*(BW+8),716,BW,60,n,l)
 box(126,792,250,31,"adsc.py: ADS-C reports",[],size=13.5)
 box(126,827,250,31,"cpdlc_schema.py: message set",[],size=13.5)
 box(430,792,210,66,"cpdlc.py",["FANS-1/A, ARINC 622"])
@@ -105,7 +106,10 @@ box(714,792,226,66,"acars.py",["ACARS, AM MSK 2400 bit/s"])
 group(980,680,150,195,"Audio",FILL["dec"],tx=994)
 box(994,716,122,72,"sstv.py",["on_demod","14 modes, VIS"])
 box(994,796,122,70,"dsd.py",["on_dsd","digital voice"])
-group(1362,680,290,195,"Raw IQ decoders (on_raw)",FILL["dec"],tx=1376)
+group(1282,680,370,195,"Raw IQ decoders (on_raw)",FILL["dec"],tx=1296)
+box(1292,716,92,48,"adsb.py",["1090 MHz"],size=14)
+box(1292,770,92,48,"ais.py",["ships"],size=14)
+box(1292,824,92,48,"hfdl.py",["dumphfdl"],size=14)
 box(1416,714,222,38,"vdl2.py",["EU / US channels, ATN CPDLC"],size=14)
 box(1416,756,222,34,"airports.py",["+ VDL2_Ground_Stations.txt"],size=12.5)
 box(1416,794,222,38,"dab.py",["DAB / DAB+"],size=14)
@@ -114,7 +118,7 @@ box(1416,836,222,36,"ism.py",["433 / 868 MHz devices"],size=14)
 # DSP
 group(70,930,1270,170,"Receiver in sdr.py: DSP chain",FILL["dsp"],tx=360)
 Yd=972;Hd=58
-chain=[(90,150,"Shift",["NCO to the tuned freq."]),(258,155,"Decimator",["polyphase FIR /64"]),(431,175,"Channel filter",["by mode, LPF/HPF, notch"]),(624,180,"Demodulator",["AM FM LSB USB CW WFM"]),(822,160,"Squelch, AGC",["decides about every 8 ms"]),]
+chain=[(90,150,"Shift",["NCO to the tuned freq."]),(258,155,"Decimator",["polyphase FIR /64"]),(431,175,"Channel filter",["by mode, LPF/HPF, notch"]),(624,180,"Demodulator",["AM FM LSB USB CW WFM"]),(822,170,"ALC, DYN",["EXP + AUTO, LIM"]),(1010,196,"Squelch",["SQL, ASQ; tonesq.py"]),]
 for x,w,n,l in chain:
     box(x,Yd,w,Hd,n,l,mono=False,size=14.5)
 box(190,1042,270,44,"Remove DC peak, spurs",["from IQ and waterfall; SP key, LEARN"],mono=False,size=13.5)
@@ -122,9 +126,13 @@ path([(165,1064),(190,1064)],"iq",sw=2)
 box(1000,1042,120,44,"Waterfall",["FFT, zoom 1–32×"],mono=False,size=13.5)
 box(1224,Yd,100,Hd,"PCM",["stereo audio"],mono=False,size=14.5)
 box(624,1042,180,44,"rds.py",["RDS in WFM"],size=13.5)
+box(470,1042,140,44,"autotune.py",["ATU key"],size=13.5)
+box(818,1042,172,44,"scanner.py",["SCAN tab"],size=13.5)
+path([(1000,1064),(990,1064)],"ev",sw=2)
 for a,b in [(240,258),(413,431),(606,624),(804,822)]:
     path([(a,Yd+29),(b,Yd+29)],"iq",sw=2)
-path([(982,Yd+29),(1224,Yd+29)],"audio",sw=2)
+for a,b in [(992,1010),(1206,1224)]:
+    path([(a,Yd+29),(b,Yd+29)],"audio",sw=2)
 path([(714,1030),(714,1042)],"iq",sw=2)
 
 # Device layer
@@ -143,32 +151,33 @@ label(932,1212,"to another VFO")
 
 # Persistence
 group(1460,930,300,305,"Storage modules",FILL["data"])
-box(1480,968,260,50,"memories.py",["memories, SDR# import"])
-box(1480,1026,260,50,"paths.py",["locates data\\, migrates old files"])
-box(1480,1084,260,50,"daylog.py",["daily decoder logs"])
-box(1480,1142,260,50,"recorder.py",["REC, REC SQ: MP3 files"])
-text(1610,1208,"config saving: app.py",13,MUTE,anchor="middle")
-text(1610,1225,"logs and images: the decoders",13,MUTE,anchor="middle")
+box(1480,968,260,42,"memories.py",["memories, SDR# import"])
+box(1480,1016,260,42,"paths.py",["locates data\\, migrates old files"])
+box(1480,1064,260,42,"daylog.py",["daily decoder logs"])
+box(1480,1112,260,42,"recorder.py",["REC, REC SQ: MP3 files"])
+box(1480,1160,260,42,"location.py",["station location, locator"])
+text(1610,1224,"config: app.py; logs, images: decoders",13,MUTE,anchor="middle")
 
 # ---------- external programs ----------
 group(2020,430,360,445,"Separate programs (lib\\)",FILL["ext"])
 box(2040,475,320,90,"dsd-fme.exe",["DMR, P25, D-Star, YSF, NXDN, dPMR, M17...","mbelib; ISC, parts GPL v2","downloaded by install_dsd.bat, not in the zips"])
 box(2040,575,320,80,"dumpvdl2.exe",["demodulation, FEC, ATN ASN.1","libacars, MSYS2 runtime; GPL v3"])
 box(2040,665,320,90,"welle-cli.exe (our patch)",["OFDM, Viterbi, AAC / MP2","FFTW, FAAD2, mpg123, LAME;","GPL v2 or later"])
-box(2040,765,320,100,"rtl_433.exe",["ISM devices; GPL v2 or later","the dongle stays in RADIMCOM"])
+box(2040,765,320,50,"rtl_433.exe",["ISM devices; GPL v2 or later"])
+box(2040,823,320,46,"dumphfdl.exe (lib\\hfdl)",["HFDL, IQ from hfdl.py; GPL v3"])
 
 # ---------- satellite tracking ----------
 group(2420,115,340,760,"Satellite tracking",FILL["srv"],"in the VFO process (dashed link)")
 box(2440,175,300,150,"sattrack.py, satplan.py",["TLE (CelesTrak), SGP4 passes, map;","Doppler correction of the VFO;","rotor plan of each pass","(normal, overlap, flipped, over top);","satellites.py: AMSAT lists"])
-box(2440,410,300,130,"rotor.py",["K3NG azimuth 0-450, calibration,","GS-232, position checks and stop;","SET ROTOR tab, TRACK page","in the SATELLITES tab"])
+box(2440,410,300,130,"rotor.py",["K3NG azimuth 0-450, calibration,","GS-232, position checks and stop;","one per station: data\\rotor.json;","SETTINGS › GENERAL › ROTOR,","ROTOR CONTROL tab, TRACK page"])
 box(2440,640,300,80,"K3NG rotor controller",["Arduino, USB serial"],mono=False)
 box(2440,775,300,70,"Antenna rotor",["azimuth and elevation"],mono=False)
 
 # ---------- data ----------
 group(1860,905,520,330,"data\\ folder: your settings and logs, never packaged",FILL["data"])
-rows=[("vfos.json","dongle to VFO assignment"),("config.json","single-receiver settings, VFO template"),("config_A…D.json","settings of each VFO"),("memories.json","frequency memories"),("logs\\  acars\\","daily decoder logs (UTC)"),("wefax\\  sstv\\","saved images (PNG)"),("recordings\\","audio recordings (MP3)"),("tx_audio\\","optional FM test message"),("sat_*.json  sat_tle.txt","satellites: station, orbits, transmitters"),("satellites.json","AMSAT lists (SATELLITES tab)"),("config_backup\\","previous vfos.json and configs"),("eeprom_backup\\","dongle EEPROM backups")]
+rows=[("vfos.json","dongle to VFO assignment"),("config.json","single-receiver settings, VFO template"),("config_A…D.json","settings of each VFO"),("memories.json","frequency memories"),("logs\\  acars\\","daily decoder logs (UTC)"),("wefax\\  sstv\\","saved images (PNG)"),("recordings\\","audio recordings (MP3)"),("tx_audio\\","optional FM test message"),("sat_*.json  sat_tle.txt","satellites: station, orbits, transmitters"),("satellites.json","AMSAT lists (SATELLITES tab)"),("rotor.json","the station rotor"),("location.json","station location"),("config_backup\\","previous vfos.json and configs"),("eeprom_backup\\","dongle EEPROM backups")]
 for i,(a,b) in enumerate(rows):
-    y=956+i*23
+    y=954+i*20.5
     text(1880,y,a,14,weight=700,mono=True); text(2085,y,b,13.5,MUTE)
 
 # ---------- native + drivers + hw ----------
@@ -194,7 +203,7 @@ text(517,1686,"one per VFO",12.5,MUTE,anchor="middle")
 group(640,1285,1140,425,"Install, setup and build tools (run outside the receiver)",FILL["tool"])
 text(660,1336,"Install and run",15,weight=700)
 box(660,1348,230,60,"install.bat",["creates .venv, pip packages, PyFT8"])
-box(900,1348,240,60,"install_dsd.bat",["downloads DSD-FME to lib\\dsd-fme"])
+box(900,1348,240,60,"install_dsd.bat",["install_dsd.py downloads","DSD-FME to lib\\dsd-fme"])
 box(1150,1348,130,60,"start.bat",["starts app.py"])
 box(1290,1348,170,60,"zadig.exe",["installs WinUSB driver"])
 box(1470,1348,290,60,"drivers\\  INSTALL.txt  DRIVERS.txt",["USB drivers and installation guide"],size=14)
@@ -204,8 +213,8 @@ box(935,1458,300,60,"setup_sdr.py",["wizard: finds dongles, writes vfos.json"])
 box(1260,1458,250,60,"eeprom_tool.py",["read, back up, write serial number"])
 path([(910,1488),(935,1488)],"ctl",sw=2)
 path([(1235,1488),(1260,1488)],"ctl",sw=2)
-text(1525,1482,"Both open the dongles through",13,MUTE)
-text(1525,1500,"sdr.py / lime.py; receiver stopped",13,MUTE)
+text(660,1538,"setup_sdr.py and eeprom_tool.py open the dongles through sdr.py / lime.py; the receiver is stopped",13,MUTE)
+box(1525,1458,235,60,"update_check.py",["upgrade_helper.py: upgrade","from GitHub Releases"])
 text(660,1556,"Build (installer\\)",15,weight=700)
 box(660,1568,210,60,"make_installer.py",["install and upgrade zips"],size=14)
 box(880,1568,210,60,"make_sources.py",["GPL / LGPL source zip"],size=14)
@@ -252,12 +261,12 @@ path([(1560,558),(1560,680)],"ctl",start=True)
 # control lane
 path([(110,529),(88,529),(88,930)],"ctl"); label(82,760,"tune, mode, gain, PTT","ctl",rot=-90)
 # memories, recording
-path([(1323,1010),(1450,1010),(1450,1167),(1480,1167)],"audio"); label(1362,1002,"PCM","audio")
+path([(1323,1010),(1450,1010),(1450,1133),(1480,1133)],"audio"); label(1362,1002,"PCM","audio")
 path([(1700,558),(1700,968)],"ctl",start=True)
 # ADS-B
 path([(940,825),(970,825),(970,574),(1800,574),(1800,350),(1955,350),(1955,312)],"net",dash="7 5"); label(1880,342,"aircraft lookup (ADS-B)","net")
 # vdl2->acars
-path([(1416,733),(1350,733),(1350,892),(827,892),(827,858)],"ev"); label(940,908,"ACARS, ATN from VDL2","ev",size=12.5)
+path([(1530,714),(1530,688),(1268,688),(1268,892),(827,892),(827,858)],"ev"); label(940,908,"ACARS, ATN from VDL2","ev",size=12.5)
 # internal data link
 path([(714,825),(640,825)],"ctl",sw=2)
 path([(430,807),(376,807)],"ctl",sw=2)
@@ -267,7 +276,7 @@ path([(335,972),(335,875)],"iq"); label(335,920,"baseband (on_baseband)","iq")
 path([(714,972),(714,916),(1055,916),(1055,875)],"iq"); label(880,934,"demodulated audio (on_demod, on_dsd)","iq",size=12.5)
 # lanes
 path([(1120,1064),(1190,1064),(1190,636)],"ev"); label(1190,780,"waterfall rows","ev",rot=-90)
-path([(1274,972),(1274,636)],"audio"); label(1274,780,"audio","audio",rot=-90)
+path([(1246,972),(1246,636)],"audio"); label(1246,780,"audio","audio",rot=-90)
 # Waterfall fed from IQ
 path([(165,1125),(165,1030)],"iq"); label(205,1115,"IQ blocks","iq",anchor="start")
 path([(165,1094),(1060,1094),(1060,1086)],"iq",sw=2)
@@ -278,8 +287,8 @@ path([(1638,725),(1990,725),(1990,600),(2040,600)],"iq"); label(1875,717,"IQ on 
 path([(2040,630),(2010,630),(2010,745),(1638,745)],"ev"); label(1875,762,"JSON messages on stdout","ev")
 path([(1638,805),(2025,805),(2025,690),(2040,690)],"iq"); label(1875,797,"IQ over rtl_tcp (localhost)","iq")
 path([(2040,725),(2033,725),(2033,825),(1638,825)],"audio",start=True); label(1875,839,"web server: mux.json, slides, MP3","audio",size=12.5)
-path([(1638,846),(2040,846)],"iq")
-path([(2040,860),(1638,860)],"ev"); label(1875,876,"rtl_433: IQ over rtl_tcp, JSON messages","ev",size=12.5)
+path([(1638,846),(2000,846),(2000,782),(2040,782)],"iq")
+path([(2040,800),(2015,800),(2015,860),(1638,860)],"ev"); label(1875,876,"rtl_433: IQ over rtl_tcp, JSON messages","ev",size=12.5)
 # satellite tracking
 path([(2590,315),(2590,410)],"ctl",start=True); label(2598,352,"targets with the","ctl",anchor="start"); label(2598,372,"K3NG azimuth","ctl",anchor="start")
 path([(2590,540),(2590,640)],"ctl",start=True); label(2598,582,"USB serial, 9600 baud","ctl",anchor="start"); label(2598,602,"GS-232 commands","ctl",anchor="start")

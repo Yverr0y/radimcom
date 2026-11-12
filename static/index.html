@@ -27,9 +27,11 @@
 
 <!-- ===== transceiver screen: the top part (displays, keys, bands) stays fixed when the page scrolls ===== -->
 <section class="radio radio-head" id="radioHead">
+  <!-- head laid out as a grid (style.css): displays and keys at the left, the master section (logo, MONITOR, RECORD)
+       at the right over both, the band keys across the whole width -->
   <div class="r-top">
-    <!-- left block: S-meter with its readout window, the VFO keys beside it, the multifunction display under both -->
-    <div class="r-left">
+    <!-- one glass over all the displays: S-meter | VFO windows | clock with the AD (the order of the cells is set in style.css) -->
+    <div class="r-glass">
     <div class="meter-box">
       <svg id="smeter" class="meter-face" viewBox="0 0 260 100" aria-label="S-meter"></svg>
       <!-- dark window under the S-meter: S reading and the load of the PC -->
@@ -42,19 +44,27 @@
       </div>
     </div>
 
-    <!-- VFO keys beside the S-meter, one under another (filled by app.js); a click on a VFO window selects it too -->
-    <div class="vfo-keys" id="vfoKeys"></div>
-
-    <!-- AD = additional display under the S-meter and the VFO keys (as wide as both). Shows one thing, by priority:
-         1. error messages (red, confirmed by OK), 2. rotor AZ / EL (MONITOR on the ROTOR page of SETTINGS), 3. RDS -->
+    <!-- right cell of the glass: the clock (digits, under them the date and LOC / UTC), under it the AD = additional display.
+         The AD shows one thing, by priority: 1. error messages (red, confirmed by OK), 2. rotor AZ / EL (MONITOR in
+         SETTINGS › GENERAL › ROTOR), 3. DAB now on air (station, SNR, DLS text), 4. RDS -->
+    <div class="r-aux">
+    <div class="r-clock" id="clockBox" role="button" tabindex="0" title="Click to switch UTC / local time">
+      <span id="clock">--:--:--</span>
+      <span class="clock-sub"><span id="clockDate"></span><span class="clock-zone"><small id="zoneLoc">LOC</small><small id="zoneUtc">UTC</small></span></span>
+    </div>
     <div class="mfd" id="mfd">
       <div class="ad-err" id="adErr" hidden role="alert">
         <span class="ad-err-text" id="adErrText"></span><span class="ad-err-more" id="adErrMore"></span>
         <button class="ad-ok" id="adErrOk" title="Accept the message">OK</button>
       </div>
-      <div class="ad-rot" id="adRot" hidden title="Rotor of this VFO (MONITOR on the ROTOR page of SETTINGS)">
+      <div class="ad-rot" id="adRot" hidden title="Rotor of the station (MONITOR in SETTINGS › GENERAL › ROTOR)">
         <span class="ad-rot-v"><span class="ad-rot-tag">ROTOR</span><small>AZ</small><b id="adRotAz">–</b><small>EL</small><b id="adRotEl">–</b></span>
         <span class="ad-rot-tgt" id="adRotTgt"></span>
+      </div>
+      <div class="ad-dab" id="adDab" hidden>
+        <span class="ad-dab-tag" id="adDabTag">DAB</span>
+        <div class="rds-top"><span class="rds-ps ad-dab-ps" id="adDabPs"></span><span class="ad-dab-snr" id="adDabSnr" title="Signal to noise ratio of the DAB ensemble"></span></div>
+        <div class="ad-dab-dls" id="adDabDls"><span id="adDabDlsText"></span></div>
       </div>
       <div class="rds off" id="rds">
       <!-- simplified RDS logo (two interlaced rings and R·D·S); shown only while the station sends RDS -->
@@ -86,12 +96,13 @@
       </div>
     </div>
 
-    <div class="r-info">
-      <div class="r-info-text">
-        <div class="r-clock" id="clockBox" role="button" tabindex="0" title="Click to switch UTC / local time">
-          <span id="clock">--:--:--</span>
-          <span class="clock-zone"><small id="zoneLoc">LOC</small><small id="zoneUtc">UTC</small></span>
-        </div>
+    </div>
+    <!-- VFO keys under the glass, each one under its own VFO window (filled by app.js); a click on a VFO window selects it too -->
+    <div class="r-sel"><div class="vfo-keys" id="vfoKeys"></div></div>
+  </div>
+
+  <!-- master section at the right: logo, type and version, MONITOR faders with the level meter, mute, RECORD -->
+  <div class="r-master">
         <!-- RADIMCOM logo: geometric letters made of strokes (height 100, stroke 18), green ring above the I -->
         <div class="r-brandline">
         <a class="r-logo-link" href="https://github.com/om2amr/RADIMCOM" target="_blank" rel="noopener noreferrer" title="RADIMCOM on GitHub">
@@ -146,64 +157,77 @@
           </g>
         </svg>
         </a>
+        <span class="r-tag">SDR COMMUNICATIONS RECEIVER</span>
         <!-- version under the logo (installer and update_check read it from .r-ver); a newer one blinks beside it -->
-        <span class="r-vers"><span class="r-ver">Ver. 0.113</span><a class="r-upd" id="updLink" href="https://github.com/om2amr/RADIMCOM/releases" target="_blank" rel="noopener noreferrer" hidden></a></span>
+        <span class="r-vers"><span class="r-ver">Ver. 0.114beta1</span><a class="r-upd" id="updLink" href="https://github.com/om2amr/RADIMCOM/releases" target="_blank" rel="noopener noreferrer" hidden></a></span>
         </div>
         <span id="status" class="pill" hidden><span class="dot"></span><span id="statusText"></span></span>
-      </div>
-      <!-- volume: vertical sliders at the right edge (CUE = other VFOs with CUE on, MAIN = active VFO),
-           speaker under them -->
+      <!-- volume: vertical sliders (CUE = other VFOs with CUE on, MAIN = active VFO) with the level meter at the left,
+           the speaker and the REC keys beside them -->
       <div class="vol">
+        <span class="r-gh">MONITOR</span>
         <div class="vol-sliders">
           <label class="vol-ch cue"><input id="cueVolume" type="range" min="0" max="1.5" step="0.01" value="0.5" title="CUE level"><span>CUE</span></label>
+          <!-- dB scale of both faders (gain 0 … 1.5 = −∞ … +3.5 dB; --f = gain / 1.5) -->
+          <div class="vol-scale" aria-hidden="true">
+            <div><i style="--f:.94">+3</i><i style="--f:.667">0</i><i class="m" style="--f:.47"></i><i style="--f:.333">6</i><i class="m" style="--f:.237"></i><i style="--f:.167">12</i><i style="--f:0">∞</i></div>
+            <span>dB</span>
+          </div>
           <label class="vol-ch"><input id="volume" type="range" min="0" max="1.5" step="0.01" value="0.8" title="MAIN level"><span>MAIN</span></label>
-          <!-- stereo output level meter (LEDs filled by app.js) -->
-          <div class="vu" title="Output level L / R (0 dB = −6 dBFS, red = clipping)">
-            <div class="vu-cols"><div class="vu-ch"></div><div class="vu-ch"></div></div><span>L R</span>
+          <!-- stereo output level meter (LEDs, peak hold, CLIP and the dB numbers filled by app.js) -->
+          <div class="vu" title="Output level L / R (0 dB = −6 dBFS, red = clipping; CLIP = 0 dBFS reached)">
+            <div class="vu-cols"><div class="vu-ch"></div><div class="vu-db" aria-hidden="true"></div><div class="vu-ch"></div></div><span>L · R</span>
           </div>
         </div>
         <button id="muteBtn" class="spk" title="Mute / unmute"><svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path fill="currentColor" d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4z"/><line class="spk-x" x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>
         <!-- audio recording of the active VFO to MP3 in data\recordings: non-stop, and only with an open squelch -->
+        <span class="r-gh">RECORD</span>
         <button id="recBtn" class="rec"><span class="rec-dot"></span><span id="recTime">REC</span></button>
         <button id="recSqBtn" class="rec"><span class="rec-dot"></span><span id="recSqTime">REC SQ</span></button>
       </div>
-    </div>
   </div>
 
-  <!-- function keys -->
+  <!-- function keys: one module of two rows for each group -->
   <div class="r-keys">
-    <div class="kgroup"><span class="klabel">MODE</span><div class="keys" id="modes"></div></div>
-    <div class="kgroup"><span class="klabel">FILTER</span><div class="keys" id="bandwidths"></div></div>
-    <div class="kgroup"><span class="klabel">GAIN</span><div class="keys">
+    <div class="kgroup" data-g="VIEW"><span class="klabel">VIEW</span><div class="keys">
+      <button id="bodyKey" class="key" aria-label="Hide the lower part" aria-controls="radioBody" title="Hide / show the whole lower part with the tabs (SPECTRUM, DECODERS, SATELLITES …); lit while it is hidden"><svg class="body-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3.5" width="18" height="17" rx="2"/><path d="M3 9.5H21"/><path class="body-chev" d="M9 13.5L12 16.5L15 13.5"/></svg></button>
+    </div></div>
+    <div class="kgroup" data-g="MODE"><span class="klabel">MODE</span><div class="keys" id="modes"></div></div>
+    <div class="kgroup" data-g="FILTER"><span class="klabel">FILTER</span><div class="keys" id="bandwidths"></div></div>
+    <div class="kgroup" data-g="GAIN"><span class="klabel">GAIN</span><div class="keys">
       <button id="agcKey" class="key" title="Automatic tuner gain on/off for this VFO (manual gain in SETTINGS)">AGC</button>
       <button id="agcPlusKey" class="key" title="AGC+: tuner gain as high as possible without clipping the A/D converter (the R820T tuner AGC does not watch the A/D)">AGC+</button>
     </div></div>
-    <div class="kgroup"><span class="klabel">STEP</span><div class="keys" id="steps"></div></div>
-    <div class="kgroup"><span class="klabel">TUNE</span><div class="keys">
+    <div class="kgroup" data-g="STEP"><span class="klabel">STEP</span><div class="keys" id="steps"></div></div>
+    <div class="kgroup" data-g="TUNE"><span class="klabel">TUNE</span><div class="keys">
       <button id="atuKey" class="key" title="ATU: autotune in USB / LSB / AM. A click on a signal in the spectrum or waterfall listens for a moment and moves the tuning: SSB puts the signal edge on the red line (USB lower, LSB upper edge, ~2 s), AM onto the carrier (&lt;1 s)">ATU</button>
     </div></div>
-    <div class="kgroup"><span class="klabel">AUDIO</span><div class="keys">
+    <div class="kgroup" data-g="AUDIO"><span class="klabel">AUDIO</span><div class="keys">
       <button id="stereoKey" class="key" title="S/M: WFM stereo / mono (mono = less noise on weak stations)">S/M</button>
       <button id="notchKey" class="key" title="NF: automatic notch filter, removes steady tones (whistles, carriers) in AM/LSB/USB">NF</button>
-      <button id="spurKey" class="key" title="SP: remove spurs from local sources, such as a switching power supply. A press forgets the stored spurs, learns the band received now (blinking red) and switches the removal on; another press switches it off. Band-stop settings in SETTINGS, SDR DONGLE › ADVANCED">SP</button>
+      <button id="spurKey" class="key" title="SP: remove spurs from local sources, such as a switching power supply. A press forgets the stored spurs, learns the band received now (blinking red) and switches the removal on; another press switches it off. Band-stop settings in SETTINGS › VFO › ADVANCED">SP</button>
       <button id="hpfKey" class="key pass-key" aria-label="HPF"><svg class="pass-icon" viewBox="60 180 680 440" aria-hidden="true"><path d="M100 576H150Q190 576 215 535L390 265Q415 228 460 228H695"/></svg><span id="hpfVal" class="pass-val"></span></button>
       <button id="lpfKey" class="key pass-key" aria-label="LPF"><svg class="pass-icon" viewBox="60 180 680 440" aria-hidden="true"><path d="M100 228H340Q390 228 415 270L580 540Q610 576 650 576H695"/></svg><span id="lpfVal" class="pass-val"></span></button>
       <button id="alcKey" class="key" title="Audio ALC (automatic audio level) in AM/LSB/USB/CW; off = fixed gain, set the level with MAIN">ALC</button>
+      <button id="dynKey" class="key" title="DYN – HF dynamics in AM/LSB/USB/CW: expander (EXP, the noise between words turned down, speech at full level) + soft limiter (LIM, rounded peaks, +4 dB with ALC); AGC threshold THR optional. Parts and levels in SETTINGS › VFO › AUDIO">DYN</button>
       <button id="afiKey" class="key" title="AFI: audio frequency inversion – voice inversion scrambler / descrambler (all modes except WFM); the inversion frequency is set in SETTINGS">AFI</button>
-      <button id="asqKey" class="key" title="ASQ: auto squelch in AM/FM/WFM – the level follows the noise floor (margin in SETTINGS, AUDIO page). Also on by itself with AGC+ and the squelch set">ASQ</button>
+      <button id="asqKey" class="key" title="ASQ: auto squelch in AM/FM/WFM – the level follows the noise floor (margin in SETTINGS › VFO › AUDIO). Also on by itself with AGC+ and the squelch set">ASQ</button>
+      <button id="tsqcKey" class="key" title="TSQ-C: CTCSS tone squelch (FM)">TSQ-C</button>
+      <button id="tsqdKey" class="key" title="TSQ-D: DCS code squelch (FM)">TSQ-D</button>
       <button id="cueKey" class="key" title="CUE: keep hearing this VFO (at CUE level) when another VFO is selected">CUE</button>
-      <button id="recsKey" class="key" aria-controls="recsPane" title="RECS: the RECORDINGS tab – the MP3 files recorded by REC / REC SQ (data
-ecordings), play them in the browser">RECS</button>
+      <button id="recsKey" class="key" aria-controls="recsPane" title="RECS: the RECORDINGS tab – the MP3 files recorded by REC / REC SQ (data\recordings), play them in the browser">RECS</button>
     </div></div>
-    <div class="kgroup"><span class="klabel">DECODE</span><div class="keys">
-      <button id="decKey" class="key" aria-controls="decPane" title="Decoders on/off: shows or hides the DECODERS tab, one page for each decoder (FT8, WEFAX, CW, RTTY, SSTV, ACARS, VDL2, HFDL, AIS, DAB, ISM, DSD)">DECODE</button>
+    <div class="kgroup" data-g="DECODE"><span class="klabel">DECODE</span><div class="keys">
+      <button id="decKey" class="key" aria-controls="decPane" title="DEC: decoders on/off – shows or hides the DECODERS tab, one page for each decoder (CW, FT8, PACKET, RTTY, SSTV, WEFAX | ACARS, ADS-B, HFDL, VDL2 | AIS | ISM); DAB and DSD are modes with their own tabs">DEC</button>
     </div></div>
-    <div class="kgroup"><span class="klabel">SAT</span><div class="keys">
+    <div class="kgroup" data-g="TRACKING"><span class="klabel">TRACKING</span><div class="keys">
       <button id="satKey" class="key sat-key" aria-label="Satellite tracking" aria-controls="amsatPane" title="Satellite tracking: the SATELLITES tab (passes, map, Doppler, rotor)"><svg class="sat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.6 7C3.2 12.6 8.4 18.8 15 17.4Z"/><path d="M9.8 12.2L13.4 8.6"/><circle cx="14.6" cy="7.4" r="1.6"/><path d="M16.6 3.1A5 5 0 0 1 19 5.5"/><path d="M17.2.6A8 8 0 0 1 21.5 4.9"/><path d="M7.6 15.4L5.8 20.6M11 17.2L12.4 20.6M3.2 21.2H15"/></svg></button>
+      <button id="rctrlKey" class="key" aria-controls="rotPane" title="RCTRL: the ROTOR CONTROL tab – a map where a click turns the rotor to that place (azimuth from the QTH, elevation 0), with the MEMORIES channels that have a location, by groups">RCTRL</button>
     </div></div>
-    <div class="kgroup"><span class="klabel">MENU</span><div class="keys">
+    <div class="kgroup" data-g="MENU"><span class="klabel">MENU</span><div class="keys">
       <button id="setKey" class="key set-key" aria-label="Settings" aria-controls="settingsCard" title="Settings: the SETTINGS tab (SDR dongle, audio, UI, rotor)"><svg class="gear-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.7h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
       <button id="memKey" class="key mem-key" aria-controls="memPane" title="Memories: the MEMORIES tab (channels to recall and edit, groups, import, export)">MEM</button>
+      <button id="scanKey" class="key" aria-controls="scanPane" title="SCAN: the SCAN tab – scanning the memories on this VFO (source, START / PAUSE / SKIP / LOCKOUT, squelch and ASQ of each channel)">SCAN</button>
       <button id="bandKey" class="key" aria-controls="bandGroups" title="BAND: show / hide the row of band keys (HF HAM, HF BROADCAST, VHF / UHF HAM, OTHER)">BAND</button>
     </div></div>
   </div>
@@ -213,14 +237,18 @@ ecordings), play them in the browser">RECS</button>
 </section>
 
 <!-- spectrum and waterfall (SPECTRUM tab), decoders (DECODERS tab), lists of satellites (SATELLITES tab) and settings (SETTINGS tab) -->
-<section class="radio radio-body">
+<section class="radio radio-body" id="radioBody">
   <!-- tabs of the bottom part: spectrum with waterfall, decoders, or lists of satellites -->
   <div class="body-tabs" id="bodyTabs">
     <button data-tab="scope" class="on">SPECTRUM</button>
+    <button data-tab="dab" id="dabTab" hidden>DAB</button>
+    <button data-tab="dsd" id="dsdTab" hidden>DSD <span id="dsdTabDot" class="dec-new" hidden>●</span></button>
     <button data-tab="dec" id="decTab">DECODERS <span id="decCount" class="dec-count"></span><span id="decNew" class="dec-new" hidden>●</span></button>
     <button data-tab="sat" id="amsatTab">SATELLITES</button>
+    <button data-tab="rot" id="rotTab" hidden>ROTOR CONTROL</button>
     <button data-tab="mem" id="memTab" hidden>MEMORIES</button>
     <button data-tab="recs" id="recsTab" hidden>RECORDINGS</button>
+    <button data-tab="scan" id="scanTab" hidden>SCAN <span id="scanTabDot" class="dec-new" hidden>●</span></button>
     <button data-tab="set" id="setTab" hidden>SETTINGS</button>
   </div>
   <div class="scope display">
@@ -232,6 +260,19 @@ ecordings), play them in the browser">RECS</button>
     <div class="spectrum-wrap">
       <canvas id="spectrum"></canvas>
       <canvas id="specOverlay" class="overlay"></canvas>
+      <!-- spectrum settings: gear above the zero-level bar, the window opens while the mouse is over it -->
+      <div class="wf-cfg" id="specCfg">
+        <button class="wf-cfg-btn" type="button" aria-label="Spectrum settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.7h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
+        <div class="wf-cfg-panel">
+          <div class="wf-cfg-title">SPECTRUM SETTINGS</div>
+          <div class="wf-cfg-lbl">Colours (background / curve)</div>
+          <div class="wf-schemes spec-schemes" id="specSchemes"></div>
+        </div>
+      </div>
+      <!-- zero level of the spectrum (bottom edge) in dB against the noise floor, the same bar as the waterfall speed -->
+      <div class="zoom-bar wf-zoom-bar spec-zoom-bar" id="specZoomBar" title="Spectrum zero: moves the bottom edge of the spectrum in 5 dB steps against the noise floor (+ hides the noise, − shows more of it). Click − / + or a cell, mouse wheel changes it">
+        <span class="zb-lbl">dB</span><button class="zb-btn" data-d="-1">−</button><span class="zb-cells" id="specZoomCells"></span><button class="zb-btn" data-d="1">+</button><span class="zb-val" id="specZoomVal"></span>
+      </div>
     </div>
     <div class="waterfall-wrap">
       <canvas id="waterfall"></canvas>
@@ -258,13 +299,82 @@ ecordings), play them in the browser">RECS</button>
     <div class="hover-freq" id="hoverFreq" hidden></div>
     <!-- audio spectrum: shown while the mouse is over the passband label -->
     <div class="audio-bubble" id="audioBubble" hidden><canvas id="audioBubbleCanvas"></canvas><div class="audio-bubble-cw" id="audioBubbleCw" hidden></div></div>
+    <!-- DAB and DSD tabs: shown while the mode DAB / DSD is selected under MODE; they cover the spectrum like DECODERS -->
+    <div class="dec-pane mode-pane" id="dabPane" hidden>
+    <section class="card ft8 dab" id="dabCard">
+      <div class="ft8-head dab-head">
+        <label class="wf-opt" title="Band III ensemble (multiplex); remembered for this VFO">CHANNEL <select id="dabChannel"></select></label>
+        <img id="dabFlag" class="dab-flag" alt="" hidden>
+        <span id="dabEnsemble" class="dab-ens"></span>
+        <span id="dabInfo" class="muted"></span>
+      </div>
+      <p class="note">Digital radio in Band III (174–240 MHz), decoded by welle-cli. Audio comes through MAIN volume; REC does not include DAB. RTL-SDR only.
+        The last channel and the last station of each channel are remembered. Channels of your region: e.g. Slovakia / Czechia 12C, 12D, 7D, Austria 5C, 5D, 8B, 11C.</p>
+      <div class="dab-main">
+        <div class="dab-list" id="dabServices"><div id="dabEmpty" class="ft8-empty">Searching the ensemble…</div></div>
+        <div class="dab-now">
+          <div class="dab-hero">
+            <div class="dab-glow" id="dabGlow"></div>
+            <div class="dab-art">
+              <span class="dab-mono" id="dabArtMono"></span>
+              <img id="dabSlide" alt="" title="Click: 16:9 / original ratio (for slides squeezed into 4:3)" hidden>
+            </div>
+            <div class="dab-hero-text">
+              <div class="dab-title" id="dabNowLabel">Select a station</div>
+              <div class="dab-chips" id="dabChips"></div>
+              <div class="dab-meta" id="dabNowMeta"></div>
+              <div class="dab-dls-box" id="dabDlsBox" hidden>
+                <span class="dab-cap">NOW ON AIR</span>
+                <div class="dab-dls" id="dabDls"></div>
+              </div>
+            </div>
+          </div>
+          <div class="dab-health" id="dabHealth"></div>
+        </div>
+        <div class="dab-side">
+          <div class="dab-panel"><span class="dab-cap">SIGNAL</span><div id="dabSignal"></div></div>
+          <div class="dab-panel"><span class="dab-cap">ENSEMBLE</span><div id="dabEnsInfo"></div></div>
+          <div class="dab-panel"><span class="dab-cap">MULTIPLEX CAPACITY</span><div id="dabCapacity"></div></div>
+        </div>
+      </div>
+    </section>
+    </div>
+    <div class="dec-pane mode-pane" id="dsdPane" hidden>
+    <section class="card ft8 dsd" id="dsdCard">
+      <div class="ft8-head">
+        <b>DSD</b>
+        <label class="wf-opt" title="AUTO finds DMR, P25, D-Star, YSF and X2-TDMA. NXDN, dPMR, M17 and ProVoice have to be selected. A change restarts the decoder.">Protocol
+          <select id="dsdProtocol">
+            <option value="auto">AUTO</option><option value="dmr">DMR</option><option value="p25p1">P25 phase 1</option>
+            <option value="p25p2">P25 phase 2</option><option value="dstar">D-Star</option><option value="ysf">YSF</option>
+            <option value="nxdn48">NXDN48</option><option value="nxdn96">NXDN96</option><option value="dpmr">dPMR</option>
+            <option value="m17">M17</option><option value="x2tdma">X2-TDMA</option><option value="provoice">ProVoice</option>
+          </select></label>
+        <label class="wf-opt" title="TDMA protocols (DMR, P25 phase 2): voice of which time slot. Both talking at once: slot 1 on the left, slot 2 on the right. A change restarts the decoder.">Slot
+          <select id="dsdSlot"><option value="both">Both</option><option value="1">1</option><option value="2">2</option></select></label>
+        <span class="txt-info" id="dsdInfo"></span>
+        <label class="wf-opt log-opt" title="Write to the daily log data\logs\dsd_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="dsd">LOG</label>
+        <button id="dsdClear" class="key small" title="Clear the list">CLR</button>
+      </div>
+      <div class="dsd-error" id="dsdError" hidden></div>
+      <div class="dsd-now" id="dsdNow"></div>
+      <div class="ft8-table">
+        <table>
+          <colgroup><col class="c-utc"><col class="c-freq"><col class="c-proto"><col class="c-slot"><col class="c-to"><col class="c-from"><col class="c-time"><col></colgroup>
+          <thead><tr><th>UTC</th><th title="Frequency in MHz">Freq</th><th>Protocol</th><th>Slot</th><th title="TG = talk group, ID = private call">To</th><th>From</th><th title="Duration">Time</th><th title="Talker alias or text sent by the radio">Alias</th></tr></thead>
+          <tbody id="dsdRows"></tbody>
+        </table>
+        <div id="dsdEmpty" class="ft8-empty">No calls yet. Tune to the centre of a digital voice channel; finished calls are listed here.</div>
+      </div>
+    </section>
+    </div>
     <!-- DECODERS tab (DECODE key): a page for each decoder; the cards cover the spectrum and waterfall (those keep running) -->
     <div class="dec-pane" id="decPane" hidden>
       <!-- a page for each decoder; its ON key is in the top left corner of the card -->
       <div class="amsat-head dec-head">
         <div class="amsat-pages dec-pages" id="decPages"></div>
       </div>
-      <div id="decEmpty" class="ft8-empty" hidden>DSD (digital voice: DMR, P25, D-Star, YSF, NXDN…) is a mode: select DSD under MODE.</div>
+      <div id="decEmpty" class="ft8-empty" hidden></div>
     <!-- ===== decoders ===== -->
     <!-- text decoders (CW, RTTY): the text fills the rest of the tab -->
     <section class="card ft8 txtdec" id="cwCard" data-dec="cw" hidden>
@@ -334,7 +444,7 @@ ecordings), play them in the browser">RECS</button>
       <div class="ft8-table" id="packetStationsBox" hidden>
         <table>
           <colgroup><col class="c-utc"><col class="c-from"><col class="c-n"><col class="c-km"><col class="c-via"><col></colgroup>
-          <thead><tr><th title="Last heard">UTC</th><th>Station</th><th title="Number of APRS packets">N</th><th title="Distance and bearing from the station set in SATELLITES › SETUP">km / °</th><th title="Digipeaters of the last packet">Via</th><th>Last report</th></tr></thead>
+          <thead><tr><th title="Last heard">UTC</th><th>Station</th><th title="Number of APRS packets">N</th><th title="Distance and bearing from the station set in SETTINGS › GENERAL › LOCATION">km / °</th><th title="Digipeaters of the last packet">Via</th><th>Last report</th></tr></thead>
           <tbody id="packetStRows"></tbody>
         </table>
         <div id="packetStEmpty" class="ft8-empty">No APRS stations yet.</div>
@@ -379,34 +489,6 @@ ecordings), play them in the browser">RECS</button>
       </div>
     </section>
 
-    <section class="card ft8 dsd" id="dsdCard" data-dec="dsd" hidden>
-      <div class="ft8-head">
-        <b>DSD</b>
-        <label class="wf-opt" title="AUTO finds DMR, P25, D-Star, YSF and X2-TDMA. NXDN, dPMR, M17 and ProVoice have to be selected. A change restarts the decoder.">Protocol
-          <select id="dsdProtocol">
-            <option value="auto">AUTO</option><option value="dmr">DMR</option><option value="p25p1">P25 phase 1</option>
-            <option value="p25p2">P25 phase 2</option><option value="dstar">D-Star</option><option value="ysf">YSF</option>
-            <option value="nxdn48">NXDN48</option><option value="nxdn96">NXDN96</option><option value="dpmr">dPMR</option>
-            <option value="m17">M17</option><option value="x2tdma">X2-TDMA</option><option value="provoice">ProVoice</option>
-          </select></label>
-        <label class="wf-opt" title="TDMA protocols (DMR, P25 phase 2): voice of which time slot. Both talking at once: slot 1 on the left, slot 2 on the right. A change restarts the decoder.">Slot
-          <select id="dsdSlot"><option value="both">Both</option><option value="1">1</option><option value="2">2</option></select></label>
-        <span class="txt-info" id="dsdInfo"></span>
-        <label class="wf-opt log-opt" title="Write to the daily log data\logs\dsd_YYYY-MM-DD.txt (UTC, shared by all VFOs)"><input type="checkbox" data-log="dsd">LOG</label>
-        <button id="dsdClear" class="key small" title="Clear the list">CLR</button>
-      </div>
-      <div class="dsd-error" id="dsdError" hidden></div>
-      <div class="dsd-now" id="dsdNow"></div>
-      <div class="ft8-table">
-        <table>
-          <colgroup><col class="c-utc"><col class="c-freq"><col class="c-proto"><col class="c-slot"><col class="c-to"><col class="c-from"><col class="c-time"><col></colgroup>
-          <thead><tr><th>UTC</th><th title="Frequency in MHz">Freq</th><th>Protocol</th><th>Slot</th><th title="TG = talk group, ID = private call">To</th><th>From</th><th title="Duration">Time</th><th title="Talker alias or text sent by the radio">Alias</th></tr></thead>
-          <tbody id="dsdRows"></tbody>
-        </table>
-        <div id="dsdEmpty" class="ft8-empty">No calls yet. Tune to the centre of a digital voice channel; finished calls are listed here.</div>
-      </div>
-    </section>
-
     <section class="card ft8 acars" id="acarsCard" data-dec="acars vdl2" hidden>
       <div class="ft8-head">
         <label class="key small toggle" data-dec-on="acars" title="ACARS (classic VHF link, AM 2400 bit/s) – 131.525–131.825 MHz. Mutes the audio of the VFO."><input id="acarsOn" type="checkbox">ON</label>
@@ -415,6 +497,11 @@ ecordings), play them in the browser">RECS</button>
         <span id="vdl2Info" class="muted" hidden></span>
         <span id="acarsInfo" class="muted"></span>
         <span id="acarsPaused" class="scroll-paused" hidden title="A click on a message holds the list still. Turn the mouse wheel over the messages to resume.">SCROLL PAUSED</span>
+        <div class="bands" id="acarsViews">
+          <button class="key small on" data-view="msgs" title="All received messages">MESSAGES</button>
+          <button class="key small" data-view="aircraft" title="Aircraft heard: the newest data of each (from ACARS / VDL2 and ADS-B)">AIRCRAFT</button>
+          <button class="key small" data-view="map" title="Aircraft with a known position (ADS-B, ADS-C, VDL2 XID), their tracks and the VDL2 ground stations on a map">MAP</button>
+        </div>
         <span id="acarsFilter" class="tag-filter" title="Click a tag to show only those messages (more tags can be combined); click again to remove it">
           <span class="type-tag t-acars" data-kind="acars">ACARS</span><span class="type-tag t-cpdlc" data-kind="cpdlc" title="FANS CPDLC (in ACARS) and ATN CPDLC (VDL2)">CPDLC</span><span class="type-tag t-adsc" data-kind="adsc" title="FANS ADS-C (in ACARS) and ATN ADS-C (VDL2)">ADS-C</span><span id="acarsFilterState" hidden></span></span>
         <label class="wf-opt" data-link="vdl2" hidden title="Show only messages of this ground station location. The list has the locations of the messages in the table; - = not known (station not in the list)">Ground Station<select id="acarsLoc"><option value="">All</option></select></label>
@@ -436,8 +523,12 @@ ecordings), play them in the browser">RECS</button>
         A message appears once its ADS-B data and flag have arrived, or after about 15 s without them.
         <span class="ext">Blue</span> = aircraft type, flight level and speed looked up on ADS-B (adsb.fi / adsb.lol, needs internet);
         click the callsign or flight to open the map. Country = from the aircraft's ICAO address.
-        A click on a message marks it and holds the list still (SCROLL PAUSED); the mouse wheel over the messages resumes it.</p>
-      <div class="ft8-table">
+        A click on a message marks it and holds the list still (SCROLL PAUSED); the mouse wheel over the messages resumes it.
+        AIRCRAFT: the newest data of each aircraft heard (a click on its position shows it on the map).
+        MAP: aircraft with a known position – from ADS-B (at the time of the message), from ADS-C reports and, on VDL2, the approximate
+        location the aircraft sends in its XID frames (link setup and handoff); also the VDL2 ground stations that announced their position.
+        The square key in the top right corner of the map opens it alone in a new tab.</p>
+      <div class="ft8-table" id="acarsMsgBox">
         <table class="acars-table">
           <colgroup><col class="c-type"><col class="c-utc"><col class="c-freq"><col class="c-cty"><col class="c-flt"><col class="c-ac"><col class="c-icao"><col class="c-sqk"><col class="c-act"><col class="c-model"><col class="c-fl"><col class="c-spd"><col class="c-lbl"><col class="c-desc"><col class="c-loc"><col class="c-msg"></colgroup>
           <thead><tr><th>Type</th><th>UTC</th><th title="Frequency in MHz">Freq</th><th title="Country of registration, from the 24-bit ICAO address">Country</th><th>Flight</th><th title="Registration (ATN: from ADS-B by the ICAO address); click for the map">Callsign</th><th title="24-bit ICAO aircraft address (hex)">ICAO</th><th title="Transponder squawk code from ADS-B">Squawk</th><th title="Aircraft type code from ADS-B">ACFT type</th><th title="Aircraft model from ADS-B">Model</th><th title="Flight level from ADS-B">FL</th><th title="Ground speed from ADS-B">Speed</th><th>Label</th><th title="Approximate meaning: many labels are defined by each airline">Description</th><th title="Airport of the VDL2 ground station (IATA/ICAO), from the ground station list by its address; - = not known. The tooltip of a cell has the address and the list entry">Ground Station</th><th>Message</th></tr></thead>
@@ -446,6 +537,18 @@ ecordings), play them in the browser">RECS</button>
         <div id="acarsEmpty" class="ft8-empty"><span data-link="acars">No messages yet. ACARS bursts are short and come every few
           seconds to minutes.</span><span data-link="vdl2" hidden>No messages yet. VDL2 traffic usually starts within a minute;
           the frame count above grows with every decoded VDL2 frame.</span></div>
+      </div>
+      <div class="ft8-table" id="acarsAcBox" hidden>
+        <table class="acars-ac-table">
+          <colgroup><col class="c-utc"><col class="c-cty"><col class="c-flt"><col class="c-reg"><col class="c-icao"><col class="c-act"><col class="c-model"><col class="c-fl"><col class="c-spd"><col class="c-sqk"><col class="c-pos"><col class="c-src"><col class="c-gs"><col class="c-n"></colgroup>
+          <thead><tr><th title="Last message or position">UTC</th><th>Country</th><th>Flight</th><th>Reg</th><th>ICAO</th><th title="Aircraft type code from ADS-B">ACFT type</th><th title="Aircraft model from ADS-B">Model</th><th title="Flight level from ADS-B">FL</th><th title="Ground speed from ADS-B">Speed</th><th title="Squawk from ADS-B">Squawk</th><th title="Newest known position; click to show it on the MAP">Position</th><th title="Where the newest position comes from and its age: ADS-B (adsb.fi / adsb.lol at the time of the message), ADS-C report, or VDL2 XID (approximate)">Source</th><th title="VDL2 ground station of the last message of the aircraft">Ground station</th><th title="Number of messages">Msgs</th></tr></thead>
+          <tbody id="acarsAcRows"></tbody>
+        </table>
+        <div id="acarsAcEmpty" class="ft8-empty">No aircraft yet.</div>
+      </div>
+      <div class="hfdl-map" id="acarsMapBox" hidden>
+        <div class="hfdl-map-main"><div id="acarsMap"></div><div id="acarsMapNote" class="muted"></div></div>
+        <div class="hfdl-map-list" id="acarsMapList"></div>
       </div>
     </section>
 
@@ -569,6 +672,68 @@ ecordings), play them in the browser">RECS</button>
       </div>
     </section>
 
+    <section class="card ft8 adsb" id="adsbCard" data-dec="adsb" hidden>
+      <div class="ft8-head">
+        <label class="key small toggle" data-dec-on="adsb" title="ADS-B (aircraft, 1090 MHz) on/off. Takes the VFO to 1090 MHz at 2.4 MS/s and decodes Mode S / ADS-B from the raw samples; mutes the audio of the VFO"><input id="adsbOn" type="checkbox">ON</label>
+        <div class="bands" id="adsbBands"></div>
+        <button id="adsbInfoKey" class="key small" title="Show / hide the description of the decoder (the table or map takes its place)">INFO</button>
+        <span id="adsbInfo" class="muted"></span>
+        <span id="adsbPaused" class="scroll-paused" hidden title="A click on a message holds the list still. Turn the mouse wheel over the messages to resume.">SCROLL PAUSED</span>
+        <div class="bands" id="adsbViews">
+          <button class="key small on" data-view="ac" title="Aircraft heard: the newest data of each">AIRCRAFT</button>
+          <button class="key small" data-view="map" title="Aircraft with a position, their tracks and the QTH on a map">MAP</button>
+          <button class="key small" data-view="msgs" title="The newest decoded Mode S / ADS-B messages">MESSAGES</button>
+        </div>
+        <label class="wf-opt" id="adsbRangeOpt" title="Range map: the farthest position decoded in each 2° sector, for aircraft up to 10000, 20000, 30000 ft and at any altitude. Collected all the time ADS-B runs and kept in data\adsb_range.json (also after a restart)"><input type="checkbox" id="adsbRange">RANGE</label>
+        <button id="adsbRangeClr" class="key small" title="Start the range map again (click twice: the collected range is deleted)">CLR RANGE</button>
+        <input id="adsbFilter" class="pkt-filter" type="search" placeholder="filter" title="Show only aircraft / messages containing this text (ICAO address, flight, squawk, country, category)">
+        <label class="wf-opt log-opt" title="Write to the daily log data\logs\adsb_YYYY-MM-DD.txt (UTC, shared by all VFOs; one line per aircraft at most once a minute)"><input type="checkbox" data-log="adsb">LOG</label>
+        <button id="adsbClear" class="key small" title="Clear the aircraft, the messages and the counters">CLR</button>
+      </div>
+      <p class="note" id="adsbNote" hidden>ADS-B and Mode S: the transponders of aircraft answer the radars and broadcast their identity, position,
+        altitude and speed on <b>1090 MHz</b> (pulse position modulation, 1 Mbit/s, 56 or 112 bits with a 24-bit CRC), decoded here in RADIMCOM
+        (no external program). ON takes the VFO to 1090.000 MHz at 2.4 MS/s (an Airspy stays at 2.5 MS/s); the audio is muted and
+        ACARS, VDL2, DAB, ISM, HFDL and AIS are turned off, because they need the dongle elsewhere. Turning ADS-B off gives the previous sample rate back.
+        Messages: <b>DF17 / DF18</b> ADS-B (flight, category, airborne and surface position, velocity, vertical rate, squawk and emergency,
+        selected altitude and QNH), <b>DF11</b> all-call replies and the radar replies <b>DF0 / 4 / 5 / 16 / 20 / 21</b> (altitude, squawk) of the
+        aircraft already heard. Positions are CPR-decoded from an even and an odd message (or from the last position); distance and azimuth
+        from the station location (SETTINGS › GENERAL › LOCATION). One or a few wrong bits of a known aircraft are corrected with the CRC (counted as "fixed").
+        Range: line of sight, 100–300 km with a 1090 MHz antenna outdoors; a short whip indoors hears the nearest aircraft only.
+        Country from the ICAO address; a click on the ICAO address opens globe.adsb.fi, on the flight adsb.lol, in a new tab.
+        An aircraft not heard for 1 min is grey, after 10 min it is removed.
+        <b>RANGE</b> (MAP) draws the farthest position decoded in each 2° sector from the station, for aircraft up to
+        10000 ft (green), 20000 ft (yellow), 30000 ft (orange) and at any altitude (violet); it is collected the whole time ADS-B
+        runs, kept in <code>data\adsb_range.json</code> between restarts, and starts again when the station location moves.
+        Only positions confirmed by an earlier position of the same aircraft count. CLR RANGE (twice) starts it again.
+        Registration and type of each aircraft are looked up once on adsb.fi (adsb.lol when adsb.fi does not answer; needs internet);
+        an aircraft heard here without a position of its own (radar replies only, or no position messages yet) gets the position
+        adsb.fi sees, every 30 s: <span class="ext">blue</span> in the list and a blue aircraft on the map.</p>
+      <div class="ais-status">
+        <div id="adsbStatus" class="muted"></div>
+      </div>
+      <div class="ft8-table" id="adsbAcBox">
+        <table class="adsb-ac-table">
+          <colgroup><col class="c-cty"><col class="c-icao"><col class="c-flt"><col class="c-reg"><col class="c-sqk"><col class="c-alt"><col class="c-vr"><col class="c-gs"><col class="c-trk"><col class="c-pos"><col class="c-dist"><col class="c-az"><col class="c-cat"><col class="c-sig"><col class="c-n"><col class="c-age"></colgroup>
+          <thead><tr><th>Country</th><th title="24-bit ICAO address; click for globe.adsb.fi">ICAO</th><th title="Flight number / call sign; click for adsb.lol">Flight</th><th title="Registration and aircraft type from adsb.fi (looked up once for each aircraft; needs internet)">Reg / Type</th><th title="Mode A code (7500 hijack, 7600 radio failure, 7700 emergency: red)">Squawk</th><th title="Barometric altitude, feet (GNSS height when only that is known: marked G); ▲▼ climbing / descending">Alt ft</th><th title="Vertical rate, feet per minute">V/S</th><th title="Ground speed, knots (IAS / TAS when only that is known)">GS kt</th><th title="Track over ground (heading when only that is known)">Track</th><th title="Newest position decoded here; in blue: from adsb.fi / adsb.lol for an aircraft without a position of its own (looked up every 30 s). Click to show it on the MAP">Position</th><th title="Distance from the station location">Dist</th><th title="Azimuth from the station location">Az</th><th title="Emitter category">Category</th><th title="Level of the last message, dBFS">Signal</th><th title="Number of messages">Msgs</th><th title="Time since the last message">Seen</th></tr></thead>
+          <tbody id="adsbAcRows"></tbody>
+        </table>
+        <div id="adsbAcEmpty" class="ft8-empty">No aircraft yet. Turn ADS-B on with a 1090 MHz antenna (a 6.9 cm whip will do for the nearest aircraft);
+          an airliner sends several messages a second.</div>
+      </div>
+      <div class="ais-map" id="adsbMapBox" hidden>
+        <div class="ais-map-main"><div id="adsbMap"></div><div id="adsbMapNote" class="muted"></div></div>
+        <div class="ais-map-list" id="adsbMapList"></div>
+      </div>
+      <div class="ft8-table" id="adsbMsgBox" hidden>
+        <table class="adsb-msg-table">
+          <colgroup><col class="c-utc"><col class="c-sig"><col class="c-icao"><col class="c-df"><col class="c-kind"><col class="c-data"><col class="c-hex"></colgroup>
+          <thead><tr><th>UTC</th><th title="Level of the message, dBFS">Signal</th><th>ICAO</th><th title="Downlink format">DF</th><th>Message</th><th>Data</th><th title="The message in hex (with the corrected bits)">Hex</th></tr></thead>
+          <tbody id="adsbMsgRows"></tbody>
+        </table>
+        <div id="adsbMsgEmpty" class="ft8-empty">No messages yet.</div>
+      </div>
+    </section>
+
     <section class="card ft8 wefax" id="wefaxCard" data-dec="wefax" hidden>
       <div class="ft8-head">
         <label class="key small toggle" data-dec-on="wefax" title="WEFAX decoder on/off"><input id="wefaxOn" type="checkbox">ON</label>
@@ -610,10 +775,11 @@ ecordings), play them in the browser">RECS</button>
         <div class="bands" id="ismBands"></div>
         <span id="ismInfo" class="muted"></span>
         <label class="wf-opt log-opt" title="Write to the daily log data\logs\ism_YYYY-MM-DD.txt (UTC, shared by all VFOs; a repeated message once)"><input type="checkbox" data-log="ism">LOG</label>
+        <label class="wf-opt" title="RAW: also show packages of pulses no decoder of rtl_433 could read (grey rows): modulation guess, pulses, length and the demodulated bits; ⧉ opens the pulses at triq.org/pdv. Many of them are noise or unknown devices. Not written to the log."><input type="checkbox" id="ismRaw">RAW</label>
         <button id="ismClear" class="key small" title="Clear the list">CLR</button>
       </div>
       <p class="note">Devices on 433 and 868 MHz: weather sensors, remote controls, tyre sensors and more, decoded by rtl_433.
-        The VFO runs at 2.048 MS/s, so everything within about ±1 MHz of the centre is decoded at once, and its audio is muted. The buttons centre the VFO.
+        The VFO runs at 2.048 MS/s and its audio is muted; RADIMCOM cuts narrow channels of 256 kHz out of it for rtl_433 (433.92 and 433.42 MHz, or 868.30 MHz), which decodes about twice as many messages as the whole band at once. The buttons centre the VFO.
         Gain stays the VFO's: a nearby sensor can overload the dongle at high gain. RTL-SDR only.</p>
       <div class="ft8-table">
         <table>
@@ -622,45 +788,6 @@ ecordings), play them in the browser">RECS</button>
           <tbody id="ismRows"></tbody>
         </table>
         <div id="ismEmpty" class="ft8-empty">No messages yet. Many sensors send only once a minute or less often.</div>
-      </div>
-    </section>
-
-    <section class="card ft8 dab" id="dabCard" data-dec="dab" hidden>
-      <div class="ft8-head dab-head">
-        <button id="dabKey" class="key small" data-dec-on="dab" title="DAB / DAB+ digital radio, Band III 174–240 MHz (welle-cli, RTL-SDR only)">ON</button>
-        <label class="wf-opt" title="Band III ensemble (multiplex); remembered for this VFO">CHANNEL <select id="dabChannel"></select></label>
-        <img id="dabFlag" class="dab-flag" alt="" hidden>
-        <span id="dabEnsemble" class="dab-ens"></span>
-        <span id="dabInfo" class="muted"></span>
-      </div>
-      <p class="note">Digital radio in Band III (174–240 MHz), decoded by welle-cli. Audio comes through MAIN volume; REC does not include DAB. RTL-SDR only.
-        The last channel and the last station of each channel are remembered. Channels of your region: e.g. Slovakia / Czechia 12C, 12D, 7D, Austria 5C, 5D, 8B, 11C.</p>
-      <div class="dab-main">
-        <div class="dab-list" id="dabServices"><div id="dabEmpty" class="ft8-empty">Searching the ensemble…</div></div>
-        <div class="dab-now">
-          <div class="dab-hero">
-            <div class="dab-glow" id="dabGlow"></div>
-            <div class="dab-art">
-              <span class="dab-mono" id="dabArtMono"></span>
-              <img id="dabSlide" alt="" title="Click: 16:9 / original ratio (for slides squeezed into 4:3)" hidden>
-            </div>
-            <div class="dab-hero-text">
-              <div class="dab-title" id="dabNowLabel">Select a station</div>
-              <div class="dab-chips" id="dabChips"></div>
-              <div class="dab-meta" id="dabNowMeta"></div>
-              <div class="dab-dls-box" id="dabDlsBox" hidden>
-                <span class="dab-cap">NOW ON AIR</span>
-                <div class="dab-dls" id="dabDls"></div>
-              </div>
-            </div>
-          </div>
-          <div class="dab-health" id="dabHealth"></div>
-        </div>
-        <div class="dab-side">
-          <div class="dab-panel"><span class="dab-cap">SIGNAL</span><div id="dabSignal"></div></div>
-          <div class="dab-panel"><span class="dab-cap">ENSEMBLE</span><div id="dabEnsInfo"></div></div>
-          <div class="dab-panel"><span class="dab-cap">MULTIPLEX CAPACITY</span><div id="dabCapacity"></div></div>
-        </div>
       </div>
     </section>
 
@@ -696,6 +823,181 @@ ecordings), play them in the browser">RECS</button>
       </div>
       <div class="amsat-body" id="amsatBody"></div>
     </div>
+    <!-- ROTOR CONTROL tab (RCTRL key, TRACKING group): a map – a click on the map, on a channel point or on a row of the list
+         turns the rotor to that place (azimuth from the QTH, elevation 0). The points are the MEMORIES channels with LAT / LON,
+         shown by their groups (one checkbox per group beside the map).
+         Pages MAP and CONNECTION: the block diagram of the sources of the wanted AZ / EL (SAT TRACKER, MEMORY RECALL, RCTRL MAP),
+         each with a switch that disconnects it from the rotor (data\rotor.json, the whole station). -->
+    <div class="set-pane rot-pane" id="rotPane" hidden aria-label="Rotor control">
+      <div class="amsat-head">
+        <div class="amsat-pages" id="rcPages" role="tablist">
+          <button class="key small" data-rc-page="map" role="tab" title="The map: a click turns the rotor to that place">MAP</button>
+          <button class="key small" data-rc-page="conn" role="tab" title="Which sources of the wanted AZ / EL move the rotor: SAT TRACKER, MEMORY RECALL, RCTRL MAP">CONNECTION</button>
+        </div>
+        <label class="rc-beam rc-map-only" title="Beam width of the antenna (−3 dB), drawn on the map as a sector around the line to the target">BEAM <input id="rcBeam" type="number" min="1" max="360" step="1"> °</label>
+        <button id="rcClear" class="key small rc-map-only" title="Remove the target (dashed line of the wanted azimuth) from the map; the rotor stays where it is">CLEAR</button>
+        <button id="rcStop" class="key small" title="Stop both motors of the rotor">STOP</button>
+        <span class="amsat-info" id="rcInfo"></span>
+      </div>
+      <div class="rc-body rc-map" id="rcMapBox">
+        <div class="rc-map-main"><div id="rcMap"></div><div id="rcNote" class="muted"></div></div>
+        <div class="rc-side">
+          <div class="rc-ovs" id="rcOvs"></div>
+          <input id="rcFilter" class="recs-filter" type="search" placeholder="filter: name, MHz, group, note…" title="Shows only the channels whose name, frequency, groups or note contain the text">
+          <div class="rc-list" id="rcList"></div>
+        </div>
+      </div>
+      <div class="rc-body rc-conn" id="rcConnBox" hidden>
+        <div class="rc-conn-wrap" id="rcConn"></div>
+        <p class="note">A click on a source or on its switch connects / disconnects it. A disconnected source does not move the rotor:
+          the SAT TRACKER only calculates the pass (CALC ONLY), a recalled memory with a location only tunes (the rotor and the
+          RCTRL tab stay), a click on the map only draws the target. The rotor block glows green while at least one source is connected.
+          The setting belongs to the station (data\rotor.json), for all VFOs and browsers.</p>
+      </div>
+    </div>
+    <!-- SCAN tab (SCAN key in MENU): the scanner of the active VFO (scanner.py, data\poznamky_scan.md). Pages SCAN (memories or a
+         range / the spectrum shown; SCAN / SQ / ASQ / PRIO of a memory are saved in it and take effect at once), LOG and HEATMAP. -->
+    <div class="set-pane scan-pane" id="scanPane" hidden aria-label="Scan">
+      <!-- 1. what is scanned: three tiles; the one chosen points (arrow) at the card with its settings -->
+      <div class="scan-top">
+        <div class="scan-src" id="scanSrc" role="radiogroup">
+          <button class="scan-tile mem" data-src="mem" role="radio" title="Scan the stored channels (MEMORIES): all, the favourites or one group. Mode and bandwidth come from each memory">
+            <span class="scan-tile-ico"><svg viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6h.01M4 12h.01M4 18h.01"/></svg></span>
+            <span class="scan-tile-txt"><b>MEMORY</b><small id="scanSubMem"></small></span>
+            <span class="scan-tile-n"><b id="scanNMem"></b><small>channels</small></span></button>
+          <button class="scan-tile view" data-src="view" role="radio" title="Scan the part of the spectrum shown now (taken at START), in the mode chosen">
+            <span class="scan-tile-ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M6 16l3-5 2 3 3-7 2 6 2-3"/></svg></span>
+            <span class="scan-tile-txt"><b>VISIBLE BAND</b><small id="scanSubView"></small></span>
+            <span class="scan-tile-n"><b id="scanNView"></b><small>channels</small></span></button>
+          <button class="scan-tile range" data-src="range" role="radio" title="Scan a range FROM–TO with a channel grid (STEP), e.g. airband, PMR446, 2 m">
+            <span class="scan-tile-ico"><svg viewBox="0 0 24 24"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg></span>
+            <span class="scan-tile-txt"><b>RANGE</b><small id="scanSubRange"></small></span>
+            <span class="scan-tile-n"><b id="scanNRange"></b><small>channels</small></span></button>
+          <button class="scan-tile fmbc" data-src="fmbc" role="radio" title="FM BCAST: search the FM broadcast band 88–108 MHz (WFM) for stations; the VFO lands on the centre of each station, listens LISTEN seconds and goes on up the band">
+            <span class="scan-tile-ico"><svg viewBox="0 0 24 24"><path d="M12 13v8M9 21h6"/><circle cx="12" cy="11" r="2"/><path d="M8.5 7.5a5 5 0 0 0 0 7M15.5 7.5a5 5 0 0 1 0 7M5.6 4.6a9 9 0 0 0 0 12.8M18.4 4.6a9 9 0 0 1 0 12.8"/></svg></span>
+            <span class="scan-tile-txt"><b>FM BCAST</b><small id="scanSubFm">88–108 MHz · WFM</small></span>
+            <span class="scan-tile-n"><b id="scanNFm"></b><small>channels</small></span></button>
+        </div>
+        <div class="scan-card" id="scanCard" data-tile="mem">
+          <div class="scan-sub" data-sub="mem">
+            <span class="scan-lbl" title="Which memories are scanned; the number = memories with SCAN checked">CHANNELS</span>
+            <div class="scan-chips" id="scanGroups"></div>
+          </div>
+          <div class="scan-sub" data-sub="view" hidden>
+            <span class="scan-lbl">BAND</span><b class="scan-big" id="scanViewBand"></b>
+            <span class="scan-lbl" title="Demodulation of the scan; the VFO is switched to it too">MODE</span>
+            <div class="scan-seg" id="scanViewModes"></div>
+            <span class="amsat-info" id="scanViewInfo"></span>
+          </div>
+          <div class="scan-sub scan-sub-range" data-sub="range" hidden>
+            <div class="scan-row">
+              <span class="scan-lbl" title="A ready range: fills FROM, TO, STEP, MODE and BW">PRESET</span>
+              <div class="scan-chips" id="scanPresetBox"></div>
+            </div>
+            <div class="scan-row">
+              <label class="scan-opt">FROM <input id="scanFrom" type="number" step="0.001" class="wide"></label>
+              <label class="scan-opt">TO <input id="scanTo" type="number" step="0.001" class="wide"> MHz</label>
+              <label class="scan-opt" title="Channel grid, kHz (8.333 = airband 8.33 kHz)">STEP <input id="scanStep" type="number" min="0.1" max="1000" step="0.001"> kHz</label>
+              <span class="scan-lbl" title="Demodulation of the scan; the VFO is switched to it too">MODE</span>
+              <div class="scan-seg" id="scanRangeModes"></div>
+              <label class="scan-opt" title="Channel width, kHz (a click on a MODE sets the bandwidth the VFO uses for it)">BW <input id="scanBw" type="number" min="0.1" max="250" step="0.1"> kHz</label>
+              <label class="key small toggle" title="STORE FOUND: every frequency heard for at least 1 s is stored as a memory in the group &quot;Scan YYYY-MM-DD&quot; (not when a memory is already there)"><input id="scanStore" type="checkbox">STORE FOUND</label>
+            </div>
+          </div>
+          <div class="scan-sub" data-sub="fmbc" hidden>
+            <span class="scan-lbl">BAND</span><b class="scan-big">88–108 MHz</b>
+            <span class="scan-lbl" title="WFM with the bandwidth of the VFO for WFM; grid 50 kHz">MODE</span><b class="scan-big">WFM</b>
+            <label class="scan-opt" title="How long each station found is heard before the scan goes on up the band">LISTEN
+              <input id="scanFmS" type="number" min="1" max="600" step="1"> s</label>
+            <label class="key small toggle" title="STORE FOUND: every station heard is stored as a WFM memory in the group &quot;FM YYYY-MM-DD&quot;, named by its RDS PS when it has one"><input id="scanFmStore" type="checkbox">STORE FOUND</label>
+            <span class="amsat-info">A station is found by the centre of its signal (the strongest point ±100 kHz around it), so the VFO lands on its centre, not on its side.</span>
+          </div>
+        </div>
+      </div>
+      <!-- 2. the keys and what the scan does now; HOLD / SKIP / ◀ ▶ only while scanning -->
+      <div class="scan-bar">
+        <button id="scanGo" class="key accent scan-go" title="START / STOP the scan on this VFO">▶ START</button>
+        <span class="scan-run" id="scanRun" hidden>
+          <button id="scanPause" class="key" title="HOLD on the channel heard now / CONTINUE the scan">❚❚ HOLD</button>
+          <button id="scanSkip" class="key" title="SKIP: leave the channel heard now for 5 minutes (✕ in the table locks a channel out until STOP)">SKIP</button>
+          <button id="scanLockout" class="key scan-lock-key" title="LOCK OUT: leave the channel heard now out of the scan until STOP (as ✕ in its row; a click on the red ✕ in the table scans it again)">✕ LOCK OUT</button>
+          <button id="scanPrev" class="key" title="Hold on the previous channel">◀</button>
+          <button id="scanNext" class="key" title="Hold on the next channel">▶</button>
+        </span>
+        <div class="scan-status" id="scanStatus">
+          <div class="scan-now" id="scanNow"></div>
+          <span class="scan-stat" id="scanInfo"></span>
+        </div>
+        <label class="key small toggle scan-rec-key" title="REC: each activity is recorded to a WAV file (subfolder scan of the recordings folder), with the audio from just before the signal; ▶ in ACTIVITY plays it"><input id="scanRec" type="checkbox">● REC</label>
+        <button id="scanCfgKey" class="key small scan-cfg-key" title="Squelch, continue, priority, carrier lockout, history"><span class="scan-gear">⚙</span><span id="scanCfgSum"></span></button>
+      </div>
+      <div class="scan-cfg" id="scanCfg" hidden>
+        <label class="key small toggle" title="AUTO SQUELCH: every channel without its own SQ opens at its noise floor + MARGIN. Recommended (fixed levels do not fit AGC+). Off = the squelch level of its mode (when that is off too: auto squelch)"><input id="scanAsq" type="checkbox">AUTO SQUELCH</label>
+        <label class="scan-opt" title="Margin of the auto squelch above the noise floor of a channel, dB (a channel's own ASQ wins)">MARGIN
+          <input id="scanMargin" type="number" min="1" max="30" step="0.5"> dB</label>
+        <label class="scan-opt" title="When the scan goes on: AFTER SIGNAL = the set time after the signal drops (replies are heard), AT ONCE = as soon as it drops, AFTER TIME = after the set time even while the signal lasts">CONTINUE
+          <select id="scanResume"><option value="delay">AFTER SIGNAL</option><option value="carrier">AT ONCE</option><option value="time">AFTER TIME</option></select>
+          <input id="scanResumeS" type="number" min="0" max="600" step="0.5"> s</label>
+        <label class="scan-opt" title="Priority channels (PRIO in the table) in another tuner window are checked this often while another channel is heard (the audio stops for ~0.3 s); 0 = off">PRIORITY EVERY
+          <input id="scanPrioS" type="number" min="0" max="60" step="0.5"> s</label>
+        <label class="scan-opt" title="A channel open longer than this without a break (a carrier, a spur) is locked out until STOP">CARRIER LOCKOUT
+          <select id="scanCarrier"><option value="0">OFF</option><option value="0.5">30 s</option><option value="1">1 min</option><option value="2">2 min</option><option value="3">3 min</option><option value="5">5 min</option><option value="10">10 min</option><option value="30">30 min</option></select></label>
+        <label class="scan-opt" title="RANGE / VISIBLE BAND: which active channel is tuned: NEXT = the next one after the last heard, STRONGEST = the strongest one">PICK
+          <select id="scanPick"><option value="next">NEXT</option><option value="strongest">STRONGEST</option></select></label>
+        <label class="scan-opt" title="The activities (data\logs\scan_*.csv) and the WAV recordings of the scan are deleted after this many days">KEEP HISTORY
+          <input id="scanKeep" type="number" min="1" max="365" step="1"> days</label>
+      </div>
+      <!-- pages -->
+      <div class="scan-pages" id="scanPages" role="tablist">
+        <button class="key small on" data-scan-page="scan" role="tab">CHANNELS</button>
+        <button class="key small" data-scan-page="log" role="tab">ACTIVITY <span id="scanActN"></span></button>
+        <button class="key small" data-scan-page="heat" role="tab">HEATMAP</button>
+        <span class="scan-show" id="scanShowBox" hidden>
+          <label class="scan-opt" title="THIS SCAN = only what this scan heard (a START of another source or range, or CLR, begins a new one); the others = the history of all VFOs">SHOW
+            <select id="scanShow"><option value="session">THIS SCAN</option><option value="1">TODAY (UTC)</option><option value="7">7 DAYS</option><option value="31">31 DAYS</option><option value="365">ALL KEPT</option></select></label>
+          <button id="scanClr" class="key small" title="CLR: empty ACTIVITY and HEATMAP of THIS SCAN (a new session begins; the history keeps the old activities for KEEP HISTORY days)">CLR</button>
+        </span>
+      </div>
+      <!-- page CHANNELS -->
+      <div class="amsat-body recs-body" data-scan-panel="scan">
+        <table class="recs-table scan-table">
+          <thead><tr><th title="SCAN: the memory is scanned">SCAN</th><th>Name</th><th>Frequency</th><th>Mode</th><th>BW</th>
+            <th title="Own squelch level of the channel, dBFS (empty = auto squelch)">SQ</th>
+            <th title="Own auto squelch margin of the channel, dB above its noise (empty = MARGIN)">ASQ</th>
+            <th title="Priority channel: wins over the other channels, even while another one is heard">PRIO</th>
+            <th title="Channel power now, dBFS">Level</th>
+            <th title="Noise floor of the channel, dBFS">Noise</th><th title="Squelch level in use, dBFS">SQL</th>
+            <th title="How many times the scan stopped on it">Hits</th><th>Last</th>
+            <th title="LOCK OUT: a click on ✕ in a row leaves that channel out of the scan until STOP (red ✕ = locked out; a click again scans it again). Shown while the scan runs">✕</th><th>State</th></tr></thead>
+          <tbody id="scanRows"></tbody>
+        </table>
+        <p class="note" id="scanEmpty" hidden></p>
+      </div>
+      <!-- page ACTIVITY -->
+      <div class="amsat-body recs-body" data-scan-panel="log" hidden>
+        <div class="scan-log-head">
+          <input id="scanLogFilter" class="recs-filter" type="search" placeholder="filter: name, MHz, VFO, note…">
+          <button id="scanLogCsv" class="key small" title="Save the rows shown as a CSV file">CSV</button>
+          <audio id="scanAudio" controls preload="none"></audio>
+          <span class="recs-now" id="scanPlaying"></span>
+        </div>
+        <table class="recs-table scan-log">
+          <thead><tr><th></th><th>Time</th><th>VFO</th><th>Frequency</th><th>Name</th><th>Mode</th><th>Length</th><th>Max dBFS</th><th>SNR</th><th>Note</th></tr></thead>
+          <tbody id="scanLogRows"></tbody>
+        </table>
+        <p class="note" id="scanLogEmpty" hidden></p>
+      </div>
+      <!-- page HEATMAP -->
+      <div class="amsat-body recs-body" data-scan-panel="heat" hidden>
+        <p class="amsat-info scan-heat-note">Seconds of activity per hour of the day (local time), the 60 busiest frequencies; yellow = most. A click on a row tunes it.</p>
+        <table class="recs-table scan-heat">
+          <thead id="scanHeatHead"></thead>
+          <tbody id="scanHeatRows"></tbody>
+        </table>
+        <p class="note" id="scanHeatEmpty" hidden></p>
+      </div>
+    </div>
+
     <!-- RECORDINGS tab (RECS key): the MP3 files of REC / REC SQ in data
 ecordings, played in the browser -->
     <div class="set-pane recs-pane" id="recsPane" hidden aria-label="Recordings">
@@ -715,8 +1017,7 @@ ecordings, played in the browser -->
           <thead><tr><th></th><th>Start</th><th>Memory</th><th>Frequency</th><th>Mode</th><th>Length</th><th>Size</th><th>File</th><th></th></tr></thead>
           <tbody id="recsRows"></tbody>
         </table>
-        <p class="note" id="recsEmpty" hidden>No recordings yet: REC or REC SQ (under the volume faders) records the audio of the active VFO to MP3 files in data
-ecordings.</p>
+        <p class="note" id="recsEmpty" hidden>No recordings yet: REC or REC SQ (under the volume faders) records the audio of the active VFO to MP3 files in the recordings folder (SETTINGS › GENERAL › RECORDINGS, default data\recordings).</p>
       </div>
     </div>
     <!-- MEMORIES tab (MEM key): the memory editor (CHANNELS, where a double click also recalls a memory, GROUPS, IMPORT, EXPORT);
@@ -768,27 +1069,44 @@ ecordings.</p>
           <datalist id="medGroupNames"></datalist>
           <div class="med-split">
             <div class="med-table-wrap"><table class="med-table" id="medTable"></table></div>
+            <!-- CHOOSE ON MAP of the channel form: in place of the table, the full height of the page -->
+            <div class="med-map" id="medMapBox" hidden>
+              <div class="med-bar"><span class="note" id="medMapNote"></span>
+                <button type="button" class="key small" id="medMapClose" title="Back to the table">✕ CLOSE MAP</button></div>
+              <div id="medMap"></div>
+            </div>
             <form class="med-form" id="medForm" autocomplete="off" hidden>
-              <!-- three columns, so the whole form fits the height of the tab: fields | settings | groups -->
-              <h4 id="medFormTitle">Channel</h4>
+              <!-- two columns: the channel (basic fields, ADVANCED below them) | groups; ADVANCED only adds or removes its part
+                   under the basic fields, nothing else moves -->
+              <h4 id="medFormTitle">Edit channel</h4>
               <div class="med-fcol">
                 <label>Name<input name="name" maxlength="80" required></label>
                 <div class="med-row2">
-                  <label>Frequency<input name="freq" spellcheck="false" title="MHz, or with a unit: 7100k, 145.5M, 7100000Hz"></label>
                   <label>Mode<select name="mode"></select></label>
+                  <label class="med-freq">Frequency<input name="freq" spellcheck="false" title="MHz, or with a unit: 7100k, 145.5M, 7100000Hz"></label>
+                  <label class="med-dab" hidden>DAB channel<select name="dab" title="Recalling the memory turns DAB on with this channel"></select></label>
                 </div>
-                <div class="med-row2">
-                  <label>Bandwidth, kHz<input name="bw" title="Clamped to the range of the mode"></label>
-                  <label>DAB channel<select name="dab" title="Recalling the channel turns DAB on with this channel"></select></label>
+                <button type="button" class="key small med-advkey" id="medFormAdvKey" data-act="adv" aria-controls="medFormAdv" title="Shows or hides the other settings of the channel (remembered)">ADVANCED</button>
+                <div class="med-adv" id="medFormAdv" hidden>
+                  <div class="med-row2">
+                    <label>Bandwidth, kHz<input name="bw" title="Clamped to the range of the mode; fixed for DAB and DSD"></label>
+                    <label>Decoder<select name="decoder" title="Switched on when the channel is recalled"></select></label>
+                  </div>
+                  <div class="med-row2">
+                    <label>Record<select name="record" title="Recording to MP3 started when the channel is recalled: ON = REC (everything), SQ = REC SQ (while the squelch is open), ASQ = REC SQ with the auto squelch (AM, FM, WFM)"></select></label>
+                    <label class="med-color">colour <input name="color" type="color" value="#7ee0a8"><button type="button" class="key small" data-act="nocolor" title="Default colour (green)">↺</button></label>
+                  </div>
+                  <div class="med-row2">
+                    <label class="switch small"><input name="fav" type="checkbox"><span></span> ★ favourite</label>
+                    <label class="switch small"><input name="tag" type="checkbox" checked><span></span> tag in spectrum</label>
+                  </div>
+                  <div class="med-row2">
+                    <label>LAT (48.123456)<input name="lat" spellcheck="false" title="Latitude of the station on the channel, decimal degrees (north +, south −); empty = no location"></label>
+                    <label>LON (17.123456)<input name="lon" spellcheck="false" title="Longitude of the station on the channel, decimal degrees (east +, west −); empty = no location"></label>
+                  </div>
+                  <button type="button" class="key small" data-act="map" title="Choose the place of the station on an OpenStreetMap map beside the form (needs internet)">CHOOSE ON MAP</button>
+                  <label>Note<textarea name="note" maxlength="200" rows="2"></textarea></label>
                 </div>
-                <label>Note<textarea name="note" maxlength="200" rows="2"></textarea></label>
-              </div>
-              <div class="med-fcol">
-                <label>Decoder<select name="decoder" title="Switched on when the channel is recalled"></select></label>
-                <label>Record<select name="record" title="Recording to MP3 started when the channel is recalled: ON = REC (everything), SQ = REC SQ (while the squelch is open), ASQ = REC SQ with the auto squelch (AM, FM, WFM)"></select></label>
-                <label class="switch small"><input name="fav" type="checkbox"><span></span> ★ favourite</label>
-                <label class="switch small"><input name="tag" type="checkbox" checked><span></span> tag in spectrum</label>
-                <label class="med-color">colour <input name="color" type="color" value="#7ee0a8"><button type="button" class="key small" data-act="nocolor" title="Default colour (green)">↺</button></label>
                 <p class="note warn" id="medFormDup" hidden></p>
                 <p class="note error" id="medFormErr" hidden></p>
               </div>
@@ -865,254 +1183,30 @@ ecordings.</p>
         </section>
       </div>
     </div>
-    <!-- SETTINGS tab (gear key): pages SDR DONGLE, AUDIO, UI, ROTOR, TX (some with sub-pages, so nothing has to scroll);
-         covers the spectrum and waterfall like the other tabs -->
+    <!-- SETTINGS tab (gear key): two pages, covering the spectrum and waterfall like the other tabs.
+         GENERAL = settings of the whole station: SKINS, S-METER, TOUCHPAD, LOCATION, ROTOR, RECORDINGS (the rotor is not tied to a VFO).
+         VFO = settings of one VFO: the VFO keys on the left (like beside the S-meter), the open one joined to its card
+         with the pages SDR DONGLE, ADVANCED, AUDIO, TX. -->
     <div class="set-pane" id="settingsCard" hidden aria-label="Settings">
       <div class="amsat-head">
         <div class="amsat-pages set-tabs" id="setTabs" role="tablist">
-          <button class="key small on" data-set-tab="dongle" role="tab" aria-selected="true">SDR DONGLE</button>
-          <button class="key small" data-set-tab="audio" role="tab" aria-selected="false">AUDIO</button>
-          <button class="key small" data-set-tab="ui" role="tab" aria-selected="false">UI</button>
-          <button class="key small" data-set-tab="rotor" role="tab" aria-selected="false">ROTOR</button>
-          <button class="key small" data-set-tab="tx" id="setTabTx" role="tab" aria-selected="false" hidden>TX</button>
+          <button class="key small on" data-set-tab="gen" role="tab" aria-selected="true">GENERAL</button>
+          <button class="key small" data-set-tab="vfo" role="tab" aria-selected="false">VFO</button>
         </div>
       </div>
       <div class="set-body">
-        <!-- ===== SDR DONGLE: BASIC and ADVANCED (SP, AGC+) ===== -->
-        <div class="set-panel has-sub" data-set-panel="dongle" role="tabpanel">
+        <!-- ===== GENERAL: SKINS, S-METER, TOUCHPAD, LOCATION, ROTOR, RECORDINGS (the whole station) ===== -->
+        <div class="set-panel has-sub" data-set-panel="gen" role="tabpanel">
           <div class="set-subtabs" role="tablist">
-            <button class="key small on" data-set-sub="dongle:basic" role="tab" aria-selected="true">BASIC</button>
-            <button class="key small" data-set-sub="dongle:adv" role="tab" aria-selected="false">ADVANCED</button>
+            <button class="key small on" data-set-sub="gen:skins" role="tab" aria-selected="true">SKINS</button>
+            <button class="key small" data-set-sub="gen:meter" role="tab" aria-selected="false">S-METER</button>
+            <button class="key small" data-set-sub="gen:wheel" role="tab" aria-selected="false">TOUCHPAD</button>
+            <button class="key small" data-set-sub="gen:location" role="tab" aria-selected="false">LOCATION</button>
+            <button class="key small" data-set-sub="gen:rotor" role="tab" aria-selected="false">ROTOR</button>
+            <button class="key small" data-set-sub="gen:recs" role="tab" aria-selected="false">RECORDINGS</button>
           </div>
-          <div class="set-subpanel" id="dongleBasic" data-set-subpanel="dongle:basic" role="tabpanel">
-            <!-- block diagram of the receive chain: each numbered block = the card with the same number; a click shows it -->
-            <div class="setting blk-diagram" id="blkDiagram">
-              <svg viewBox="0 0 1110 212" role="img" aria-label="Block diagram of the SDR dongle receive chain">
-                <defs><marker id="blkArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="blk-arrowhead"/></marker></defs>
-                <!-- antenna -->
-                <path class="blk-wire" d="M30 40V95M16 40L30 62L44 40Z"/>
-                <text class="blk-sub" x="30" y="30">ANT</text>
-                <line class="blk-wire" x1="30" y1="95" x2="70" y2="95" marker-end="url(#blkArrow)"/>
-                <!-- dongle frame: 1 dongle selection, 9 reset -->
-                <g class="blk blk-frame" data-blk-for="deviceSetting vfoSetting resetSetting" tabindex="0">
-                  <rect x="232" y="22" width="476" height="160" rx="10"/>
-                  <text class="blk-title" x="250" y="44" style="text-anchor: start">SDR DONGLE</text>
-                  <text class="blk-title" x="690" y="44" style="text-anchor: end">RESET</text>
-                  <g class="blk-num"><circle cx="232" cy="22" r="10"/><text x="232" y="22">1</text></g><g class="blk-num"><circle cx="708" cy="22" r="10"/><text x="708" y="22">9</text></g>
-                </g>
-                <!-- 2 upconverter + LO -->
-                <g class="blk" data-blk-for="upconvSetting loField" tabindex="0">
-                  <rect x="72" y="68" width="136" height="54" rx="6"/>
-                  <text class="blk-title" x="140" y="90">UPCONVERTER</text>
-                  <text class="blk-sub" x="140" y="108">auto/on/off · LO</text>
-                  <g class="blk-num"><circle cx="72" cy="68" r="10"/><text x="72" y="68">2</text></g>
-                </g>
-                <line class="blk-wire" x1="208" y1="95" x2="252" y2="95" marker-end="url(#blkArrow)"/>
-                <!-- 3 bias-tee: DC up the coax to the converter/LNA -->
-                <g class="blk" data-blk-for="biasTeeSetting" tabindex="0">
-                  <rect x="254" y="72" width="78" height="46" rx="6"/>
-                  <text class="blk-title" x="293" y="92">BIAS-T</text>
-                  <text class="blk-sub" x="293" y="109">4.5 V</text>
-                  <g class="blk-num"><circle cx="254" cy="72" r="10"/><text x="254" y="72">3</text></g>
-                </g>
-                <path class="blk-power" d="M293 72V58H140V68" marker-end="url(#blkArrow)"/>
-                <text class="blk-sub" x="150" y="50">DC to converter/LNA</text>
-                <line class="blk-wire" x1="332" y1="95" x2="358" y2="95" marker-end="url(#blkArrow)"/>
-                <!-- 4 tuner -->
-                <g class="blk" data-blk-for="gainSetting" tabindex="0">
-                  <rect x="360" y="68" width="112" height="54" rx="6"/>
-                  <text class="blk-title" x="416" y="90">TUNER</text>
-                  <text class="blk-sub" x="416" y="108">gain · auto</text>
-                  <g class="blk-num"><circle cx="360" cy="68" r="10"/><text x="360" y="68">4</text></g>
-                </g>
-                <line class="blk-wire" x1="472" y1="95" x2="508" y2="95" marker-end="url(#blkArrow)"/>
-                <!-- 5 + 6: RTL2832 A/D -->
-                <g class="blk" data-blk-for="rtlAgcBox rateSetting" tabindex="0">
-                  <rect x="510" y="62" width="180" height="66" rx="6"/>
-                  <text class="blk-title" x="600" y="81">A/D · RTL2832</text>
-                  <g class="blk-num"><circle cx="526" cy="97" r="8"/><text x="526" y="97">5</text></g><text class="blk-sub" x="540" y="101" style="text-anchor: start">digital gain (AGC)</text>
-                  <g class="blk-num"><circle cx="526" cy="115" r="8"/><text x="526" y="115">6</text></g><text class="blk-sub" x="540" y="119" style="text-anchor: start">bandwidth (sample rate)</text>
-                </g>
-                <!-- 7 crystal: clock of the tuner and the A/D -->
-                <g class="blk" data-blk-for="ppmField" tabindex="0">
-                  <rect x="440" y="144" width="132" height="30" rx="6"/>
-                  <text class="blk-title" x="506" y="164">XTAL · ppm</text>
-                  <g class="blk-num"><circle cx="440" cy="144" r="10"/><text x="440" y="144">7</text></g>
-                </g>
-                <path class="blk-clock" d="M440 159H416V122M572 159H600V128"/>
-                <!-- USB to the PC -->
-                <line class="blk-wire" x1="690" y1="95" x2="758" y2="95" marker-end="url(#blkArrow)"/>
-                <text class="blk-sub" x="728" y="86">USB</text>
-                <text class="blk-sub" x="930" y="40">PC · RADIMCOM</text>
-                <!-- 8 DC removal -->
-                <g class="blk" data-blk-for="dcSetting" tabindex="0">
-                  <rect x="760" y="68" width="90" height="54" rx="6"/>
-                  <text class="blk-title" x="805" y="90">DC</text>
-                  <text class="blk-sub" x="805" y="108">peak removal</text>
-                  <g class="blk-num"><circle cx="760" cy="68" r="10"/><text x="760" y="68">8</text></g>
-                </g>
-                <line class="blk-wire" x1="850" y1="95" x2="868" y2="95" marker-end="url(#blkArrow)"/>
-                <!-- 10 SP spurs removal (ADVANCED): learned spur lines out of the spectrum and the VFO channel -->
-                <g class="blk" data-blk-for="spurSetting" tabindex="0">
-                  <rect x="870" y="68" width="96" height="54" rx="6"/>
-                  <text class="blk-title" x="918" y="90">SP</text>
-                  <text class="blk-sub" x="918" y="108">spurs removal</text>
-                  <g class="blk-num"><circle cx="870" cy="68" r="10"/><text x="870" y="68">10</text></g>
-                </g>
-                <line class="blk-wire" x1="966" y1="95" x2="984" y2="95" marker-end="url(#blkArrow)"/>
-                <rect class="blk-end" x="986" y="62" width="116" height="66" rx="6"/>
-                <text class="blk-sub" x="1044" y="82">spectrum</text>
-                <text class="blk-sub" x="1044" y="99">waterfall</text>
-                <text class="blk-sub" x="1044" y="116">VFO · decoders</text>
-                <!-- 11 AGC+ (ADVANCED): reads the raw A/D samples, sets the tuner gain -->
-                <path class="blk-ctl" d="M726 95V157H750" marker-end="url(#blkArrow)"/>
-                <g class="blk" data-blk-for="sagcSetting" tabindex="0">
-                  <rect x="752" y="142" width="118" height="30" rx="6"/>
-                  <text class="blk-title" x="811" y="162">AGC+</text>
-                  <g class="blk-num"><circle cx="752" cy="142" r="10"/><text x="752" y="142">11</text></g>
-                </g>
-                <path class="blk-ctl" d="M811 172V194H384V124" marker-end="url(#blkArrow)"/>
-                <text class="blk-sub" x="600" y="208">AGC+ sets the tuner gain from the A/D level</text>
-              </svg>
-              <p class="note">Path of the signal from the antenna to the screen. A number in the diagram = the card with the same number; click a block to find it.
-                Grey block: not for this dongle or VFO.</p>
-            </div>
-            <div class="set-grid4">
-            <div class="setting" id="vfoSetting" data-blk="1" hidden>
-              <div class="row"><span>Settings for</span></div>
-              <p class="note" id="vfoSettingText"></p>
-              <p class="note">Each VFO keeps its own settings. Dongles and VFO assignment are in <code>data\vfos.json</code>.</p>
-            </div>
-            <div class="setting" id="deviceSetting" data-blk="1">
-              <div class="row"><span>Dongle</span><button id="devRefresh" class="key small" title="Search for connected dongles again">⟳</button></div>
-              <select id="device"></select>
-              <p class="note">Switching closes the dongle and opens the selected one. Each dongle remembers its own upconverter, LO and ppm.</p>
-            </div>
-            <div class="setting" id="upconvSetting" data-blk="2">
-              <div class="row"><span>Upconverter</span></div>
-              <select id="upconv">
-                <option value="auto">Auto (HF via converter)</option>
-                <option value="on">Always via converter</option>
-                <option value="off">Off (direct: 24–1766 MHz, RTL-SDR Blog V4 from 0.5 MHz)</option>
-              </select>
-              <p class="note">Auto: below 30 MHz via the converter, VHF/UHF direct.
-                Above 30 MHz the signal must go straight to the dongle (bypass switch or another antenna).</p>
-            </div>
-            <div class="setting" id="rateSetting" data-blk="6">
-              <div class="row"><span>Bandwidth</span></div>
-              <select id="sampleRate"></select>
-              <p class="note">Width of the band the dongle receives (its sample rate) = the width of the spectrum and waterfall.</p>
-            </div>
-            <div class="setting" id="ppmSetting">
-              <label class="set-field" id="ppmField"><span>Correction (ppm) <b class="blk-n">7</b></span><input id="ppm" type="number" step="1"></label>
-              <label class="set-field" id="loField"><span>Upconverter LO (MHz) <b class="blk-n">2</b></span><input id="lo" type="number" step="0.000001"></label>
-            </div>
-            <div class="setting" id="gainSetting" data-blk="4">
-              <div class="row"><span>Tuner gain</span><span id="gainText" class="value"></span></div>
-              <input id="gainSlider" type="range" min="0" max="0" step="1">
-              <label class="switch"><input id="gainAuto" type="checkbox"><span></span> Automatic gain</label>
-            </div>
-            <div class="setting" id="rtlAgcBox" data-blk="5">
-              <label class="switch"><input id="rtlAgc" type="checkbox"><span></span> RTL2832 digital gain</label>
-              <p class="note">Digital gain (AGC) in the RTL2832 after the A/D converter, independent of the tuner gain.
-                Helps weak signals at low tuner gain, but can overload with strong ones.</p>
-            </div>
-            <div class="setting" id="dcSetting" data-blk="8">
-              <label class="switch"><input id="dcRemove" type="checkbox"><span></span> Remove DC peak</label>
-              <div class="row"><span>Width</span><span id="dcHzText" class="value"></span></div>
-              <input id="dcHz" type="range" min="0" max="1000" step="10" value="0">
-              <div class="row"><span>Suppression</span><span id="dcDbText" class="value"></span></div>
-              <input id="dcDb" type="range" min="0" max="60" step="1" value="60">
-              <p class="note">Removes the peak of the dongle in the centre of the band. Far left only the peak itself, wider also its
-                skirts (LimeSDR needs this). Suppression = how deep.</p>
-            </div>
-            <div class="setting" id="biasTeeSetting" data-blk="3">
-              <label class="switch"><input id="biasTee" type="checkbox"><span></span> Bias-tee 4.5 V</label>
-              <p class="note warn">Only if the upconverter or LNA is powered by the dongle through the antenna connector.</p>
-            </div>
-            <div class="setting" id="resetSetting" data-blk="9">
-              <button id="resetBtn" class="key wide">⟳ RESET SDR DONGLE</button>
-              <p class="note">Closes the dongle and opens it again with the same settings (frequency, gain, bandwidth).
-                Use it when the spectrum stops or the dongle reported a USB error.</p>
-            </div>
-            </div>
-          </div>
-          <div class="set-subpanel set-grid2" id="dongleAdv" data-set-subpanel="dongle:adv" role="tabpanel" hidden>
-            <div class="setting dongle-list-box">
-              <div class="row"><span>Dongles and VFOs</span><button id="dongleListRefresh" class="key small" title="Search for connected dongles again">⟳</button></div>
-              <table class="dongle-list" id="dongleList"></table>
-              <p class="note">Highlighted: the dongle these settings apply to. Assignment is in <code>data\vfos.json</code>;
-                a change needs a full server restart. State ✓ = the VFO receiver has the dongle open and running; <i>free</i> = connected RTL dongle without a VFO.</p>
-            </div>
-            <div class="setting" id="spurSetting" data-blk="10">
-              <label class="switch"><input id="spurOn" type="checkbox"><span></span> SP – Spurs removal</label>
-              <div class="row"><button id="spurLearn" class="key small" title="Learn the spurs in the band received now (5 s)">LEARN</button><span id="spurInfo" class="value"></span><button id="spurClear" class="key small" title="Forget all learned spurs of this VFO">CLEAR</button></div>
-              <div class="set-cols">
-                <div>
-                  <div class="row"><span>Width</span><span id="spurHzText" class="value"></span></div>
-                  <input id="spurHz" type="range" min="100" max="10000" step="100" value="3000">
-                  <div class="row"><span>Edge</span><span id="spurEdgeText" class="value"></span></div>
-                  <input id="spurEdge" type="range" min="0" max="3000" step="50" value="1000">
-                </div>
-                <div>
-                  <div class="row"><span>Shift</span><span id="spurShiftText" class="value"></span></div>
-                  <input id="spurShift" type="range" min="-1000" max="1000" step="10" value="0">
-                  <div class="row"><span>Depth</span><span id="spurDbText" class="value"></span></div>
-                  <input id="spurDb" type="range" min="0" max="60" step="1" value="40">
-                </div>
-              </div>
-              <p class="note">For spurs from local sources, such as a switching power supply: lines at a regular spacing of 12 kHz or more.
-                LEARN looks at the band received now; learn on a quiet band, a row of steady stations could look like spurs. Other bands keep their lines.
-                Each line gets a band-stop: flat over Width, sides as wide as Edge (far left = steepest), moved up or down by Shift (all lines together). Inside it the line is taken down to the noise around it, following its shape, by Depth at most. It follows changes of the gain within a few seconds.
-                Cleans the waterfall and the channel you listen to (not WFM and wide FM). A signal on a spur is removed with it, so a clean waterfall does not mean it can be received there.
-                The SP key does the same in one press: it forgets the lines, learns and switches the removal on.</p>
-            </div>
-            <div class="setting" id="sagcSetting" data-blk="11">
-              <div class="row"><span>AGC+</span><span id="sagcNow" class="value"></span></div>
-              <div id="sagcRows"></div>
-              <button id="sagcDefaults" class="key small">DEFAULTS</button>
-              <p class="note">AGC+ key (GAIN): the tuner gain from the A/D level. On clipping it goes down at once, then waits
-                <i>settle</i> blocks; it goes up only after <i>hold</i> without clipping and with the A/D peak under <i>up below</i>,
-                aiming at <i>target</i>. One block ≈ 55–130 ms by the sample rate.</p>
-            </div>
-          </div>
-        </div>
-        <!-- ===== AUDIO ===== -->
-        <div class="set-panel set-grid3" data-set-panel="audio" role="tabpanel" hidden>
-          <div class="setting">
-            <div class="row"><span>AFI – inversion frequency (Hz)</span></div>
-            <input id="afiHz" type="number" step="1" min="500" max="4000" value="1750">
-            <p class="note">Audio frequency inversion (AFI key): the audio spectrum is mirrored around this frequency
-              (f → 2·F − f, band 0 … 2·F). The same setting scrambles and descrambles. Default 1750 Hz (band up to 3500 Hz). 500–4000 Hz.</p>
-          </div>
-          <div class="setting">
-            <div class="row"><span>Auto Squelch ASQ – above the noise (dB)</span></div>
-            <input id="asqDb" type="number" step="1" min="2" max="30" value="6">
-            <p class="note">ASQ key: the squelch level follows the noise in the channel plus this margin. The noise is measured
-              in the spectrum of the dongle band (its quietest points, converted to the channel bandwidth), so a long
-              transmission in the channel does not raise the level and close it. In a crowded band the quietest channel power
-              of the last 15 s is used if it is lower. 2–30 dB, default 6 dB.
-              With AGC+ on, a squelch set by the SQL bar of the VFO window works as auto squelch too (a fixed level would not fit the changing gain);
-              the SQL bar then only turns it on and off.</p>
-          </div>
-          <div class="setting">
-            <div class="set-cols">
-              <label class="set-field"><span>HPF – passes audio above (Hz)</span><input id="hpfHz" type="number" step="10" min="20" max="5000" value="300"></label>
-              <label class="set-field"><span>LPF – passes audio below (Hz)</span><input id="lpfHz" type="number" step="50" min="100" max="15000" value="3000"></label>
-            </div>
-            <p class="note">Audio filters of the HPF and LPF keys, for this VFO. Faster: turn the mouse wheel over the key.
-              HPF 20–5000 Hz, LPF 100–15000 Hz, 36 dB per octave. Together they make a band-pass, so HPF always stays below LPF.
-              What you hear and REC are filtered, decoders are not. Not for DAB.</p>
-          </div>
-        </div>
-        <!-- ===== UI: SKINS, S-METER, TOUCHPAD ===== -->
-        <div class="set-panel has-sub" data-set-panel="ui" role="tabpanel" hidden>
-          <div class="set-subtabs" role="tablist">
-            <button class="key small on" data-set-sub="ui:skins" role="tab" aria-selected="true">SKINS</button>
-            <button class="key small" data-set-sub="ui:meter" role="tab" aria-selected="false">S-METER</button>
-            <button class="key small" data-set-sub="ui:wheel" role="tab" aria-selected="false">TOUCHPAD</button>
-          </div>
-          <div class="set-subpanel set-skins" data-set-subpanel="ui:skins" role="tabpanel">
+          <!-- ===== SKINS, S-METER, TOUCHPAD (look and handling of the page) ===== -->
+          <div class="set-subpanel set-skins" data-set-subpanel="gen:skins" role="tabpanel">
             <div class="setting">
               <div class="row"><span>Finish of the panel</span><small>remembered in this browser</small></div>
               <div class="skin-picks" id="skinPicks"></div>
@@ -1125,18 +1219,13 @@ ecordings.</p>
               <p class="note">A click on a colour sprays the panel with it (PAINT finish). RAL values are screen approximations.</p>
             </div>
           </div>
-          <div class="set-subpanel set-meter" data-set-subpanel="ui:meter" role="tabpanel" hidden>
-            <div class="setting">
-              <div class="row"><span>S-meter: S9 =</span><span id="s9Text" class="value"></span></div>
-              <input id="s9" type="range" min="-90" max="-10" step="1" value="-40">
-              <p class="note">Calibration: level in dBFS shown as S9. For this VFO.</p>
-            </div>
+          <div class="set-subpanel" data-set-subpanel="gen:meter" role="tabpanel" hidden>
             <div class="setting meter-card">
               <div class="row"><span>S-meter layout</span><small>remembered in this browser, for all VFOs</small></div>
               <div class="meter-picks" id="meterStyles"></div>
             </div>
           </div>
-          <div class="set-subpanel set-grid3" data-set-subpanel="ui:wheel" role="tabpanel" hidden>
+          <div class="set-subpanel set-grid3" data-set-subpanel="gen:wheel" role="tabpanel" hidden>
             <div class="setting">
               <div class="row"><span>Touchpad wheel speed</span><span id="wheelSpeedText" class="value"></span></div>
               <input id="wheelSpeed" type="range" min="1" max="10" step="1" value="4">
@@ -1144,93 +1233,412 @@ ecordings.</p>
                 always one step. Remembered in this browser, for all VFOs.</p>
             </div>
           </div>
-        </div>
-        <!-- ===== ROTOR: ON / OFF for this VFO; ON = port, position on a polar plot and an elevation column, calibration ===== -->
-        <div class="set-panel set-rotor" data-set-panel="rotor" role="tabpanel" hidden>
-          <div class="setting rot-head">
-            <div class="row">
-              <button id="rotorOnKey" class="key small rot-onkey" title="Rotor link of this VFO on / off">OFF</button>
-              <span>Rotor controller (K3NG, GS-232, 9600 baud)</span>
-            </div>
-            <p class="note" id="rotorOffNote">The rotor configuration for this VFO is off.</p>
-            <div class="rot-port" id="rotorPortBox" hidden>
-              <select id="rotorPort"></select>
-              <button id="rotorRefresh" class="key small" title="Search for serial ports again">⟳</button>
-            </div>
-            <p class="note error" id="rotorError" hidden></p>
-          </div>
-          <div class="rot-on" id="rotorOnBox" hidden>
-            <div class="setting rot-dial">
-              <div class="rot-plots">
-                <svg class="rot-polar" id="rotPolar" viewBox="-118 -118 236 236" role="img" aria-label="Antenna azimuth and elevation, north up">
-                  <circle class="pg-ring" r="100"/><circle class="pg-ring" r="66.7"/><circle class="pg-ring" r="33.3"/>
-                  <line class="pg-ring" x1="-100" x2="100"/><line class="pg-ring" y1="-100" y2="100"/>
-                  <text class="pg-lbl" y="-106">N</text><text class="pg-lbl" x="108" y="4">E</text><text class="pg-lbl" y="114">S</text><text class="pg-lbl" x="-108" y="4">W</text>
-                  <text class="pg-el" x="3" y="-56.7">30°</text><text class="pg-el" x="3" y="-23.3">60°</text>
-                  <g class="pg-tgt" id="rotPolarTgt" visibility="hidden"><circle r="6"/></g>
-                  <g class="pg-rot" id="rotPolarX" visibility="hidden"><line x1="-6" y1="-6" x2="6" y2="6"/><line x1="-6" y1="6" x2="6" y2="-6"/></g>
-                  <g class="pg-aim" id="rotPolarAim" visibility="hidden"><line x1="-6" y1="-6" x2="6" y2="6"/><line x1="-6" y1="6" x2="6" y2="-6"/></g>
-                  <circle class="pg-hit" id="rotPolarHit" r="100"/>
-                </svg>
-                <svg class="rot-elcol" id="rotEl" viewBox="0 0 64 236" role="img" aria-label="Antenna elevation 0 to 180 degrees">
-                  <rect class="rot-elbar" x="30" y="8" width="16" height="216"/>
-                  <g id="rotElGrid"></g>
-                  <g class="pg-tgt" id="rotElTgt" visibility="hidden"><circle cx="38" r="5"/></g>
-                  <g class="rot-elnow" id="rotElNow" visibility="hidden"><path d="M26 0 L18 -5 L18 5 Z"/><line x1="30" x2="46"/></g>
-                  <line class="rot-elaim" id="rotElAim" x1="30" x2="46" visibility="hidden"/>
-                  <rect class="pg-hit" id="rotElHit" x="18" y="2" width="40" height="228"/>
-                </svg>
-              </div>
-              <div class="rot-side">
-                <div class="rot-pos">
-                  <i class="rot-cap">ACTUAL</i><span>AZ</span><b id="rotAzNow">–</b><span>EL</span><b id="rotElNowT">–</b>
-                  <i class="rot-cap req">REQUESTED</i><span>AZ</span><b class="req" id="rotAzReq">–</b><span>EL</span><b class="req" id="rotElReq">–</b>
-                </div>
-                <p class="note rot-howto">▸ Click in the polar plot or in the elevation column: the rotor starts turning to that direction
-                  (polar plot = azimuth and elevation, column = only the elevation). The green values are the requested direction.</p>
-                <p class="note" id="rotorTarget"></p>
-                <div class="rot-keys">
-                  <button id="rotorStop" class="key" title="Stop both motors; the rotor no longer follows the satellite tracking (TRACK on the TRACK page moves it again)">STOP</button>
-                  <button id="rotorReset" class="key" title="Clear a fault after checking the rotor">RESET</button>
-                  <button id="rotorMon" class="key" title="MONITOR: show the antenna AZ / EL in the additional display (AD) above">MONITOR</button>
-                </div>
-                <p class="note" id="rotPolarNote">Orange cross / arrow: the antenna now (actual), green ring: the requested direction (only until the rotor gets there). Elevation 0–180°, over 90° the antenna looks back over the top.</p>
-              </div>
-            </div>
+          <!-- ===== LOCATION: station locator / latitude, longitude (also on an OpenStreetMap map), altitude ===== -->
+          <div class="set-subpanel set-location" data-set-subpanel="gen:location" role="tabpanel" hidden>
             <div class="setting">
-              <div class="row"><span>Azimuth calibration</span></div>
+              <div class="row"><span>Station location</span><span class="value" id="locNow"></span></div>
+              <div class="sats-row"><label>Locator <input id="locLoc" maxlength="8" size="8" spellcheck="false"></label>
+                <span class="muted">or</span>
+                <label>Latitude <input id="locLat" type="number" step="0.0001" min="-90" max="90"></label>
+                <label>Longitude <input id="locLon" type="number" step="0.0001" min="-180" max="180"></label>
+                <label>Altitude <input id="locAlt" type="number" step="1" min="-500" max="9000"> m</label></div>
+              <div class="sats-row">
+                <button class="key small" id="locPickBtn" title="Choose the place on an OpenStreetMap map (needs internet)">CHOOSE ON MAP</button>
+                <button class="key small accent" id="locSave">SAVE</button>
+                <span class="note" id="locMsg"></span></div>
+              <div class="sats-pick" id="locPickMap" hidden></div>
+              <p class="note" id="locPickNote" hidden>Click the place of the antenna, then SAVE. Map tiles: OpenStreetMap, need internet.</p>
+              <p class="note">The location is used by the <b>satellites</b> (passes, Doppler, rotor tracking), the <b>packet decoder</b>
+                (APRS distances and map), <b>ACARS / VDL2</b>, <b>HFDL</b>, <b>AIS</b> and <b>ADS-B</b> (maps, distances). The same location is used on all VFOs.</p>
+              <p class="note">A locator gives the centre of its square (JN88WQ: about 2 km from any point in it; enough for tracking).
+                Latitude and longitude give an exact point. A new installation starts at 0.0 / 0.0: set your own place.</p>
+            </div>
+          </div>
+          <!-- ===== ROTOR: one for the station (data\rotor.json, run by the first VFO); ON / OFF; ON = port, position on a polar plot and an elevation column, calibration ===== -->
+          <div class="set-subpanel set-rotor" data-set-subpanel="gen:rotor" role="tabpanel" hidden>
+            <div class="setting rot-head">
               <div class="row">
-                <label title="True azimuth where the antenna points when K3NG shows 0 (its left stop)">AZ at K3NG 0° <input id="rotorCal0" type="number" min="-180" max="360" step="0.1"></label>
-                <label title="True azimuth where the antenna points when K3NG shows 450 (its right stop)">at K3NG 450° <input id="rotorCal450" type="number" step="0.1"></label>
-                <button id="rotorCalSave" class="key small" title="Save the calibration">SAVE</button>
+                <button id="rotorOnKey" class="key small rot-onkey" title="Rotor link on / off (one rotor for the whole station)">OFF</button>
+                <span>Rotor controller (K3NG, GS-232, 9600 baud)</span>
               </div>
-              <p class="note">K3NG counts 0–450° from its left stop. If that stop is not exactly north, enter the true azimuth of
-                the antenna at both ends (0 and 450 = no correction). Positions, the plots, the satellite tracking and the clicks then use true azimuths.
-                <span id="rotorRaw"></span></p>
-              <p class="note">Satellite tracking: SATELLITES tab, TRACK page (TRACK key). The rotor stops
-                if the position jumps or if a move makes no progress.</p>
+              <p class="note" id="rotorOffNote">The rotor link is off.</p>
+              <div class="rot-port" id="rotorPortBox" hidden>
+                <select id="rotorPort"></select>
+                <button id="rotorRefresh" class="key small" title="Search for serial ports again">⟳</button>
+              </div>
+              <p class="note error" id="rotorError" hidden></p>
+            </div>
+            <div class="rot-on" id="rotorOnBox" hidden>
+              <div class="setting rot-dial">
+                <div class="rot-plots">
+                  <svg class="rot-polar" id="rotPolar" viewBox="-118 -118 236 236" role="img" aria-label="Antenna azimuth and elevation, north up">
+                    <circle class="pg-ring" r="100"/><circle class="pg-ring" r="66.7"/><circle class="pg-ring" r="33.3"/>
+                    <line class="pg-ring" x1="-100" x2="100"/><line class="pg-ring" y1="-100" y2="100"/>
+                    <text class="pg-lbl" y="-106">N</text><text class="pg-lbl" x="108" y="4">E</text><text class="pg-lbl" y="114">S</text><text class="pg-lbl" x="-108" y="4">W</text>
+                    <text class="pg-el" x="3" y="-56.7">30°</text><text class="pg-el" x="3" y="-23.3">60°</text>
+                    <g class="pg-tgt" id="rotPolarTgt" visibility="hidden"><circle r="6"/></g>
+                    <g class="pg-rot" id="rotPolarX" visibility="hidden"><line x1="-6" y1="-6" x2="6" y2="6"/><line x1="-6" y1="6" x2="6" y2="-6"/></g>
+                    <g class="pg-aim" id="rotPolarAim" visibility="hidden"><line x1="-6" y1="-6" x2="6" y2="6"/><line x1="-6" y1="6" x2="6" y2="-6"/></g>
+                    <circle class="pg-hit" id="rotPolarHit" r="100"/>
+                  </svg>
+                  <svg class="rot-elcol" id="rotEl" viewBox="0 0 64 236" role="img" aria-label="Antenna elevation 0 to 180 degrees">
+                    <rect class="rot-elbar" x="30" y="8" width="16" height="216"/>
+                    <g id="rotElGrid"></g>
+                    <g class="pg-tgt" id="rotElTgt" visibility="hidden"><circle cx="38" r="5"/></g>
+                    <g class="rot-elnow" id="rotElNow" visibility="hidden"><path d="M26 0 L18 -5 L18 5 Z"/><line x1="30" x2="46"/></g>
+                    <line class="rot-elaim" id="rotElAim" x1="30" x2="46" visibility="hidden"/>
+                    <rect class="pg-hit" id="rotElHit" x="18" y="2" width="40" height="228"/>
+                  </svg>
+                </div>
+                <div class="rot-side">
+                  <div class="rot-pos">
+                    <i class="rot-cap">ACTUAL</i><span>AZ</span><b id="rotAzNow">–</b><span>EL</span><b id="rotElNowT">–</b>
+                    <i class="rot-cap req">REQUESTED</i><span>AZ</span><b class="req" id="rotAzReq">–</b><span>EL</span><b class="req" id="rotElReq">–</b>
+                  </div>
+                  <p class="note rot-howto">▸ Click in the polar plot or in the elevation column: the rotor starts turning to that direction
+                    (polar plot = azimuth and elevation, column = only the elevation). The green values are the requested direction.</p>
+                  <p class="note" id="rotorTarget"></p>
+                  <div class="rot-keys">
+                    <button id="rotorStop" class="key" title="Stop both motors; the rotor no longer follows the satellite tracking (TRACK on the TRACK page moves it again)">STOP</button>
+                    <button id="rotorReset" class="key" title="Clear a fault after checking the rotor">RESET</button>
+                    <button id="rotorMon" class="key" title="MONITOR: show the antenna AZ / EL in the additional display (AD) above">MONITOR</button>
+                  </div>
+                  <p class="note" id="rotPolarNote">Orange cross / arrow: the antenna now (actual), green ring: the requested direction (only until the rotor gets there). Elevation 0–180°, over 90° the antenna looks back over the top.</p>
+                </div>
+              </div>
+              <div class="setting">
+                <div class="row"><span>Azimuth calibration</span></div>
+                <div class="row">
+                  <label title="True azimuth where the antenna points when K3NG shows 0 (its left stop)">AZ at K3NG 0° <input id="rotorCal0" type="number" min="-180" max="360" step="0.1"></label>
+                  <label title="True azimuth where the antenna points when K3NG shows 450 (its right stop)">at K3NG 450° <input id="rotorCal450" type="number" step="0.1"></label>
+                  <button id="rotorCalSave" class="key small" title="Save the calibration">SAVE</button>
+                </div>
+                <p class="note">K3NG counts 0–450° from its left stop. If that stop is not exactly north, enter the true azimuth of
+                  the antenna at both ends (0 and 450 = no correction). Positions, the plots, the satellite tracking and the clicks then use true azimuths.
+                  <span id="rotorRaw"></span></p>
+                <p class="note">Satellite tracking: SATELLITES tab, TRACK page (TRACK key). The rotor stops
+                  if the position jumps or if a move makes no progress.</p>
+              </div>
+            </div>
+          </div>
+          <!-- ===== RECORDINGS: folder of the MP3 recordings (data\recordings.json), shared by all VFOs ===== -->
+          <div class="set-subpanel set-recs" data-set-subpanel="gen:recs" role="tabpanel" hidden>
+            <div class="setting">
+              <div class="row"><span>Folder of the recordings</span><span class="value" id="recDirNow"></span></div>
+              <div class="sats-row"><label class="rec-dir">Path <input id="recDir" spellcheck="false" autocomplete="off"></label></div>
+              <div class="sats-row">
+                <button class="key small accent" id="recDirSave">SAVE</button>
+                <button class="key small" id="recDirDefault" title="Back to the default folder">DEFAULT</button>
+                <span class="note" id="recDirMsg"></span></div>
+              <p class="note">Default: <code id="recDirDefaultPath"></code></p>
+              <p class="note">REC and REC SQ of all VFOs save the MP3 files here and the RECORDINGS tab lists this folder.
+                Enter a full path on this PC (for example <code>D:\Recordings</code>); a missing folder is created. A recording that is
+                running finishes its file in the old folder. Files already recorded are not moved.</p>
             </div>
           </div>
         </div>
-        <!-- ===== TX: LimeSDR only, off by default ===== -->
-        <div class="set-panel" data-set-panel="tx" role="tabpanel" hidden>
-          <div class="setting" id="txSetting" hidden>
-            <div class="tx-disclaimer" id="txDisclaimer">
-              <strong>⚠ IMPORTANT – TRANSMITTING DISCLAIMER</strong>
-              <p>Transmitting is legal <b>only</b> for a holder of a valid amateur radio licence (or another authorisation
-                required in your country), within the privileges of that licence and the national regulations based on the
-                ITU Radio Regulations, CEPT (T/R 61-01, T/R 61-02, ERC/REC 70-03), FCC Part 97 or your national authority.
-                PMR446 and CB may require type-approved equipment – an SDR transmitter may not be allowed there at all.</p>
-              <p>The SDR is not a certified transmitter: it can emit harmonics and spurious signals outside the band.
-                Use a suitable band-pass/low-pass filter and antenna, or a dummy load.</p>
-              <p><b>You, the operator, are fully and solely responsible for every transmission and its consequences</b>
-                (interference, fines, damage to equipment). The software is provided "AS IS", without any warranty;
-                the author accepts no liability.</p>
-              <p>TX is limited to: ham 160–10 m, 6 m, 4 m, 2 m, 70 cm, 23 cm, CB 27 MHz and PMR446.</p>
+        <!-- ===== VFO: keys VFO-A … VFO-D on the left (filled by the script); the lit one is joined to the card on the right ===== -->
+        <div class="set-panel set-vfo" data-set-panel="vfo" role="tabpanel" hidden>
+          <div class="set-vfo-keys" id="setVfoKeys" role="tablist" aria-label="VFO" aria-orientation="vertical" hidden></div>
+          <div class="set-vfo-card has-sub" id="setVfoCard" role="tabpanel">
+            <div class="set-subtabs" role="tablist">
+              <span class="set-vfo-name" id="setVfoName"></span>
+              <button class="key small on" data-set-sub="vfo:dongle" role="tab" aria-selected="true">SDR DONGLE</button>
+              <button class="key small" data-set-sub="vfo:adv" role="tab" aria-selected="false">ADVANCED</button>
+              <button class="key small" data-set-sub="vfo:audio" role="tab" aria-selected="false">AUDIO</button>
+              <button class="key small" data-set-sub="vfo:tx" id="setTabTx" role="tab" aria-selected="false" hidden>TX</button>
             </div>
-            <label class="switch"><input id="txEnabled" type="checkbox"><span></span> Enable TX (PTT = hold SPACE)</label>
-            <p class="note warn">The LimeSDR transmits on the tuned frequency while SPACE is held (FM test message or carrier,
-              upconverter must be off). Retuning ends the transmission.</p>
+            <div class="set-subpanel" id="dongleBasic" data-set-subpanel="vfo:dongle" role="tabpanel">
+              <!-- block diagram of the receive chain: each numbered block = the card with the same number; a click shows it -->
+              <div class="setting blk-diagram" id="blkDiagram">
+                <svg viewBox="0 0 1110 212" role="img" aria-label="Block diagram of the SDR dongle receive chain">
+                  <defs><marker id="blkArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="blk-arrowhead"/></marker></defs>
+                  <!-- antenna -->
+                  <path class="blk-wire" d="M30 40V95M16 40L30 62L44 40Z"/>
+                  <text class="blk-sub" x="30" y="30">ANT</text>
+                  <line class="blk-wire" x1="30" y1="95" x2="70" y2="95" marker-end="url(#blkArrow)"/>
+                  <!-- dongle frame: 1 dongle selection, 9 reset -->
+                  <g class="blk blk-frame" data-blk-for="deviceSetting vfoSetting resetSetting" tabindex="0">
+                    <rect x="232" y="22" width="476" height="160" rx="10"/>
+                    <text class="blk-title" x="250" y="44" style="text-anchor: start">SDR DONGLE</text>
+                    <text class="blk-title" x="690" y="44" style="text-anchor: end">RESET</text>
+                    <g class="blk-num"><circle cx="232" cy="22" r="10"/><text x="232" y="22">1</text></g><g class="blk-num"><circle cx="708" cy="22" r="10"/><text x="708" y="22">9</text></g>
+                  </g>
+                  <!-- 2 upconverter + LO -->
+                  <g class="blk" data-blk-for="upconvSetting loField" tabindex="0">
+                    <rect x="72" y="68" width="136" height="54" rx="6"/>
+                    <text class="blk-title" x="140" y="90">UPCONVERTER</text>
+                    <text class="blk-sub" x="140" y="108">auto/on/off · LO</text>
+                    <g class="blk-num"><circle cx="72" cy="68" r="10"/><text x="72" y="68">2</text></g>
+                  </g>
+                  <line class="blk-wire" x1="208" y1="95" x2="252" y2="95" marker-end="url(#blkArrow)"/>
+                  <!-- 3 bias-tee: DC up the coax to the converter/LNA -->
+                  <g class="blk" data-blk-for="biasTeeSetting" tabindex="0">
+                    <rect x="254" y="72" width="78" height="46" rx="6"/>
+                    <text class="blk-title" x="293" y="92">BIAS-T</text>
+                    <text class="blk-sub" x="293" y="109">4.5 V</text>
+                    <g class="blk-num"><circle cx="254" cy="72" r="10"/><text x="254" y="72">3</text></g>
+                  </g>
+                  <path class="blk-power" d="M293 72V58H140V68" marker-end="url(#blkArrow)"/>
+                  <text class="blk-sub" x="150" y="50">DC to converter/LNA</text>
+                  <line class="blk-wire" x1="332" y1="95" x2="358" y2="95" marker-end="url(#blkArrow)"/>
+                  <!-- 4 tuner -->
+                  <g class="blk" data-blk-for="gainSetting" tabindex="0">
+                    <rect x="360" y="68" width="112" height="54" rx="6"/>
+                    <text class="blk-title" x="416" y="90">TUNER</text>
+                    <text class="blk-sub" x="416" y="108">gain · auto</text>
+                    <g class="blk-num"><circle cx="360" cy="68" r="10"/><text x="360" y="68">4</text></g>
+                  </g>
+                  <line class="blk-wire" x1="472" y1="95" x2="508" y2="95" marker-end="url(#blkArrow)"/>
+                  <!-- 5 + 6: RTL2832 A/D -->
+                  <g class="blk" data-blk-for="rtlAgcBox rateSetting" tabindex="0">
+                    <rect x="510" y="62" width="180" height="66" rx="6"/>
+                    <text class="blk-title" x="600" y="81">A/D · RTL2832</text>
+                    <g class="blk-num"><circle cx="526" cy="97" r="8"/><text x="526" y="97">5</text></g><text class="blk-sub" x="540" y="101" style="text-anchor: start">digital gain (AGC)</text>
+                    <g class="blk-num"><circle cx="526" cy="115" r="8"/><text x="526" y="115">6</text></g><text class="blk-sub" x="540" y="119" style="text-anchor: start">bandwidth (sample rate)</text>
+                  </g>
+                  <!-- 7 crystal: clock of the tuner and the A/D -->
+                  <g class="blk" data-blk-for="ppmField" tabindex="0">
+                    <rect x="440" y="144" width="132" height="30" rx="6"/>
+                    <text class="blk-title" x="506" y="164">XTAL · ppm</text>
+                    <g class="blk-num"><circle cx="440" cy="144" r="10"/><text x="440" y="144">7</text></g>
+                  </g>
+                  <path class="blk-clock" d="M440 159H416V122M572 159H600V128"/>
+                  <!-- USB to the PC -->
+                  <line class="blk-wire" x1="690" y1="95" x2="758" y2="95" marker-end="url(#blkArrow)"/>
+                  <text class="blk-sub" x="728" y="86">USB</text>
+                  <text class="blk-sub" x="930" y="40">PC · RADIMCOM</text>
+                  <!-- 8 DC removal -->
+                  <g class="blk" data-blk-for="dcSetting" tabindex="0">
+                    <rect x="760" y="68" width="90" height="54" rx="6"/>
+                    <text class="blk-title" x="805" y="90">DC</text>
+                    <text class="blk-sub" x="805" y="108">peak removal</text>
+                    <g class="blk-num"><circle cx="760" cy="68" r="10"/><text x="760" y="68">8</text></g>
+                  </g>
+                  <line class="blk-wire" x1="850" y1="95" x2="868" y2="95" marker-end="url(#blkArrow)"/>
+                  <!-- 10 SP spurs removal (ADVANCED): learned spur lines out of the spectrum and the VFO channel -->
+                  <g class="blk" data-blk-for="spurSetting" tabindex="0">
+                    <rect x="870" y="68" width="96" height="54" rx="6"/>
+                    <text class="blk-title" x="918" y="90">SP</text>
+                    <text class="blk-sub" x="918" y="108">spurs removal</text>
+                    <g class="blk-num"><circle cx="870" cy="68" r="10"/><text x="870" y="68">10</text></g>
+                  </g>
+                  <line class="blk-wire" x1="966" y1="95" x2="984" y2="95" marker-end="url(#blkArrow)"/>
+                  <rect class="blk-end" x="986" y="62" width="116" height="66" rx="6"/>
+                  <text class="blk-sub" x="1044" y="82">spectrum</text>
+                  <text class="blk-sub" x="1044" y="99">waterfall</text>
+                  <text class="blk-sub" x="1044" y="116">VFO · decoders</text>
+                  <!-- 11 AGC+ (ADVANCED): reads the raw A/D samples, sets the tuner gain -->
+                  <path class="blk-ctl" d="M726 95V157H750" marker-end="url(#blkArrow)"/>
+                  <g class="blk" data-blk-for="sagcSetting" tabindex="0">
+                    <rect x="752" y="142" width="118" height="30" rx="6"/>
+                    <text class="blk-title" x="811" y="162">AGC+</text>
+                    <g class="blk-num"><circle cx="752" cy="142" r="10"/><text x="752" y="142">11</text></g>
+                  </g>
+                  <path class="blk-ctl" d="M811 172V194H384V124" marker-end="url(#blkArrow)"/>
+                  <text class="blk-sub" x="600" y="208">AGC+ sets the tuner gain from the A/D level</text>
+                </svg>
+                <p class="note">Path of the signal from the antenna to the screen. A number in the diagram = the card with the same number; click a block to find it.
+                  Grey block: not for this dongle or VFO.</p>
+              </div>
+              <div class="set-grid4">
+              <div class="setting" id="vfoSetting" data-blk="1" hidden>
+                <div class="row"><span>Settings for</span></div>
+                <p class="note" id="vfoSettingText"></p>
+                <p class="note">Each VFO keeps its own settings. Dongles and VFO assignment are in <code>data\vfos.json</code>.</p>
+              </div>
+              <div class="setting" id="deviceSetting" data-blk="1">
+                <div class="row"><span>Dongle</span><button id="devRefresh" class="key small" title="Search for connected dongles again">⟳</button></div>
+                <select id="device"></select>
+                <p class="note">Switching closes the dongle and opens the selected one. Each dongle remembers its own upconverter, LO and ppm.</p>
+              </div>
+              <div class="setting" id="upconvSetting" data-blk="2">
+                <div class="row"><span>Upconverter</span></div>
+                <select id="upconv">
+                  <option value="auto">Auto (HF via converter)</option>
+                  <option value="on">Always via converter</option>
+                  <option value="off">Off (direct: 24–1766 MHz, RTL-SDR Blog V4 from 0.5 MHz)</option>
+                </select>
+                <p class="note">Auto: below 30 MHz via the converter, VHF/UHF direct.
+                  Above 30 MHz the signal must go straight to the dongle (bypass switch or another antenna).</p>
+              </div>
+              <div class="setting" id="rateSetting" data-blk="6">
+                <div class="row"><span>Bandwidth</span></div>
+                <select id="sampleRate"></select>
+                <p class="note">Width of the band the dongle receives (its sample rate) = the width of the spectrum and waterfall.</p>
+              </div>
+              <div class="setting" id="ppmSetting">
+                <label class="set-field" id="ppmField"><span>Correction (ppm) <b class="blk-n">7</b></span><input id="ppm" type="number" step="1"></label>
+                <label class="set-field" id="loField"><span>Upconverter LO (MHz) <b class="blk-n">2</b></span><input id="lo" type="number" step="0.000001"></label>
+              </div>
+              <div class="setting" id="gainSetting" data-blk="4">
+                <div class="row"><span>Tuner gain</span><span id="gainText" class="value"></span></div>
+                <input id="gainSlider" type="range" min="0" max="0" step="1">
+                <label class="switch"><input id="gainAuto" type="checkbox"><span></span> Automatic gain</label>
+              </div>
+              <div class="setting" id="rtlAgcBox" data-blk="5">
+                <label class="switch"><input id="rtlAgc" type="checkbox"><span></span> RTL2832 digital gain</label>
+                <p class="note">Digital gain (AGC) in the RTL2832 after the A/D converter, independent of the tuner gain.
+                  Helps weak signals at low tuner gain, but can overload with strong ones.</p>
+              </div>
+              <div class="setting" id="dcSetting" data-blk="8">
+                <label class="switch"><input id="dcRemove" type="checkbox"><span></span> Remove DC peak</label>
+                <div class="row"><span>Width</span><span id="dcHzText" class="value"></span></div>
+                <input id="dcHz" type="range" min="0" max="1000" step="10" value="0">
+                <div class="row"><span>Suppression</span><span id="dcDbText" class="value"></span></div>
+                <input id="dcDb" type="range" min="0" max="60" step="1" value="60">
+                <p class="note">Removes the peak of the dongle in the centre of the band. Far left only the peak itself, wider also its
+                  skirts (LimeSDR needs this). Suppression = how deep.</p>
+              </div>
+              <div class="setting" id="biasTeeSetting" data-blk="3">
+                <label class="switch"><input id="biasTee" type="checkbox"><span></span> Bias-tee 4.5 V</label>
+                <p class="note warn">Only if the upconverter or LNA is powered by the dongle through the antenna connector.</p>
+              </div>
+              <div class="setting" id="resetSetting" data-blk="9">
+                <button id="resetBtn" class="key wide">⟳ RESET SDR DONGLE</button>
+                <p class="note">Closes the dongle and opens it again with the same settings (frequency, gain, bandwidth).
+                  Use it when the spectrum stops or the dongle reported a USB error.</p>
+              </div>
+              </div>
+            </div>
+            <div class="set-subpanel set-grid2" id="dongleAdv" data-set-subpanel="vfo:adv" role="tabpanel" hidden>
+              <div class="setting dongle-list-box">
+                <div class="row"><span>Dongles and VFOs</span><button id="dongleListRefresh" class="key small" title="Search for connected dongles again">⟳</button></div>
+                <table class="dongle-list" id="dongleList"></table>
+                <p class="note">Highlighted: the dongle these settings apply to. Assignment is in <code>data\vfos.json</code>;
+                  a change needs a full server restart. State ✓ = the VFO receiver has the dongle open and running; <i>free</i> = connected RTL dongle without a VFO.</p>
+              </div>
+              <div class="setting" id="spurSetting" data-blk="10">
+                <label class="switch"><input id="spurOn" type="checkbox"><span></span> SP – Spurs removal</label>
+                <div class="row"><button id="spurLearn" class="key small" title="Learn the spurs in the band received now (5 s)">LEARN</button><span id="spurInfo" class="value"></span><button id="spurClear" class="key small" title="Forget all learned spurs of this VFO">CLEAR</button></div>
+                <div class="set-cols">
+                  <div>
+                    <div class="row"><span>Width</span><span id="spurHzText" class="value"></span></div>
+                    <input id="spurHz" type="range" min="100" max="10000" step="100" value="3000">
+                    <div class="row"><span>Edge</span><span id="spurEdgeText" class="value"></span></div>
+                    <input id="spurEdge" type="range" min="0" max="3000" step="50" value="1000">
+                  </div>
+                  <div>
+                    <div class="row"><span>Shift</span><span id="spurShiftText" class="value"></span></div>
+                    <input id="spurShift" type="range" min="-1000" max="1000" step="10" value="0">
+                    <div class="row"><span>Depth</span><span id="spurDbText" class="value"></span></div>
+                    <input id="spurDb" type="range" min="0" max="60" step="1" value="40">
+                  </div>
+                </div>
+                <p class="note">For spurs from local sources, such as a switching power supply: lines at a regular spacing of 12 kHz or more.
+                  LEARN looks at the band received now; learn on a quiet band, a row of steady stations could look like spurs. Other bands keep their lines.
+                  Each line gets a band-stop: flat over Width, sides as wide as Edge (far left = steepest), moved up or down by Shift (all lines together). Inside it the line is taken down to the noise around it, following its shape, by Depth at most. It follows changes of the gain within a few seconds.
+                  Cleans the waterfall and the channel you listen to (not WFM and wide FM). A signal on a spur is removed with it, so a clean waterfall does not mean it can be received there.
+                  The SP key does the same in one press: it forgets the lines, learns and switches the removal on.</p>
+              </div>
+              <div class="setting">
+                <div class="row"><span>S-meter: S9 =</span><span id="s9Text" class="value"></span></div>
+                <input id="s9" type="range" min="-90" max="-10" step="1" value="-40">
+                <p class="note">S-meter calibration: level in dBFS shown as S9. For this VFO.</p>
+              </div>
+              <div class="setting" id="sagcSetting" data-blk="11">
+                <div class="row"><span>AGC+</span><span id="sagcNow" class="value"></span></div>
+                <div class="sagc-presets" id="sagcPresets"><span class="sagc-presets-label">PRESETS</span>
+                  <button data-preset="careful" class="key small" title="Careful: no A/D clipping tolerated (the defaults before 0.114beta1)">CAREFUL</button>
+                  <button data-preset="moderate" class="key small" title="Moderate (default): up to the A/D peak at −5 dBFS, short clipping up to 100 ppm tolerated">MODERATE</button>
+                  <button data-preset="bold" class="key small" title="Bold: the gain climbs into occasional A/D clipping (up to 20 ppm), down only above 300 ppm">BOLD</button></div>
+                <div id="sagcRows"></div>
+                <label class="switch" title="Smooth gain of the audio ALC: the gain rises in a ramp instead of steps every 2.5 ms (falls at once). Off = the old steps"><input id="agcSmooth" type="checkbox"><span></span> Smooth ALC gain</label>
+                <p class="note">AGC+ key (GAIN): the tuner gain from the A/D level. On clipping it goes down at once, then waits
+                  <i>settle</i> blocks; it goes up only after <i>hold</i> without clipping and with the A/D peak under <i>up below</i>,
+                  aiming at <i>target</i>. One block ≈ 55–130 ms by the sample rate.
+                  <b>Bold</b> (<i>up while clipping</i> &gt; 0): after each <i>hold</i> the gain goes one step up while the clipping stays
+                  at or under this many ppm, also with the peak at full scale; between that and <i>clipping above</i> it holds, above it
+                  goes down and then waits 4× <i>hold</i>. Keep <i>clipping above</i> ≥ 10× of it. <b>PRESETS</b> from careful to bold, the one matching
+                  the sliders is lit: <b>CAREFUL</b> = no clipping (the defaults before 0.114beta1), <b>MODERATE</b> (default) = gain up to
+                  a −5 dBFS peak, short clipping up to 100 ppm tolerated, <b>BOLD</b> = climbs into clipping up to 20 ppm, down above 300 ppm.
+                  With WFM a block with a gain step is played in mono (the step would turn the stereo into noise).
+                  <b>Smooth ALC gain</b> (on by default, for this VFO): the audio ALC in AM/LSB/USB/CW raises its gain in a smooth ramp
+                  instead of steps, so it does not click and pump; it still falls at once. It is the audio gain after the demodulator,
+                  not the tuner gain (the tuner has only fixed steps).</p>
+              </div>
+            </div>
+            <!-- ===== AUDIO ===== -->
+            <div class="set-subpanel set-grid3" data-set-subpanel="vfo:audio" role="tabpanel" hidden>
+              <div class="setting">
+                <div class="set-cols">
+                  <label class="set-field"><span>HPF – passes audio above (Hz)</span><input id="hpfHz" type="number" step="10" min="20" max="5000" value="300"></label>
+                  <label class="set-field"><span>LPF – passes audio below (Hz)</span><input id="lpfHz" type="number" step="50" min="100" max="15000" value="3000"></label>
+                </div>
+                <p class="note">Audio filters of the HPF and LPF keys, for this VFO. Faster: turn the mouse wheel over the key.
+                  HPF 20–5000 Hz, LPF 100–15000 Hz, 36 dB per octave. Together they make a band-pass, so HPF always stays below LPF.
+                  What you hear and REC are filtered, decoders are not. Not for DAB.</p>
+              </div>
+              <div class="setting">
+                <div class="row"><span>AFI – inversion frequency (Hz)</span></div>
+                <input id="afiHz" type="number" step="1" min="500" max="4000" value="1750">
+                <p class="note">Audio frequency inversion (AFI key): the audio spectrum is mirrored around this frequency
+                  (f → 2·F − f, band 0 … 2·F). The same setting scrambles and descrambles. Default 1750 Hz (band up to 3500 Hz). 500–4000 Hz.</p>
+              </div>
+              <div class="setting set-dyn">
+                <div class="row"><span>DYN – HF dynamics (DYN key)</span></div>
+                <label class="switch"><input id="dynExp" type="checkbox"><span></span> EXP – expander: quiet between words</label>
+                <label class="switch dyn-sub"><input id="dynExpAuto" type="checkbox"><span></span> AUTO – sets itself</label>
+                <div class="dyn-now dyn-sub"><span>Now</span><span id="dynExpInfo" class="value"></span></div>
+                <div class="set-cols dyn-sub">
+                  <label class="set-field"><span>Depth (dB)</span><input id="dynExpDb" type="number" step="1" min="3" max="30" value="12"></label>
+                  <label class="set-field"><span>Sensitivity (1–10)</span><input id="dynExpSens" type="number" step="1" min="1" max="10" value="5"></label>
+                </div>
+                <label class="switch"><input id="dynLim" type="checkbox"><span></span> LIM – soft limiter</label>
+                <p class="note">The DYN key (AUDIO, beside ALC; AM/LSB/USB/CW) switches on the ticked parts.
+                  <b>EXP</b> turns the noise between words down by the <i>depth</i>; speech stays at full level. A voice detector
+                  looks at the spectrum every 8 ms (speech has harmonics standing out of the noise, the noise is flat), opens at
+                  once on speech, holds a while and closes in 80 ms. In CW it watches only the CW passband.</p>
+                <p class="note"><b>AUTO</b> (default): a noise blip lowers the sensitivity, missed weak speech raises it, a chop
+                  (reopening soon after closing) makes the hold longer (80–250 ms), the depth follows the measured SNR (8–18 dB).
+                  Settles in about 2–3 s, after a retune it starts again fast; <i>Now</i> shows the values in use. AUTO off: depth 3–30 dB (12),
+                  sensitivity 1–10 (5; chopped speech → raise, noise opening it → lower), hold 100 ms.</p>
+                <p class="note"><b>LIM</b>: soft limiter instead of hard clipping; with ALC +4 dB, the peaks rounded, not cut.</p>
+              </div>
+              <div class="setting">
+                <div class="row"><span>Auto Squelch ASQ – above the noise (dB)</span></div>
+                <input id="asqDb" type="number" step="1" min="2" max="30" value="6">
+                <p class="note">ASQ key: the squelch level follows the noise in the channel plus this margin. The noise is measured
+                  in the spectrum of the dongle band (its quietest points, converted to the channel bandwidth), so a long
+                  transmission in the channel does not raise the level and close it. In a crowded band the quietest channel power
+                  of the last 15 s is used if it is lower. 2–30 dB, default 6 dB.
+                  With AGC+ on, a squelch set by the SQL bar of the VFO window works as auto squelch too (a fixed level would not fit the changing gain);
+                  the SQL bar then only turns it on and off.</p>
+              </div>
+              <div class="setting">
+                <div class="set-cols">
+                  <label class="set-field"><span>TSQ-C – CTCSS tone (Hz)</span><select id="ctcssHz"></select></label>
+                  <label class="set-field"><span>TSQ-D – DCS code</span><span class="dcs-pick"><select id="dcsCode"></select><select id="dcsPol" title="N = normal, I = inverted polarity"><option value="N">N</option><option value="I">I</option></select></span></label>
+                </div>
+                <p class="note">Tone squelch in FM, keys TSQ-C (CTCSS, sub-audio tone 67.0–254.1 Hz) and TSQ-D (DCS, digital code
+                  at 134.4 bit/s). They add to the squelch of the SQL bar or ASQ: the audio passes only while that squelch is open
+                  and the set tone or code is received. Without the SQL bar / ASQ the tone alone opens it. One of them at a time.
+                  The tone is filtered out of what you hear (300 Hz high-pass). It opens about 0.3 s after the tone starts.
+                  Faster: turn the mouse wheel over the key. The VFO window shows the set tone and code under the frequency:
+                  grey = off, orange = on, lit orange box = received now. For this VFO.</p>
+              </div>
+            </div>
+            <!-- ===== TX: LimeSDR only, off by default ===== -->
+            <div class="set-subpanel set-tx" data-set-subpanel="vfo:tx" role="tabpanel" hidden>
+              <div class="setting" id="txSetting" hidden>
+                <div class="tx-disclaimer" id="txDisclaimer">
+                  <strong>⚠ IMPORTANT – TRANSMITTING DISCLAIMER</strong>
+                  <p>Transmitting is legal <b>only</b> for a holder of a valid amateur radio licence (or another authorisation
+                    required in your country), within the privileges of that licence and the national regulations based on the
+                    ITU Radio Regulations, CEPT (T/R 61-01, T/R 61-02, ERC/REC 70-03), FCC Part 97 or your national authority.
+                    PMR446 and CB may require type-approved equipment – an SDR transmitter may not be allowed there at all.</p>
+                  <p>The SDR is not a certified transmitter: it can emit harmonics and spurious signals outside the band.
+                    Use a suitable band-pass/low-pass filter and antenna, or a dummy load.</p>
+                  <p><b>You, the operator, are fully and solely responsible for every transmission and its consequences</b>
+                    (interference, fines, damage to equipment). The software is provided "AS IS", without any warranty;
+                    the author accepts no liability.</p>
+                  <p>TX is limited to: ham 160–10 m, 6 m, 4 m, 2 m, 70 cm, 23 cm, CB 27 MHz and PMR446.</p>
+                </div>
+                <label class="switch"><input id="txEnabled" type="checkbox"><span></span> Enable TX (PTT = hold SPACE)</label>
+                <p class="note warn">The LimeSDR transmits on the tuned frequency while SPACE is held (FM test message or carrier,
+                  upconverter must be off). Retuning ends the transmission.</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>

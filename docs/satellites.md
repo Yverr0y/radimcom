@@ -14,7 +14,7 @@ and the rotor work on one VFO each and go on with the page closed.
 | **PASSES** | Timeline of the passes of the chosen satellites over the next 12, 24 or 48 hours, and a list of them. A click on a pass shows its track on a polar plot, the elevation over time, the nearest distance, the Doppler shift at 145.9 and 435 MHz, the position now while it is on, and the transmitters of the satellite. |
 | **MAP** | World map (Natural Earth, works offline) with the satellites switched on by the keys above it (up to 20): each with its footprint (yellow while it is above our horizon), the night side and the station. A click on a key or a dot chooses the satellite whose ground track is drawn (half an orbit behind, one ahead); beside the map are its position, altitude, azimuth and elevation from here, distance, Doppler shift, the next pass and its transmitters, and **TRACK** opens it on the TRACK page. Moves every second. |
 | **TRACK** | Doppler correction and the rotor for one satellite of the timeline, below. |
-| **SETUP** | The station by Maidenhead locator or latitude and longitude (or **CHOOSE ON MAP**: an OpenStreetMap map, the tiles need internet), the altitude, the lowest highest-elevation of a pass shown, and the satellites on the timeline, chosen in tabs by CelesTrak group: Amateur Radio, Weather, CubeSats, Space & Earth Science, Galileo, GLONASS operational, GPS operational, Iridium NEXT (and Chosen). **SELECT ACTIVE** ticks the satellites of the AMSAT lists LINEAR, FM, IMAGE and MISC (matched by name; it lists those not in the orbital elements), **CLEAR** unticks all. |
+| **SETUP** | The station location (shown here; it is set in **SETTINGS › GENERAL › LOCATION**: locator or latitude and longitude, CHOOSE ON MAP, altitude; **LOCATION…** opens it), the lowest highest-elevation of a pass shown, and the satellites on the timeline, chosen in tabs by CelesTrak group: Amateur Radio, Weather, CubeSats, Space & Earth Science, Galileo, GLONASS operational, GPS operational, Iridium NEXT (and Chosen). **SELECT ACTIVE** ticks the satellites of the AMSAT lists LINEAR, FM, IMAGE and MISC (matched by name; it lists those not in the orbital elements), **CLEAR** unticks all. |
 | **LINEAR**, **FM**, **IMAGE**, **MISC** | Lists of active satellites from [AMSAT](https://www.amsat.org/), kept for 12 hours in `data\satellites.json`. |
 
 ![PASSES page: timeline of five satellites over 12 hours with bars shaded by the highest elevation, the list of passes, and the details of an FO-29 pass with its polar plot, AOS, LOS, nearest distance and Doppler shift](images/sat_passes.png)
@@ -31,9 +31,12 @@ Downloaded data (internet needed only for the download; the last copy is used of
 |---|---|---|
 | `sat_tle.txt`, `sat_groups.json` | orbital elements of the 8 CelesTrak groups above | once a day; elements older than 7 days are marked, older than 14 need a confirmation for tracking |
 | `sat_transmitters.json` | [SatNOGS DB](https://db.satnogs.org/): downlinks, modes, transponders | once a week |
-| `sat_setup.json` | the station and the choice of satellites | saved by SETUP |
+| `sat_setup.json` | the lowest elevation of a pass and the choice of satellites | saved by SETUP |
+| `location.json` | the station location (locator, latitude, longitude, altitude) | saved by SETTINGS › GENERAL › LOCATION |
 
 ## Doppler correction (TRACK)
+
+![TRACK page with a yellow callout for each part: pages, satellite, Doppler, transmitters, rotor plan, TRACK / STOP, polar plot and pass data](images/satellites_annotated.png)
 
 ![TRACK page with FO-29: the Doppler correction on its linear transponder (VFO tuned to 435.855 MHz, +5.4 kHz), the transmitters from SatNOGS DB, and the rotor waiting for the pass with an overlap plan, TRACK and STOP and the polar plot of the pass](images/sat_track.png)
 
@@ -46,7 +49,7 @@ transponder stops it. The name frame of the VFO shows the satellite and transpon
 
 ## Rotor
 
-1. In **SETTINGS → ROTOR** press **ON** (for one VFO) and choose the serial port of the K3NG controller (GS-232 commands, 9600 baud). The page also has the position on a polar plot and an elevation column (a click moves the antenna there), **STOP**, **RESET**, **MONITOR** (AZ / EL in the additional display under the S-meter) and the azimuth calibration.
+1. In **SETTINGS → GENERAL → ROTOR** press **ON** (one rotor for the whole station, whichever VFO is active; settings in `data\rotor.json`) and choose the serial port of the K3NG controller (GS-232 commands, 9600 baud). The page also has the position on a polar plot and an elevation column (a click moves the antenna there), **STOP**, **RESET**, **MONITOR** (AZ / EL in the additional display under the S-meter) and the azimuth calibration.
 2. On the **TRACK** page, the **Rotor** part: **TRACK** follows the passes of the chosen satellite and moves the rotor (it turns the rotor link on), a second press ends it and stops the rotor. Beside it **STOP** stops both motors and ends the tracking. The flag beside *Rotor*: **TRACKING** (the rotor follows), **CALC ONLY** (the tracking runs but the rotor does not move: the link failed, a fault, STOP in SET; TRACK off and on moves it again) or **NOT TRACKING**. The **TRACK** key on the MAP page and in the pass details of PASSES opens that satellite here (one not on the timeline is added to it).
 3. The polar plot shows the antenna as a red cross, the elevation chart (0 to 180 degrees on this page) its real elevation, over 90 when it looks back. A click on the polar plot turns the antenna there, a click on the elevation chart sets only the elevation.
 
@@ -71,3 +74,35 @@ than the rotor can move, or a move without progress, stops the rotor and needs *
 K3NG ends any move after its operation timeout (60 s here), so an unchanged target is sent again every 30 s.
 
 **Azimuth calibration:** K3NG counts 0–450 degrees from the left stop of the rotor, which need not be exactly north. In **SETTINGS → ROTOR**, enter the true azimuth of the antenna at K3NG 0 and at K3NG 450 (measure it, for example, with the antenna parallel to the walls of a house whose orientation is known from a map; 0 and 450 = no correction). The position, the tracking and the clicks on the plots then use true azimuths. K3NG reports its azimuth only modulo 360, so RADIMCOM follows the whole 0–450 position itself and saves it; for the clicks on the plots it picks the command that ends nearest the wanted direction. A direction just beyond a stop is reached as near as the rotor can get, without a fault.
+
+## Rotor control map
+
+The **RCTRL** key (key group **TRACKING**, beside SAT) shows the **ROTOR CONTROL** tab. It turns the station rotor
+(**SETTINGS › GENERAL › ROTOR**, one for all VFOs: the map works from any VFO) to fixed places on the ground, for example a
+broadcast transmitter or a repeater, taken from the channels of **MEMORIES** that have a location.
+
+- **MAP:** a dark OpenStreetMap map centred on the station (**SETTINGS › GENERAL › LOCATION**). A click anywhere on it, on a channel
+  point or on a row of the list beside it turns the rotor to the azimuth of that place from the QTH (great circle), elevation 0.
+  The **dashed line** is the wanted azimuth: it goes to the target and stays there until **CLEAR** (remembered in the browser).
+  The **green sector** of the antenna beam width (**BEAM**, default 30°) is where the antenna points now: it follows the position
+  the rotor reports and turns with it, so you see the antenna reach the dashed line. **STOP** stops both motors. While the rotor
+  cannot take a command (off, not connected, a fault, or TRACK on the TRACK page moves it) the target is still drawn and the
+  reason is shown in the top line.
+- **Points = channels with a location.** Every channel of **MEMORIES › CHANNELS** with **LAT / LON** (EDIT, **CHOOSE ON MAP**) is a point
+  on the map, coloured by its group; on mouse over it shows the name, frequency, mode, groups and note.
+- **GROUPS** (beside the map): one row with a checkbox per group of the channels with a location (with the number of channels; channels
+  without a group are under *(no group)*); **ALL** / **NONE** switch them all. A channel in several groups is shown while any of its
+  groups is on. The choice is remembered in the browser. The list under the groups has the shown channels, nearest first, with
+  azimuth and distance, and a filter (name, frequency, group, note); a click on a point scrolls the list to its row. The channel
+  aimed at last is selected and scrolled into view in **MEMORIES › CHANNELS** when that tab opens next. A change in MEMORIES shows on the map at once.
+- **Recalling a channel with a location** (a row of **MEMORIES › CHANNELS**, a memory tag in the spectrum, RECALL in the editor, the memory
+  step) opens the **ROTOR CONTROL** tab by itself (the RCTRL key goes on), centres the map on the channel and turns the rotor to it
+  – unless **MEMORY RECALL** is disconnected on the CONNECTION page.
+- **CONNECTION:** a block diagram of the three sources of the wanted AZ / EL – **SAT TRACKER** (SATELLITES › TRACK), **MEMORY RECALL**
+  (a recalled channel with a location) and **RCTRL MAP** (a click on the map, a point or the list). Each goes through a switch to one bus
+  and on to the **ROTOR** block (antenna, AZ / EL now, state). A click on a source or on its switch connects or disconnects it: connected =
+  green, disconnected = grey with the switch open. The rotor block **glows green** while at least one source is connected, **grey** when
+  none is. A disconnected source does not move the rotor: the SAT TRACKER only calculates the pass (**CALC ONLY** on the TRACK page; the
+  rotor takes hand commands meanwhile), a recalled memory only tunes (useful when going through a band: the antenna does not swing to
+  every stored channel), a click on the map only draws the target. The switches belong to the station (`data\rotor.json`, key `links`),
+  the same for all VFOs and browsers; the top line of the tab lists the disconnected sources on both pages.

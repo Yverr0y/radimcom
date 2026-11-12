@@ -114,15 +114,8 @@ def _frame_plausible(frame):
     """Looks like an AIS message (for the bad-FCS counter): known type, length of a whole number of slots."""
     if len(frame) < MIN_FRAME:
         return False
-    t = _rev8(frame[0]) >> 2
+    t = frame[0] >> 2
     return 1 <= t <= 27
-
-
-_REV = bytes(int(f"{i:08b}"[::-1], 2) for i in range(256))
-
-
-def _rev8(b):
-    return _REV[b]
 
 
 # ---------------------------------------------------------------- AIS payload
@@ -132,7 +125,9 @@ SIXBIT = "@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_ !\"#$%&'()*+,-./0123456789:;<=>?"
 
 class _Bits:
     def __init__(self, data):
-        self.bits = "".join(f"{_rev8(b):08b}" for b in data)   # HDLC sends LSB first; AIS payload is MSB first
+        # each byte goes on the air LSB first and the HDLC deframer assembles it LSB first, so the bytes it gives are
+        # already the AIS payload bytes: the payload bit string is their bits MSB first (no reversal)
+        self.bits = "".join(f"{b:08b}" for b in data)
 
     def __len__(self):
         return len(self.bits)
@@ -154,7 +149,7 @@ class _Bits:
 
 def armor(data):
     """Payload bytes -> (NMEA 6-bit ASCII payload, fill bits), as in !AIVDM."""
-    bits = "".join(f"{_rev8(b):08b}" for b in data)
+    bits = "".join(f"{b:08b}" for b in data)
     fill = (-len(bits)) % 6
     bits += "0" * fill
     out = []

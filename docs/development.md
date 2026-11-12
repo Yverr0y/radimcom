@@ -46,6 +46,7 @@ All components and how the signals flow between them, from the hardware at the b
 | `paths.py` | data paths (`data\`), migration of data from older versions |
 | `installer/` | building the installer package (`make_installer.py`) and the files it contains; the package is created in `dist\` |
 | `docs/block_diagram.py` | draws `docs/images/block_diagram.png` (needs Chrome or Edge) |
+| `docs/annotate.py` | draws the annotated screenshots `docs/images/*_annotated.png` (callouts in the script, needs Chrome or Edge) |
 
 ## Data folder (`data\`)
 

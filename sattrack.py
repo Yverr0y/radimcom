@@ -4,8 +4,8 @@ Nothing here moves the rotor or tunes a VFO.
 Files in data\\, shared by all VFOs:
     sat_tle.txt      TLE of the CelesTrak "amateur" group, downloaded again after 24 hours (the last copy is used
                      when the download fails)
-    sat_setup.json   station location, minimum elevation of a pass, the satellites chosen for the timeline and those
-                     shown on the world map
+    sat_setup.json   minimum elevation of a pass, the satellites chosen for the timeline and those shown on the
+                     world map (the station location is in location.json, see location.py)
 
 Positions: SGP4 (sgp4 package) gives TEME coordinates; they are turned by the Greenwich sidereal time into Earth fixed
 coordinates (polar motion and the difference UT1 - UTC are left out: well under 0.1 degree as seen from the ground)
@@ -21,6 +21,7 @@ import urllib.request
 import numpy as np
 from sgp4.api import Satrec
 
+import location
 from paths import data
 
 TLE_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP={}&FORMAT=tle"
@@ -36,9 +37,7 @@ TLE_TIMEOUT_S = 15
 TLE_MAX_BYTES = 2_000_000
 TLE_OLD_DAYS = 7               # elements older than this are marked on the page
 
-DEFAULT_LOCATOR = "JN88WQ"
 DEFAULT_MIN_EL = 5.0
-DEFAULT_ALT_M = 200.0
 # Active amateur satellites shown on the timeline at first; the choice is changed in SETUP.
 DEFAULT_SATS = [7530, 24278, 25544, 27607, 39444, 40908, 43017, 43678, 44909, 50466, 53109, 61781]
 DEFAULT_MAP_SATS = [25544, 27607, 43017, 44909]
@@ -60,72 +59,39 @@ _last_try = 0.0
 _last_error = ""
 
 
-# ---------- station location ----------
+# ---------- setup (the station location comes from location.py: MENU › SETUP › LOCATION) ----------
 
-def locator_to_latlon(loc):
-    """Maidenhead locator (4, 6 or 8 characters) -> centre of the square (lat, lon). ValueError if it is not one."""
-    loc = loc.strip().upper()
-    if len(loc) not in (4, 6, 8) or not ("A" <= loc[0] <= "R" and "A" <= loc[1] <= "R" and loc[2:4].isdigit()):
-        raise ValueError("a locator has 4, 6 or 8 characters, for example JN88WQ")
-    lon = (ord(loc[0]) - 65) * 20 - 180 + int(loc[2]) * 2
-    lat = (ord(loc[1]) - 65) * 10 - 90 + int(loc[3])
-    w, h = 2.0, 1.0
-    if len(loc) >= 6:
-        if not ("A" <= loc[4] <= "X" and "A" <= loc[5] <= "X"):
-            raise ValueError("characters 5 and 6 of a locator are letters A-X")
-        w, h = w / 24, h / 24
-        lon += (ord(loc[4]) - 65) * w
-        lat += (ord(loc[5]) - 65) * h
-    if len(loc) == 8:
-        if not loc[6:8].isdigit():
-            raise ValueError("characters 7 and 8 of a locator are digits")
-        w, h = w / 10, h / 10
-        lon += int(loc[6]) * w
-        lat += int(loc[7]) * h
-    return round(lat + h / 2, 5), round(lon + w / 2, 5)
+LOCATION_KEYS = ("lat", "lon", "locator", "alt_m")
 
 
-def latlon_to_locator(lat, lon):
-    lon, lat = lon + 180, lat + 90
-    out = chr(65 + int(lon // 20)) + chr(65 + int(lat // 10))
-    out += str(int(lon % 20 // 2)) + str(int(lat % 10))
-    out += chr(65 + int(lon % 2 * 12)) + chr(65 + int(lat % 1 * 24))
-    return out
-
-
-def load_setup():
+def _read_setup():
     try:
         with open(SETUP_PATH, encoding="utf-8") as f:
             s = json.load(f)
+        return s if isinstance(s, dict) else {}
     except (OSError, ValueError):
-        s = {}
-    if "lat" not in s or "lon" not in s:
-        s["lat"], s["lon"] = locator_to_latlon(DEFAULT_LOCATOR)
-        s["locator"] = DEFAULT_LOCATOR
-    s.setdefault("locator", latlon_to_locator(s["lat"], s["lon"]))
-    s.setdefault("alt_m", DEFAULT_ALT_M)
+        return {}
+
+
+def load_setup():
+    """The satellite setup together with the station location (lat, lon, locator, alt_m of location.py)."""
+    s = {k: v for k, v in _read_setup().items() if k not in LOCATION_KEYS}
     s.setdefault("min_el", DEFAULT_MIN_EL)
     s.setdefault("sats", list(DEFAULT_SATS))
     s.setdefault("map_sats", list(DEFAULT_MAP_SATS))
+    s.update(location.load())
     return s
 
 
 def save_setup(changes):
-    """Checks and saves the changed fields; returns the whole setup. ValueError with the reason if a value is wrong."""
-    s = load_setup()
-    if changes.get("locator"):
-        s["lat"], s["lon"] = locator_to_latlon(changes["locator"])
-        s["locator"] = changes["locator"].strip().upper()
-    elif "lat" in changes or "lon" in changes:
-        lat, lon = float(changes.get("lat", s["lat"])), float(changes.get("lon", s["lon"]))
-        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
-            raise ValueError("latitude -90 to 90, longitude -180 to 180")
-        s["lat"], s["lon"], s["locator"] = round(lat, 5), round(lon, 5), latlon_to_locator(lat, lon)
-    if "alt_m" in changes:
-        alt = float(changes["alt_m"])
-        if not -500 <= alt <= 9000:
-            raise ValueError("altitude -500 to 9000 m")
-        s["alt_m"] = alt
+    """Checks and saves the changed fields; returns the whole setup. ValueError with the reason if a value is wrong.
+    Location fields go to location.py (older pages still send them here)."""
+    loc = {k: changes[k] for k in LOCATION_KEYS if k in changes}
+    if loc:
+        location.save(loc)
+    else:
+        location.load()           # takes the location over from sat_setup.json before it is dropped there
+    s = {k: v for k, v in _read_setup().items() if k not in LOCATION_KEYS}
     if "min_el" in changes:
         el = float(changes["min_el"])
         if not 0 <= el <= 60:
@@ -142,7 +108,7 @@ def save_setup(changes):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(s, f, indent=2)
     os.replace(tmp, SETUP_PATH)
-    return s
+    return load_setup()
 
 
 # ---------- orbital elements ----------

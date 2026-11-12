@@ -142,9 +142,10 @@ class Tracker:
     """Follows the passes of one satellite with the rotor: plans the next pass, turns the rotor to its start in time,
     follows it, after LOS waits for the next one. Runs in a thread of the VFO process."""
 
-    def __init__(self, rotor, clock=time.time):
+    def __init__(self, rotor, clock=time.time, linked=lambda: True):
         self.rotor = rotor
         self.clock = clock
+        self.linked = linked     # the SAT TRACKER link of RCTRL › CONNECTION: off = the passes are only calculated
         self.lock = threading.Lock()
         self.thread = None
         self.on = False
@@ -171,7 +172,7 @@ class Tracker:
             self.norad, self.name = int(norad), sat["name"]
             self.state, self.pas, self.plan, self.prep_at, self.now, self.note, self.stopped = "", None, None, None, {}, "", ""
             self.on = True
-            self.rotor.tracker = True
+            self.rotor.tracker = bool(self.linked())
             self.thread = threading.Thread(target=self._run, name="sattrack", daemon=True)
             self.thread.start()
         return None
@@ -191,6 +192,18 @@ class Tracker:
         if thread and thread is not threading.current_thread():
             thread.join(2.0)
 
+    def relink(self):
+        """The SAT TRACKER link changed (RCTRL › CONNECTION): connected = the tracking holds the rotor (hand commands
+        refused); disconnected = it only calculates, a move it started stops and the rotor takes other commands."""
+        with self.lock:
+            hold = self.on and bool(self.linked())
+            was = self.rotor.tracker
+            self.rotor.tracker = hold
+        if was and not hold:
+            with self.rotor.lock:
+                if self.rotor.target_source == "tracker":
+                    self.rotor._stop_motion()
+
     def info(self):
         with self.lock:
             plan = None
@@ -203,7 +216,8 @@ class Tracker:
                         "el_max": round(float(p["el"].max()), 1), "options": p["options"], "path": path}
             return {"on": self.on, "norad": self.norad, "name": self.name, "state": self.state,
                     "pass": self.pas, "plan": plan, "prep_at": self.prep_at, "now": self.now, "note": self.note,
-                    "stopped": self.stopped, "control": self.rotor.control, "rotor_on": self.rotor.running}
+                    "stopped": self.stopped, "control": self.rotor.control, "rotor_on": self.rotor.running,
+                    "linked": bool(self.linked())}
 
     # ---------- inside ----------
 
@@ -274,8 +288,10 @@ class Tracker:
             raw, el = float(p["raw"][i]), float(p["el"][i])
             az = float(cal.to_true(raw)) % 360.0
             cur.update(cmd_raw=round(raw, 1), cmd_az=round(az, 1), cmd_el=round(el, 1))
-            if not self.rotor.running:
-                note = "rotor link off (SET, ROTOR tab): only calculated"
+            if not self.linked():
+                note = "SAT TRACKER is disconnected from the rotor (RCTRL › CONNECTION): only calculated"
+            elif not self.rotor.running:
+                note = "rotor link off (SETTINGS › GENERAL › ROTOR): only calculated"
             else:
                 note = self.rotor.goto(az, el, "tracker", raw=raw)
                 note = note or ("" if self.rotor.control else "CTRL is off: the rotor does not move, only calculated")

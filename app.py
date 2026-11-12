@@ -27,7 +27,9 @@ if __name__ == "__main__" and "--vfo" not in sys.argv and os.path.exists(VFOS_PA
     launcher.main()
     sys.exit(0)
 
+import location
 import memories
+import scanner as scanner_mod
 import satellites
 import sysload
 import update_check
@@ -41,6 +43,7 @@ from cw import CwDecoder
 from rtty import RttyDecoder
 from packet import PacketDecoder
 from daylog import DayLog, TextLog
+import recorder as recorder_mod
 from recorder import Recorder
 import rotor as rotor_module
 from wefax import WefaxDecoder
@@ -54,7 +57,10 @@ import hfdl as hfdl_mod
 from hfdl import HfdlDecoder
 import ais as ais_mod
 from ais import AisDecoder
-from sdr import (AFI_MAX_HZ, AFI_MIN_HZ, ASQ_MAX_DB, ASQ_MIN_DB, DECIM, DSD_MODE, HPF_MAX_HZ, HPF_MIN_HZ, LPF_MAX_HZ, LPF_MIN_HZ, MODES, SQUELCH_OFF,
+import adsb as adsb_mod
+from adsb import RATE as ADSB_RATE, AdsbDecoder
+from tonesq import norm_ctcss, norm_dcs
+from sdr import (AFI_MAX_HZ, AFI_MIN_HZ, EXP_DEPTH_MAX_DB, EXP_DEPTH_MIN_DB, EXP_SENS_MAX, EXP_SENS_MIN, ASQ_MAX_DB, ASQ_MIN_DB, DECIM, DSD_MODE, HPF_MAX_HZ, HPF_MIN_HZ, LPF_MAX_HZ, LPF_MIN_HZ, MODES, SQUELCH_OFF,
                  SAGC_PARAMS, UPCONV_MAX_HZ, ZOOMS, Receiver, list_devices, lowpass, sagc_params)
 
 
@@ -191,9 +197,9 @@ def save_config_later():
 
 # ---------- daily decoder logs (turned on with LOG in the decoder card) ----------
 
-LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism", "packet", "hfdl", "ais")
+LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism", "packet", "hfdl", "ais", "adsb")
 _tag = cfg.get("vfo") or ""
-logs = {"ft8": DayLog("ft8", _tag), "wefax": DayLog("wefax", _tag), "sstv": DayLog("sstv", _tag), "dsd": DayLog("dsd", _tag), "ism": DayLog("ism", _tag), "packet": DayLog("packet", _tag), "hfdl": DayLog("hfdl", _tag), "ais": DayLog("ais", _tag),
+logs = {"ft8": DayLog("ft8", _tag), "wefax": DayLog("wefax", _tag), "sstv": DayLog("sstv", _tag), "dsd": DayLog("dsd", _tag), "ism": DayLog("ism", _tag), "packet": DayLog("packet", _tag), "hfdl": DayLog("hfdl", _tag), "ais": DayLog("ais", _tag), "adsb": DayLog("adsb", _tag),
         "cw": TextLog("cw", _tag), "rtty": TextLog("rtty", _tag)}
 _saved_logged = {"wefax": None, "sstv": None}
 
@@ -206,8 +212,38 @@ def _mhz(hz):
     return f"{hz / 1e6:.6f} MHz"
 
 
+def _adsb_log(aircraft):
+    """ADS-B: one line per aircraft at most once a minute (hundreds of messages a second would flood the log)."""
+    if not aircraft or not log_on("adsb"):
+        return
+    for a in aircraft:
+        f = [a["icao"], a["flight"] or "-"]
+        if a["squawk"]:
+            f.append(f"sq {a['squawk']}")
+        if a["emergency"]:
+            f.append(a["emergency"].upper())
+        if a["alt"] is not None:
+            f.append(f"{a['alt']} ft")
+        if a["gs"] is not None:
+            f.append(f"{a['gs']:.0f} kt")
+        if a["track"] is not None:
+            f.append(f"trk {a['track']:.0f}")
+        if a["vrate"] is not None:
+            f.append(f"{a['vrate']:+d} ft/min")
+        if a["lat"] is not None:
+            f.append(f"pos {a['lat']:.4f} {a['lon']:.4f}")
+            if a["dist_km"] is not None:
+                f.append(f"{a['dist_km']:.0f} km az {a['az']}")
+        if a["category"]:
+            f.append(a["category"])
+        lvl = f" {a['level']:.0f} dB" if a["level"] is not None else ""
+        logs["adsb"].write(f"{_mhz(adsb_mod.FREQ_HZ)}{lvl} " + " ".join(f) + f" | {a['n']} msgs")
+
+
 def decoder_event(kind, data):
     """Decoder event to the browser and (if LOG is on) a line to the daily log."""
+    if kind == "adsb":
+        _adsb_log(data.pop("log", []))
     hub.event(kind, data)
     try:
         if kind == "ft8" and log_on("ft8"):
@@ -218,7 +254,7 @@ def decoder_event(kind, data):
             alias = f" | {data['alias']}" if data["alias"] else ""
             logs["dsd"].write(f"{_mhz(data['freq_hz'])} {data['proto']}{slot} {data['type'] or 'call'} to {data['tgt'] or '?'} "
                               f"from {data['src'] or '?'} {data['duration']:.1f} s{' ENC' if data['enc'] else ''}{alias}")
-        elif kind == "ism" and data["n"] == 1 and log_on("ism"):     # a repeated message only once
+        elif kind == "ism" and data["n"] == 1 and not data.get("again") and not data.get("raw") and log_on("ism"):     # a repeated message only once
             dev = f" id {data['dev_id']}" if data["dev_id"] else ""
             ch = f" ch {data['channel']}" if data["channel"] else ""
             rssi = f" {data['rssi']} dB" if data["rssi"] is not None else ""
@@ -286,12 +322,12 @@ _qth_cache = [0.0, None]
 
 
 def own_station():
-    """(lat, lon) of the station from the SATELLITES setup, for the APRS distances; read at most once a minute."""
+    """(lat, lon) of the station (MENU › SETUP › LOCATION), for the APRS distances; read at most once a minute."""
     if time.monotonic() - _qth_cache[0] > 60:
         _qth_cache[0] = time.monotonic()
         try:
-            st_ = sattrack.load_setup() if sattrack is not None else None
-            _qth_cache[1] = (float(st_["lat"]), float(st_["lon"])) if st_ else None
+            st_ = location.load()
+            _qth_cache[1] = (float(st_["lat"]), float(st_["lon"]))
         except Exception:
             _qth_cache[1] = None
     return _qth_cache[1]
@@ -306,7 +342,8 @@ if cfg.get("dsd_protocol") in DSD_PROTOCOLS:
     dsd.protocol = cfg["dsd_protocol"]
 if cfg.get("dsd_slot") in DSD_SLOTS:
     dsd.slot = cfg["dsd_slot"]
-vdl2 = Vdl2Decoder(on_acars=acars.accept_vdl2, on_atn=acars.accept_atn, on_state=lambda i: hub.event("vdl2state", i))
+vdl2 = Vdl2Decoder(on_acars=acars.accept_vdl2, on_atn=acars.accept_atn, on_state=lambda i: hub.event("vdl2state", i),
+                  on_pos=acars.accept_pos)
 
 
 def dab_tune(hz):
@@ -321,6 +358,8 @@ dab = DabDecoder(on_tune=dab_tune, on_state=lambda i: hub.event("dabstate", i))
 ism = IsmDecoder(on_event=decoder_event, on_state=lambda i: hub.event("ismstate", i))
 hfdl = HfdlDecoder(on_event=decoder_event, on_state=lambda i: hub.event("hfdlstate", i))
 ais = AisDecoder(on_event=decoder_event, on_state=lambda i: hub.event("aisstate", i))
+adsb = AdsbDecoder(on_event=decoder_event, on_state=lambda i: hub.event("adsbstate", i), station=own_station,
+                   range_path=data("adsb_range.json"))     # the range map is one for the station (all VFOs)
 _saved_logged.update(wefax=getattr(wefax, "saved", None), sstv=getattr(sstv, "saved", None))
 
 
@@ -332,15 +371,18 @@ def tx_capable():
 
 
 def audio_muted():
-    """These decoders work on the raw samples or the baseband; the audio of their VFO would only be noise."""
-    return acars.enabled or vdl2.enabled or ism.enabled or hfdl.enabled or ais.enabled
+    """These decoders work on the raw samples or the baseband; the audio of their VFO would only be noise.
+    A running scan pauses ACARS, so its audio is heard (the raw-sample decoders do not let a scan start)."""
+    if receiver.scan.on and not (vdl2.enabled or ism.enabled or hfdl.enabled or ais.enabled or adsb.enabled):
+        return False
+    return acars.enabled or vdl2.enabled or ism.enabled or hfdl.enabled or ais.enabled or adsb.enabled
 
 
 def state():
     capable = tx_capable()
     return dict(receiver.state(), ft8=ft8.enabled, ft8_error=ft8.error, wefax=wefax.enabled, cw=cw.enabled, rtty=rtty.enabled, packet=packet.enabled,
                 sstv=sstv.enabled, acars=acars.enabled, vdl2=vdl2.enabled, vdl2_error=vdl2.error, vdl2_region=vdl2.region, cpdlc=acars.cpdlc_on,
-                dsd=dsd.info(), dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, dab_sids=cfg.get("dab_sids") or {}, ism=ism.enabled, ism_error=ism.error, hfdl=hfdl.enabled, hfdl_error=hfdl.error, ais=ais.enabled, ais_error=ais.error, ism_hz=cfg.get("ism_hz", ISM_DEFAULT), audio_muted=audio_muted(), recording=recorder.state(), logs={k: log_on(k) for k in LOG_KEYS},
+                dsd=dsd.info(), dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, dab_sids=cfg.get("dab_sids") or {}, ism=ism.enabled, ism_error=ism.error, ism_raw=ism.raw, hfdl=hfdl.enabled, hfdl_error=hfdl.error, ais=ais.enabled, ais_error=ais.error, adsb=adsb.enabled, adsb_error=adsb.error, ism_hz=cfg.get("ism_hz", ISM_DEFAULT), audio_muted=audio_muted(), recording=recorder.state(), logs={k: log_on(k) for k in LOG_KEYS},
                 **doppler_trsp(),
                 tx_capable=capable, tx_enabled=bool(cfg.get("tx_enabled", False)),
                 can_tx=capable and bool(cfg.get("tx_enabled", False)) and hasattr(receiver.sdr, "tx_start"))
@@ -365,6 +407,8 @@ def cw_band():
 
 
 def on_baseband(base, fs, dial_hz):
+    if receiver.scan.on:
+        return                           # SCAN: the decoders of this VFO are paused (they would get every channel)
     ft8.feed(base, fs, dial_hz)
     wefax.feed(base, fs, dial_hz)
     if cw.enabled:
@@ -399,7 +443,7 @@ receiver = Receiver(
     on_audio=on_audio,
     on_status=lambda: hub.event("status", state()),
     on_baseband=on_baseband,
-    on_demod=sstv.feed,
+    on_demod=lambda audio, fs: None if receiver.scan.on else sstv.feed(audio, fs),
     on_meter=lambda db: hub.event("meter", {"db": round(db, 1)}),
     on_dsd=dsd.process,
 )
@@ -426,6 +470,7 @@ def on_raw(raw, fs, center_hz):
     ism.feed_raw(raw, fs, center_hz)
     hfdl.feed_raw(raw, fs, center_hz)
     ais.feed_raw(raw, fs, center_hz)
+    adsb.feed_raw(raw, fs, center_hz)
 
 
 receiver.on_raw = on_raw
@@ -437,12 +482,15 @@ if cfg.get("dab_channel") in CHANNEL_HZ:
     dab.channel = cfg["dab_channel"]          # the page shows the saved channel also while DAB is off
 if cfg.get("dab") and RTL_DONGLE and not OWNER:
     dab.set_enabled(True, cfg.get("dab_channel", DAB_DEFAULT))
+ism.set_raw(cfg.get("ism_raw", False))
 if cfg.get("ism") and RTL_DONGLE and not OWNER:
     ism.set_enabled(True)
 if cfg.get("hfdl") and not OWNER:
     hfdl.set_enabled(True)
 if cfg.get("ais") and not OWNER:
     ais.set_enabled(True)
+if cfg.get("adsb") and not OWNER:
+    adsb.set_enabled(True)
 
 
 def sync_cpdlc():
@@ -498,7 +546,7 @@ def api_state():
     return jsonify(dict(state(), sample_rates=SAMPLE_RATES, modes=MODES, ft8_freqs=FT8_FREQS, acars_freqs=ACARS_FREQS,
                         vdl2_freqs=region_freqs(vdl2.region), vdl2_region_freqs={r: region_freqs(r) for r in VDL2_REGIONS}, vdl2_center=VDL2_CENTER, vdl2_rate=VDL2_RATE, tx_bands=TX_BANDS,
                         dab_channels=DAB_CHANNELS, ism_freqs=ISM_FREQS, hfdl_bands=hfdl_mod.BANDS,
-                        hfdl_stations=hfdl_mod.STATIONS, ais_center=ais_mod.CENTER_HZ, ais_channels=sorted(ais_mod.CHANNELS)))
+                        hfdl_stations=hfdl_mod.STATIONS, ais_center=ais_mod.CENTER_HZ, ais_channels=sorted(ais_mod.CHANNELS), adsb_freq=adsb_mod.FREQ_HZ))
 
 
 # ---------- transmitting (PTT) ----------
@@ -921,6 +969,58 @@ def set_ais(on):
     ais.set_enabled(on)
 
 
+@app.route("/api/adsb", methods=["GET"])
+def api_adsb():
+    return jsonify(dict(adsb.info(), messages=adsb.messages()[-300:], aircraft=adsb.aircraft_list()))
+
+
+@app.route("/api/adsb", methods=["POST"])
+def api_adsb_cmd():
+    action = request.get_json(force=True).get("action")
+    if action == "clear":
+        adsb.clear()
+    elif action == "clear_range":
+        adsb.range.clear()
+    return jsonify(adsb.info())
+
+
+@app.route("/api/adsb_range", methods=["GET"])
+def api_adsb_range():
+    if adsb.enabled:
+        adsb.range.save(force=True)
+    else:
+        adsb.range.reload()               # the VFO that runs ADS-B writes the file: show what it has saved
+    return jsonify(adsb.range.info())
+
+
+def set_adsb(on, changes):
+    """ADS-B on: the VFO goes to 1090 MHz at 2.4 MS/s (2.5 MS/s stays on an Airspy) and the Mode S / ADS-B messages are
+    decoded from the raw samples (adsb.py); the audio of the VFO is muted and the decoders that need the dongle elsewhere
+    (ACARS, VDL2, DAB, ISM, HFDL, AIS) are turned off. ADS-B off: the previous sample rate comes back. Not on a chained VFO."""
+    on = bool(on) and not OWNER
+    if on == adsb.enabled:
+        return
+    cfg["adsb"] = on
+    if on:
+        if cfg.get("acars"):
+            cfg["acars"] = False
+            acars.set_enabled(False)
+        set_vdl2(False, changes)
+        set_dab(False, changes)
+        set_ism(False, changes)
+        sync_cpdlc()
+        set_hfdl(False)
+        set_ais(False)
+        rate = changes.pop("sample_rate", cfg["sample_rate"])
+        cfg["adsb_prev_rate"] = rate
+        if ADSB_RATE in SAMPLE_RATES:
+            rate = ADSB_RATE
+        changes.update(sample_rate=rate, center_hz=float(adsb_mod.FREQ_HZ), tune_hz=float(adsb_mod.FREQ_HZ), mode="AM")
+    elif cfg.get("adsb_prev_rate") in SAMPLE_RATES and cfg["adsb_prev_rate"] != cfg["sample_rate"]:
+        changes["sample_rate"] = cfg.pop("adsb_prev_rate")
+    adsb.set_enabled(on)
+
+
 @app.route("/api/ism", methods=["GET"])
 def api_ism():
     return jsonify(dict(ism.info(), messages=ism.messages()))
@@ -1079,10 +1179,12 @@ def api_sat_doppler():
 
 @app.route("/api/sat/rotor", methods=["GET", "POST"])
 def api_sat_rotor():
-    """Own satellite tracking with the rotor on this VFO: GET the state and the plan of the pass;
+    """Own satellite tracking with the rotor (held by the first VFO, see ROTOR_HERE): GET the state and the plan of the pass;
     POST {"start": {"norad", "force": true/false}} or {"stop": true}."""
     if sattrack is None:
         return jsonify(SGP4_MISSING), 503
+    if not ROTOR_HERE:
+        return rotor_elsewhere()
     if request.method == "POST":
         if not same_host(request):
             return jsonify({"error": "rotor commands are accepted only from this RADIMCOM page"}), 403
@@ -1101,10 +1203,24 @@ def api_sat_rotor():
     return jsonify(sat_tracker.info())
 
 
+@app.route("/api/location", methods=["GET", "POST"])
+def api_location():
+    """Station location (MENU › SETUP › LOCATION), shared by the satellites, packet, HFDL and AIS:
+    POST {"locator"} or {"lat", "lon"}, optionally "alt_m"; returns the whole location."""
+    if request.method == "POST":
+        body = request.get_json(force=True) or {}
+        try:
+            location.save({k: body[k] for k in ("locator", "lat", "lon", "alt_m") if k in body})
+        except (TypeError, ValueError) as e:
+            return jsonify({"error": str(e)}), 400
+        _qth_cache[0] = 0.0          # APRS distances use the new place at once
+    return jsonify(location.load())
+
+
 @app.route("/api/sat/setup", methods=["GET", "POST"])
 def api_sat_setup():
-    """Station location, minimum elevation and the satellites on the timeline (shared by all VFOs);
-    GET also lists all satellites of the orbital elements. POST {"refresh_tle": true} downloads the elements again."""
+    """Minimum elevation and the satellites on the timeline (shared by all VFOs), with the station location of
+    /api/location; GET also lists all satellites of the orbital elements. POST {"refresh_tle": true} downloads the elements again."""
     if sattrack is None:
         return jsonify(SGP4_MISSING), 503
     if request.method == "POST":
@@ -1138,11 +1254,163 @@ def api_memory_add():
     return jsonify(memories.add(m))
 
 
+# ---------- SCAN tab: memory scanner (scanner.py runs in the receiver thread) ----------
+
+SCAN_RAW_DECODERS = (("DAB", lambda: dab.enabled), ("VDL2", lambda: vdl2.enabled), ("ISM", lambda: ism.enabled),
+                     ("HFDL", lambda: hfdl.enabled), ("AIS", lambda: ais.enabled), ("ADS-B", lambda: adsb.enabled))
+
+
+def scan_store(entry):
+    """Search & store (scanner thread → here): an active frequency of a range into the group "Scan YYYY-MM-DD",
+    unless a memory is already there (same mode, within memories.DUP_HZ)."""
+    def run():
+        try:
+            m = memories.from_dict(entry, CHANNEL_HZ)
+            if not memories.duplicate_of(m, memories.load()):
+                memories.add(m)
+                hub.event("memories", {"added": m["id"]})
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    threading.Thread(target=run, name="scan-store", daemon=True).start()
+
+
+receiver.scan.on_store = scan_store
+
+
+def scan_session(opts=None, new=False):
+    """Session of the scan of this VFO (cfg "scan_session" {"id", "sig"}): ACTIVITY and HEATMAP of THIS SCAN show only
+    its activities. A START of another source / range (another signature) or CLR (new=True) begins a new one."""
+    cur = cfg.get("scan_session") or {}
+    sig = scanner_mod.signature(opts) if opts else cur.get("sig", "")
+    if new or not cur.get("id") or sig != cur.get("sig"):
+        cur = {"id": f"{cfg.get('vfo') or ''}{time.strftime('%Y%m%d-%H%M%S')}-{time.time_ns() // 1000000 % 1000:03d}",
+               "sig": sig}
+        cfg["scan_session"] = cur
+        save_config_later()
+    return cur["id"]
+
+
+def scan_prune():
+    """Activities and WAV recordings of the scan older than keep_days (⚙ of the SCAN tab) are deleted."""
+    days = scanner_mod.norm_opts(None, cfg.get("scan"))["keep_days"]
+    threading.Thread(target=scanner_mod.prune, args=(days,), name="scan-prune", daemon=True).start()
+
+
+scan_prune()
+
+
+@app.route("/api/scan", methods=["GET"])
+def api_scan():
+    """State of the scan of this VFO with the live values of the channels (list), the channels left out, the last
+    activities of this VFO (log), the saved options and the range presets."""
+    return jsonify(dict(receiver.scan.info(full=True), saved_opts=scanner_mod.norm_opts(None, cfg.get("scan")),
+                        session_id=(cfg.get("scan_session") or {}).get("id", ""),
+                        presets=[dict(zip(("name", "from_hz", "to_hz", "step_hz", "mode", "bw"), p))
+                                 for p in scanner_mod.PRESETS]))
+
+
+@app.route("/api/scan/log")
+def api_scan_log():
+    """Activity log of all VFOs (data/logs/scan_YYYY-MM-DD.csv, UTC), newest first: ?days=1..365, ?limit;
+    ?session=<id> only the activities of that scan session (THIS SCAN; read over all kept days)."""
+    session = request.args.get("session")
+    days = min(max(request.args.get("days", 1, type=int), 1), 365)
+    if session is not None:
+        days = scanner_mod.norm_opts(None, cfg.get("scan"))["keep_days"]
+    limit = min(max(request.args.get("limit", 1000, type=int), 1), 20000)
+    return jsonify({"days": days, "session": session, "rows": scanner_mod.read_log(days, limit, session=session),
+                    "fields": scanner_mod.LOG_FIELDS})
+
+
+@app.route("/api/scan/heatmap")
+def api_scan_heatmap():
+    """Occupancy from the log: frequency × hour of the day (local time), seconds of activity; ?days=1..365,
+    ?session=<id> only that scan session."""
+    session = request.args.get("session")
+    days = min(max(request.args.get("days", 7, type=int), 1), 365)
+    if session is not None:
+        days = scanner_mod.norm_opts(None, cfg.get("scan"))["keep_days"]
+    return jsonify(scanner_mod.heatmap(days, top=min(max(request.args.get("top", 60, type=int), 1), 300),
+                                       session=session))
+
+
+@app.route("/api/scan/rec/<name>")
+def api_scan_rec(name):
+    """A WAV recording of the scan (subfolder "scan" of the recordings folder)."""
+    if not name.lower().endswith(".wav") or "/" in name or "\\" in name:
+        return jsonify({"error": "bad name"}), 400
+    return send_from_directory(scanner_mod.rec_folder(), name, mimetype="audio/wav", conditional=True)
+
+
+@app.route("/api/scan", methods=["POST"])
+def api_scan_cmd():
+    """{"action": "start", "opts": {...}} / "stop" / "pause" / "resume" / "skip" / "lockout" / "unlock" /
+    "step" ({"dir": 1 | -1}) / "lock" / "unlock" ({"id": channel}) / "clear" (CLR: a new session, ACTIVITY and HEATMAP
+    of THIS SCAN start empty) / "opts" (only saves the options)."""
+    body = request.get_json(force=True, silent=True) or {}
+    action = body.get("action")
+    try:
+        opts = scanner_mod.norm_opts(body.get("opts"), cfg.get("scan"))
+    except (TypeError, ValueError) as e:
+        return jsonify({"error": str(e)}), 400
+    if action in ("start", "opts"):
+        saved = opts
+        if action == "start" and opts["source"] == "view":   # VISIBLE BAND: the RANGE settings stay as they were
+            prev = scanner_mod.norm_opts(None, cfg.get("scan"))
+            saved = dict(opts, **{k: prev[k] for k in ("from_hz", "to_hz", "step_hz", "mode", "bw")})
+        cfg["scan"] = saved
+        save_config_later()
+        if action == "opts" and receiver.scan.on:   # REC, squelch, continue … take effect in the running scan at once
+            receiver.scan.command("opts", opts=opts)
+    if action == "start":
+        busy = [name for name, on in SCAN_RAW_DECODERS if on()]
+        if busy:
+            return jsonify({"error": f"switch off {', '.join(busy)} on this VFO first (it holds the dongle)"}), 409
+        if receiver.status != "running":
+            return jsonify({"error": f"receiver is not running ({receiver.status})"}), 409
+        err = receiver.scan.start(memories.load(), opts, receiver, session=scan_session(opts))
+        if err:
+            return jsonify({"error": err}), 400
+        scan_prune()
+    elif action == "clear":
+        sid = scan_session(new=True)
+        receiver.scan.command("session", session=sid)
+        return jsonify({"ok": True, "session_id": sid})
+    elif action in ("lock", "unlock") and body.get("id") is not None:
+        receiver.scan.command(action, id=str(body["id"]))
+    elif action in ("stop", "pause", "resume", "skip", "lockout", "unlock"):
+        receiver.scan.command(action)
+    elif action == "step":
+        receiver.scan.command("step", dir=1 if int(body.get("dir", 1)) >= 0 else -1)
+    elif action != "opts":
+        return jsonify({"error": "unknown scan action"}), 400
+    return jsonify({"ok": True})
+
+
 @app.route("/api/recordings", methods=["GET"])
 def api_recordings():
-    """The MP3 recordings in data
-ecordings (RECORDINGS tab), newest first."""
+    """The MP3 recordings in the recordings folder (RECORDINGS tab), newest first."""
     return jsonify(recorder.files())
+
+
+@app.route("/api/recording_folder", methods=["GET", "POST"])
+def api_recording_folder():
+    """Folder of the recordings (SETTINGS › GENERAL › RECORDINGS), shared by all VFOs: {"folder", "custom", "default"};
+    POST {"folder": "<full path>"} sets it, "" = the default data\\recordings. Files being written finish in the old folder."""
+    if request.method == "POST":
+        if not same_host(request):
+            return jsonify({"error": "the folder can be changed only from this RADIMCOM page"}), 403
+        body = request.get_json(force=True, silent=True) or {}
+        folder = body.get("folder", "")
+        if not isinstance(folder, str):
+            return jsonify({"error": "folder must be text"}), 400
+        try:
+            return jsonify(recorder_mod.save_folder(folder))
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except OSError as e:
+            return jsonify({"error": f"cannot save: {e}"}), 500
+    return jsonify(recorder_mod.settings())
 
 
 @app.route("/api/recordings/<name>", methods=["GET"])
@@ -1271,6 +1539,8 @@ def api_memory_update(mid):
         m = memories.update(mid, request.get_json(force=True), CHANNEL_HZ)
     except (KeyError, TypeError, ValueError, OverflowError) as e:
         return jsonify({"error": str(e) or "invalid entry"}), 400
+    if m and receiver.scan.on:
+        receiver.scan.command("update", mem=m)     # SCAN / SQ / ASQ / PRIO take effect in the running scan at once
     return (jsonify(m), 200) if m else (jsonify({"error": "not found"}), 404)
 
 
@@ -1349,6 +1619,13 @@ def api_set():
             changes["notch"] = bool(body["notch"])
         if "audio_agc" in body:
             changes["audio_agc"] = bool(body["audio_agc"])
+        for k in ("dyn", "dyn_lim", "dyn_exp", "dyn_exp_auto", "agc_smooth"):
+            if k in body:
+                changes[k] = bool(body[k])
+        if "dyn_exp_db" in body:
+            changes["dyn_exp_db"] = min(max(float(body["dyn_exp_db"]), EXP_DEPTH_MIN_DB), EXP_DEPTH_MAX_DB)
+        if "dyn_exp_sens" in body:
+            changes["dyn_exp_sens"] = min(max(float(body["dyn_exp_sens"]), EXP_SENS_MIN), EXP_SENS_MAX)
         if "afi" in body:
             changes["afi"] = bool(body["afi"])
         if "autotune" in body:
@@ -1359,6 +1636,13 @@ def api_set():
             changes["auto_sql"] = bool(body["auto_sql"])
         if "auto_sql_db" in body:
             changes["auto_sql_db"] = min(max(float(body["auto_sql_db"]), ASQ_MIN_DB), ASQ_MAX_DB)
+        for key in ("ctcss", "dcs"):              # TSQ-C / TSQ-D keys (the receiver keeps only one of them on)
+            if key in body:
+                changes[key] = bool(body[key])
+        if "ctcss_hz" in body:
+            changes["ctcss_hz"] = norm_ctcss(body["ctcss_hz"])
+        if "dcs_code" in body:
+            changes["dcs_code"] = norm_dcs(body["dcs_code"])
         if "afi_hz" in body:
             hz = float(body["afi_hz"])
             if not AFI_MIN_HZ <= hz <= AFI_MAX_HZ:
@@ -1500,6 +1784,10 @@ def api_set():
         sstv.set_enabled(cfg["sstv"])
         save_config_later()
         hub.event("status", state())
+    if any(body.get(k) for k in ("acars", "vdl2", "dab", "ism", "hfdl", "hfdl_band", "ais", "ais_center")) and adsb.enabled:
+        set_adsb(False, changes)               # those take the dongle away from 1090 MHz
+        save_config_later()
+        hub.event("status", state())
     if body.get("acars") or body.get("vdl2"):
         set_dab(False, changes)                # the dongle cannot be at 131/136 MHz and in Band III at once
         set_ism(False, changes)                # nor at 433 / 868 MHz
@@ -1549,7 +1837,10 @@ def api_set():
             changes.update(center_hz=float(body["ism_hz"]), tune_hz=float(body["ism_hz"]))
     if "ism" in body:
         set_ism(bool(body["ism"]), changes)
-    if "ism" in body or "ism_hz" in body:
+    if "ism_raw" in body:
+        cfg["ism_raw"] = bool(body["ism_raw"])
+        ism.set_raw(cfg["ism_raw"])
+    if "ism" in body or "ism_hz" in body or "ism_raw" in body:
         save_config_later()
         hub.event("status", state())
     if any(body.get(k) for k in ("acars", "vdl2", "dab", "ism", "ais")) and hfdl.enabled:
@@ -1599,6 +1890,10 @@ def api_set():
         set_ais(body["ais"])
         save_config_later()
         hub.event("status", state())
+    if "adsb" in body:
+        set_adsb(body["adsb"], changes)
+        save_config_later()
+        hub.event("status", state())
     try:
         if "rec" in body:
             recorder.set("cont", bool(body["rec"]))
@@ -1622,6 +1917,8 @@ def api_set():
     if changes.get("mode") == DSD_MODE:
         with tx_lock:
             tx_off("DSD mode")     # receive only
+    if receiver.scan.on and not receiver.scan.paused and ("tune_hz" in changes or "mode" in changes):
+        receiver.scan.command("pause", why="tuned by hand")   # tuning by hand holds the scan (START continues)
     receiver.update(changes)
     if "mode" in changes:
         dsd.set_enabled(changes["mode"] == DSD_MODE)
@@ -1645,22 +1942,59 @@ def rotor_set_mode(mode):
     return None if res.status_code == 200 else (res.get_json() or {}).get("error", "refused")
 
 
+# One rotor for the whole station (SETTINGS › GENERAL › ROTOR), not tied to a VFO: its settings are in data\rotor.json
+# and its serial port is held by one process, the first VFO of vfos.json (or the receiver without vfos.json).
+# The page sends all rotor commands and the rotor tracking of the satellites there (/api/vfos: "rotor": true).
+ROTOR_PATH = data("rotor.json")
+ROTOR_HERE = not VFO or VFO["name"] == ALL_VFOS[0]["name"]
+ROTOR_HOST = None if ROTOR_HERE else ALL_VFOS[0]["name"]
+if not VFO:
+    rotor_module.migrate(ROTOR_PATH, [CONFIG_PATH])    # standalone receiver; with VFOs the launcher does it
+cfg.pop("rotor", None)                                  # kept in the VFO config up to 0.114beta1
+rotor_cfg = rotor_module.load_settings(ROTOR_PATH)
+rotor_save_lock = threading.Lock()
+rotor_save_timer = None
+
+
+def save_rotor_later():
+    """Saves data\\rotor.json with a delay (the K3NG azimuth changes while the rotor turns)."""
+    global rotor_save_timer
+
+    def save():
+        with rotor_save_lock:
+            try:
+                rotor_module.save_settings(ROTOR_PATH, rotor_cfg)
+            except OSError as e:
+                print(f"Rotor: settings not saved: {e}")
+
+    if rotor_save_timer:
+        rotor_save_timer.cancel()
+    rotor_save_timer = threading.Timer(1.0, save)
+    rotor_save_timer.daemon = True
+    rotor_save_timer.start()
+
+
+def rotor_elsewhere():
+    """This VFO does not hold the rotor: the error answer of its rotor endpoints."""
+    return jsonify({"error": f"the rotor is run by VFO {ROTOR_HOST}", "host": ROTOR_HOST}), 409
+
+
 rotor_link = rotor_module.RotorLink()
 doppler = sattrack.Doppler(rotor_set_freq, lambda: cfg["tune_hz"], lambda: cfg["mode"], rotor_set_mode) if sattrack else None
-sat_tracker = satplan.Tracker(rotor_link.rotor) if sattrack else None
+sat_tracker = satplan.Tracker(rotor_link.rotor, linked=lambda: rotor_module.links_of(rotor_cfg)["sat"]) if sattrack else None
 
 
 def rotor_raw_moved(raw):
     """Saves the K3NG azimuth (0-450): after a restart it tells 0-90 from 360-450."""
-    cfg["rotor"] = dict(cfg.get("rotor") or {}, k3ng_az=raw)
-    save_config_later()
+    rotor_cfg["k3ng_az"] = raw
+    save_rotor_later()
 
 
 rotor_link.rotor.on_raw = rotor_raw_moved
 
 
 def start_rotor():
-    r = cfg.get("rotor") or {}
+    r = rotor_cfg
     cal = r.get("az_cal") or [0.0, rotor_module.K3NG_SPAN]
     rotor_link.rotor.set_cal(*cal)
     if rotor_link.rotor.raw is None and r.get("k3ng_az") is not None:
@@ -1672,6 +2006,8 @@ def rotor_info():
     """Rotor state with what the SAT window shows of the satellite tracking: where the satellite is (aim)
     and the time to its next AOS or LOS (next_pass)."""
     info = rotor_link.info()
+    info["links"] = rotor_module.links_of(rotor_cfg)      # RCTRL › CONNECTION
+    info["sat_on"] = bool(sat_tracker is not None and sat_tracker.on)
     info["aim"], info["next_pass"] = None, None
     if sat_tracker is not None and sat_tracker.on:
         t = sat_tracker.info()
@@ -1687,6 +2023,8 @@ def rotor_info():
 
 @app.route("/api/rotor", methods=["GET"])
 def api_rotor():
+    if not ROTOR_HERE:
+        return rotor_elsewhere()
     info = rotor_info()
     if request.args.get("ports"):
         try:
@@ -1700,6 +2038,8 @@ def api_rotor():
 def api_rotor_cmd():
     if not same_host(request):
         return jsonify({"error": "rotor commands are accepted only from this RADIMCOM page"}), 403
+    if not ROTOR_HERE:
+        return rotor_elsewhere()
     body = request.get_json(force=True)
     rotor = rotor_link.rotor
     if body.get("stop"):
@@ -1713,28 +2053,40 @@ def api_rotor_cmd():
             return jsonify({"error": "calibration: two numbers, true azimuth at K3NG 0 and at K3NG 450"}), 400
         if not rotor_module.cal_ok(az0, az450):
             return jsonify({"error": "calibration: azimuth at K3NG 0 from -180 to 360, at 450 between 400 and 500 more"}), 400
-        cfg["rotor"] = dict(cfg.get("rotor") or {}, az_cal=[az0, az450])
-        save_config_later()
+        rotor_cfg["az_cal"] = [az0, az450]
+        save_rotor_later()
         rotor.set_cal(az0, az450)
     if body.get("start") and not rotor.running:
         body["enabled"] = True     # rotor control also turns the link on, with the port saved in SET
     if "enabled" in body:
-        saved = dict(cfg.get("rotor") or {}, enabled=bool(body["enabled"]))
+        saved = dict(rotor_cfg, enabled=bool(body["enabled"]))
         for k in ("port", "usb_serial"):
             if k in body:
                 saved[k] = str(body[k])
         if saved["enabled"] and not (saved.get("port") or saved.get("usb_serial")):
-            return jsonify({"error": "choose the serial port in SET, ROTOR tab"}), 409
-        cfg["rotor"] = saved
-        save_config_later()
+            return jsonify({"error": "choose the serial port in SETTINGS › GENERAL › ROTOR"}), 409
+        rotor_cfg.clear()
+        rotor_cfg.update(saved)
+        save_rotor_later()
         err = start_rotor() if saved["enabled"] else rotor_link.stop()
         if err:
             return jsonify({"error": err}), 409
+    if isinstance(body.get("links"), dict):
+        # RCTRL › CONNECTION: which sources of the wanted AZ / EL move the rotor
+        links = rotor_module.links_of(rotor_cfg)
+        links.update({k: bool(v) for k, v in body["links"].items() if k in rotor_module.LINK_SOURCES})
+        rotor_cfg["links"] = links
+        save_rotor_later()
+        if sat_tracker is not None:
+            sat_tracker.relink()
     if body.get("start"):
         err = rotor.start_control()
         if err:
             return jsonify({"error": err}), 409
     if "goto" in body:
+        src = body.get("source")
+        if src in rotor_module.LINK_SOURCES and not rotor_module.links_of(rotor_cfg)[src]:
+            return jsonify({"error": f"{rotor_module.LINK_NAMES[src]} is disconnected from the rotor (RCTRL › CONNECTION)"}), 409
         try:
             az, el = (float(v) for v in body["goto"])
         except (TypeError, ValueError):
@@ -1827,7 +2179,7 @@ if __name__ == "__main__":
     receiver.start()
     if not VFO:
         update_check.start(cfg.get("update_check", True))     # without vfos.json: no launcher to do it
-    if (cfg.get("rotor") or {}).get("enabled"):
+    if ROTOR_HERE and rotor_cfg.get("enabled"):
         err = start_rotor()
         if err:
             print(f"Rotor: {err}")

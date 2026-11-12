@@ -1,11 +1,16 @@
 """Frequency memories (memories.json), their groups (memory_groups.json), import and export.
 
 A memory: {"id", "name", "group", "groups", "freq_hz", "mode", "bw", "fav", "decoder", "record", "note", "color",
-"tag"} and "dab_channel" on a DAB memory. "groups" is the list of groups the memory belongs to; "group" is kept as the
+"tag"} and "dab_channel" on a DAB memory (mode "DAB"; older files kept the DAB channel with another mode, read as
+"DAB"). "groups" is the list of groups the memory belongs to; "group" is kept as the
 first of them, so the file stays readable for older versions. "decoder" is switched on when the memory is recalled
 ("" = none). "record" starts a recording when the memory is recalled: "off", "on" (no squelch), "sq" (with the
 squelch) or "asq" (with the auto squelch). "color" is the colour of its tag in the spectrum ("" = default green),
-"tag" false hides the tag.
+"tag" false hides the tag. "lat" / "lon" is the location of the station on the channel (decimal degrees, WGS84,
+north / east positive), both or neither (null).
+Scanner (scanner.py, SCAN tab): "scan" false leaves the memory out of every scan (lockout), "scan_sq" its own squelch
+level in dBFS (null = by the scan settings), "scan_asq" its own auto squelch margin in dB above the noise (null = the
+margin of the scan), "scan_prio" 1 = priority channel.
 
 Groups are the names used by the memories plus the groups in memory_groups.json ([{"name", "note"}]), which keeps
 the note of each group and groups without memories.
@@ -29,17 +34,20 @@ from paths import data
 
 PATH = data("memories.json")
 GROUPS_PATH = data("memory_groups.json")
-MODES = ("AM", "FM", "WFM", "LSB", "USB", "CW", "DSD")
-DECODERS = ("", "ft8", "wefax", "cw", "rtty", "sstv", "packet", "acars", "vdl2", "hfdl", "ais", "ism")
+MODES = ("AM", "FM", "WFM", "LSB", "USB", "CW", "DAB", "DSD")
+DAB_MODE = "DAB"     # a DAB memory: its channel ("dab_channel") is recalled, the frequency is the centre of the channel
+DAB_BW, DSD_BW = 1536000, 12500    # fixed widths: a DAB ensemble, the channel of the digital voice decoder
+DAB_SNAP_HZ = 10000  # a DAB memory without a channel (import) takes the channel whose centre is this close
+DECODERS = ("", "ft8", "wefax", "cw", "rtty", "sstv", "packet", "acars", "vdl2", "hfdl", "ais", "adsb", "ism")
 RECORDS = ("off", "on", "sq", "asq")
 DETECTORS = {"AM": "AM", "DSB": "AM", "NFM": "FM", "WFM": "WFM", "LSB": "LSB", "USB": "USB", "CW": "CW"}
 NAME_MAX, GROUP_MAX, NOTE_MAX = 80, 40, 200
 DEFAULT_GROUP = "Moje"
 DUP_HZ = 50          # memories closer than this (same mode) are duplicates, as on the VFO display
 FIELDS = ("name", "group", "groups", "freq_hz", "mode", "bw", "fav", "dab_channel", "decoder", "record", "note",
-          "color", "tag")
+          "color", "tag", "lat", "lon", "scan", "scan_sq", "scan_asq", "scan_prio")
 CSV_COLUMNS = ("name", "frequency_hz", "mode", "bandwidth_hz", "groups", "decoder", "record", "dab_channel",
-               "favourite", "note", "color", "show_tag")
+               "favourite", "note", "color", "show_tag", "lat", "lon")
 
 _lock = threading.RLock()
 
@@ -47,18 +55,27 @@ _lock = threading.RLock()
 # ---------- files ----------
 
 def _normalize(m):
-    """Fills the fields added after 0.111 (groups, decoder, record, note, color, tag) in an entry read from the file."""
+    """Fills the fields added after 0.111 (groups, decoder, record, note, color, tag, lat, lon) in an entry read from
+    the file."""
     groups = m.get("groups")
     if not isinstance(groups, list):
         groups = [m["group"]] if m.get("group") else []
     m["groups"] = groups
     m["group"] = groups[0] if groups else ""
+    if m.get("dab_channel"):
+        m["mode"] = DAB_MODE    # before the DAB mode a DAB memory kept the mode of the VFO
     m.setdefault("decoder", "")
     m.setdefault("record", "off")
     m.setdefault("note", "")
     m.setdefault("color", "")
     m.setdefault("tag", True)
     m.setdefault("fav", False)
+    m.setdefault("lat", None)
+    m.setdefault("lon", None)
+    m.setdefault("scan", True)
+    m.setdefault("scan_sq", None)
+    m.setdefault("scan_asq", None)
+    m.setdefault("scan_prio", 0)
     return m
 
 
@@ -133,8 +150,37 @@ def _bool(value):
     return bool(value)
 
 
+def _coord(value, limit, what):
+    """Latitude / longitude in decimal degrees (a number or text, "," as the decimal point too) or None when empty;
+    ValueError out of -limit..limit."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    try:
+        v = float(str(value).strip().replace(",", ".")) if isinstance(value, str) else float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} is not a number") from None
+    if v != v:
+        raise ValueError(f"{what} is not a number")
+    if not -limit <= v <= limit:
+        raise ValueError(f"{what} out of range (-{limit}..{limit})")
+    return round(v, 6)
+
+
+def _opt_num(value, lo, hi, what):
+    """A number in lo..hi, or None when empty (null, "")."""
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    try:
+        v = float(str(value).strip().replace(",", ".")) if isinstance(value, str) else float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} is not a number") from None
+    if not lo <= v <= hi:
+        raise ValueError(f"{what} out of range ({lo:g}..{hi:g})")
+    return round(v, 1)
+
+
 def make(name, group, freq_hz, mode, bw, fav=False, groups=None, decoder="", note="", color="", tag=True,
-         record="off"):
+         record="off", lat=None, lon=None, scan=True, scan_sq=None, scan_asq=None, scan_prio=0):
     """Validates and creates an entry; ValueError on invalid data. groups (list) wins over group (one name)."""
     name = " ".join(str(name).split())[:NAME_MAX]
     freq_hz = int(round(float(freq_hz)))
@@ -151,27 +197,53 @@ def make(name, group, freq_hz, mode, bw, fav=False, groups=None, decoder="", not
     record = str(record or "").strip().lower() or "off"
     if record not in RECORDS:
         raise ValueError(f"unknown record mode (one of {', '.join(RECORDS)})")
-    lo, hi = {"WFM": (50000, 250000), "FM": (500, 50000)}.get(mode, (100, 18000))
+    lo, hi = {"WFM": (50000, 250000), "FM": (500, 50000), DAB_MODE: (DAB_BW, DAB_BW),
+              "DSD": (DSD_BW, DSD_BW)}.get(mode, (100, 18000))
     bw = int(min(max(float(bw), lo), hi))
     groups = _groups(groups) if groups is not None else [(" ".join(str(group).split()) or DEFAULT_GROUP)[:GROUP_MAX]]
+    lat, lon = _coord(lat, 90, "latitude"), _coord(lon, 180, "longitude")
+    if (lat is None) != (lon is None):
+        raise ValueError("location needs both latitude and longitude")
     return {"id": uuid.uuid4().hex[:12], "name": name, "group": groups[0] if groups else "", "groups": groups,
             "freq_hz": freq_hz, "mode": mode, "bw": bw, "fav": _bool(fav), "decoder": decoder,
-            "record": record, "note": str(note or "").strip()[:NOTE_MAX], "color": _color(color), "tag": _bool(tag)}
+            "record": record, "note": str(note or "").strip()[:NOTE_MAX], "color": _color(color), "tag": _bool(tag),
+            "lat": lat, "lon": lon, "scan": _bool(scan), "scan_sq": _opt_num(scan_sq, -120, 0, "scan squelch"),
+            "scan_asq": _opt_num(scan_asq, 1, 30, "scan ASQ margin"), "scan_prio": 1 if _bool(scan_prio) else 0}
 
 
 def from_dict(e, dab_channels):
-    """A memory from a dict (API, JSON import); ValueError / KeyError / TypeError on invalid data. New id."""
+    """A memory from a dict (API, JSON import); ValueError / KeyError / TypeError on invalid data. New id.
+    A DAB channel makes it a DAB memory (mode "DAB"); the mode DAB without a channel takes the channel whose centre is
+    at the frequency."""
     ch = e.get("dab_channel") or None
     if ch is not None and ch not in dab_channels:
         raise ValueError("unknown DAB channel")
+    mode = str(e["mode"]).strip().upper()
+    if ch:
+        mode = DAB_MODE
+    elif mode == DAB_MODE:
+        ch = dab_channel_at(e.get("freq_hz"), dab_channels)
+        if not ch:
+            raise ValueError("DAB needs a DAB channel (or the centre frequency of one)")
     groups = e.get("groups")
-    m = make(e.get("name", ""), e.get("group", ""), dab_channels[ch] if ch else e["freq_hz"], e["mode"],
+    m = make(e.get("name", ""), e.get("group", ""), dab_channels[ch] if ch else e["freq_hz"], mode,
              e.get("bw", 3000), e.get("fav", False), groups=groups, decoder=e.get("decoder", ""),
              note=e.get("note", ""), color=e.get("color", ""), tag=e.get("tag", True),
-             record=e.get("record", "off"))
+             record=e.get("record", "off"), lat=e.get("lat"), lon=e.get("lon"), scan=e.get("scan", True),
+             scan_sq=e.get("scan_sq"), scan_asq=e.get("scan_asq"), scan_prio=e.get("scan_prio", 0))
     if ch:
         m["dab_channel"] = ch
     return m
+
+
+def dab_channel_at(freq_hz, dab_channels):
+    """The DAB channel whose centre is within DAB_SNAP_HZ of the frequency, or None."""
+    try:
+        f = float(freq_hz)
+    except (TypeError, ValueError):
+        return None
+    best = min(dab_channels.items(), key=lambda kv: abs(kv[1] - f), default=None)
+    return best[0] if best and abs(best[1] - f) <= DAB_SNAP_HZ else None
 
 
 def _apply(m, changes, dab_channels):
@@ -186,6 +258,8 @@ def _apply(m, changes, dab_channels):
     if "name" in changes and not str(changes["name"]).strip():
         raise ValueError("name is missing")
     merged = dict(m, **changes)
+    if "mode" in changes and str(changes["mode"]).strip().upper() != DAB_MODE and "dab_channel" not in changes:
+        merged["dab_channel"] = None    # another mode ends a DAB memory (its frequency stays: the channel centre)
     if "group" in changes and "groups" not in changes:
         merged["groups"] = [changes["group"]]
     groups = _groups(merged.get("groups", []))
@@ -438,7 +512,8 @@ def parse_csv(text):
                     "freq_hz": f, "mode": r.get("mode", ""), "bw": bw, "decoder": r.get("decoder", ""),
                     "record": r.get("record", ""),
                     "dab_channel": r.get("dab_channel", ""), "fav": r.get("favourite", ""), "note": r.get("note", ""),
-                    "color": r.get("color", ""), "tag": r.get("show_tag", "1") or "1"})
+                    "color": r.get("color", ""), "tag": r.get("show_tag", "1") or "1",
+                    "lat": r.get("lat", ""), "lon": r.get("lon", "")})
     return out
 
 

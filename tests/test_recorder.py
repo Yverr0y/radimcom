@@ -70,5 +70,48 @@ class FilesTest(unittest.TestCase):
         t.enc = None
 
 
+class FolderSettingTest(unittest.TestCase):
+    """SETTINGS › GENERAL › RECORDINGS: the folder in data\\recordings.json, used by a Recorder without its own folder."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.old = recorder.SETTINGS_PATH, recorder.FOLDER
+        recorder.SETTINGS_PATH = os.path.join(self.tmp.name, "recordings.json")
+        recorder.FOLDER = os.path.join(self.tmp.name, "default")
+        recorder._settings_cache[:] = [None, ""]
+
+    def tearDown(self):
+        recorder.SETTINGS_PATH, recorder.FOLDER = self.old
+        recorder._settings_cache[:] = [None, ""]
+        self.tmp.cleanup()
+
+    def test_default(self):
+        self.assertEqual(recorder.settings(), {"folder": recorder.FOLDER, "custom": "", "default": recorder.FOLDER})
+
+    def test_own_folder_created_and_used(self):
+        own = os.path.join(self.tmp.name, "own", "recs")
+        s = recorder.save_folder(f'  "{own}" ')
+        self.assertEqual((s["folder"], s["custom"]), (own, own))
+        self.assertTrue(os.path.isdir(own))
+        self.assertEqual(os.listdir(own), [])          # the write test leaves nothing behind
+        rec = recorder.Recorder()
+        try:
+            self.assertEqual(rec.folder, own)
+            self.assertEqual(rec.tracks["cont"].folder(), own)
+        finally:
+            rec.stop_all(0)
+
+    def test_back_to_default(self):
+        recorder.save_folder(os.path.join(self.tmp.name, "own"))
+        self.assertEqual(recorder.save_folder("")["custom"], "")
+        recorder.save_folder(os.path.join(self.tmp.name, "own"))
+        self.assertEqual(recorder.save_folder(recorder.FOLDER)["custom"], "")
+
+    def test_relative_path_refused(self):
+        with self.assertRaises(ValueError):
+            recorder.save_folder("recs")
+        self.assertEqual(recorder.custom_folder(), "")
+
+
 if __name__ == "__main__":
     unittest.main()

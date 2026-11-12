@@ -31,7 +31,7 @@ Memories (`data\memories.json`) are shared by all VFOs, so `/api/memories` gives
 | Method | Path | Description |
 |---|---|---|
 | GET | `/` | web page |
-| GET | `/api/vfos` | list of VFOs: `[{"name", "port", "serial", "note", "chain"}]`; `chain` = name of the VFO whose dongle a chained VFO uses, otherwise `null` |
+| GET | `/api/vfos` | list of VFOs: `[{"name", "port", "serial", "note", "chain", "rotor"}]`; `chain` = name of the VFO whose dongle a chained VFO uses, otherwise `null`; `rotor` = true on the VFO whose receiver holds the rotor (the first one) |
 | GET | `/api/update` | newer version on GitHub Releases, checked once after start: `{"state": "checking" / "done" / "failed" / "off" / "downloading" / "installing", "current", "latest", "newer", "name", "url", "published", "can_upgrade", "why_not", "zip_url", "zip_size", "got", "upgrade_error"}`. Off with `"update_check": false` in `vfos.json`. A receiver started without `vfos.json` answers it itself (`"update_check"` in its config) |
 | POST | `/api/update` | `{"upgrade": true}`: downloads the upgrade zip of the newer release to `data\update\`, checks it, starts `upgrade_helper.py` and closes RADIMCOM; the helper unzips the program, runs `upgrade.bat` and starts `start.bat`. Only from a page of this RADIMCOM (Origin); 409 when no upgrade is possible (`why_not`) |
 
@@ -56,7 +56,7 @@ Memories (`data\memories.json`) are shared by all VFOs, so `/api/memories` gives
 | GET | `/api/sat/transmitters?norad=` | active transmitters of the satellite with a downlink, from SatNOGS DB (kept in `data\sat_transmitters.json`, downloaded again after 7 days; `&refresh=1` now): `{"transmitters": [{"uuid", "description", "type", "downlink_low", "downlink_high", "uplink_low", "uplink_high", "mode", "rx_mode", "invert", "baud"}], "fetched", "error"}`, transponders first; `rx_mode` is the RADIMCOM mode used to receive it |
 | GET | `/api/sat/doppler` | Doppler correction of this VFO: `{"on", "step" (Hz: the VFO is retuned when it is off by more than this, by the mode), "norad", "name", "label", "uuid", "f_nominal", "f_sat", "span", "last_set", "error", "stopped", "rate", "factor", "az", "el", "f_rx", "shift"}`; `f_sat` is the frequency sent by the satellite (moved by tuning the VFO by hand), `f_rx` the one received now, `shift` = `f_rx − f_sat` (Hz), `rate` the range rate (km/s), `stopped` why it stopped |
 | POST | `/api/sat/doppler` | `{"start": {"norad", "uuid"}}` (a transmitter of `/api/sat/transmitters`; the middle of a transponder) or `{"start": {"norad", "f_hz"}}`, with `"set_mode": false` to keep the mode; `{"stop": true}` stops it. Answers like GET; 409 when the VFO refuses, 400 for a wrong start. |
-| GET | `/api/sat/rotor` | satellite tracking with the rotor on this VFO: `{"on", "norad", "name", "state" (waiting for the pass, moving to the start, tracking), "pass": {"aos", "los", "max_el", ...}, "plan": {"mode" (normal, overlap, flipped, over top), "max_err", "mean_err" (simulated pointing error, degrees), "raw0", "raw1", "raw_min", "raw_max" (K3NG azimuth 0–450), "el_max", "options": [{"mode", "max_err", "raw0", "raw1", "move_s"}], "path": [[t, k3ng_az, el]] every 5 s}, "prep_at" (when the move to the start begins), "now": {"sat_az", "sat_el", "cmd_az", "cmd_el", "cmd_raw", "err"}, "note", "stopped", "control", "rotor_on"}` |
+| GET | `/api/sat/rotor` | satellite tracking with the rotor (only on the receiver that holds the rotor, see `/api/vfos` `rotor`; the others answer 409 `{"error", "host"}`): `{"on", "norad", "name", "state" (waiting for the pass, moving to the start, tracking), "pass": {"aos", "los", "max_el", ...}, "plan": {"mode" (normal, overlap, flipped, over top), "max_err", "mean_err" (simulated pointing error, degrees), "raw0", "raw1", "raw_min", "raw_max" (K3NG azimuth 0–450), "el_max", "options": [{"mode", "max_err", "raw0", "raw1", "move_s"}], "path": [[t, k3ng_az, el]] every 5 s}, "prep_at" (when the move to the start begins), "now": {"sat_az", "sat_el", "cmd_az", "cmd_el", "cmd_raw", "err"}, "note", "stopped", "control", "rotor_on"}` |
 | POST | `/api/sat/rotor` | `{"start": {"norad", "force": false}}` (`force`: orbital elements older than 14 days) or `{"stop": true}`; only from this RADIMCOM page. 409 when the elements are too old. The rotor moves only while the rotor control is on (`/api/rotor` `{"start": true}`; the TRACK key of the page sends both), otherwise it only calculates; while tracking, `goto` in `/api/rotor` is refused |
 | GET | `/api/sat/setup` | station and choice, shared by all VFOs: `{"setup": {"locator", "lat", "lon", "alt_m", "min_el", "sats": [norad], "map_sats": [norad]}, "tle": {"fetched", "error"}, "groups": [{"key", "title"}] (CelesTrak groups downloaded), "sats": [{"norad", "name", "tle_age_days", "groups": [key]}]}` (all satellites of the orbital elements) |
 | POST | `/api/sat/setup` | any of `{"locator"}` or `{"lat", "lon"}`, `{"alt_m"}`, `{"min_el"}` (0–60), `{"sats": [norad]}`, `{"map_sats": [norad]}` (up to 20), `{"refresh_tle": true}` (download the orbital elements now); answers like GET, 400 with `error` for a wrong value, 502 if the download fails |
@@ -107,7 +107,17 @@ the state has `ais` and `ais_error`; `GET /api/ais` gives the decoder state (`ch
 `messages` (each with `type`, `type_name`, `mmsi`, `cc`, `country`, `station`, `name`, `callsign`, `shiptype`, `status`, `lat`, `lon`, `sog`, `cog`, `hdg`,
 `dest`, `text`, `nmea`, `channel`, `freq_hz`, `level`, `time`) and `ships` (the newest data of each station: the same fields plus `pos_time`, `imo`, `size`,
 `draught`, `eta`, `first`, `last`, `n`); `POST /api/ais` with `{"action": "clear"}` clears them. The event `ais` carries a message with `ship`,
-the newest data of its station; `aisstate` the decoder state.
+the newest data of its station; `aisstate` the decoder state. ADS-B: `adsb_freq` (1090000000); the state has `adsb` and `adsb_error`;
+`GET /api/adsb` gives the decoder state (`count`, `fixed` = messages with corrected bits, `dropped`, `rate` messages per second, `aircraft`,
+`with_pos`, `fs`, `running`) with the last 300 `messages` (`time`, `hex`, `df`, `icao`, `kind`, `text`, `level` dBFS, `fixed`) and `aircraft`
+(`icao`, `flight`, `category`, `cat`, `squawk`, `emergency`, `alt`, `alt_geo`, `gs`, `track`, `hdg`, `ias`, `tas`, `vrate`, `sel_alt`, `qnh`,
+`lat`, `lon`, `pos_time`, `dist_km`, `az`, `ground`, `tisb`, `level`, `n`, `first`, `last`, `net` (adsb.fi / adsb.lol: `found`, `src`,
+`reg`, `type`, `desc`, `callsign`, `lat`, `lon`, `seen_pos`, `alt`, `gs`, `track`, `dist_km`, `az`, `time`; null before the lookup) and `trail`, the last 200 positions as
+`[lat, lon, time, alt]`); `POST /api/adsb` with `{"action": "clear"}` clears them, `{"action": "clear_range"}` clears the range map. `GET /api/adsb_range` gives the
+range map (kept in `data\adsb_range.json`): `qth`, `since`, `bin_deg` (2), `bands` (`10000`, `20000`, `30000`, `max`: sector → the farthest
+position in it) and `max_km` of each band. The event `adsb` comes once a second with `ac` (the
+aircraft changed since the last one, without `trail`), `msgs` (new messages, at most 60), `gone` (ICAO addresses dropped after 10 min) and `info`;
+`adsbstate` the decoder state.
 
 ### POST /api/set
 
@@ -150,6 +160,7 @@ Send any combination of these keys:
 | `dab`, `dab_channel` | DAB on / off and channel. `dab: true` starts welle-cli and switches the VFO to 2.048 MS/s on the channel centre (ACARS and VDL2 off, RTL-SDR only); `dab: false` restores the sample rate; `dab_channel` alone retunes a running DAB |
 | `hfdl`, `hfdl_band` | HFDL decoder on / off; `hfdl_band` (index into `hfdl_bands`) centres and tunes the VFO on the middle of that band and turns HFDL on (ACARS, VDL2, DAB and ISM off). HFDL decodes all channels inside the band of the VFO and mutes its audio; not on a chained VFO |
 | `ais`, `ais_center` | AIS decoder on / off; `ais_center: true` centres and tunes the VFO on 162.000 MHz in FM (between the two AIS channels, both are decoded) and turns AIS on (ACARS, VDL2, DAB, ISM and HFDL off). AIS decodes the channels inside the band of the VFO and mutes its audio; not on a chained VFO |
+| `ism_raw` | ISM: also show packages no decoder read (rtl_433 pulse analyzer), saved per VFO |
 | `ism`, `ism_hz` | ISM decoder on / off and preset (one of `ism_freqs`). `ism: true` starts rtl_433, mutes the audio and switches the VFO to 2.048 MS/s on that preset in AM (ACARS, VDL2 and DAB off, RTL-SDR only); `ism: false` restores the sample rate; `ism_hz` alone re-centres a running decoder |
 | `rec`, `rec_sq` | MP3 recording on / off: `rec` everything, a new file after 15 min; `rec_sq` only with an open squelch, each session in its own file |
 | `log` | daily logs, e.g. `{"log": {"cw": true, "ft8": false}}` |
@@ -176,7 +187,8 @@ On connect a `status` event with the full state, then:
 | `cpdlc`, `cpdlcstate` | CPDLC message, state |
 | `vdl2state` | VDL2 decoder state |
 | `dabstate` | DAB state (channel, welle-cli connected, dongle on channel, error) |
-| `ism`, `ismstate` | ISM device message (the same `id` again = the repeat count `n` of a message grew); decoder state (`enabled`, `error`, `count`, `dropped`, `running`) |
+| `adsb`, `adsbstate` | ADS-B: changed aircraft and new messages once a second; decoder state (see `/api/adsb`) |
+| `ism`, `ismstate` | ISM device message (the same `id` again = the repeat count `n` of a message grew); decoder state (`enabled`, `error`, `count`, `dropped`, `running`, `raw`, `raw_count`, `channels` = centres of the 256 kS/s rtl_433 channels); a RAW row has `raw: true`, `view` (triq.org link) and `flex` |
 
 A comment line `: ping` is sent every 15 s when nothing else happens.
 
@@ -228,18 +240,18 @@ is removed. 0 dB is a sine at 75 kHz deviation. Outside WFM, `db` is empty and `
 
 ## Memories
 
-A memory: `{"id", "name", "group", "groups", "freq_hz", "mode", "bw", "fav", "decoder", "record", "note", "color", "tag"}`, and `"dab_channel"` (e.g. `"12C"`) on a DAB memory.
+A memory: `{"id", "name", "group", "groups", "freq_hz", "mode", "bw", "fav", "decoder", "record", "note", "color", "tag"}`, and `"dab_channel"` (e.g. `"12C"`) on a DAB memory. Modes: `AM`, `FM`, `WFM`, `LSB`, `USB`, `CW`, `DAB`, `DSD`. A DAB memory has the mode `DAB` (older versions stored the DAB channel with another mode; such memories are read as `DAB`); `bw` is fixed for `DAB` (1536000) and `DSD` (12500).
 `groups` is the list of its groups (may be empty), `group` the first of them (kept for older clients). `decoder` is switched on
 when the memory is recalled in the page: `""` (none), `ft8`, `wefax`, `cw`, `rtty`, `sstv`, `packet`, `acars`, `vdl2` or `ism`.
 `note` up to 200 characters. `color` is the colour of its tag in the spectrum, `#rrggbb` or `""` (default green); `tag` false hides the tag.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/rotor` | antenna rotor: `on`, `connected`, `device`, `az`, `el`, `target`, `target_raw` (K3NG azimuth 0–450 given by the satellite tracking, else null), `tracker` (the satellite tracking moves the rotor), `aim` ([az, el] of the tracked satellite while it is above the horizon), `source` (`manual` or `tracker`), `control`, `fault`, `error`, `next_pass` (`{"sat", "event": "AOS" or "LOS", "seconds"}` of the tracked satellite); `k3ng_az` (the K3NG azimuth 0–450 from its left stop, followed by RADIMCOM), `k3ng_guess` (true while it is not yet known whether K3NG is at 0–90 or 360–450), `az_cal` ([true azimuth at K3NG 0, at K3NG 450]); `az`, `target` and `aim` are true azimuths; `?ports=1` adds the serial `ports` |
+| GET | `/api/rotor` | antenna rotor of the station (settings in `data\rotor.json`; only on the receiver that holds the rotor, see `/api/vfos` `rotor`; the others answer 409 `{"error", "host"}`): `on`, `connected`, `device`, `az`, `el`, `target`, `target_raw` (K3NG azimuth 0–450 given by the satellite tracking, else null), `tracker` (the satellite tracking moves the rotor), `aim` ([az, el] of the tracked satellite while it is above the horizon), `source` (`manual` or `tracker`), `control`, `fault`, `error`, `next_pass` (`{"sat", "event": "AOS" or "LOS", "seconds"}` of the tracked satellite); `k3ng_az` (the K3NG azimuth 0–450 from its left stop, followed by RADIMCOM), `k3ng_guess` (true while it is not yet known whether K3NG is at 0–90 or 360–450), `az_cal` ([true azimuth at K3NG 0, at K3NG 450]); `az`, `target` and `aim` are true azimuths; `?ports=1` adds the serial `ports` |
 | POST | `/api/rotor` | any of `{"enabled": true/false, "port", "usb_serial"}` (link on / off, saved), `{"start": true}` (rotor control on: the satellite tracking may move it), `{"stop": true}` (stop the rotor, control off), `{"reset": true}` (clear a fault), `{"goto": [az, el]}` (true azimuth 0–360, elevation 0–180; refused while the satellite tracking moves the rotor), `{"az_cal": [az0, az450]}` (true azimuth at K3NG 0 and at K3NG 450, saved; `[0, 450]` = no correction). **Moves the antenna.** Refused with 403 from a page of another host |
 | GET | `/api/memories` | all memories |
-| POST | `/api/memories` | add: `{"name", "group" or "groups", "freq_hz", "mode", "bw"}` and optionally `"fav"`, `"decoder"`, `"record"` (`"off"` default, `"on"`, `"sq"` or `"asq"`: recording started at recall), `"note"`, `"color"`, `"tag"`; returns the new memory with its `id`. Name up to 80 characters, group up to 40, frequency 0–1766 MHz, `bw` clamped to the mode's range. With `dab_channel` the frequency is the centre of that channel |
-| PATCH | `/api/memories/<id>` | change any of `{"name", "groups", "group", "freq_hz", "mode", "bw", "fav", "dab_channel", "decoder", "record", "note", "color", "tag"}` (`group` replaces all groups with one), or `{"groups_add": [...]}` / `{"groups_remove": [...]}`; the memory is checked like a new one (400 with `error` if invalid, `bw` clamped to the mode's range). `dab_channel` sets the frequency to the centre of the channel, `null` or `""` removes it. Returns the changed memory |
+| POST | `/api/memories` | add: `{"name", "group" or "groups", "freq_hz", "mode", "bw"}` and optionally `"fav"`, `"decoder"`, `"record"` (`"off"` default, `"on"`, `"sq"` or `"asq"`: recording started at recall), `"note"`, `"color"`, `"tag"`, `"lat"` and `"lon"` (location of the station, decimal degrees, both or neither; `null` = none); returns the new memory with its `id`. Name up to 80 characters, group up to 40, frequency 0–1766 MHz, `bw` clamped to the mode's range. With `dab_channel` the frequency is the centre of that channel and the mode `DAB`; the mode `DAB` without `dab_channel` takes the channel whose centre is within 10 kHz of `freq_hz` (400 if none) |
+| PATCH | `/api/memories/<id>` | change any of `{"name", "groups", "group", "freq_hz", "mode", "bw", "fav", "dab_channel", "decoder", "record", "note", "color", "tag", "lat", "lon", "scan", "scan_sq", "scan_asq", "scan_prio"}` (`group` replaces all groups with one), or `{"groups_add": [...]}` / `{"groups_remove": [...]}`; the memory is checked like a new one (400 with `error` if invalid, `bw` clamped to the mode's range). `dab_channel` sets the frequency to the centre of the channel (mode `DAB`), `null` or `""` removes it; a `mode` other than `DAB` without `dab_channel` removes it too. Returns the changed memory |
 | POST | `/api/memories/bulk` | several memories at once: `{"ids": [...], "changes": {...}}` applies the same changes (the fields of PATCH, e.g. `{"groups_add": ["HAM"]}`, `{"fav": true}` or `{"color": "#ff8800"}`) to each, all or none; returns `{"changed": [...]}`. `{"ids": [...], "delete": true}` deletes them; returns `{"deleted": n}`. Unknown ids are ignored |
 | GET | `/api/memory_groups` | every group, by name: `[{"name", "note", "count"}]` (groups of `data\memory_groups.json` and those used by memories) |
 | POST | `/api/memory_groups` | group editor, `{"action": ...}`: `"add"` `{"name", "note"}`, `"note"` `{"name", "note"}`, `"rename"` `{"name", "new"}`, `"copy"` `{"name", "new"}` (copies of its memories in the new group), `"delete"` `{"name", "delete_memories": true/false}` (memories in no other group are deleted, or kept without a group), `"merge"` `{"names": [...], "into", "note"}` (`note` optional: the notes are joined). Returns `{"groups", "memories"}`; 400 with `error` (e.g. the name exists) |
@@ -254,13 +266,31 @@ Export (MEMORIES tab → EXPORT) is done in the browser from `GET /api/memories`
 
 ## Recordings
 
-The MP3 files of REC / REC SQ in `data\recordings` (RECORDINGS tab). The folder is shared by all VFOs, so every VFO port gives the same list.
+The MP3 files of REC / REC SQ in the recordings folder (default `data\recordings`, set in SETTINGS › GENERAL › RECORDINGS) (RECORDINGS tab). The folder is shared by all VFOs, so every VFO port gives the same list.
 
 | Method | Path | Meaning |
 |---|---|---|
 | GET | `/api/recordings` | the files, newest first: `[{"name", "size", "mtime", "secs", "hz", "mode", "start", "memory", "writing"}]` (`secs` from the size at 128 kbps; `hz`, `mode`, `start` (`YYYY-MM-DD HH:MM:SS`, local time) and `memory` from the file name, empty for a foreign file; `writing` = being recorded now) |
 | GET | `/api/recordings/<name>` | the file (`audio/mpeg`, Range requests work) |
 | DELETE | `/api/recordings/<name>` | delete; 400 with `error` for a file being written or an unknown name |
+| GET | `/api/recording_folder` | `{"folder", "custom", "default"}`: the folder in use, the one set (`""` = default) and the default `data\recordings` |
+| POST | `/api/recording_folder` | `{"folder": "<full path>"}` sets it (created if missing, must be writable), `""` = back to the default; 400 with `error` for a relative or unusable path; only from this RADIMCOM page (403 otherwise). Saved in `data\recordings.json`, all VFOs use it at once |
+
+## Scan
+
+Scanner of the VFO (SCAN tab, `scanner.py`). It runs in the receiver of the VFO; `/api/state` and the `status` event carry `scan` (the fields of GET without `list`, `excluded_list` and `log`).
+
+| Method | Path | Meaning |
+|---|---|---|
+| GET | `/api/scan` | `{"on", "paused", "state"` (`off` / `search` / `listen` / `peek` / `hold`), `"opts", "rate"` (channels measured per second), `"channels", "windows", "window", "excluded", "locked", "stored", "message", "range"` (`[from, to]` Hz of a range scan), `"locked_f"` (Hz of the channels locked out), `"rec_file"` (WAV being written), `"cur"` (channel heard: `{"id", "name", "freq_hz", "mode", "power", "level", "prio"}` or null), `"list"` (memories: every channel; range: the channels heard, active or locked, at most 400: `{"id", "name", "freq_hz", "mode", "power", "floor", "level", "active", "hits", "last", "locked", "lock_s"}`, dBFS), `"excluded_list"` (`[{"id", "name", "freq_hz", "mode", "why"}]`, at most 200), `"log"` (the last 200 activities of this VFO), `"saved_opts"`, `"presets"}` |
+| POST | `/api/scan` | `{"action": "start", "opts": {...}}` starts (409 while DAB / VDL2 / ISM / HFDL / AIS is on, 400 without a channel or with more than 20000 grid channels); `"stop"`, `"pause"`, `"resume"`, `"skip"` (5 min), `"lockout"` (until stop), `"step"` with `"dir": 1 / -1`, `"opts"` (only saves). Options: `"source"` (`all` / `fav` / `group` / `range` / `view`), `"group"`, `"from_hz"`, `"to_hz"`, `"step_hz"`, `"mode"`, `"bw"` (range / view), `"pick"` (`next` / `strongest`), `"asq"` (bool), `"margin"` (1–30 dB), `"resume"` (`delay` / `carrier` / `time`), `"hang_s"` (0–60), `"time_s"` (1–600), `"prio_s"` (0–60, 0 = no look into other windows), `"carrier_min"` (0–120, 0 = off), `"rec"`, `"log"`, `"store"` (bool); saved in the VFO config (`scan`) |
+| GET | `/api/scan/log` | activities of all VFOs from `data\logs\scan_YYYY-MM-DD.csv`, newest first: `?days=1..365`, `?limit`, or `?session=<id>` (only that scan session, over all kept days); `{"days", "session", "rows": [{"time_utc", "vfo", "freq_hz", "name", "mode", "duration_s", "max_dbfs", "snr_db", "file", "note", "session"}], "fields"}` |
+| GET | `/api/scan/heatmap` | occupancy from the log, `?days=1..365` or `?session=<id>`, `?top=60`: `{"days", "rows": [{"freq_hz", "name", "mode", "total", "count", "hours": [24 × seconds, local time]}]}` |
+| GET | `/api/scan/rec/<file>` | a WAV recording of an activity (subfolder `scan` of the recordings folder) |
+
+Scan session: GET `/api/scan` also returns `"session_id"` (and `"session"` of the running scan). A START whose source differs (memories: `source` + `group`; range / view: from, to, step, mode, bw) begins a new session; POST `{"action": "clear"}` begins one by hand and returns `{"ok", "session_id"}`. More POST actions: `{"action": "lock" | "unlock", "id": <channel id>}` (one channel out until STOP / back in). Options: `"mem"` (`all` / `fav` / `group`: the memory source kept while `source` is `range` / `view`), `"keep_days"` (1–365, default 31: older logs and WAV recordings of the scan are deleted at server start and at START); `"log"` is gone (always written).
+
+The memory fields used by the scan: `"scan"` (false = never scanned), `"scan_sq"` (own level −120…0 dBFS or null), `"scan_asq"` (own ASQ margin 1–30 dB or null), `"scan_prio"` (0 / 1), set by PATCH `/api/memories/<id>`. Search & store adds memories in the group `Scan YYYY-MM-DD` and sends the event `memories`.
 
 ## Examples
 

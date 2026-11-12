@@ -15,6 +15,7 @@ import time
 
 from flask import Flask, jsonify, request, send_from_directory
 
+import rotor
 import sysload
 import update_check
 from paths import BASE, data
@@ -61,6 +62,10 @@ def main():
         setup = json.load(f)
     vfos = setup["vfos"]
     ensure_configs(vfos)
+    # one rotor for the station: its settings move from the VFO configs (up to 0.114beta1) to rotor.json
+    src = rotor.migrate(data("rotor.json"), [data(v["config"]) for v in vfos])
+    if src:
+        print(f"Rotor: settings moved from {src} to rotor.json (the rotor is now run by VFO {vfos[0]['name']})")
 
     procs = []
     # VFOs with their own dongle first, chained VFOs (sharing a dongle, "chain": "A") after them.
@@ -83,7 +88,9 @@ def main():
 
     @app.route("/api/vfos")
     def api_vfos():
-        return jsonify([{k: v.get(k) for k in ("name", "port", "serial", "note", "chain")} for v in vfos])
+        # "rotor": the VFO whose process holds the rotor (the first one, as in app.py ROTOR_HERE)
+        return jsonify([dict({k: v.get(k) for k in ("name", "port", "serial", "note", "chain")}, rotor=i == 0)
+                        for i, v in enumerate(vfos)])
 
     def shutdown():
         """For the upgrade: the VFO receivers end as with the launcher closed (their input closes), then the launcher."""
