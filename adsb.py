@@ -26,7 +26,6 @@ import threading
 import time
 
 import numpy as np
-from scipy.ndimage import maximum_filter1d
 
 FREQ_HZ = 1090000000
 RATE = 2400000            # RTL dongle: 2.4 MS/s
@@ -42,6 +41,7 @@ CPR_PAIR_S = 10           # an even and an odd position at most this far apart g
 PHASES = (-0.4, -0.2, 0.0, 0.2, 0.4)   # sub-sample phases tried for each preamble (in samples)
 PREAMBLE_SNR = 1.7        # pulse energy / gap energy of a preamble
 MIN_LEVEL = 2.0           # and the pulses this far above the median level of the block
+PRESCREEN = 1.5          # quick screen of the starts: a sample this far above the median at the first pulses
 PULSE_SNR = 1.3          # and each of the 4 pulses this far above the gaps
 MAX_PICKS = 20000         # preamble candidates tried per block at most
 
@@ -448,16 +448,31 @@ class Demod:
         np.cumsum(buf, out=c[1:])
         spu = self.spu
         m = n - self.keep                              # starts examined in this block
+        noise = float(np.median(buf[::4])) + 1e-9
+        self.tail = buf[m:]
+        # quick screen: a sample above 1.5 × the median level at the starts of the pulses at 0, 1 and 3.5 µs
+        # (in noise about 5 % of the starts pass; only these are looked at closely)
+        thr = PRESCREEN * noise
+        hot = buf > thr
+        hot2 = hot[:-1] | hot[1:]                      # either of two neighbouring samples (a pulse is ≥ 1 sample long)
+
+        def near(a_us):
+            i = int(a_us * spu)
+            return hot2[i:i + m]
+
+        idx = np.flatnonzero(near(0) & near(1.0) & near(3.5))
+        if not len(idx):
+            return None
         cache = {}
 
         def at(a_us):
-            """Cumulative sum at start + a µs for all starts (same fraction for all: slices, no gather)."""
+            """Cumulative sum at start + a µs for the screened starts (linear between samples)."""
             if a_us not in cache:
                 x = a_us * spu
                 i = int(x)
                 f = x - i
-                lo_ = c[i:i + m]
-                cache[a_us] = lo_ + f * (c[i + 1:i + 1 + m] - lo_) if f else lo_
+                lo_ = c[idx + i]
+                cache[a_us] = lo_ + f * (c[idx + i + 1] - lo_) if f else lo_
             return cache[a_us]
 
         def energy(a_us, b_us):
@@ -467,20 +482,27 @@ class Demod:
         p1, p2, p3, p4 = energy(0.5, 0), energy(1.5, 1.0), energy(4.0, 3.5), energy(5.0, 4.5)
         hi = (p1 + p2 + p3 + p4) / (2.0 * spu)
         lo = (energy(1.0, 0.5) + energy(3.5, 1.5) + energy(7.5, 5.0)) / (5.0 * spu)
-        noise = float(np.median(buf[::4])) + 1e-9
         # every pulse on its own above the quiet parts (the average alone lets noise spikes through)
         pmin = np.minimum(np.minimum(p1, p2), np.minimum(p3, p4)) / (0.5 * spu)
         ok = (hi > PREAMBLE_SNR * lo) & (pmin > PULSE_SNR * lo) & (hi > MIN_LEVEL * noise)
-        self.tail = buf[m:]
         if not ok.any():
             return None
-        # one per pulse group: the best score within ±1 µs (non-maximum suppression, vectorized)
+        idx, hi, lo = idx[ok], hi[ok], lo[ok]
+        # one per pulse group: the best score within ±1 µs (non-maximum suppression)
         w = max(1, int(round(spu)))
-        score = np.where(ok, hi / (lo + 1e-9), 0.0)
-        mx = maximum_filter1d(score, size=2 * w + 1, mode="constant")
-        picks = np.flatnonzero(ok & (score >= mx))
+        score = hi / (lo + 1e-9)
+        sel = np.ones(len(idx), bool)
+        for d in range(1, 2 * w + 2):                  # neighbours among the screened starts within ±w samples
+            if d >= len(idx):
+                break
+            close = (idx[d:] - idx[:-d]) <= w
+            sel[d:] &= ~(close & (score[:-d] > score[d:]))      # a better one before
+            sel[:-d] &= ~(close & (score[d:] >= score[:-d]))    # a better or equal one after
+        picks, hi_p = idx[sel], hi[sel]
         if len(picks) > 1:
-            picks = picks[np.diff(picks, prepend=-10 * w) > w]
+            k = np.diff(picks, prepend=-10 * w) > w
+            picks, hi_p = picks[k], hi_p[k]
+        hi_p = hi_p[:MAX_PICKS]
         picks = picks[:MAX_PICKS]
         nph = len(PHASES)
         starts = np.repeat(picks.astype(np.float64), nph) + np.tile(PHASES, len(picks))
@@ -499,7 +521,7 @@ class Demod:
         e1 = _interp(c, base + self.b1) - _interp(c, base + self.b0)
         e2 = _interp(c, base + self.b2) - _interp(c, base + self.b1)
         return {"bits": (e1 > e2).astype(np.uint8), "conf": np.abs(e1 - e2) / (e1 + e2 + 1e-12),
-                "level": hi[picks[group]], "start": starts, "time": t0 + starts / self.fs, "group": group}
+                "level": hi_p[group], "start": starts, "time": t0 + starts / self.fs, "group": group}
 
 
 _u = (np.arange(256, dtype=np.float32) - 127.5) / 127.5
