@@ -1918,6 +1918,13 @@ html.compact .r-keys .keys button { --led-at: left 3px top 2px / 6px 3px no-repe
 .body-tabs button[data-tab="recs"] { --tc: #b693ff; }
 .body-tabs button[data-tab="mem"], .body-tabs button[data-tab="scan"], .body-tabs button[data-tab="set"] { --tc: #2fe0c0; }
 .body-tabs button.on { background: #0f1620; color: var(--tc); border-color: #1d2733; box-shadow: inset 0 2px 0 var(--tc); }
+/* inside a tab the accent (--yellow: lit sub-tab keys, headings, table heads, values, markers) is the colour of its tab;
+   SPECTRUM, DAB and DSD stay yellow. The LED line of a lit key follows it. */
+#decPane { --yellow: #ff7ad1; }
+#amsatPane, #rotPane { --yellow: #6db3ff; }
+#recsPane { --yellow: #b693ff; }
+#memPane, #scanPane, #settingsCard { --yellow: #2fe0c0; }
+.radio-body .key, .radio-body .keys button { --led: var(--yellow); }
 
 /* ---------- MEM window: aluminium title bar ---------- */
 .drawer { border-color: #000; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .12), 0 20px 60px rgba(0, 0, 0, .75); }
