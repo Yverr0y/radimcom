@@ -7455,7 +7455,7 @@ function renderAdsbRange() {
     L.polygon(pts.map((v) => [v[1], v[2]]), { color, weight: 1.5, opacity: 0.85, fillColor: color, fillOpacity: 0.05, interactive: false }).addTo(lay);
     const far = pts.reduce((x, y) => (y[0] > x[0] ? y : x));
     L.circleMarker([far[1], far[2]], { radius: 3, color, weight: 1, fillColor: color, fillOpacity: 1 })
-      .bindTooltip(`${label}: farthest ${Math.round(far[0])} km${far[3] != null ? ` at ${far[3].toLocaleString("en-US")} ft` : ""} (${new Date(far[4] * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC)`, { className: "ais-label" })
+      .bindTooltip(`${label}: farthest ${Math.round(far[0])} km${far[3] != null ? ` at ${far[3].toLocaleString("en-US")} ft` : ""} (${new Date(far[4] * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC${far[5] ? ", position from adsb.fi" : ""})`, { className: "ais-label" })
       .addTo(lay);
   }
 }

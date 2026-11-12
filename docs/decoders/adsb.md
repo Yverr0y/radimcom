@@ -67,7 +67,9 @@ address belongs to an aircraft heard within the last minute (in DF11 or DF17).
   sector around the station location; the farthest one in each sector is kept for aircraft up to **10 000 ft** (green),
   **20 000 ft** (yellow), **30 000 ft** (orange) and at any altitude (**max**, violet), and drawn as an outline; a dot marks
   the farthest point of each band (distance, altitude and UTC time in the tooltip). Only a position confirmed by a previous
-  one of the same aircraft (less than 2 minutes before) counts. Kept in `data\adsb_range.json` over restarts (saved once
+  one of the same aircraft (less than 2 minutes before) counts. An aircraft heard here (a valid message within 30 s)
+  without a position of its own counts with the position adsb.fi sees (at most 30 s old; "position from adsb.fi" in the
+  tooltip): good for checking the antenna and receiver with aircraft that only answer the radars. Kept in `data\adsb_range.json` over restarts (saved once
   a minute and at OFF, merged with what is in the file); a station location moved more than 2 km starts it again.
   **CLR RANGE** (click twice, SURE?) empties it.
 - **adsb.fi**: each aircraft is looked up once on adsb.fi (adsb.lol when adsb.fi does not answer; at most one request a

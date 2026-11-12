@@ -183,6 +183,25 @@ class NetLookup(unittest.TestCase):
         with mock.patch("urllib.request.urlopen", side_effect=OSError("no internet")):
             self.assertIsNone(adsb.net_lookup("896216"))
 
+    def test_net_position_in_range_map(self):
+        import tempfile
+        d = adsb.AdsbDecoder(lambda k, v: None, lambda i: None, station=lambda: (48.15, 17.1),
+                             range_path=os.path.join(tempfile.mkdtemp(), "r.json"))
+        now = time.time()
+        a = {"lat": None, "alt": 12000, "alt_geo": None, "last": now - 5}
+        info = {"lat": 49.0, "lon": 17.1, "seen_pos": 2.0, "alt": 12100, "ground": False}
+        d._net_range(a, info, (48.15, 17.1), now)
+        r = d.range.info()
+        self.assertGreater(r["max_km"]["20000"], 90)
+        self.assertIsNone(r["max_km"]["10000"])
+        self.assertEqual(next(iter(r["bands"]["max"].values()))[5], 1)        # marked: from adsb.fi
+        d.range.clear()
+        a["last"] = now - 100                                                   # not heard here lately: not counted
+        d._net_range(a, info, (48.15, 17.1), now)
+        a["last"], a["lat"] = now, 49.0                                         # has its own position: not counted
+        d._net_range(a, info, (48.15, 17.1), now)
+        self.assertIsNone(d.range.info()["max_km"]["max"])
+
 
 if __name__ == "__main__":
     unittest.main()

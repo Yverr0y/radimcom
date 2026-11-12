@@ -73,6 +73,7 @@ NET_URLS = ("https://opendata.adsb.fi/api/v2/hex/{}", "https://api.adsb.lol/v2/h
 NET_GAP_S = 1.1           # adsb.fi allows 1 request per second
 NET_AGAIN_S = 30          # an aircraft still without its own position is looked up again after this time
 NET_RECENT_S = 60         # only aircraft heard within this time are looked up
+NET_RANGE_S = 30          # range map from adsb.fi: a message heard here and the adsb.fi position at most this old (s)
 
 SQUAWK_EMERGENCY = {"7500": "hijack", "7600": "radio failure", "7700": "emergency"}
 
@@ -324,7 +325,7 @@ class RangeMap:
         self.qth = tuple(d["qth"]) if d and d.get("qth") else None
         self.since = d.get("since") if d else None
 
-    def add(self, qth, lat, lon, alt, now):
+    def add(self, qth, lat, lon, alt, now, net=False):
         if not qth:
             return
         with self.lock:
@@ -340,7 +341,7 @@ class RangeMap:
                     continue
                 cur = self.bands[name].get(b)
                 if cur is None or dist > cur[0]:
-                    self.bands[name][b] = [round(dist, 1), round(lat, 4), round(lon, 4), alt, round(now)]
+                    self.bands[name][b] = [round(dist, 1), round(lat, 4), round(lon, 4), alt, round(now)] + ([1] if net else [])
                     self.changed = True
 
     def info(self):
@@ -1089,7 +1090,22 @@ class AdsbDecoder:
                         info["az"] = round(bearing(qth[0], qth[1], info["lat"], info["lon"]))
                     info["time"] = round(now, 1)
                     a["net"] = info
+                    self._net_range(a, info, qth, now)
                 self._changed.add(icao)
+
+    def _net_range(self, a, info, qth, now):
+        """An aircraft heard here (a valid message within NET_RANGE_S) without a position of its own: the position adsb.fi
+        sees goes to the range map too (marked as such) – it shows how far the antenna and receiver hear, also for aircraft
+        that only answer the radars or whose position messages do not get through."""
+        if not qth or info.get("lat") is None or a["lat"] is not None or info.get("ground") or now - a["last"] > NET_RANGE_S:
+            return
+        seen = info.get("seen_pos")
+        if seen is not None and seen > NET_RANGE_S:
+            return
+        if distance_km(qth[0], qth[1], info["lat"], info["lon"]) > 700:
+            return
+        alt = next((x for x in (a["alt"], a["alt_geo"], info.get("alt")) if x is not None), None)
+        self.range.add(qth, info["lat"], info["lon"], alt, now, net=True)
 
     @staticmethod
     def _public(a):
