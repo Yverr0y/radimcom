@@ -77,6 +77,10 @@ The complete feature list: [docs/features.md](docs/features.md).
 | WFM with stereo and RDS | DAB+ |
 | ![Satellite map with footprints and a ground track](docs/images/sat_map.png) | ![VDL2 card with ATN CPDLC and ACARS messages](docs/images/decoders_vdl2.png) |
 | Satellite map | VDL2 / CPDLC |
+| ![SCAN tab: tiles MEMORY, VISIBLE BAND, RANGE and FM BCAST, and the airband channels](docs/images/scan.png) | ![Rotor control map with memory channels and the antenna beam sector](docs/images/rotor_map.png) |
+| [Scanner](docs/controls.md#scan) | [Rotor control map](docs/satellites.md#rotor-control-map) |
+| ![Memory editor with the channels of the AIR group](docs/images/memory_editor.png) | ![SETTINGS › GENERAL › SKINS with the panel finishes and RAL colours](docs/images/settings_skins.png) |
+| [Memory editor](docs/controls.md#memory-editor) | Skins |
 
 ## Security
 

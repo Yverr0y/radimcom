@@ -17,11 +17,11 @@ and the rotor work on one VFO each and go on with the page closed.
 | **SETUP** | The station location (shown here; it is set in **SETTINGS › GENERAL › LOCATION**: locator or latitude and longitude, CHOOSE ON MAP, altitude; **LOCATION…** opens it), the lowest highest-elevation of a pass shown, and the satellites on the timeline, chosen in tabs by CelesTrak group: Amateur Radio, Weather, CubeSats, Space & Earth Science, Galileo, GLONASS operational, GPS operational, Iridium NEXT (and Chosen). **SELECT ACTIVE** ticks the satellites of the AMSAT lists LINEAR, FM, IMAGE and MISC (matched by name; it lists those not in the orbital elements), **CLEAR** unticks all. |
 | **LINEAR**, **FM**, **IMAGE**, **MISC** | Lists of active satellites from [AMSAT](https://www.amsat.org/), kept for 12 hours in `data\satellites.json`. |
 
-![PASSES page: timeline of five satellites over 12 hours with bars shaded by the highest elevation, the list of passes, and the details of an FO-29 pass with its polar plot, AOS, LOS, nearest distance and Doppler shift](images/sat_passes.png)
+![PASSES page: timeline of the chosen satellites over 24 hours with bars shaded by the highest elevation (under 20°, 20–45°, over 45°)](images/sat_passes.png)
 
-![MAP page: world map with the footprints of six satellites, the night side and the station, the ground track of FO-29, and beside it its position, distance, Doppler shift, next pass and transmitters](images/sat_map.png)
+![MAP page: world map with the footprints of the satellites, the night side and the station, the ground track of AO-7, and beside it its position, distance, Doppler shift, next pass and transmitters](images/sat_map.png)
 
-![SETUP page: station by locator JN88WQ, latitude and longitude, orbital elements from CelesTrak, and the satellites on the timeline with SELECT ACTIVE, CLEAR and the CelesTrak group tabs](images/sat_setup.png)
+![SETUP page: station JN88WQ from SETTINGS › GENERAL › LOCATION, minimum elevation, orbital elements from CelesTrak, and the satellites on the timeline with SELECT ACTIVE, CLEAR and the CelesTrak group tabs](images/sat_setup.png)
 
 ![LINEAR page: the AMSAT list of active linear satellites with uplink and downlink frequencies and comments](images/sat_info.png)
 
@@ -38,7 +38,7 @@ Downloaded data (internet needed only for the download; the last copy is used of
 
 ![TRACK page with a yellow callout for each part: pages, satellite, Doppler, transmitters, rotor plan, TRACK / STOP, polar plot and pass data](images/satellites_annotated.png)
 
-![TRACK page with FO-29: the Doppler correction on its linear transponder (VFO tuned to 435.855 MHz, +5.4 kHz), the transmitters from SatNOGS DB, and the rotor waiting for the pass with an overlap plan, TRACK and STOP and the polar plot of the pass](images/sat_track.png)
+![TRACK page with AO-7: Doppler correction off, the transmitters from SatNOGS DB, the rotor not tracking with TRACK and STOP, and the polar plot and elevation chart of the next pass with AOS, LOS, nearest distance and Doppler shift](images/sat_track.png)
 
 A click on a transmitter of the list tunes the VFO to its downlink (the middle of a transponder), sets its mode (FM, USB, CW...) and keeps
 the VFO corrected as the satellite comes and goes; **OFF** stops it. The received frequency is the sent one × (1 − range rate / c),
@@ -81,6 +81,9 @@ The **RCTRL** key (key group **TRACKING**, beside SAT) shows the **ROTOR CONTROL
 (**SETTINGS › GENERAL › ROTOR**, one for all VFOs: the map works from any VFO) to fixed places on the ground, for example a
 broadcast transmitter or a repeater, taken from the channels of **MEMORIES** that have a location.
 
+
+![ROTOR CONTROL › MAP: map of Central Europe with the memory channels that have a location coloured by group, the green beam sector of the antenna turned to 95°, and beside it the GROUPS checkboxes and the channel list nearest first with azimuth and distance](images/rotor_map.png)
+
 - **MAP:** a dark OpenStreetMap map centred on the station (**SETTINGS › GENERAL › LOCATION**). A click anywhere on it, on a channel
   point or on a row of the list beside it turns the rotor to the azimuth of that place from the QTH (great circle), elevation 0.
   The **dashed line** is the wanted azimuth: it goes to the target and stays there until **CLEAR** (remembered in the browser).
@@ -106,3 +109,5 @@ broadcast transmitter or a repeater, taken from the channels of **MEMORIES** tha
   rotor takes hand commands meanwhile), a recalled memory only tunes (useful when going through a band: the antenna does not swing to
   every stored channel), a click on the map only draws the target. The switches belong to the station (`data\rotor.json`, key `links`),
   the same for all VFOs and browsers; the top line of the tab lists the disconnected sources on both pages.
+
+  ![ROTOR CONTROL › CONNECTION: the sources SAT TRACKER and MEMORY RECALL disconnected (switch open), RCTRL MAP linked through the bus to the ROTOR block with azimuth 95° and elevation 0°](images/rotor_connection.png)

@@ -78,6 +78,9 @@ of that VFO (orange LED): that VFO stays audible at CUE level while another VFO 
     **SLANT** (ppm) with **ALIGN** straightens a slanted image: click two points on a line that should be vertical; it is kept after a restart.
     **AFC VFO** (on by default): once the decoder locks, the VFO is retuned so that the signal centre is at 1900 Hz in USB, without a break in the image.
     Next to the live image a gallery of the last 12 saved images: a click opens one, × deletes it, **DEL ALL** deletes all.
+
+    ![WEFAX decoder: the stations of DWD and Northwood, LPM, IOC, SLANT with ALIGN, AFC VFO, and the gallery of the last saved weather charts](images/decoders_wefax.png)
+
   - CW: TUNE switches to CW and tunes to the detected tone, CLR clears the text. The decoder sets its own
     threshold from the measured noise floor and the level of the received marks (follows fading, a noise blanker
     removes static crashes), so it does not depend on the ALC or the volume.
@@ -88,6 +91,9 @@ of that VFO (orange LED): that VFO stays audible at CUE level while another VFO 
   - SSTV: frequencies (80m–10m, ISS FM), mode selection (Auto by VIS), STOP, PNG and a gallery of recent
     images (saved to `data\sstv\`). Modes Martin M1/M2, Scottie S1/S2/DX, Robot 36/72, PD 50–290;
     AFC and slant correction are automatic. Filter at least 2.7 kHz.
+
+    ![SSTV decoder: band keys, mode Auto (VIS), and the gallery of the last received images](images/decoders_sstv.png)
+
   - PACKET: AX.25 at 1200 Bd AFSK (APRS 144.800 MHz, ISS 145.825 MHz) and 9600 Bd FSK/GFSK/GMSK G3RUH (satellites),
     both at once (BAUD) and independent of the mode and filter (FM is demodulated from the baseband; 9600 Bd needs at
     least 1.536 MS/s). SCRAMBLER Auto tries 9600 Bd with and without the G3RUH scrambler. AFC shows the tuning error of
@@ -169,6 +175,9 @@ of that VFO (orange LED): that VFO stays audible at CUE level while another VFO 
   playing; MUTE it if you want). A file being written plays what is saved so far. **NEXT** (on by default) continues with the next older file when one
   ends, so the short sessions of REC SQ play one after another; the filter box narrows the list to rows whose name, memory, kHz, mode or date contains
   the text (NEXT follows the filtered list). ✕ at the end of a row deletes the file after a question; a file being written cannot be deleted.
+
+  ![RECORDINGS tab: the player with PLAY, seek bar and volume, NEXT, the filter, and the list of MP3 files with start, frequency, mode, length, size and file name](images/recordings.png)
+
 - **MENU → SET (gear)**: settings. While the gear key is lit, the bottom part has a **SETTINGS** tab
   (beside SPECTRUM, DECODERS and SATELLITES); the open pages are remembered in the browser.
   The gear is one switch for all VFOs; switching it off hides the tab. Two pages:
@@ -189,6 +198,11 @@ of that VFO (orange LED): that VFO stays audible at CUE level while another VFO 
       **RESET** (clears a fault, orange while there is one) and **MONITOR** (shows AZ / EL in the AD, see below; one switch for all VFOs, remembered in the browser).
       Then the **azimuth calibration**. The settings are in `data\rotor.json`; the serial port is held by the receiver of the first VFO in `vfos.json`,
       the page sends the rotor commands there whichever VFO is active. See [Satellite tracking](satellites.md).
+
+    ![SETTINGS › GENERAL › SKINS: the finishes of the panel (dark, black and light brushed aluminium, mahogany, RAL paint) and the RAL colour chart](images/settings_skins.png)
+
+    ![SETTINGS › GENERAL › S-METER: the seven S-meter layouts, amber needle chosen](images/settings_smeter.png)
+
   - **VFO**: settings of one VFO. On the left the keys **VFO-A … VFO-D** (like the VFO keys under the VFO windows; one without an SDR is grey);
     the lit one is the active VFO and is joined to the card on the right, which holds its settings. A press on another key switches the
     active VFO (as the keys under the VFO windows) and SETTINGS stays open. The card has the pages:
@@ -215,6 +229,9 @@ of that VFO (orange LED): that VFO stays audible at CUE level while another VFO 
       - **S-meter: S9 =**: calibration of the S-meter of this VFO (the level in dBFS shown as S9; was on UI › S-METER).
     - **AUDIO**: AFI inversion frequency, the ASQ (auto squelch) margin above the noise (2–30 dB), the CTCSS tone (TSQ-C) and DCS code with polarity (TSQ-D), HPF and LPF frequency. The squelch level itself is set by the SQL bar of the VFO window.
     - **TX** (LimeSDR only): Enable TX, see [Transmitting (LimeSDR)](configuration.md#transmitting-limesdr).
+
+    ![SETTINGS › VFO › SDR DONGLE: keys VFO-A … D, the block diagram of the signal path from the antenna to the screen with numbered blocks, and the cards with correction, bandwidth, tuner gain, bias-tee, DC peak removal and RESET SDR DONGLE](images/settings_vfo.png)
+
 - **MENU → MEM**: frequency memories. While the MEM key is lit, the bottom part has a **MEMORIES** tab (beside DECODERS,
   SATELLITES and SETTINGS) that covers the spectrum and waterfall like the other tabs; the MEM key is one switch for all VFOs,
   switching it off hides the tab, and the open page is remembered in the browser. The pages:
@@ -274,6 +291,8 @@ of that VFO (orange LED): that VFO stays audible at CUE level while another VFO 
     memory are used (its decoder and recording are ignored). In the spectrum the range scanned is a blue strip and locked out channels are grey ✕ marks.
   - While a VFO scans, its baseband decoders (FT8, WEFAX, CW, RTTY, PACKET, SSTV, ACARS) pause; DAB, VDL2, ISM, HFDL and AIS must be off.
 
+  ![SCAN tab: the tiles MEMORY, VISIBLE BAND, RANGE (2280 airband channels) and FM BCAST, the memory group chips, START, REC and the auto squelch summary, and the CHANNELS page with SCAN, SQ, ASQ and PRIO of each airband memory](images/scan.png)
+
 - **VIEW** (far left of the key row): hides the whole lower part with the tabs (SPECTRUM, DECODERS …) with a slide and shows it again; lit while hidden. A key that opens a tab (DECODE, MEM, SCAN …) shows it again. Remembered in the browser.
 - **MENU → BAND**: shows or hides the row of band keys; the spectrum and waterfall take the freed space. Remembered in the browser.
 
@@ -295,6 +314,8 @@ The page is laid out for at least 1920 × 820 px and scaled to the browser windo
 
 The memory editor was written by **Brano ([brjanicek](https://github.com/brjanicek))**. It is the pages **CHANNELS**, **GROUPS**, **IMPORT** and
 **EXPORT** of the MEMORIES tab. Changes are saved at once (except the IMPORT and EXPORT lists).
+
+![MEMORIES › CHANNELS: search, group filter, favourites and duplicates, SAVE CURRENT and NEW, the bulk keys for ticked channels, and the table of the AIR group with its group note](images/memory_editor.png)
 
 - **CHANNELS**: every memory in a table: star, name, frequency, mode, bandwidth, decoder, record, groups, tag and note. Show one group
   or `(no group)`, search name, note, group or kHz, and click a **column header** to sort by it (again = the other way round;
@@ -324,6 +345,9 @@ The memory editor was written by **Brano ([brjanicek](https://github.com/brjanic
   channels, which can then be changed without touching the original) and **🗑** deletes it (asks whether the channels that are in no
   other group are deleted too, or kept without a group). Tick groups to **MERGE** them into one (asks for its name; the
   notes are joined), to delete them or to put their channels on the export list.
+
+  ![MEMORIES › GROUPS: every group with its number of channels and its note, MERGE, TO EXPORT and DELETE, and the icons of each group](images/memory_groups.png)
+
 - **IMPORT**: **LOAD FILE…** reads one or more files and recognises their format by the content: a RADIMCOM export
   (JSON, also the older lists of 0.111 and 0.112, or CSV), SDR# `frequencies.xml`, the SDR++ frequency manager
   (`frequency_manager_config.json`, each list becomes a group), gqrx `bookmarks.csv` (tags become groups, the colour of
