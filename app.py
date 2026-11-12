@@ -254,7 +254,7 @@ def decoder_event(kind, data):
             alias = f" | {data['alias']}" if data["alias"] else ""
             logs["dsd"].write(f"{_mhz(data['freq_hz'])} {data['proto']}{slot} {data['type'] or 'call'} to {data['tgt'] or '?'} "
                               f"from {data['src'] or '?'} {data['duration']:.1f} s{' ENC' if data['enc'] else ''}{alias}")
-        elif kind == "ism" and data["n"] == 1 and log_on("ism"):     # a repeated message only once
+        elif kind == "ism" and data["n"] == 1 and not data.get("again") and not data.get("raw") and log_on("ism"):     # a repeated message only once
             dev = f" id {data['dev_id']}" if data["dev_id"] else ""
             ch = f" ch {data['channel']}" if data["channel"] else ""
             rssi = f" {data['rssi']} dB" if data["rssi"] is not None else ""
@@ -382,7 +382,7 @@ def state():
     capable = tx_capable()
     return dict(receiver.state(), ft8=ft8.enabled, ft8_error=ft8.error, wefax=wefax.enabled, cw=cw.enabled, rtty=rtty.enabled, packet=packet.enabled,
                 sstv=sstv.enabled, acars=acars.enabled, vdl2=vdl2.enabled, vdl2_error=vdl2.error, vdl2_region=vdl2.region, cpdlc=acars.cpdlc_on,
-                dsd=dsd.info(), dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, dab_sids=cfg.get("dab_sids") or {}, ism=ism.enabled, ism_error=ism.error, hfdl=hfdl.enabled, hfdl_error=hfdl.error, ais=ais.enabled, ais_error=ais.error, adsb=adsb.enabled, adsb_error=adsb.error, ism_hz=cfg.get("ism_hz", ISM_DEFAULT), audio_muted=audio_muted(), recording=recorder.state(), logs={k: log_on(k) for k in LOG_KEYS},
+                dsd=dsd.info(), dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, dab_sids=cfg.get("dab_sids") or {}, ism=ism.enabled, ism_error=ism.error, ism_raw=ism.raw, hfdl=hfdl.enabled, hfdl_error=hfdl.error, ais=ais.enabled, ais_error=ais.error, adsb=adsb.enabled, adsb_error=adsb.error, ism_hz=cfg.get("ism_hz", ISM_DEFAULT), audio_muted=audio_muted(), recording=recorder.state(), logs={k: log_on(k) for k in LOG_KEYS},
                 **doppler_trsp(),
                 tx_capable=capable, tx_enabled=bool(cfg.get("tx_enabled", False)),
                 can_tx=capable and bool(cfg.get("tx_enabled", False)) and hasattr(receiver.sdr, "tx_start"))
@@ -482,6 +482,7 @@ if cfg.get("dab_channel") in CHANNEL_HZ:
     dab.channel = cfg["dab_channel"]          # the page shows the saved channel also while DAB is off
 if cfg.get("dab") and RTL_DONGLE and not OWNER:
     dab.set_enabled(True, cfg.get("dab_channel", DAB_DEFAULT))
+ism.set_raw(cfg.get("ism_raw", False))
 if cfg.get("ism") and RTL_DONGLE and not OWNER:
     ism.set_enabled(True)
 if cfg.get("hfdl") and not OWNER:
@@ -1829,7 +1830,10 @@ def api_set():
             changes.update(center_hz=float(body["ism_hz"]), tune_hz=float(body["ism_hz"]))
     if "ism" in body:
         set_ism(bool(body["ism"]), changes)
-    if "ism" in body or "ism_hz" in body:
+    if "ism_raw" in body:
+        cfg["ism_raw"] = bool(body["ism_raw"])
+        ism.set_raw(cfg["ism_raw"])
+    if "ism" in body or "ism_hz" in body or "ism_raw" in body:
         save_config_later()
         hub.event("status", state())
     if any(body.get(k) for k in ("acars", "vdl2", "dab", "ism", "ais")) and hfdl.enabled:
