@@ -12,6 +12,7 @@ import threading
 import time
 
 import numpy as np
+from collections import deque
 
 from autotune import AutoTune
 from scanner import Scanner
@@ -61,6 +62,50 @@ del _w
 NOTCH_MODES = ("AM", "LSB", "USB")    # automatic notch (in CW it would cut out the signal itself)
 AGC_MODES = ("AM", "LSB", "USB", "CW")  # audio AGC (ALC); FM and WFM have a constant level from the demodulator
 AGC_TARGET = 0.3                        # target audio peak with AGC
+AGC_BLOCK = 120                         # samples, the ALC block (2.5 ms at 48 kHz)
+# EXP (expander of DYN): turns the audio down between words, where it is near the noise floor; speech stays at full level.
+EXP_DEPTH_DEFAULT_DB = 12.0             # how much the noise between words is turned down
+EXP_DEPTH_MIN_DB, EXP_DEPTH_MAX_DB = 3.0, 30.0
+EXP_SENS_DEFAULT = 5.0                  # sensitivity of the voice detector, 1 (only clear speech) … 10 (weak speech)
+EXP_SENS_MIN, EXP_SENS_MAX = 1.0, 10.0
+EXP_FRAC_MAX, EXP_FRAC_MIN = 0.25, 0.04 # fraction of standing-out bins that opens it at sensitivity 1 … 10 (5: ~0.11)
+EXP_BIN_DB = 10.0                       # a bin stands out this much over its noise floor (pure HF noise: ≤ 5 % of bins)
+EXP_FRAME_S = 0.016                     # detector FFT frame (hop: half of it)
+EXP_BAND_HZ = (250.0, 3000.0)           # bins looked at (within the passband)
+EXP_SMOOTH = 0.6                        # bin power smoothing per hop
+EXP_NF_UP_DB_S, EXP_NF_DOWN_DB_S = 5.0, 30.0   # per-bin noise floor: rises / falls at most this fast
+EXP_HOLD_S = 0.1                        # stays open this long after the last speech frame (bridges the gaps in a word)
+EXP_RELEASE_S = 0.08                    # then closes to the full depth in this time
+# EXP AUTO: the expander sets itself from its own statistics, so it neither chops speech nor opens on noise.
+EXP_AUTO_SENS = (2.0, 9.0)              # range of the automatic sensitivity
+EXP_AUTO_FALSE_STEP = 0.5               # an opening with at most 2 speech frames (a noise blip): sensitivity down
+EXP_AUTO_WEAK_N = 5                     # this many near-threshold frames while closed (weak speech missed) …
+EXP_AUTO_WEAK_STEP = 0.3                # … sensitivity up
+EXP_CHOP_S = 0.3                        # a reopening this soon after closing, after speech this long, is a chop …
+EXP_AUTO_HOLD = (0.08, 0.25, 0.12)      # … the hold grows 50 ms (min, max, start); 3 s without a chop it shrinks 10 ms
+EXP_AUTO_HOLD_STEP = 0.05
+EXP_AUTO_DEPTH = (8.0, 18.0, 1.0)       # depth = the measured speech-to-noise ratio, within 8 … 18 dB
+EXP_AUTO_WIN_S = 6.0                    # the speech and noise powers of the last this many seconds give the SNR,
+EXP_AUTO_MIN_FRAMES = 20                # at least this many of each (~0.2 s), every EXP_AUTO_UPDATE_S
+EXP_AUTO_UPDATE_S = 0.2
+EXP_AUTO_FAST_S = 3.0                   # after a retune / new mode: double steps, the depth taken at once, …
+EXP_AUTO_FAST_NF_UP_DB_S = 20.0         # … and the noise floor of each bin rises this fast (a noisier band)
+# LIM (soft limiter): instead of the hard clip at ±1 a soft knee; with ALC the level is also driven by LIM_DRIVE,
+# the AGC overshoots (attack, smoothed gain) are rounded off instead of cut.
+LIM_DRIVE = 1.6                         # +4 dB
+LIM_KNEE, LIM_CEIL = 0.5, 0.95
+
+
+def soft_limit(x, knee=LIM_KNEE, ceil=LIM_CEIL):
+    """Linear up to the knee, above it a tanh curve that never exceeds ceil."""
+    a = np.abs(x)
+    over = a > knee
+    if not over.any():
+        return x
+    y = x.copy()
+    r = ceil - knee
+    y[over] = np.sign(x[over]) * (knee + r * np.tanh((a[over] - knee) / r))
+    return y
 READ_CB = ctypes.CFUNCTYPE(None, ctypes.POINTER(ctypes.c_ubyte), ctypes.c_uint32, ctypes.c_void_p)
 
 
@@ -780,6 +825,21 @@ class Channel:
         self.notch = AutoNotch(fs)
         self.agc_on = True       # off = fixed gain frozen when turned off (volume only with the slider)
         self.fixed_level = None
+        self.lim_on = False      # soft limiter (DYN key)
+        self.last_gain = None    # gain at the end of the last block (smooth gain)
+        self.smooth_on = True    # smooth gain (SET › AGC+ section); off = the gain steps every block
+        self.exp_on = False      # expander (DYN key)
+        self.exp_depth_db = EXP_DEPTH_DEFAULT_DB
+        self.exp_sens = EXP_SENS_DEFAULT
+        self.exp_gain = 1.0
+        self.exp_hold = 0
+        self.exp_key = None      # (fs, mode, bw) the detector STFT was set up for
+        self.exp_auto = True     # EXP AUTO: sensitivity, hold and depth set by themselves
+        self.ea_sens = EXP_SENS_DEFAULT
+        self.ea_hold_s = EXP_AUTO_HOLD[2]
+        self.ea_depth = EXP_DEPTH_DEFAULT_DB
+        self.ea_snr = None
+        self._ea_reset()
 
     def configure(self, mode, bw):
         if (mode, bw) == (self.mode, self.bw):
@@ -802,6 +862,10 @@ class Channel:
             h = lowpass(bw / 2, self.fs, self.taps)
         self.h = h.astype(np.complex64)
         self.level = 1e-4
+        self.last_gain = None
+        self.exp_gain, self.exp_hold = 1.0, 0
+        self.exp_key = None
+        self._ea_reset()
         self.dc = 0.0
         self.notch.reset()
 
@@ -842,21 +906,44 @@ class Channel:
             self.notch.notched = 0
         if self.agc_on:
             self.fixed_level = None
-            return self.agc(audio), smeter
-        # Without AGC: gain from the last AGC level (at most 40 dB, so it does not roar after starting with AGC off).
-        if self.fixed_level is None:
-            self.fixed_level = max(self.level, AGC_TARGET / 100)
-        return np.clip(audio * (AGC_TARGET / self.fixed_level), -1, 1), smeter
+            out = self.agc(audio)
+            drive = LIM_DRIVE
+        else:
+            # Without AGC: gain from the last AGC level (at most 40 dB, so it does not roar after starting with AGC off).
+            if self.fixed_level is None:
+                self.fixed_level = max(self.level, AGC_TARGET / 100)
+            out = audio * (AGC_TARGET / self.fixed_level)
+            drive = 1.0
+        if self.exp_on:
+            out = self.expander(out, audio)
+        if self.lim_on:
+            return soft_limit(out * drive).astype(np.float32), smeter
+        return np.clip(out, -1, 1), smeter
 
-    def agc(self, x, block=120, target=AGC_TARGET):
-        """Block AGC with fast attack, 0.4 s hold and slow decay."""
+    @staticmethod
+    def _apply(x, gains, prev, block, instant_up):
+        """x times the block gains as a smooth curve: a linear ramp over each block, except the direction that has to
+        be at once (ALC: a falling gain, expander: an opening one), which is set at the block start."""
+        starts = np.concatenate(([prev], gains[:-1])).astype(np.float32)
+        now = gains > starts if instant_up else gains < starts
+        starts[now] = gains[now]
+        t = (np.arange(1, block + 1, dtype=np.float32) / block)[None, :]
+        g = (starts[:, None] + (gains - starts)[:, None] * t).ravel()
+        if len(g) < len(x):
+            g = np.concatenate((g, np.full(len(x) - len(g), gains[-1], np.float32)))
+        return x * g
+
+    def agc(self, x, target=AGC_TARGET):
+        """Block AGC with fast attack, 0.4 s hold and slow decay. The gain rises smoothly (a linear ramp over the
+        block) and falls at once at the block start (the loud onset masks the step)."""
+        block = AGC_BLOCK
         nb = len(x) // block
         if nb == 0:
             return x
         peaks = np.abs(x[:nb * block]).reshape(nb, block).max(axis=1)
         decay = np.exp(-block / self.fs / 1.5)
         hang_blocks = int(0.4 * self.fs / block)
-        gains = np.empty(nb, np.float32)
+        gains = np.empty(len(peaks), np.float32)
         level = self.level
         for i, p in enumerate(peaks):
             if p > level:
@@ -868,10 +955,178 @@ class Channel:
                 level = max(level * decay, 1e-6)
             gains[i] = target / level
         self.level = level
-        g = np.repeat(gains, block)
-        if len(g) < len(x):
-            g = np.concatenate((g, np.full(len(x) - len(g), gains[-1], np.float32)))
-        return np.clip(x * g, -1, 1)
+        prev = gains[0] if self.last_gain is None else self.last_gain
+        self.last_gain = float(gains[-1])
+        if not self.smooth_on:                                         # old block steps
+            g = np.repeat(gains, block)
+            if len(g) < len(x):
+                g = np.concatenate((g, np.full(len(x) - len(g), gains[-1], np.float32)))
+            return x * g
+        return self._apply(x, gains, prev, block, instant_up=False)
+
+    def _ea_reset(self):
+        """EXP AUTO statistics (a new mode or filter); the learned sensitivity, hold and depth stay."""
+        n = int(EXP_AUTO_WIN_S / (EXP_FRAME_S / 2))
+        self.ea = {"sp": deque(maxlen=n), "nz": deque(maxlen=n), "ep_len": 0, "ep_speech": 0, "last_ep": 0,
+                   "since_close": None, "near": 0, "quiet": 0, "upd": 0, "fast": None}   # fast: frames left, None = set it
+
+    def exp_retune(self):
+        """Another frequency: the statistics of the old one go, AUTO adapts fast (called by the receiver thread)."""
+        self._ea_reset()
+
+    def exp_info(self):
+        """The values EXP uses now (AUTO: set by themselves), for the state."""
+        auto = self.exp_auto
+        return {"auto": auto, "sens": round(self.ea_sens if auto else self.exp_sens, 1),
+                "depth_db": round(self.ea_depth if auto else self.exp_depth_db, 1),
+                "hold_ms": round(1000 * (self.ea_hold_s if auto else EXP_HOLD_S)),
+                "snr_db": None if self.ea_snr is None else round(self.ea_snr, 1)}
+
+    def _exp_setup(self):
+        """STFT of the expander detector for this rate and passband: frame ~16 ms, hop half of it; the bins of the
+        audio passband (SSB / AM up to the filter edge, CW around the pitch), within EXP_BAND_HZ."""
+        n = int(2 ** round(np.log2(EXP_FRAME_S * self.fs)))
+        f = np.fft.rfftfreq(n, 1 / self.fs)
+        if self.mode in ("LSB", "USB"):
+            lo, hi = SSB_LOW_CUT, self.bw
+        elif self.mode == "CW":
+            lo, hi = CW_PITCH - self.bw / 2, CW_PITCH + self.bw / 2
+        else:
+            lo, hi = 0.0, self.bw / 2
+        band = (f >= max(lo, EXP_BAND_HZ[0])) & (f <= min(hi, EXP_BAND_HZ[1]))
+        if band.sum() < 3:                       # a very narrow filter: at least the 3 bins nearest its middle
+            band = np.zeros(len(f), bool)
+            band[np.argsort(np.abs(f - (lo + hi) / 2))[:3]] = True
+        self.exp_n, self.exp_band = n, band
+        self.exp_win = np.hanning(n)
+        self.exp_hist = np.zeros(n - n // 2)     # the end of the last frame (frames overlap by half)
+        self.exp_pend = np.zeros(0)               # samples after the last full hop
+        self.exp_s = self.exp_nfb = None          # smoothed bin powers and their noise floors
+        self.exp_key = (self.fs, self.mode, self.bw)
+
+    def expander(self, x, audio):
+        """Downward expander (soft noise gate) of DYN with a spectral voice detector. Every ~8 ms the last ~16 ms of
+        `audio` (before any gain, so gain independent) go through an FFT; each bin of the passband has its own noise
+        floor (minimum statistics, down EXP_NF_DOWN_DB_S, up EXP_NF_UP_DB_S). Speech has harmonics that stand out
+        of their bins by EXP_BIN_DB even at a low overall SNR, noise is flat: a frame where more than the threshold
+        fraction of bins stands out (set by the sensitivity) opens the gate at once, a frame over half of it keeps it
+        open; EXP_HOLD_S after the last one the gain falls to −exp_depth_db in EXP_RELEASE_S. The whole broadband
+        level jumps too much in band-limited noise to tell it from speech at HF signal-to-noise ratios."""
+        if getattr(self, "exp_key", None) != (self.fs, self.mode, self.bw):
+            self._exp_setup()
+        n, hop = self.exp_n, self.exp_n // 2
+        data = np.concatenate((self.exp_pend, audio.astype(np.float64)))
+        nh = len(data) // hop
+        lp = len(self.exp_pend)
+        floor = 10 ** (-self.exp_depth_db / 20)
+        if nh:
+            full = np.concatenate((self.exp_hist, data[:nh * hop]))
+            idx = np.arange(nh)[:, None] * hop + np.arange(n)[None, :]
+            pw = np.abs(np.fft.rfft(full[idx] * self.exp_win, axis=1)[:, self.exp_band]) ** 2
+            self.exp_hist = full[len(full) - (n - hop):]
+            hop_s = hop / self.fs
+            up = 10 ** (EXP_NF_UP_DB_S / 10 * hop_s)
+            up_fast = 10 ** (EXP_AUTO_FAST_NF_UP_DB_S / 10 * hop_s)
+            down = 10 ** (-EXP_NF_DOWN_DB_S / 10 * hop_s)
+            k = 10 ** (EXP_BIN_DB / 10)
+            auto = self.exp_auto
+            sens = self.ea_sens if auto else self.exp_sens
+            thr = EXP_FRAC_MAX * (EXP_FRAC_MIN / EXP_FRAC_MAX) ** ((min(max(sens, 1), 10) - 1) / 9)
+            if auto:
+                floor = 10 ** (-self.ea_depth / 20)
+            if self.exp_s is None:                       # start / new filter: the median frame is the floor
+                self.exp_s = np.median(pw, axis=0) + 1e-20
+                self.exp_nfb = self.exp_s.copy()
+            s, nfb = self.exp_s, self.exp_nfb
+            hold_hops = int(round((self.ea_hold_s if auto else EXP_HOLD_S) / hop_s))
+            rel = 10 ** (-(self.ea_depth if auto else self.exp_depth_db) / (EXP_RELEASE_S / hop_s) / 20)
+            gains = np.empty(nh, np.float32)
+            eg = self.exp_gain
+            fpow = pw.sum(axis=1)                        # band power of each frame (before any gain)
+            ea = self.ea
+            if ea["fast"] is None:
+                ea["fast"] = int(EXP_AUTO_FAST_S / hop_s)
+            for i in range(nh):
+                fast = auto and ea["fast"] > 0
+                if fast:
+                    ea["fast"] -= 1
+                m2 = 2.0 if fast else 1.0                # fast start: double steps
+                s = EXP_SMOOTH * s + (1 - EXP_SMOOTH) * pw[i]
+                nfb = np.where(s < nfb, np.maximum(s, nfb * down), nfb * (up_fast if fast else up))
+                frac = float(np.mean(s > nfb * k))
+                speech = frac > thr
+                if speech:
+                    if self.exp_hold == 0 and eg < 1.0:  # a new opening
+                        if auto and ea["since_close"] is not None and ea["since_close"] * hop_s < EXP_CHOP_S \
+                                and ea["last_ep"] * hop_s >= EXP_CHOP_S:
+                            self.ea_hold_s = min(EXP_AUTO_HOLD[1], self.ea_hold_s + EXP_AUTO_HOLD_STEP * m2)   # chop: hold longer
+                            hold_hops = int(round(self.ea_hold_s / hop_s))
+                            ea["quiet"] = 0
+                        ea["ep_len"], ea["ep_speech"] = 0, 0
+                    eg = 1.0
+                    self.exp_hold = hold_hops
+                    ea["ep_speech"] += 1
+                elif frac > thr / 2 and eg >= 1.0:       # hysteresis: a weaker frame keeps it open
+                    self.exp_hold = hold_hops
+                elif self.exp_hold > 0:
+                    self.exp_hold -= 1
+                else:
+                    if eg >= 1.0:                        # the end of an opening: it starts to close
+                        if auto and ea["ep_speech"] <= 2:
+                            self.ea_sens = max(EXP_AUTO_SENS[0], self.ea_sens - EXP_AUTO_FALSE_STEP * m2)   # noise blip
+                        ea["last_ep"], ea["since_close"] = ea["ep_len"], 0
+                    eg = max(floor, eg * rel)
+                if eg >= 1.0 or self.exp_hold > 0:
+                    ea["ep_len"] += 1
+                elif ea["since_close"] is not None:
+                    ea["since_close"] += 1
+                if auto:
+                    if speech:
+                        ea["sp"].append(fpow[i])
+                    elif eg <= floor * 1.01 and frac < thr / 4:
+                        ea["nz"].append(fpow[i])
+                    if self.exp_hold == 0 and eg < 1.0 and thr / 2 < frac <= thr:   # weak speech missed?
+                        ea["near"] += 1
+                        if ea["near"] >= EXP_AUTO_WEAK_N:
+                            self.ea_sens = min(EXP_AUTO_SENS[1], self.ea_sens + EXP_AUTO_WEAK_STEP * m2)
+                            ea["near"] = 0
+                    elif frac < thr / 4:
+                        ea["near"] = max(0, ea["near"] - 1)
+                    ea["quiet"] += 1
+                    if ea["quiet"] * hop_s > 3.0:        # 3 s without a chop: the hold shrinks back
+                        self.ea_hold_s = max(EXP_AUTO_HOLD[0], self.ea_hold_s - 0.01)
+                        ea["quiet"] = 0
+                    ea["upd"] += 1
+                    if ea["upd"] * hop_s >= EXP_AUTO_UPDATE_S:   # the depth from the SNR, every 0.2 s
+                        ea["upd"] = 0
+                        if len(ea["sp"]) >= EXP_AUTO_MIN_FRAMES and len(ea["nz"]) >= EXP_AUTO_MIN_FRAMES:
+                            self.ea_snr = float(10 * np.log10(np.median(ea["sp"]) / max(np.median(ea["nz"]), 1e-30)))
+                            lo, hi, f_ = EXP_AUTO_DEPTH
+                            self.ea_depth += (1.0 if fast else 0.3) * (min(max(f_ * self.ea_snr, lo), hi) - self.ea_depth)
+                gains[i] = eg
+            self.exp_s, self.exp_nfb = s, np.maximum(nfb, 1e-20)
+            # gain of each sample: hop i covers data[i*hop:(i+1)*hop] (its frame ends there, so the opening is
+            # in time for the syllable); the first lp samples of data were played by the last call already
+            g = np.empty(len(x), np.float32)
+            prev = self.exp_gain
+            pos = 0
+            for i in range(nh):
+                end = (i + 1) * hop - lp
+                if end <= 0:
+                    prev = gains[i]
+                    continue
+                seg = end - pos
+                if gains[i] >= prev:
+                    g[pos:end] = gains[i]                                  # opening: at once
+                else:
+                    g[pos:end] = np.linspace(prev, gains[i], seg + 1, dtype=np.float32)[1:]
+                prev, pos = gains[i], end
+            g[pos:] = prev
+            self.exp_gain = float(eg)
+        else:
+            g = np.full(len(x), self.exp_gain, np.float32)
+        self.exp_pend = data[nh * hop:]
+        return x * g
 
 
 class Receiver:
@@ -1102,6 +1357,9 @@ class Receiver:
             self._configure(sdr)
         if "tune_hz" in changes and changes["tune_hz"] != c["tune_hz"] and isinstance(self.wfm, Wfm):
             self.wfm.rds.reset()                    # another station: old RDS data is not valid
+        if "tune_hz" in changes and getattr(self, "chan", None) is not None \
+                and abs(changes["tune_hz"] - c["tune_hz"]) > 1000:
+            self.chan.exp_retune()                  # another station: DYN EXP AUTO starts its statistics again, fast
         for k in ("tune_hz", "mode", "zoom"):
             if k in changes:
                 c[k] = changes[k]
@@ -1143,6 +1401,9 @@ class Receiver:
             c["notch"] = changes["notch"]
         if "audio_agc" in changes:
             c["audio_agc"] = changes["audio_agc"]
+        for k in ("dyn", "dyn_lim", "dyn_exp", "dyn_exp_auto", "dyn_exp_db", "dyn_exp_sens", "agc_smooth"):
+            if k in changes:
+                c[k] = changes[k]
         if "afi" in changes:
             c["afi"] = changes["afi"]
         if "autotune" in changes:
@@ -1451,6 +1712,13 @@ class Receiver:
                 self.chan.configure("FM" if dsd else mode, bw)
                 self.chan.notch_on = bool(c.get("notch", False))
                 self.chan.agc_on = bool(c.get("audio_agc", True))
+                dyn = bool(c.get("dyn", False))           # DYN key: the parts ticked in SETTINGS › AUDIO
+                self.chan.lim_on = dyn and bool(c.get("dyn_lim", True))
+                self.chan.exp_on = dyn and bool(c.get("dyn_exp", True))
+                self.chan.exp_depth_db = float(c.get("dyn_exp_db", EXP_DEPTH_DEFAULT_DB))
+                self.chan.exp_sens = float(c.get("dyn_exp_sens", EXP_SENS_DEFAULT))
+                self.chan.exp_auto = bool(c.get("dyn_exp_auto", True))
+                self.chan.smooth_on = bool(c.get("agc_smooth", True))
                 audio, self.smeter = self.chan.process(base)
                 sub_db = self.chan.sub_db
             cal = getattr(self.sdr, "smeter_offset", 0.0)   # Lime: matched to RTL, RTL: 0
@@ -1688,6 +1956,14 @@ class Receiver:
             "stereo_on": bool(c.get("stereo_on", True)),
             "notch": bool(c.get("notch", False)),
             "audio_agc": bool(c.get("audio_agc", True)),
+            "dyn": bool(c.get("dyn", False)),
+            "dyn_lim": bool(c.get("dyn_lim", True)),
+            "dyn_exp": bool(c.get("dyn_exp", True)),
+            "dyn_exp_db": float(c.get("dyn_exp_db", EXP_DEPTH_DEFAULT_DB)),
+            "dyn_exp_sens": float(c.get("dyn_exp_sens", EXP_SENS_DEFAULT)),
+            "dyn_exp_auto": bool(c.get("dyn_exp_auto", True)),
+            "dyn_exp_info": self.chan.exp_info() if getattr(self, "chan", None) is not None else None,
+            "agc_smooth": bool(c.get("agc_smooth", True)),
             "afi": bool(c.get("afi", False)),
             "afi_hz": float(c.get("afi_hz", AFI_DEFAULT_HZ)),
             "autotune": bool(c.get("autotune", False)),

@@ -1239,6 +1239,103 @@ $("wfCfg").addEventListener("pointerdown", () => {
 });
 renderWfSchemes();
 
+// Spectrum colours (gear in the top right corner of the spectrum): background always a vertical gradient (top →
+// bottom) and the colour of the curve; the fill under the curve and its glow take the curve colour. "Waterfall"
+// follows the waterfall scheme (its dark end as the background, its bright part as the curve). Kept in the browser.
+const SPEC_SCHEMES = {
+  graphite: { name: "Graphite", bg: ["#3a3d42", "#1a1c1f", "#050506"], line: "#ffffff" },
+  waterfall: { name: "Waterfall", bg: null, line: null },
+  night: { name: "Night blue", bg: ["#123a63", "#071a33", "#01050d"], line: "#4fd8ff" },
+  phosphor: { name: "Phosphor", bg: ["#123a1c", "#06170a", "#010401"], line: "#7dff6a" },
+  amber: { name: "Amber", bg: ["#3d2c10", "#170f05", "#040201"], line: "#ffb547" },
+  dusk: { name: "Dusk", bg: ["#3a1d55", "#150a24", "#040108"], line: "#ff7ad9" },
+  ember: { name: "Ember", bg: ["#4a1810", "#1c0806", "#050101"], line: "#ffd84a" },
+  steel: { name: "Steel", bg: ["#3b4a57", "#16202a", "#030507"], line: "#e8f6ff" },
+};
+let specScheme = SPEC_SCHEMES[recall("specScheme")] ? recall("specScheme") : "graphite";
+
+/** Colours of a spectrum scheme: { bg: [top, middle, bottom], line } (the waterfall one taken from its stops). */
+function specColors(key = specScheme) {
+  const s = SPEC_SCHEMES[key];
+  if (s.bg) return s;
+  const lut = LUT;   // the waterfall's current scheme
+  const at =(t) => { const i = Math.round(t * 255) * 3; return `rgb(${lut[i]},${lut[i + 1]},${lut[i + 2]})`; };
+  return { bg: [at(0.3), at(0.14), at(0)], line: at(0.8) };
+}
+const hexA = (c, a) => {   // "#rrggbb" or "rgb(r,g,b)" → rgba with alpha a
+  const m = c.startsWith("#") ? c.slice(1).match(/../g).map((h) => parseInt(h, 16)) : c.match(/\d+/g).map(Number);
+  return `rgba(${m[0]},${m[1]},${m[2]},${a})`;
+};
+
+function renderSpecSchemes() {
+  // a small sample: the background gradient with a spectrum-like curve
+  const curve = "M0 26 L10 25 L18 26 L24 22 L27 8 L30 21 L38 25 L50 24 L56 18 L60 23 L72 25 L80 14 L83 24 L90 26";
+  $("specSchemes").innerHTML = Object.entries(SPEC_SCHEMES).map(([k, v]) => {
+    const c = specColors(k);
+    return `<button type="button" data-scheme="${k}" class="${k === specScheme ? "on" : ""}" title="${v.name}">` +
+      `<i style="background:linear-gradient(180deg,${c.bg[0]},${c.bg[1]} 60%,${c.bg[2]})"><svg viewBox="0 0 90 28" preserveAspectRatio="none">` +
+      `<path d="${curve} L90 28 L0 28Z" fill="${hexA(c.line, 0.22)}"/><path d="${curve}" fill="none" stroke="${c.line}" stroke-width="1.3"/></svg></i>` +
+      `<span>${v.name}</span></button>`;
+  }).join("");
+}
+$("specSchemes").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-scheme]");
+  if (!b || b.dataset.scheme === specScheme) return;
+  specScheme = b.dataset.scheme;
+  store("specScheme", specScheme);
+  renderSpecSchemes();
+  drawSpectrum();
+});
+for (const ev of ["click", "pointerdown", "wheel", "dblclick", "contextmenu"]) {
+  $("specCfg").addEventListener(ev, (e) => e.stopPropagation());
+}
+$("specCfg").addEventListener("mouseenter", renderSpecSchemes);   // the "Waterfall" sample follows the waterfall scheme
+renderSpecSchemes();
+
+// Spectrum zero (bar under the spectrum gear): the bottom edge of the spectrum moved against the noise floor in
+// 5 dB steps, −20 … +20 dB. + hides the noise, − shows more of it. Kept in the browser.
+const SPEC_ZEROS = [-20, -15, -10, -5, 0, 5, 10, 15, 20];
+const specZeroText = (v) => (v > 0 ? `+${v}` : v < 0 ? `−${-v}` : "0");
+let specZero = SPEC_ZEROS.includes(Number(recall("specZero"))) ? Number(recall("specZero")) : 0;
+
+function renderSpecZeroBar() {
+  const i = SPEC_ZEROS.indexOf(specZero), cells = $("specZoomCells");
+  if (cells.children.length !== SPEC_ZEROS.length - 1) {
+    cells.innerHTML = SPEC_ZEROS.slice(1).map((v) => `<i data-v="${v}" title="${specZeroText(v)} dB"></i>`).join("");
+  }
+  [...cells.children].forEach((c, k) => c.classList.toggle("on", k < i));
+  $("specZoomVal").textContent = specZeroText(specZero);
+  const [minus, plus] = $("specZoomBar").querySelectorAll(".zb-btn");
+  minus.disabled = i <= 0;
+  plus.disabled = i >= SPEC_ZEROS.length - 1;
+}
+function setSpecZero(v) {
+  if (!SPEC_ZEROS.includes(v) || v === specZero) return;
+  specZero = v;
+  store("specZero", v);
+  renderSpecZeroBar();
+  drawSpectrum();
+}
+$("specZoomBar").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const cell = e.target.closest("[data-v]");
+  if (cell) {
+    const v = Number(cell.dataset.v);
+    setSpecZero(v === specZero ? SPEC_ZEROS[SPEC_ZEROS.indexOf(v) - 1] : v);   // a click on the last lit cell steps back one
+    return;
+  }
+  const b = e.target.closest("[data-d]");
+  if (b) setSpecZero(SPEC_ZEROS[SPEC_ZEROS.indexOf(specZero) + Number(b.dataset.d)]);
+});
+for (const ev of ["pointerdown", "dblclick", "contextmenu"]) $("specZoomBar").addEventListener(ev, (e) => e.stopPropagation());
+$("specZoomBar").addEventListener("wheel", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  const dir = wheelStep(e);
+  if (dir) setSpecZero(SPEC_ZEROS[SPEC_ZEROS.indexOf(specZero) + dir]);
+}, { passive: false });
+renderSpecZeroBar();
+
 function colorRange() {
   const stepDb = st.wf.db_step;
   const lo = floor + (Number($("wfShift").value) - 3) / stepDb;
@@ -1414,9 +1511,10 @@ function fitCanvas(cv) {
 
 function drawSpectrum() {
   const [ctx, w, h] = fitCanvas($("spectrum"));
-  // Black-grey panorama display (grey at the top, black at the bottom).
+  // Background gradient and curve colour of the chosen scheme (gear in the spectrum corner).
+  const sc = specColors();
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, "#3a3d42"); g.addColorStop(0.6, "#1a1c1f"); g.addColorStop(1, "#050506");
+  g.addColorStop(0, sc.bg[0]); g.addColorStop(0.6, sc.bg[1]); g.addColorStop(1, sc.bg[2]);
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
   // vertical grid following the frequency axis
@@ -1431,8 +1529,9 @@ function drawSpectrum() {
   }
   if (!spec || !st) return;
   const stepDb = st.wf.db_step;
-  // The spectrum has its own fixed scale (55 dB), the waterfall colour range does not change it.
-  const lo = colorRange()[0] - 3 / stepDb;
+  // The spectrum has its own fixed scale (55 dB), the waterfall colour range does not change it; the zero bar
+  // moves the bottom edge against the noise floor.
+  const lo = colorRange()[0] + (specZero - 3) / stepDb;
   const top = lo + 55 / stepDb;
   const y = (v) => h - ((v - lo) / (top - lo)) * h;
   ctx.font = "10px ui-monospace, Consolas, monospace";
@@ -1452,12 +1551,12 @@ function drawSpectrum() {
   }
   ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath();
   const fill = ctx.createLinearGradient(0, 0, 0, h);
-  fill.addColorStop(0, "rgba(255,255,255,.35)"); fill.addColorStop(1, "rgba(255,255,255,.03)");
+  fill.addColorStop(0, hexA(sc.line, 0.35)); fill.addColorStop(1, hexA(sc.line, 0.03));
   ctx.fillStyle = fill;
   ctx.fill();
-  ctx.strokeStyle = "#ffffff";
+  ctx.strokeStyle = sc.line;
   ctx.lineWidth = 1.3;
-  ctx.shadowColor = "rgba(255,255,255,.55)";
+  ctx.shadowColor = hexA(sc.line, 0.55);
   ctx.shadowBlur = 4;
   ctx.stroke();
   ctx.shadowBlur = 0;
@@ -1499,7 +1598,7 @@ function drawOverlays() {
       const lines = [`${fTxt.trim()} ${unit}`, `${st.mode} · ${fmtBw(bw)}${atu ? ` · ${atu}` : ""}`];
       ctx.font = "600 11px system-ui, sans-serif";
       const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 12;
-      const tx = Math.min(Math.max((x0 + x1) / 2 - tw / 2, 4), w - tw - 4);
+      const tx = Math.min(Math.max((x0 + x1) / 2 - tw / 2, 4), w - tw - 46);   // not under the gear and the zero bar
       ctx.fillStyle = "rgba(10,13,18,.85)";
       ctx.strokeStyle = "rgba(255,181,71,.7)";
       ctx.beginPath(); ctx.roundRect(tx, 6, tw, 32, 5); ctx.fill(); ctx.stroke();
@@ -2139,6 +2238,22 @@ function renderRds() {
   const alcMode = ["AM", "LSB", "USB", "CW"].includes(st.mode);
   $("alcKey").disabled = !alcMode;
   $("alcKey").classList.toggle("on", alcMode && st.audio_agc !== false);
+  $("dynKey").disabled = !alcMode;
+  $("dynKey").classList.toggle("on", alcMode && !!st.dyn);
+  $("dynLim").checked = st.dyn_lim !== false;
+  $("dynExp").checked = st.dyn_exp !== false;
+  const expOn = st.dyn_exp !== false;
+  const expAuto = st.dyn_exp_auto !== false;
+  $("dynExpAuto").checked = expAuto;
+  $("dynExpAuto").disabled = !expOn;     // AUTO only sets the expander: nothing to do without EXP
+  for (const [id, key] of [["dynExpDb", "dyn_exp_db"], ["dynExpSens", "dyn_exp_sens"]]) {
+    $(id).disabled = !expOn || expAuto;  // AUTO: the manual values are not used
+    if (st[key] != null && document.activeElement !== $(id)) $(id).value = st[key];
+  }
+  const ei = st.dyn_exp_info;
+  $("dynExpInfo").textContent = !expOn ? "EXP off" : !ei ? "" : `${ei.auto ? "AUTO" : "manual"} · sens ${ei.sens} · depth ${Math.round(ei.depth_db)} dB · hold ${ei.hold_ms} ms`
+    + (ei.auto ? ` · SNR ${ei.snr_db == null ? "…" : Math.round(ei.snr_db) + " dB"}` : "");
+  $("agcSmooth").checked = st.agc_smooth !== false;
   const afiMode = st.mode !== "WFM" && st.mode !== "DSD";
   const atuMode = ATU_MODES.includes(st.mode);
   $("atuKey").disabled = !atuMode;
@@ -2328,6 +2443,31 @@ $("alcKey").addEventListener("click", () => {
   st.audio_agc = st.audio_agc === false;
   renderRds();
   send({ audio_agc: st.audio_agc });
+});
+$("dynKey").addEventListener("click", () => {
+  if (!st) return;
+  st.dyn = !st.dyn;
+  renderRds();
+  send({ dyn: st.dyn });
+});
+for (const [id, key, lo, hi, def] of [["dynExpDb", "dyn_exp_db", 3, 30, 12], ["dynExpSens", "dyn_exp_sens", 1, 10, 5]]) {
+  $(id).addEventListener("change", () => {
+    const v = Math.min(hi, Math.max(lo, Math.round(Number($(id).value)) || def));
+    $(id).value = v;
+    send({ [key]: v });
+  });
+}
+for (const [id, key] of [["dynLim", "dyn_lim"], ["dynExp", "dyn_exp"], ["dynExpAuto", "dyn_exp_auto"]]) {
+  $(id).addEventListener("change", () => {
+    if (!st) return;
+    st[key] = $(id).checked;
+    send({ [key]: st[key] });
+  });
+}
+$("agcSmooth").addEventListener("change", () => {
+  if (!st) return;
+  st.agc_smooth = $("agcSmooth").checked;
+  send({ agc_smooth: st.agc_smooth });
 });
 $("atuKey").addEventListener("click", () => {
   if (!st) return;

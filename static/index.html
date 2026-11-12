@@ -209,13 +209,13 @@
       <button id="hpfKey" class="key pass-key" aria-label="HPF"><svg class="pass-icon" viewBox="60 180 680 440" aria-hidden="true"><path d="M100 576H150Q190 576 215 535L390 265Q415 228 460 228H695"/></svg><span id="hpfVal" class="pass-val"></span></button>
       <button id="lpfKey" class="key pass-key" aria-label="LPF"><svg class="pass-icon" viewBox="60 180 680 440" aria-hidden="true"><path d="M100 228H340Q390 228 415 270L580 540Q610 576 650 576H695"/></svg><span id="lpfVal" class="pass-val"></span></button>
       <button id="alcKey" class="key" title="Audio ALC (automatic audio level) in AM/LSB/USB/CW; off = fixed gain, set the level with MAIN">ALC</button>
+      <button id="dynKey" class="key" title="DYN – HF dynamics in AM/LSB/USB/CW: expander (EXP, the noise between words turned down, speech at full level) + soft limiter (LIM, rounded peaks, +4 dB with ALC); AGC threshold THR optional. Parts and levels in SETTINGS › VFO › AUDIO">DYN</button>
       <button id="afiKey" class="key" title="AFI: audio frequency inversion – voice inversion scrambler / descrambler (all modes except WFM); the inversion frequency is set in SETTINGS">AFI</button>
       <button id="asqKey" class="key" title="ASQ: auto squelch in AM/FM/WFM – the level follows the noise floor (margin in SETTINGS › VFO › AUDIO). Also on by itself with AGC+ and the squelch set">ASQ</button>
       <button id="tsqcKey" class="key" title="TSQ-C: CTCSS tone squelch (FM)">TSQ-C</button>
       <button id="tsqdKey" class="key" title="TSQ-D: DCS code squelch (FM)">TSQ-D</button>
       <button id="cueKey" class="key" title="CUE: keep hearing this VFO (at CUE level) when another VFO is selected">CUE</button>
-      <button id="recsKey" class="key" aria-controls="recsPane" title="RECS: the RECORDINGS tab – the MP3 files recorded by REC / REC SQ (data
-ecordings), play them in the browser">RECS</button>
+      <button id="recsKey" class="key" aria-controls="recsPane" title="RECS: the RECORDINGS tab – the MP3 files recorded by REC / REC SQ (data\recordings), play them in the browser">RECS</button>
     </div></div>
     <div class="kgroup" data-g="DECODE"><span class="klabel">DECODE</span><div class="keys">
       <button id="decKey" class="key" aria-controls="decPane" title="DEC: decoders on/off – shows or hides the DECODERS tab, one page for each decoder (FT8, WEFAX, CW, RTTY, SSTV, PACKET, ACARS, VDL2, HFDL, AIS, ADS-B, ISM); DAB and DSD are modes with their own tabs">DEC</button>
@@ -260,6 +260,19 @@ ecordings), play them in the browser">RECS</button>
     <div class="spectrum-wrap">
       <canvas id="spectrum"></canvas>
       <canvas id="specOverlay" class="overlay"></canvas>
+      <!-- spectrum settings: gear above the zero-level bar, the window opens while the mouse is over it -->
+      <div class="wf-cfg" id="specCfg">
+        <button class="wf-cfg-btn" type="button" aria-label="Spectrum settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.7h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></button>
+        <div class="wf-cfg-panel">
+          <div class="wf-cfg-title">SPECTRUM SETTINGS</div>
+          <div class="wf-cfg-lbl">Colours (background / curve)</div>
+          <div class="wf-schemes spec-schemes" id="specSchemes"></div>
+        </div>
+      </div>
+      <!-- zero level of the spectrum (bottom edge) in dB against the noise floor, the same bar as the waterfall speed -->
+      <div class="zoom-bar wf-zoom-bar spec-zoom-bar" id="specZoomBar" title="Spectrum zero: moves the bottom edge of the spectrum in 5 dB steps against the noise floor (+ hides the noise, − shows more of it). Click − / + or a cell, mouse wheel changes it">
+        <span class="zb-lbl">dB</span><button class="zb-btn" data-d="-1">−</button><span class="zb-cells" id="specZoomCells"></span><button class="zb-btn" data-d="1">+</button><span class="zb-val" id="specZoomVal"></span>
+      </div>
     </div>
     <div class="waterfall-wrap">
       <canvas id="waterfall"></canvas>
@@ -1529,6 +1542,7 @@ ecordings, played in the browser -->
                   <button data-preset="moderate" class="key small" title="Moderate (default): up to the A/D peak at −5 dBFS, short clipping up to 100 ppm tolerated">MODERATE</button>
                   <button data-preset="bold" class="key small" title="Bold: the gain climbs into occasional A/D clipping (up to 20 ppm), down only above 300 ppm">BOLD</button></div>
                 <div id="sagcRows"></div>
+                <label class="switch" title="Smooth gain of the audio ALC: the gain rises in a ramp instead of steps every 2.5 ms (falls at once). Off = the old steps"><input id="agcSmooth" type="checkbox"><span></span> Smooth ALC gain</label>
                 <p class="note">AGC+ key (GAIN): the tuner gain from the A/D level. On clipping it goes down at once, then waits
                   <i>settle</i> blocks; it goes up only after <i>hold</i> without clipping and with the A/D peak under <i>up below</i>,
                   aiming at <i>target</i>. One block ≈ 55–130 ms by the sample rate.
@@ -1537,16 +1551,48 @@ ecordings, played in the browser -->
                   goes down and then waits 4× <i>hold</i>. Keep <i>clipping above</i> ≥ 10× of it. <b>PRESETS</b> from careful to bold, the one matching
                   the sliders is lit: <b>CAREFUL</b> = no clipping (the defaults before 0.114beta1), <b>MODERATE</b> (default) = gain up to
                   a −5 dBFS peak, short clipping up to 100 ppm tolerated, <b>BOLD</b> = climbs into clipping up to 20 ppm, down above 300 ppm.
-                  With WFM a block with a gain step is played in mono (the step would turn the stereo into noise).</p>
+                  With WFM a block with a gain step is played in mono (the step would turn the stereo into noise).
+                  <b>Smooth ALC gain</b> (on by default, for this VFO): the audio ALC in AM/LSB/USB/CW raises its gain in a smooth ramp
+                  instead of steps, so it does not click and pump; it still falls at once. It is the audio gain after the demodulator,
+                  not the tuner gain (the tuner has only fixed steps).</p>
               </div>
             </div>
             <!-- ===== AUDIO ===== -->
             <div class="set-subpanel set-grid3" data-set-subpanel="vfo:audio" role="tabpanel" hidden>
               <div class="setting">
+                <div class="set-cols">
+                  <label class="set-field"><span>HPF – passes audio above (Hz)</span><input id="hpfHz" type="number" step="10" min="20" max="5000" value="300"></label>
+                  <label class="set-field"><span>LPF – passes audio below (Hz)</span><input id="lpfHz" type="number" step="50" min="100" max="15000" value="3000"></label>
+                </div>
+                <p class="note">Audio filters of the HPF and LPF keys, for this VFO. Faster: turn the mouse wheel over the key.
+                  HPF 20–5000 Hz, LPF 100–15000 Hz, 36 dB per octave. Together they make a band-pass, so HPF always stays below LPF.
+                  What you hear and REC are filtered, decoders are not. Not for DAB.</p>
+              </div>
+              <div class="setting">
                 <div class="row"><span>AFI – inversion frequency (Hz)</span></div>
                 <input id="afiHz" type="number" step="1" min="500" max="4000" value="1750">
                 <p class="note">Audio frequency inversion (AFI key): the audio spectrum is mirrored around this frequency
                   (f → 2·F − f, band 0 … 2·F). The same setting scrambles and descrambles. Default 1750 Hz (band up to 3500 Hz). 500–4000 Hz.</p>
+              </div>
+              <div class="setting set-dyn">
+                <div class="row"><span>DYN – HF dynamics (DYN key)</span></div>
+                <label class="switch"><input id="dynExp" type="checkbox"><span></span> EXP – expander: quiet between words</label>
+                <label class="switch dyn-sub"><input id="dynExpAuto" type="checkbox"><span></span> AUTO – sets itself</label>
+                <div class="dyn-now dyn-sub"><span>Now</span><span id="dynExpInfo" class="value"></span></div>
+                <div class="set-cols dyn-sub">
+                  <label class="set-field"><span>Depth (dB)</span><input id="dynExpDb" type="number" step="1" min="3" max="30" value="12"></label>
+                  <label class="set-field"><span>Sensitivity (1–10)</span><input id="dynExpSens" type="number" step="1" min="1" max="10" value="5"></label>
+                </div>
+                <label class="switch"><input id="dynLim" type="checkbox"><span></span> LIM – soft limiter</label>
+                <p class="note">The DYN key (AUDIO, beside ALC; AM/LSB/USB/CW) switches on the ticked parts.
+                  <b>EXP</b> turns the noise between words down by the <i>depth</i>; speech stays at full level. A voice detector
+                  looks at the spectrum every 8 ms (speech has harmonics standing out of the noise, the noise is flat), opens at
+                  once on speech, holds a while and closes in 80 ms. In CW it watches only the CW passband.</p>
+                <p class="note"><b>AUTO</b> (default): a noise blip lowers the sensitivity, missed weak speech raises it, a chop
+                  (reopening soon after closing) makes the hold longer (80–250 ms), the depth follows the measured SNR (8–18 dB).
+                  Settles in about 2–3 s, after a retune it starts again fast; <i>Now</i> shows the values in use. AUTO off: depth 3–30 dB (12),
+                  sensitivity 1–10 (5; chopped speech → raise, noise opening it → lower), hold 100 ms.</p>
+                <p class="note"><b>LIM</b>: soft limiter instead of hard clipping; with ALC +4 dB, the peaks rounded, not cut.</p>
               </div>
               <div class="setting">
                 <div class="row"><span>Auto Squelch ASQ – above the noise (dB)</span></div>
@@ -1569,15 +1615,6 @@ ecordings, played in the browser -->
                   The tone is filtered out of what you hear (300 Hz high-pass). It opens about 0.3 s after the tone starts.
                   Faster: turn the mouse wheel over the key. The VFO window shows the set tone and code under the frequency:
                   grey = off, orange = on, lit orange box = received now. For this VFO.</p>
-              </div>
-              <div class="setting">
-                <div class="set-cols">
-                  <label class="set-field"><span>HPF – passes audio above (Hz)</span><input id="hpfHz" type="number" step="10" min="20" max="5000" value="300"></label>
-                  <label class="set-field"><span>LPF – passes audio below (Hz)</span><input id="lpfHz" type="number" step="50" min="100" max="15000" value="3000"></label>
-                </div>
-                <p class="note">Audio filters of the HPF and LPF keys, for this VFO. Faster: turn the mouse wheel over the key.
-                  HPF 20–5000 Hz, LPF 100–15000 Hz, 36 dB per octave. Together they make a band-pass, so HPF always stays below LPF.
-                  What you hear and REC are filtered, decoders are not. Not for DAB.</p>
               </div>
             </div>
             <!-- ===== TX: LimeSDR only, off by default ===== -->

@@ -23,7 +23,7 @@
   also with strong signals outside the channel; presets CAREFUL / MODERATE (default) / BOLD trade clipping for a few dB more gain. With the squelch set, AGC+ switches it to auto squelch. See [Function keys → GAIN](controls.md#function-keys).
 - **ATU (autotune), experimental,** in USB, LSB and AM: a click on a signal moves the tuning onto its carrier (AM within a few Hz in under 1 s);
   in SSB the edge of the voice band goes onto the red line (USB lower edge, LSB upper edge, ~2 s). See [Function keys → TUNE](controls.md#function-keys).
-- **Audio processing:** automatic notch filter (NF), audio low-pass and high-pass filters (LPF / HPF), automatic audio level (ALC).
+- **Audio processing:** automatic notch filter (NF), audio low-pass and high-pass filters (LPF / HPF), automatic audio level (ALC) with smooth gain, and **DYN** – weak HF voices out of the noise: an expander with a voice detector turns the noise between words down while the speech stays at full level (AUTO sets it by itself), plus a soft limiter.
 - **AFI (audio frequency inversion):** voice inversion scrambler / descrambler, inversion frequency 500–4000 Hz; REC and the decoders get the descrambled audio.
   See [Function keys → AUDIO](controls.md#function-keys).
 - **Remove DC peak** and **remove spurs** from local sources, in the waterfall and in the received signal.
@@ -80,7 +80,7 @@ and the country flag from the ICAO address; a click on a message pauses the list
   (e.g. `HAM 70cm`) or the satellite transponder, lit on the active VFO (a memory name in its own tag colour); the receiver state, recording and mute indicators;
   the frequency; an info row (RX/TX, filter width, HPF and LPF with cutoffs, ST, SQL, CONV/BYPASS); a tone squelch row (CTCSS / DCS); annunciators lit like LCD segments (mode, AGC / AGC+, NF, SP, ALC, AFI, ASQ, ATU, satellite Doppler, CUE);
   **RF and SQL segment bars** (drag, click or mouse wheel; at a manual RF gain the RF bar and its value turn red while the A/D converter clips). See [VFO window](controls.md#vfo-window).
-- **Spectrum and waterfall** with 1×–32× zoom (the waterfall keeps the history of the whole band, so after zooming out the hidden parts are shown at once) and a waterfall speed bar (1/8 – 4×) and waterfall settings under a gear (colour scheme, range, offset); tuning by a click, dragging the band or the passband, the mouse wheel or the wheel over a digit of the display. See [Tuning](controls.md#tuning).
+- **Spectrum and waterfall** with 1×–32× zoom (the waterfall keeps the history of the whole band, so after zooming out the hidden parts are shown at once) and a waterfall speed bar (1/8 – 4×) and waterfall settings under a gear (colour scheme, range, offset), the same gear and bar by the spectrum (zero level −20 … +20 dB, colour schemes background / curve); tuning by a click, dragging the band or the passband, the mouse wheel or the wheel over a digit of the display. See [Tuning](controls.md#tuning).
 - **Band plan on the frequency axis** (Europe / ITU Region 1: ham, broadcast, aviation, marine, satellites, mobile networks, ISM…); hover it for the descriptions of all bands at that frequency.
 - **Audio spectrum bubble:** hovering over the passband label shows the audio spectrum of the active VFO (in WFM the MPX signal with the stereo pilot, in CW also the decoded text).
 - **Frequency memories** (MEMORIES tab) with groups, favourites, import from SDR# (`frequencies.xml`), JSON and CSV, export to JSON and CSV; memories in view show as tags in the spectrum,

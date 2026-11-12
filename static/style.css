@@ -699,6 +699,16 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .wf-schemes button i { flex: none; width: 110px; height: 10px; border-radius: 2px; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .15); }
 .wf-schemes button:hover { border-color: #5a5e66; }
 .wf-schemes button.on { border-color: var(--yellow); color: var(--yellow); background: rgba(255, 216, 74, .08); }
+/* spectrum: the same gear and bar in its top right corner; denser cells so the bar fits a low spectrum */
+#specCfg { top: 3px; }
+#specCfg .wf-cfg-btn { height: 20px; }
+.spec-zoom-bar { top: 27px; gap: 2px; padding: 3px 0; }
+.spec-zoom-bar .zb-cells { gap: 1px; }
+.spec-zoom-bar .zb-cells i { height: 5px; }
+.spec-zoom-bar .zb-btn { height: 12px; line-height: 10px; }
+.spec-zoom-bar .zb-val, .spec-zoom-bar .zb-lbl { line-height: 11px; }
+.spec-schemes button i { height: 22px; width: 90px; }
+.spec-schemes button i svg { display: block; width: 100%; height: 100%; }
 .waterfall-wrap.dragging, .spectrum-wrap.dragging { cursor: grabbing; }
 .hover-freq { position: absolute; z-index: 3; pointer-events: none; padding: 3px 8px; border-radius: 4px;
   font: 700 13px ui-monospace, Consolas, monospace; color: var(--yellow); white-space: nowrap;
@@ -1497,6 +1507,13 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .set-subpanel .blk-flash { animation: blkFlash 1.4s ease-out; border-radius: 6px; }
 @keyframes blkFlash { 0%, 40% { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); } 100% { box-shadow: 0 0 0 0 transparent; } }
 .set-grid3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+/* VFO › AUDIO: filters | AFI over ASQ | TSQ, DYN in the third column over both rows */
+.set-grid3:has(> .set-dyn) { align-items: stretch; }   /* boxes of one row equally high, no holes */
+.set-grid3 > .set-dyn { grid-column: 3; grid-row: 1 / span 2; }
+.set-dyn .dyn-sub { margin-left: 26px; }
+.set-dyn .dyn-now { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; }
+.set-dyn .dyn-now > span:first-child { color: var(--dim); }
+.set-dyn .note { margin: 0; }
 .set-grid2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 /* SDR DONGLE › ADVANCED: list of dongles and VFOs, the one being set highlighted */
 .set-grid2 > .dongle-list-box { grid-column: 1 / -1; }
@@ -1517,7 +1534,7 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .sagc-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
 .sagc-presets-label { font-size: 11px; letter-spacing: 0.08em; opacity: 0.7; margin-right: 4px; }
 @media (max-width: 1100px) { .set-grid4 { columns: 2; } }
-@media (max-width: 700px) { .set-grid4 { columns: 1; } .set-grid3, .set-grid2, .set-meter, .set-skins, .set-cols { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 700px) { .set-grid3 > .set-dyn { grid-column: auto; grid-row: auto; } .set-grid4 { columns: 1; } .set-grid3, .set-grid2, .set-meter, .set-skins, .set-cols { grid-template-columns: minmax(0, 1fr); } }
 .meter-card .row small { color: var(--muted); font-size: 11px; font-weight: 400; }
 .meter-card .meter-picks { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .set-panel .setting { padding: 10px; gap: 6px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, .02); }
@@ -1884,7 +1901,7 @@ html.compact .r-keys .keys button { --led-at: left 3px top 2px / 6px 3px no-repe
 .r-keys .kgroup[data-g="STEP"] { --kc: #40d8ff; }
 .r-keys .kgroup[data-g="TUNE"] { --kc: #b8ef3a; }
 .r-keys .kgroup[data-g="AUDIO"] { --kc: #b693ff; }
-.r-keys .kgroup[data-g="DECODE"] { --kc: #ff7ad1; }
+.r-keys .kgroup[data-g="DECODE"] { --kc: #e45cff; }
 .r-keys .kgroup[data-g="TRACKING"] { --kc: #6db3ff; }
 .r-keys .kgroup[data-g="MENU"] { --kc: #2fe0c0; }
 .r-keys .keys button { --led: var(--kc); }
@@ -1974,7 +1991,7 @@ html.compact .r-keys .keys button { --led-at: left 3px top 2px / 6px 3px no-repe
 .vfo-keys .vfo-sel.on { text-shadow: 0 0 6px rgba(255, 216, 74, .55); }
 
 /* function keys: every group a module of two rows under its legend, the keys of one size */
-.r-keys { justify-content: space-between; align-items: flex-end; gap: 6px 10px; padding: 8px 0 10px; }
+.r-keys { justify-content: space-between; align-items: flex-end; gap: 6px 6px; padding: 8px 0 10px; }
 .r-keys .kgroup { align-items: center; gap: 4px; }
 .r-keys .keys { display: grid; grid-template-columns: repeat(var(--cols, 1), 1fr); grid-template-rows: repeat(2, 28px); gap: 3px; padding: 4px; }
 .r-keys .keys:has(> :nth-child(3)) { --cols: 2; }
@@ -2045,14 +2062,14 @@ html[data-skin="alu-light"] .r-bands, html[data-ink="dark"] .r-bands { border-to
    SATELLITES / ROTOR CONTROL = TRACKING, RECORDINGS = AUDIO (RECS), MEMORIES / SCAN / SETTINGS = MENU; SPECTRUM stays yellow */
 .body-tabs button { --tc: var(--yellow); }
 .body-tabs button[data-tab="dab"], .body-tabs button[data-tab="dsd"] { --tc: #ffd84a; }
-.body-tabs button[data-tab="dec"] { --tc: #ff7ad1; }
+.body-tabs button[data-tab="dec"] { --tc: #e45cff; }
 .body-tabs button[data-tab="sat"], .body-tabs button[data-tab="rot"] { --tc: #6db3ff; }
 .body-tabs button[data-tab="recs"] { --tc: #b693ff; }
 .body-tabs button[data-tab="mem"], .body-tabs button[data-tab="scan"], .body-tabs button[data-tab="set"] { --tc: #2fe0c0; }
 .body-tabs button.on { background: #0f1620; color: var(--tc); border-color: #1d2733; box-shadow: inset 0 2px 0 var(--tc); }
 /* inside a tab the accent (--yellow: lit sub-tab keys, headings, table heads, values, markers) is the colour of its tab;
    SPECTRUM, DAB and DSD stay yellow. The LED line of a lit key follows it. */
-#decPane { --yellow: #ff7ad1; }
+#decPane { --yellow: #e45cff; }
 #amsatPane, #rotPane { --yellow: #6db3ff; }
 #recsPane { --yellow: #b693ff; }
 #memPane, #scanPane, #settingsCard { --yellow: #2fe0c0; }
@@ -2575,3 +2592,6 @@ body.map-only .pkt-map.map-only-box { flex-direction: column; gap: 4px; }
 .med-panel[data-med-panel=channels] .med-table-wrap[hidden] { display: none; }
 .scan-lock-key:not(:disabled):hover { color: var(--red); border-color: var(--red); }
 .scan-log td.scan-note { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* SETTINGS: a switch or field that has no effect now (e.g. EXP AUTO with EXP off) is greyed out */
+.switch:has(input:disabled) { opacity: .45; cursor: default; }
+.set-field input:disabled { opacity: .45; cursor: default; }

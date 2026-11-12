@@ -92,6 +92,12 @@ Change log
 Ver. 0.114beta1
 (test beta, GitHub branch 0.114beta1)
 Main Features
+- DYN key (AUDIO, right of ALC) for AM/LSB/USB/CW: weak voices out of the noise - the noise between words
+  is turned down, speech stays at full level. EXP = expander with a voice detector (speech harmonics stand
+  out of the flat HF noise), EXP AUTO (default) sets sensitivity, hold and depth by itself (settles in 2-3 s),
+  LIM = soft limiter instead of hard clipping (+4 dB with ALC). Parts in SETTINGS -> AUDIO -> DYN.
+  Smooth ALC gain (no clicks): SETTINGS -> SDR DONGLE -> ADVANCED, on by default. SETTINGS -> AUDIO
+  rearranged; smaller gaps between key groups.
 - SCAN: new tile FM BCAST (right of RANGE) - searches 88-108 MHz in WFM for broadcast stations: grid 50 kHz, only
   the core of each channel is measured and a station must be the strongest point +-100 kHz around, so the VFO lands
   on the centre of the station. Each station is heard LISTEN s (8), then the next one up the band. STORE FOUND puts
@@ -151,6 +157,8 @@ Main Features
   spectrum blue, locked out grey. Decoder and recording of a memory are ignored; the decoders of the scanning VFO pause.
   scanner.py, /api/scan.
 Minor Fixes
+- RECS key tooltip: the broken path data\recordings fixed.
+- DECODE colour (key group, DECODERS tab and its accent) changed from pink to fuchsia (#e45cff).
 - SCAN: REC and the settings behind the gear changed while scanning now take effect at once (REC switched on
   during a scan recorded nothing). WAV files: subfolder "scan" of the recordings folder.
 - SCAN -> CHANNELS: the x (LOCK OUT) is easy to hit while scanning (rows do not move under the mouse);
@@ -215,6 +223,9 @@ Main Features
 - Waterfall speed (vertical zoom): vertical bar in the top right corner of the waterfall, 1/8 - 4x.
 - Waterfall settings: gear above the speed bar, window on mouse hover: colour scheme (Classic, Inferno,
   Viridis, Turbo, Ice), colour range and offset (moved from SET -> DISPLAY).
+- Spectrum settings: the same gear and bar in the top right corner of the spectrum. Bar = zero (bottom
+  edge) against the noise floor, -20 ... +20 dB in 5 dB steps; gear = colour schemes background gradient /
+  curve (Graphite, Waterfall, Night blue, Phosphor, Amber, Dusk, Ember, Steel).
 - SETTINGS tab instead of the floating SET window: the SET key is a gear; while lit, the bottom part has
   a SETTINGS tab (beside DECODERS) with pages SDR DONGLE (BASIC, ADVANCED: SP and AGC+), AUDIO, UI (SKINS,
   S-METER, TOUCHPAD), ROTOR (TX); no scrolling. Bandwidth moved to SDR DONGLE. AUDIO without the squelch
