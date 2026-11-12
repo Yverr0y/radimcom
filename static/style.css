@@ -853,6 +853,7 @@ canvas.axis { height: 39px; background: #1c1e22; border-bottom: 1px solid #44474
 .dec-pages .key.na { opacity: .4; text-decoration: line-through; }
 .dec-pane .ft8-empty.dec-na { color: var(--amber); }
 .dec-pages .key { position: relative; }
+.dec-pages .dec-sep { width: 1px; align-self: stretch; background: var(--line2); margin: 0 4px; }   /* between the groups of decoders */
 .dec-pages .key.new::after { content: "●"; position: absolute; top: -6px; right: -3px; font-size: 10px; color: var(--green); }   /* over the corner: the keys do not move */
 /* the card of the open page is shown also while its decoder is off (ON key in its top left corner); DSD is a mode, not a key */
 .dec-pane .card[data-dec][hidden]:not(.off-page):not(#dsdCard) { display: flex !important; }
