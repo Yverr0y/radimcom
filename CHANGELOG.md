@@ -1,8 +1,8 @@
 # Changelog
 
-## Ver. 0.114beta1
+## Ver. 0.114
 
-Test beta (GitHub branch `0.114beta1`).
+Released after the test beta (GitHub branch `0.114beta1`). Many parts are contributed by **Brano, [brjanicek](https://github.com/brjanicek)** (marked *by Brano*).
 
 ### Main Features
 
