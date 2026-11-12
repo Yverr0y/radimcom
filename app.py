@@ -57,6 +57,8 @@ import hfdl as hfdl_mod
 from hfdl import HfdlDecoder
 import ais as ais_mod
 from ais import AisDecoder
+import adsb as adsb_mod
+from adsb import RATE as ADSB_RATE, AdsbDecoder
 from tonesq import norm_ctcss, norm_dcs
 from sdr import (AFI_MAX_HZ, AFI_MIN_HZ, ASQ_MAX_DB, ASQ_MIN_DB, DECIM, DSD_MODE, HPF_MAX_HZ, HPF_MIN_HZ, LPF_MAX_HZ, LPF_MIN_HZ, MODES, SQUELCH_OFF,
                  SAGC_PARAMS, UPCONV_MAX_HZ, ZOOMS, Receiver, list_devices, lowpass, sagc_params)
@@ -195,9 +197,9 @@ def save_config_later():
 
 # ---------- daily decoder logs (turned on with LOG in the decoder card) ----------
 
-LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism", "packet", "hfdl", "ais")
+LOG_KEYS = ("ft8", "wefax", "cw", "rtty", "sstv", "acars", "dsd", "ism", "packet", "hfdl", "ais", "adsb")
 _tag = cfg.get("vfo") or ""
-logs = {"ft8": DayLog("ft8", _tag), "wefax": DayLog("wefax", _tag), "sstv": DayLog("sstv", _tag), "dsd": DayLog("dsd", _tag), "ism": DayLog("ism", _tag), "packet": DayLog("packet", _tag), "hfdl": DayLog("hfdl", _tag), "ais": DayLog("ais", _tag),
+logs = {"ft8": DayLog("ft8", _tag), "wefax": DayLog("wefax", _tag), "sstv": DayLog("sstv", _tag), "dsd": DayLog("dsd", _tag), "ism": DayLog("ism", _tag), "packet": DayLog("packet", _tag), "hfdl": DayLog("hfdl", _tag), "ais": DayLog("ais", _tag), "adsb": DayLog("adsb", _tag),
         "cw": TextLog("cw", _tag), "rtty": TextLog("rtty", _tag)}
 _saved_logged = {"wefax": None, "sstv": None}
 
@@ -210,8 +212,38 @@ def _mhz(hz):
     return f"{hz / 1e6:.6f} MHz"
 
 
+def _adsb_log(aircraft):
+    """ADS-B: one line per aircraft at most once a minute (hundreds of messages a second would flood the log)."""
+    if not aircraft or not log_on("adsb"):
+        return
+    for a in aircraft:
+        f = [a["icao"], a["flight"] or "-"]
+        if a["squawk"]:
+            f.append(f"sq {a['squawk']}")
+        if a["emergency"]:
+            f.append(a["emergency"].upper())
+        if a["alt"] is not None:
+            f.append(f"{a['alt']} ft")
+        if a["gs"] is not None:
+            f.append(f"{a['gs']:.0f} kt")
+        if a["track"] is not None:
+            f.append(f"trk {a['track']:.0f}")
+        if a["vrate"] is not None:
+            f.append(f"{a['vrate']:+d} ft/min")
+        if a["lat"] is not None:
+            f.append(f"pos {a['lat']:.4f} {a['lon']:.4f}")
+            if a["dist_km"] is not None:
+                f.append(f"{a['dist_km']:.0f} km az {a['az']}")
+        if a["category"]:
+            f.append(a["category"])
+        lvl = f" {a['level']:.0f} dB" if a["level"] is not None else ""
+        logs["adsb"].write(f"{_mhz(adsb_mod.FREQ_HZ)}{lvl} " + " ".join(f) + f" | {a['n']} msgs")
+
+
 def decoder_event(kind, data):
     """Decoder event to the browser and (if LOG is on) a line to the daily log."""
+    if kind == "adsb":
+        _adsb_log(data.pop("log", []))
     hub.event(kind, data)
     try:
         if kind == "ft8" and log_on("ft8"):
@@ -326,6 +358,8 @@ dab = DabDecoder(on_tune=dab_tune, on_state=lambda i: hub.event("dabstate", i))
 ism = IsmDecoder(on_event=decoder_event, on_state=lambda i: hub.event("ismstate", i))
 hfdl = HfdlDecoder(on_event=decoder_event, on_state=lambda i: hub.event("hfdlstate", i))
 ais = AisDecoder(on_event=decoder_event, on_state=lambda i: hub.event("aisstate", i))
+adsb = AdsbDecoder(on_event=decoder_event, on_state=lambda i: hub.event("adsbstate", i), station=own_station,
+                   range_path=data("adsb_range.json"))     # the range map is one for the station (all VFOs)
 _saved_logged.update(wefax=getattr(wefax, "saved", None), sstv=getattr(sstv, "saved", None))
 
 
@@ -339,16 +373,16 @@ def tx_capable():
 def audio_muted():
     """These decoders work on the raw samples or the baseband; the audio of their VFO would only be noise.
     A running scan pauses ACARS, so its audio is heard (the raw-sample decoders do not let a scan start)."""
-    if receiver.scan.on and not (vdl2.enabled or ism.enabled or hfdl.enabled or ais.enabled):
+    if receiver.scan.on and not (vdl2.enabled or ism.enabled or hfdl.enabled or ais.enabled or adsb.enabled):
         return False
-    return acars.enabled or vdl2.enabled or ism.enabled or hfdl.enabled or ais.enabled
+    return acars.enabled or vdl2.enabled or ism.enabled or hfdl.enabled or ais.enabled or adsb.enabled
 
 
 def state():
     capable = tx_capable()
     return dict(receiver.state(), ft8=ft8.enabled, ft8_error=ft8.error, wefax=wefax.enabled, cw=cw.enabled, rtty=rtty.enabled, packet=packet.enabled,
                 sstv=sstv.enabled, acars=acars.enabled, vdl2=vdl2.enabled, vdl2_error=vdl2.error, vdl2_region=vdl2.region, cpdlc=acars.cpdlc_on,
-                dsd=dsd.info(), dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, dab_sids=cfg.get("dab_sids") or {}, ism=ism.enabled, ism_error=ism.error, hfdl=hfdl.enabled, hfdl_error=hfdl.error, ais=ais.enabled, ais_error=ais.error, ism_hz=cfg.get("ism_hz", ISM_DEFAULT), audio_muted=audio_muted(), recording=recorder.state(), logs={k: log_on(k) for k in LOG_KEYS},
+                dsd=dsd.info(), dab=dab.enabled, dab_error=dab.error, dab_channel=dab.channel, dab_sids=cfg.get("dab_sids") or {}, ism=ism.enabled, ism_error=ism.error, hfdl=hfdl.enabled, hfdl_error=hfdl.error, ais=ais.enabled, ais_error=ais.error, adsb=adsb.enabled, adsb_error=adsb.error, ism_hz=cfg.get("ism_hz", ISM_DEFAULT), audio_muted=audio_muted(), recording=recorder.state(), logs={k: log_on(k) for k in LOG_KEYS},
                 **doppler_trsp(),
                 tx_capable=capable, tx_enabled=bool(cfg.get("tx_enabled", False)),
                 can_tx=capable and bool(cfg.get("tx_enabled", False)) and hasattr(receiver.sdr, "tx_start"))
@@ -436,6 +470,7 @@ def on_raw(raw, fs, center_hz):
     ism.feed_raw(raw, fs, center_hz)
     hfdl.feed_raw(raw, fs, center_hz)
     ais.feed_raw(raw, fs, center_hz)
+    adsb.feed_raw(raw, fs, center_hz)
 
 
 receiver.on_raw = on_raw
@@ -453,6 +488,8 @@ if cfg.get("hfdl") and not OWNER:
     hfdl.set_enabled(True)
 if cfg.get("ais") and not OWNER:
     ais.set_enabled(True)
+if cfg.get("adsb") and not OWNER:
+    adsb.set_enabled(True)
 
 
 def sync_cpdlc():
@@ -508,7 +545,7 @@ def api_state():
     return jsonify(dict(state(), sample_rates=SAMPLE_RATES, modes=MODES, ft8_freqs=FT8_FREQS, acars_freqs=ACARS_FREQS,
                         vdl2_freqs=region_freqs(vdl2.region), vdl2_region_freqs={r: region_freqs(r) for r in VDL2_REGIONS}, vdl2_center=VDL2_CENTER, vdl2_rate=VDL2_RATE, tx_bands=TX_BANDS,
                         dab_channels=DAB_CHANNELS, ism_freqs=ISM_FREQS, hfdl_bands=hfdl_mod.BANDS,
-                        hfdl_stations=hfdl_mod.STATIONS, ais_center=ais_mod.CENTER_HZ, ais_channels=sorted(ais_mod.CHANNELS)))
+                        hfdl_stations=hfdl_mod.STATIONS, ais_center=ais_mod.CENTER_HZ, ais_channels=sorted(ais_mod.CHANNELS), adsb_freq=adsb_mod.FREQ_HZ))
 
 
 # ---------- transmitting (PTT) ----------
@@ -931,6 +968,58 @@ def set_ais(on):
     ais.set_enabled(on)
 
 
+@app.route("/api/adsb", methods=["GET"])
+def api_adsb():
+    return jsonify(dict(adsb.info(), messages=adsb.messages()[-300:], aircraft=adsb.aircraft_list()))
+
+
+@app.route("/api/adsb", methods=["POST"])
+def api_adsb_cmd():
+    action = request.get_json(force=True).get("action")
+    if action == "clear":
+        adsb.clear()
+    elif action == "clear_range":
+        adsb.range.clear()
+    return jsonify(adsb.info())
+
+
+@app.route("/api/adsb_range", methods=["GET"])
+def api_adsb_range():
+    if adsb.enabled:
+        adsb.range.save(force=True)
+    else:
+        adsb.range.reload()               # the VFO that runs ADS-B writes the file: show what it has saved
+    return jsonify(adsb.range.info())
+
+
+def set_adsb(on, changes):
+    """ADS-B on: the VFO goes to 1090 MHz at 2.4 MS/s (2.5 MS/s stays on an Airspy) and the Mode S / ADS-B messages are
+    decoded from the raw samples (adsb.py); the audio of the VFO is muted and the decoders that need the dongle elsewhere
+    (ACARS, VDL2, DAB, ISM, HFDL, AIS) are turned off. ADS-B off: the previous sample rate comes back. Not on a chained VFO."""
+    on = bool(on) and not OWNER
+    if on == adsb.enabled:
+        return
+    cfg["adsb"] = on
+    if on:
+        if cfg.get("acars"):
+            cfg["acars"] = False
+            acars.set_enabled(False)
+        set_vdl2(False, changes)
+        set_dab(False, changes)
+        set_ism(False, changes)
+        sync_cpdlc()
+        set_hfdl(False)
+        set_ais(False)
+        rate = changes.pop("sample_rate", cfg["sample_rate"])
+        cfg["adsb_prev_rate"] = rate
+        if ADSB_RATE in SAMPLE_RATES:
+            rate = ADSB_RATE
+        changes.update(sample_rate=rate, center_hz=float(adsb_mod.FREQ_HZ), tune_hz=float(adsb_mod.FREQ_HZ), mode="AM")
+    elif cfg.get("adsb_prev_rate") in SAMPLE_RATES and cfg["adsb_prev_rate"] != cfg["sample_rate"]:
+        changes["sample_rate"] = cfg.pop("adsb_prev_rate")
+    adsb.set_enabled(on)
+
+
 @app.route("/api/ism", methods=["GET"])
 def api_ism():
     return jsonify(dict(ism.info(), messages=ism.messages()))
@@ -1167,7 +1256,7 @@ def api_memory_add():
 # ---------- SCAN tab: memory scanner (scanner.py runs in the receiver thread) ----------
 
 SCAN_RAW_DECODERS = (("DAB", lambda: dab.enabled), ("VDL2", lambda: vdl2.enabled), ("ISM", lambda: ism.enabled),
-                     ("HFDL", lambda: hfdl.enabled), ("AIS", lambda: ais.enabled))
+                     ("HFDL", lambda: hfdl.enabled), ("AIS", lambda: ais.enabled), ("ADS-B", lambda: adsb.enabled))
 
 
 def scan_store(entry):
@@ -1687,6 +1776,10 @@ def api_set():
         sstv.set_enabled(cfg["sstv"])
         save_config_later()
         hub.event("status", state())
+    if any(body.get(k) for k in ("acars", "vdl2", "dab", "ism", "hfdl", "hfdl_band", "ais", "ais_center")) and adsb.enabled:
+        set_adsb(False, changes)               # those take the dongle away from 1090 MHz
+        save_config_later()
+        hub.event("status", state())
     if body.get("acars") or body.get("vdl2"):
         set_dab(False, changes)                # the dongle cannot be at 131/136 MHz and in Band III at once
         set_ism(False, changes)                # nor at 433 / 868 MHz
@@ -1784,6 +1877,10 @@ def api_set():
         hub.event("status", state())
     if "ais" in body:
         set_ais(body["ais"])
+        save_config_later()
+        hub.event("status", state())
+    if "adsb" in body:
+        set_adsb(body["adsb"], changes)
         save_config_later()
         hub.event("status", state())
     try:
