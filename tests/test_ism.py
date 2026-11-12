@@ -143,3 +143,12 @@ def test_repeat_found_behind_an_older_row(monkeypatch):
         now[0] = 1000.0 + t
         d._handle(msg(model, rssi, dev=dev), ch)
     assert [m["n"] for m in d.history] == [3, 1]
+
+
+def test_raw_repeats_one_row():
+    d, ch, _ = make()
+    b = {"mod": "OOK", "count": ("30", "46.1"), "level": ("-12.1", "15.2"), "foff": ("+20.8",), "guess": ("No clue...",)}
+    for k in range(5):
+        d._handle_raw(dict(b, foff=(f"+{20 + k}.0",)), ch)
+    d._handle_raw(dict(b, guess=("Pulse Width Modulation with sync/delimiter",)), ch)
+    assert [m["n"] for m in d.history] == [5, 1] and d.raw_count == 6

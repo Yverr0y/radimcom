@@ -8,7 +8,7 @@ ISM (433 / 868 MHz devices such as weather sensors and remote controls, decoded 
 
 **Channels.** rtl_433 gets narrow channels of 256 kS/s that RADIMCOM cuts out of the 2.048 MS/s of the dongle, one rtl_433 each: 433.92 and 433.42 MHz at the 433.92 preset, 868.30 MHz at the 868.30 preset (hover the message counter). With the whole 2 MHz at once, noise and several transmitters merge into long packages and rtl_433 decodes far fewer messages (on a 5 min test recording 107 instead of 236). A device further than about ±110 kHz from a channel centre is not decoded.
 
-**RAW** shows packages of at least 20 pulses that no decoder read, as grey rows: modulation guess, pulses, length and the demodulated bits from rtl_433's pulse analyzer; the tooltip has the flex decoder hint (`-X ...`) and **⧉** shows the pulses at triq.org/pdv. Many are noise or devices rtl_433 does not know. RAW rows are not written to the log.
+**RAW** shows packages of at least 20 pulses that no decoder read, as grey rows: modulation guess, pulses, length and the demodulated bits from rtl_433's pulse analyzer; the tooltip has the flex decoder hint (`-X ...`) and **⧉** shows the pulses at triq.org/pdv. Many are noise or devices rtl_433 does not know. Packages of the same kind within ±15 kHz in 10 s are one row with ×N. RAW rows are not written to the log.
 
 One packet read by two decoders of rtl_433 is one row with both device names (e.g. *LaCrosse-TX29IT / LaCrosse-TX35DTHIT*). Units are SI (°C, km/h, mm).
 

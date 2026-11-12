@@ -49,6 +49,8 @@ CH_GAIN = 1.0                 # the channel back to u8 bytes, same scale as the 
 # channels around each preset, as offsets from the centre of the dongle
 CHANNELS = {433920000: (0, -500000), 868300000: (0,)}
 RAW_MIN_PULSES = 20           # smaller undecoded packages are noise
+RAW_MERGE_S = 10.0            # RAW packages of one kind near one frequency within this time = one row with a count
+RAW_MERGE_HZ = 15000
 RAW_WAIT_S = 1.5              # a RAW row waits this long for a decoded message of the same package (they come on stdout)
 RESTART_HZ = 5000000          # a bigger retune restarts rtl_433 (its FSK detector depends on the frequency)
 RESTART_WAIT_S = 2.0          # at least this long between two starts, if rtl_433 keeps ending
@@ -491,16 +493,30 @@ class IsmDecoder:
         codes = ch.codes.get(b.get("attempt", -1), "")
         if codes:
             parts.append(_clean(codes if len(codes) <= RAW_CODES_MAX else codes[:RAW_CODES_MAX] + "…"))
+        freq_hz = round(ch.start_hz + self.center_hz - self.start_hz + foff)
+        view = b["view"][0] if "view" in b else ""
+        flex = _clean(b["flex"][0]) if "flex" in b else ""
         with self.lock:
             self.raw_count += 1
-            m = {"id": self.next_id, "time": round(now, 1), "last": now, "n": 1,
-                 "freq_hz": round(ch.start_hz + self.center_hz - self.start_hz + foff), "model": "RAW", "models": ["RAW"],
-                 "pkt": None, "dev_id": "", "channel": "", "text": " · ".join(parts), "mod": b.get("mod", ""),
-                 "rssi": rssi, "snr": snr, "protocol": None, "mic": "", "raw": True,
-                 "view": b["view"][0] if "view" in b else "", "flex": _clean(b["flex"][0]) if "flex" in b else ""}
-            self.next_id += 1
-            self.history.append(m)
-            m = dict(m)
+            m = None
+            for row in list(self.history)[-REPEAT_ROWS:][::-1]:
+                if row.get("raw") and now - row["last"] < RAW_MERGE_S and row["guess"] == guess \
+                        and abs(row["freq_hz"] - freq_hz) <= RAW_MERGE_HZ:
+                    row["n"] += 1            # an unknown transmitter (or interference) that keeps sending: one row
+                    row["last"] = now
+                    if codes or not row["has_codes"]:     # show the latest package, but keep one with bits
+                        row.update(text=" · ".join(parts), has_codes=bool(codes), rssi=rssi, snr=snr,
+                                   view=view or row["view"], flex=flex or row["flex"])
+                    m = dict(row)
+                    break
+            if m is None:
+                m = {"id": self.next_id, "time": round(now, 1), "last": now, "n": 1, "freq_hz": freq_hz,
+                     "model": "RAW", "models": ["RAW"], "guess": guess, "has_codes": bool(codes), "pkt": None,
+                     "dev_id": "", "channel": "", "text": " · ".join(parts), "mod": b.get("mod", ""),
+                     "rssi": rssi, "snr": snr, "protocol": None, "mic": "", "raw": True, "view": view, "flex": flex}
+                self.next_id += 1
+                self.history.append(m)
+                m = dict(m)
         self.on_event("ism", m)
         self._emit_state()
 
