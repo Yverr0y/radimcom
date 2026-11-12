@@ -140,6 +140,9 @@ Main Features
   spectrum blue, locked out grey. Decoder and recording of a memory are ignored; the decoders of the scanning VFO pause.
   scanner.py, /api/scan.
 Minor Fixes
+- VIEW key at the far left of the key row: hides the whole lower part with the tabs (slides closed) and shows it
+  again; lit while hidden. A key that opens a tab (DECODE, MEM, SCAN ...) shows it again. Remembered in the browser.
+- Rack mount look: a narrow ear at the left and right edge of the panel, with the corner screws in it.
 - VFO windows: the mode (LSB, FM ...) starts at the same left edge as RX above it; CTCSS / DCS that are off are as
   dark as the other unlit annunciators (AFI, ASQ ...).
 - WFM filters 50, 75, 150 and 200 kHz (default 200 kHz).

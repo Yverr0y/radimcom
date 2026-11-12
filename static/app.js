@@ -11,7 +11,10 @@ const STAGE_W = 1920, STAGE_H = 820;
 let uiScale = 1;
 function fitStage() {
   const w = window.innerWidth, h = window.innerHeight;
-  uiScale = Math.min(w / STAGE_W, h / STAGE_H) || 1;
+  // lower part hidden (VIEW key): only the head is left, so the scale follows the window width alone –
+  // a lower window does not shrink it
+  const headOnly = document.documentElement.classList.contains("body-off");
+  uiScale = (headOnly ? w / STAGE_W : Math.min(w / STAGE_W, h / STAGE_H)) || 1;
   const root = document.documentElement, vw = w / uiScale;
   root.style.setProperty("--k", uiScale);
   root.style.setProperty("--vw", `${vw}px`);
@@ -581,6 +584,34 @@ function showBands(on, animate = true) {
 }
 showBands(recall("bandsShown") !== "0", false);
 $("bandKey").addEventListener("click", () => showBands($("bandGroups").classList.contains("bands-off")));
+// VIEW key (far left): hides / shows the whole lower part with the tabs; the slide is in CSS (html.body-off).
+// Lit while hidden. A key that opens a tab (DECODE, MEM, SCAN …) shows the lower part again.
+let bodyAnimTimer = 0;
+function showBody(on, animate = true) {
+  const root = document.documentElement;
+  // the slide runs only now (html.body-anim): a window resize must change the height of the lower part at once
+  if (animate) {
+    root.classList.add("body-anim");
+    clearTimeout(bodyAnimTimer);
+    bodyAnimTimer = setTimeout(() => {
+      root.classList.remove("body-anim");
+      if (!bodyHidden()) window.dispatchEvent(new Event("resize"));   // open again: sizes may have changed while hidden
+    }, 340);
+  }
+  root.classList.toggle("body-off", !on);
+  $("bodyKey").classList.toggle("on", !on);
+  $("bodyKey").setAttribute("aria-pressed", on ? "false" : "true");
+  store("bodyShown", on ? "1" : "0");
+  // the page scale depends on it (fitStage); when shown, the rest is resized after the slide (timer above)
+  if (on || !animate) fitStage(); else window.dispatchEvent(new Event("resize"));
+}
+const bodyHidden = () => document.documentElement.classList.contains("body-off");
+if (!MAP_ONLY) showBody(recall("bodyShown") !== "0", false);
+$("bodyKey").addEventListener("click", () => showBody(bodyHidden()));
+document.querySelector(".r-keys").addEventListener("click", (e) => {
+  const k = e.target.closest("[aria-controls]");
+  if (k && bodyHidden() && !["bodyKey", "bandKey"].includes(k.id)) showBody(true);
+});
 $("bandGroups").addEventListener("click", async (e) => {
   const b = e.target.closest("[data-f]");
   if (!b || !st) return;
@@ -1907,6 +1938,7 @@ new ResizeObserver(([e]) => {
 
 /** Window height change: new number of rows, the existing image is kept (newest rows at the top). */
 function resizeWaterfall() {
+  if (document.documentElement.classList.contains("body-off")) return;   // hidden lower part: keep the image, resized when shown
   const rows = wfRowsWanted();
   if (rows === WF_ROWS || !wfRow) { WF_ROWS = rows; return; }
   const w = wfCanvas.width;

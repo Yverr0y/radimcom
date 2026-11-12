@@ -178,6 +178,9 @@
 
   <!-- function keys -->
   <div class="r-keys">
+    <div class="kgroup"><span class="klabel">VIEW</span><div class="keys">
+      <button id="bodyKey" class="key" aria-label="Hide the lower part" aria-controls="radioBody" title="Hide / show the whole lower part with the tabs (SPECTRUM, DECODERS, SATELLITES …); lit while it is hidden"><svg class="body-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3.5" width="18" height="17" rx="2"/><path d="M3 9.5H21"/><path class="body-chev" d="M9 13.5L12 16.5L15 13.5"/></svg></button>
+    </div></div>
     <div class="kgroup"><span class="klabel">MODE</span><div class="keys" id="modes"></div></div>
     <div class="kgroup"><span class="klabel">FILTER</span><div class="keys" id="bandwidths"></div></div>
     <div class="kgroup"><span class="klabel">GAIN</span><div class="keys">
@@ -223,7 +226,7 @@ ecordings), play them in the browser">RECS</button>
 </section>
 
 <!-- spectrum and waterfall (SPECTRUM tab), decoders (DECODERS tab), lists of satellites (SATELLITES tab) and settings (SETTINGS tab) -->
-<section class="radio radio-body">
+<section class="radio radio-body" id="radioBody">
   <!-- tabs of the bottom part: spectrum with waterfall, decoders, or lists of satellites -->
   <div class="body-tabs" id="bodyTabs">
     <button data-tab="scope" class="on">SPECTRUM</button>

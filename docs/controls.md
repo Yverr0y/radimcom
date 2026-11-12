@@ -253,6 +253,7 @@ squelch gets a green underline, a transmitting one turns red.
     memory are used (its decoder and recording are ignored). In the spectrum the range scanned is a blue strip and locked out channels are grey ✕ marks.
   - While a VFO scans, its baseband decoders (FT8, WEFAX, CW, RTTY, PACKET, SSTV, ACARS) pause; DAB, VDL2, ISM, HFDL and AIS must be off.
 
+- **VIEW** (far left of the key row): hides the whole lower part with the tabs (SPECTRUM, DECODERS …) with a slide and shows it again; lit while hidden. A key that opens a tab (DECODE, MEM, SCAN …) shows it again. Remembered in the browser.
 - **MENU → BAND**: shows or hides the row of band keys; the spectrum and waterfall take the freed space. Remembered in the browser.
 
 **AD (additional display)**: the dark window under the S-meter and the VFO keys shows one thing at a time, by priority:

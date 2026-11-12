@@ -504,6 +504,21 @@ input:focus, select:focus, button:focus-visible { outline: 2px solid rgba(255, 2
 /* SET key: a gear, as high as the other keys */
 .gear-icon { width: 18px; height: 18px; margin-block: calc((1.1em - 18px) / 2); fill: currentColor; transition: transform .3s; }
 #setKey.on .gear-icon { transform: rotate(60deg); }
+/* VIEW key (far left): a panel with its lower part; the arrow points down = hide, up (lit) = show again */
+.body-icon { width: 20px; height: 18px; margin-block: calc((1.1em - 18px) / 2); fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.body-chev { transform-box: fill-box; transform-origin: center; transition: transform .3s; }
+#bodyKey.on .body-chev { transform: rotate(180deg); }
+/* the lower part (tabs, spectrum …) slides closed under the head and back; what stays is the bottom strip of the
+   panel with its two screws (.radio-body::before), the content and the glass over it fade out */
+/* the transitions only while the key slides it (html.body-anim, set by app.js for the slide): a window resize must
+   change the height at once, as before */
+html.body-anim .radio-body { transition: height .3s ease, min-height .3s ease, padding .3s ease; }
+html.body-anim :where(.radio-body > *) { transition: opacity .3s ease; }
+html.body-anim .radio-body::after { transition: opacity .3s ease; }
+html.body-off .radio-body { height: 26px; min-height: 0; padding-top: 0; padding-bottom: 0; pointer-events: none; }
+html.body-off .radio-body > * { opacity: 0; visibility: hidden; }
+html.body-anim.body-off .radio-body > * { transition: opacity .3s ease, visibility 0s .3s; }
+html.body-off .radio-body::after { opacity: 0; }
 .pass-icon { width: 19px; height: 12px; fill: none; stroke: currentColor; stroke-width: 56; stroke-linecap: round; stroke-linejoin: round; }
 .pass-val { font-size: 9px; font-weight: 600; letter-spacing: 0; opacity: .85; }
 .key.toggle input { display: none; }
@@ -1632,16 +1647,22 @@ html.compact .r-bands .bands button { min-width: 36px; padding-left: 5px; paddin
 .stage { background: radial-gradient(1400px 700px at 50% -10%, #2c3035, #0b0c0d 75%); }
 
 /* ---------- chassis: head and body are one panel ---------- */
-.radio { border: 0; }
+/* rack mount: a narrow ear (24 px) at the left and right edge of the whole panel, parted from it by a groove and a
+   little darker; the four corner screws sit in the ears */
+.radio { border: 0;
+  --ear: linear-gradient(90deg, rgba(0, 0, 0, .16) 0, rgba(0, 0, 0, .16) 23px, rgba(0, 0, 0, .85) 23px, rgba(0, 0, 0, .85) 24px,
+    rgba(255, 255, 255, .13) 24px, rgba(255, 255, 255, .13) 25px, transparent 25px, transparent calc(100% - 25px),
+    rgba(0, 0, 0, .85) calc(100% - 25px), rgba(0, 0, 0, .85) calc(100% - 24px), rgba(255, 255, 255, .13) calc(100% - 24px),
+    rgba(255, 255, 255, .13) calc(100% - 23px), rgba(0, 0, 0, .16) calc(100% - 23px), rgba(0, 0, 0, .16) 100%); }
 .radio-head {
-  padding: 10px 10px 0; border-radius: 14px 14px 0 0;
+  padding: 10px 30px 0; border-radius: 14px 14px 0 0;
   background: var(--alu-brush), var(--alu-sheen), linear-gradient(180deg, var(--alu-top), var(--alu-mid));
   box-shadow: 0 -1px 0 #000, 1px 0 0 #000, -1px 0 0 #000, inset 0 1px 0 rgba(255, 255, 255, .2),
-    inset 1px 0 0 rgba(255, 255, 255, .07), inset -1px 0 0 rgba(0, 0, 0, .6), 0 5px 8px rgba(0, 0, 0, .45);
+    inset 1px 0 0 rgba(255, 255, 255, .07), inset -1px 0 0 rgba(0, 0, 0, .6);   /* no drop shadow: the ears run unbroken into the body */
 }
 .radio-body {
   position: relative; z-index: 0;   /* own stacking context: the glass over the screen stays under the sticky head */
-  padding: 10px 24px 16px; border-radius: 0 0 14px 14px;
+  padding: 10px 32px 16px; border-radius: 0 0 14px 14px;
   background: var(--alu-brush), linear-gradient(180deg, var(--alu-mid), var(--alu-bot));
   box-shadow: 0 1px 0 #000, 1px 0 0 #000, -1px 0 0 #000, inset 1px 0 0 rgba(255, 255, 255, .07),
     inset -1px 0 0 rgba(0, 0, 0, .6), inset 0 -1px 0 rgba(0, 0, 0, .9), 0 20px 50px rgba(0, 0, 0, .6);
@@ -1650,12 +1671,16 @@ html.compact .r-bands .bands button { min-width: 36px; padding-left: 5px; paddin
 .radio-head::before, .radio-body::before { content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none; }
 .radio-head::before {
   background: radial-gradient(circle 7px at 12px 12px, #8a8f96 0, #3d4045 2.5px, #0f1012 5px, rgba(0, 0, 0, .7) 6px, transparent 7px),
-    radial-gradient(circle 7px at calc(100% - 12px) 12px, #8a8f96 0, #3d4045 2.5px, #0f1012 5px, rgba(0, 0, 0, .7) 6px, transparent 7px); }
+    radial-gradient(circle 7px at calc(100% - 12px) 12px, #8a8f96 0, #3d4045 2.5px, #0f1012 5px, rgba(0, 0, 0, .7) 6px, transparent 7px),
+    var(--ear); }
 .radio-body::before {
   background: radial-gradient(circle 7px at 12px calc(100% - 12px), #8a8f96 0, #3d4045 2.5px, #0f1012 5px, rgba(0, 0, 0, .7) 6px, transparent 7px),
-    radial-gradient(circle 7px at calc(100% - 12px) calc(100% - 12px), #8a8f96 0, #3d4045 2.5px, #0f1012 5px, rgba(0, 0, 0, .7) 6px, transparent 7px); }
+    radial-gradient(circle 7px at calc(100% - 12px) calc(100% - 12px), #8a8f96 0, #3d4045 2.5px, #0f1012 5px, rgba(0, 0, 0, .7) 6px, transparent 7px),
+    var(--ear),
+    /* shadow of the head on the body, only between the ears */
+    linear-gradient(180deg, rgba(0, 0, 0, .4), transparent) 25px 0 / calc(100% - 50px) 8px no-repeat; }
 /* the screen sunk into the panel: bevel around it, inner shadow, glass reflection and a slight vignette */
-.radio-body::after { content: ""; position: absolute; z-index: 30; inset: 10px 24px 16px; border-radius: 4px; pointer-events: none;
+.radio-body::after { content: ""; position: absolute; z-index: 30; inset: 10px 32px 16px; border-radius: 4px; pointer-events: none;
   background: linear-gradient(165deg, rgba(255, 255, 255, .05) 0, rgba(255, 255, 255, .015) 24%, rgba(255, 255, 255, 0) 24.5%),
     radial-gradient(130% 110% at 50% 45%, rgba(0, 0, 0, 0) 68%, rgba(0, 0, 0, .3));
   box-shadow: inset 0 3px 8px rgba(0, 0, 0, .85), inset 0 0 0 1px #000, 0 0 0 1px #000,

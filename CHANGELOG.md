@@ -36,6 +36,8 @@ Test beta (GitHub branch `0.114beta1`).
 
 ### Minor Fixes
 
+- **VIEW key** at the far left of the key row: hides the whole lower part with the tabs (SPECTRUM, DECODERS, SATELLITES …) with a slide and shows it again; the key is lit while the lower part is hidden, and only the bottom strip of the panel with its screws stays. A key that opens a tab (DECODE, MEM, SCAN, RCTRL …) shows it again. Remembered in the browser.
+- **Rack mount look:** a narrow ear at the left and right edge of the panel, parted from it by a groove, with the corner screws in it.
 - **VFO windows: the mode (LSB, FM …) starts at the same left edge as RX** above it (it was centred in its field), and **CTCSS / DCS that are off are as dark as the other unlit annunciators** (AFI, ASQ …; they were a lighter grey).
 - **MEMORIES › CHANNELS: the form of an existing channel is titled "Edit channel"** (Brano, brjanicek; was "Channel"), so it reads apart from **New channel**.
 - **WFM filters 50, 75, 150 and 200 kHz** (were 100, 150 and 200 kHz), default 200 kHz (the full broadcast signal: least distortion, best stereo and RDS). 150 kHz is a compromise, 50–75 kHz only for a weak station next to a strong one (distorted, usually without stereo and RDS); any width up to 250 kHz can still be set by dragging the filter edge.
