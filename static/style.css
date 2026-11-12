@@ -2336,7 +2336,7 @@ html[data-ink="dark"] .r-top, html[data-ink="dark"] .r-keys { border-bottom-colo
 .adsb table.adsb-ac-table { min-width: 1240px; }
 .adsb table.adsb-msg-table { min-width: 1100px; }
 .adsb .c-cty { width: 64px; } .adsb .c-icao { width: 74px; } .adsb .c-flt { width: 86px; } .adsb .c-sqk { width: 62px; }
-.adsb .c-alt { width: 84px; } .adsb .c-vr { width: 62px; } .adsb .c-gs { width: 70px; } .adsb .c-trk { width: 70px; }
+.adsb .c-reg { width: 120px; } .adsb .c-alt { width: 84px; } .adsb .c-vr { width: 62px; } .adsb .c-gs { width: 70px; } .adsb .c-trk { width: 70px; }
 .adsb .c-pos { width: 170px; } .adsb .c-dist { width: 62px; } .adsb .c-az { width: 48px; } .adsb .c-cat { width: 150px; }
 .adsb .c-sig { width: 66px; } .adsb .c-n { width: 54px; } .adsb .c-age { width: 58px; }
 .adsb .c-utc { width: 84px; } .adsb .c-df { width: 36px; } .adsb .c-kind { width: 200px; } .adsb .c-hex { width: 250px; }
@@ -2360,6 +2360,16 @@ html[data-ink="dark"] .r-top, html[data-ink="dark"] .r-keys { border-bottom-colo
 .adsb-ml.emerg { box-shadow: inset 3px 0 0 #d83a2e; }
 .adsb-plane.ground svg { fill: #c9a227; }
 .adsb-plane.emerg svg { fill: #ff4bd8; }
+.adsb-plane.net svg { fill: #6cb8ff; opacity: .85; }
+.adsb .ext, .adsb-ml .ext, .adsb td.flt .ext { color: #6cb8ff; }
+/* narrow scrollbars in the ADS-B card (like MEMORIES and ROTOR CONTROL) */
+#adsbCard ::-webkit-scrollbar { width: 6px; height: 6px; }
+#adsbCard ::-webkit-scrollbar-thumb { background: #3a424d; border-radius: 3px; }
+#adsbCard ::-webkit-scrollbar-thumb:hover { background: #56606d; }
+#adsbCard ::-webkit-scrollbar-track { background: transparent; }
+#adsbCard ::-webkit-scrollbar-button { display: none; }
+#adsbCard ::-webkit-scrollbar-corner { background: transparent; }
+@supports not selector(::-webkit-scrollbar) { #adsbCard, #adsbCard * { scrollbar-width: thin; } }
 .leaflet-tooltip.ais-label { background: rgba(20, 24, 30, .85); color: #fff; border: 1px solid #444; box-shadow: none; padding: 0 4px;
   font-size: 10px; line-height: 12px; white-space: nowrap; }
 .leaflet-tooltip.ais-label::before { display: none; }

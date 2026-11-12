@@ -63,6 +63,11 @@ address belongs to an aircraft heard within the last minute (in DF11 or DF17).
   selected = red; grey after a minute) with flight and altitude, their decoded positions as a white trail, the QTH with
   rings at 50, 100, 200 and 300 km, and the list beside it (a click centres the aircraft and opens its details). The
   □ key opens the map alone in a new browser tab (`?map=adsb`).
+- **adsb.fi**: each aircraft is looked up once on adsb.fi (adsb.lol when adsb.fi does not answer; at most one request a
+  second, needs internet): registration and type go to the **Reg / Type** column (description in the tooltip). An aircraft
+  heard here without a position of its own – it answered only the radars (DF0 / 4 / 5 / 11 …) or no position message has
+  come yet – is looked up again every 30 s and gets the position adsb.fi sees: **blue** in the list (position, distance,
+  azimuth, call sign) and a blue aircraft on the MAP. A position decoded here always wins.
 - **MESSAGES**: the last 300 decoded messages: UTC, signal, ICAO, DF, kind, the decoded data and the hex of the message
   (corrected bits included). A click on a row holds the list still (SCROLL PAUSED); the mouse wheel resumes it.
 - **LOG**: `data\logs\adsb_YYYY-MM-DD.txt` (UTC), one line per aircraft at most once a minute: ICAO, flight, squawk,

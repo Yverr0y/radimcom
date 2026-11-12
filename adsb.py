@@ -20,10 +20,12 @@ DF5 / DF21 squawk replies (their parity is the address of the aircraft: they are
 heard in DF11 / DF17).
 """
 import collections
+import json
 import math
 import queue
 import threading
 import time
+import urllib.request
 
 import numpy as np
 
@@ -65,6 +67,12 @@ CATEGORIES = {
 }
 EMERGENCY = {1: "general emergency", 2: "lifeguard / medical", 3: "minimum fuel", 4: "no communications", 5: "unlawful interference",
              6: "downed aircraft"}
+# Aircraft heard here but without a position of their own: position, registration and type from the public ADS-B networks
+NET_URLS = ("https://opendata.adsb.fi/api/v2/hex/{}", "https://api.adsb.lol/v2/hex/{}")
+NET_GAP_S = 1.1           # adsb.fi allows 1 request per second
+NET_AGAIN_S = 30          # an aircraft still without its own position is looked up again after this time
+NET_RECENT_S = 60         # only aircraft heard within this time are looked up
+
 SQUAWK_EMERGENCY = {"7500": "hijack", "7600": "radio failure", "7700": "emergency"}
 
 
@@ -406,6 +414,29 @@ def _decode_me(me, tc, r):
         r["kind"] = f"ADS-B type {tc}"
 
 
+def net_lookup(icao):
+    """The aircraft as the public ADS-B networks see it now (adsb.fi, else adsb.lol), or None when not there / no internet."""
+    for url in NET_URLS:
+        try:
+            req = urllib.request.Request(url.format(icao.lower()), headers={"User-Agent": "RADIMCOM"})
+            with urllib.request.urlopen(req, timeout=6) as r:
+                ac = json.load(r).get("ac") or []
+        except Exception:
+            continue
+        if not ac:
+            return {"found": False, "src": "adsb.fi" if "adsb.fi" in url else "adsb.lol", "lat": None, "lon": None}
+        a = ac[0]
+        alt = a.get("alt_baro")
+        lat, lon = a.get("lat"), a.get("lon")
+        if lat is None and a.get("lastPosition"):
+            lat, lon = a["lastPosition"].get("lat"), a["lastPosition"].get("lon")
+        return {"found": True, "src": "adsb.fi" if "adsb.fi" in url else "adsb.lol", "reg": a.get("r", ""), "type": a.get("t", ""),
+                "desc": a.get("desc", ""), "callsign": (a.get("flight") or "").strip(), "lat": lat, "lon": lon,
+                "seen_pos": a.get("seen_pos"), "alt": alt if isinstance(alt, (int, float)) else None, "ground": alt == "ground",
+                "gs": a.get("gs"), "track": a.get("track", a.get("true_heading"))}
+    return None
+
+
 def _surface_speed(mov):
     """Ground speed (kt) of the movement field of a surface position."""
     steps = ((2, 9, 0.125, 0.125), (9, 13, 1.0, 0.5), (13, 39, 2.0, 1.0), (39, 94, 15.0, 2.0), (94, 109, 70.0, 5.0),
@@ -599,6 +630,7 @@ class AdsbDecoder:
         self._last_state = 0.0
         self._df11 = {}                   # icao -> time of a DF11 not yet confirmed (an aircraft needs two)
         threading.Thread(target=self._worker, name="adsb-dsp", daemon=True).start()
+        threading.Thread(target=self._net_worker, name="adsb-net", daemon=True).start()
 
     # ---------- control ----------
 
@@ -809,7 +841,7 @@ class AdsbDecoder:
             a = {"icao": icao, "flight": "", "category": "", "cat": "", "squawk": "", "emergency": "", "alt": None, "alt_geo": None,
                  "gs": None, "track": None, "hdg": None, "ias": None, "tas": None, "vrate": None, "sel_alt": None, "qnh": None,
                  "lat": None, "lon": None, "pos_time": None, "dist_km": None, "az": None, "ground": False, "tisb": False,
-                 "first": now, "last": now, "n": 0, "level": None, "logged": 0.0,
+                 "first": now, "last": now, "n": 0, "level": None, "logged": 0.0, "net": None, "_net_t": 0.0,
                  "_cpr": [None, None], "_trail": collections.deque(maxlen=TRAIL)}
             self.aircraft[icao] = a
         return a
@@ -899,6 +931,54 @@ class AdsbDecoder:
             a["az"] = round(bearing(qth[0], qth[1], *pos))
         a["_trail"].append((a["lat"], a["lon"], round(now, 1), a["alt"]))
         return pos
+
+    # ---------- adsb.fi / adsb.lol: aircraft without a position of their own ----------
+
+    def _net_next(self, now):
+        """The aircraft to look up next: never looked up first (also those with a position, once, for the registration
+        and type), then those still without their own position, the longest ago first."""
+        best = None
+        with self.lock:
+            for a in self.aircraft.values():
+                if now - a["last"] > NET_RECENT_S:
+                    continue
+                if a["_net_t"] == 0.0:
+                    key = (0, a["first"])
+                elif a["lat"] is None and now - a["_net_t"] >= NET_AGAIN_S:
+                    key = (1, a["_net_t"])
+                else:
+                    continue
+                if best is None or key < best[0]:
+                    best = (key, a)
+            if best:
+                best[1]["_net_t"] = now
+                return best[1]["icao"]
+        return None
+
+    def _net_worker(self):
+        while True:
+            time.sleep(NET_GAP_S)
+            if not self.enabled:
+                continue
+            icao = self._net_next(time.time())
+            if icao is None:
+                continue
+            info = net_lookup(icao)
+            now = time.time()
+            with self.lock:
+                a = self.aircraft.get(icao)
+                if a is None:
+                    continue
+                if info is None:
+                    a["net"] = dict(a["net"], stale=True) if a["net"] else {"found": False}
+                else:
+                    qth = self.station()
+                    if info["lat"] is not None and qth:
+                        info["dist_km"] = round(distance_km(qth[0], qth[1], info["lat"], info["lon"]), 1)
+                        info["az"] = round(bearing(qth[0], qth[1], info["lat"], info["lon"]))
+                    info["time"] = round(now, 1)
+                    a["net"] = info
+                self._changed.add(icao)
 
     @staticmethod
     def _public(a):

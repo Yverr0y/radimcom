@@ -146,5 +146,21 @@ class Demodulator(unittest.TestCase):
         self.assertEqual(d.count, 0)
 
 
+class NetLookup(unittest.TestCase):
+    def test_parse_adsb_fi_answer(self):
+        import io
+        import json
+        from unittest import mock
+        body = {"ac": [{"hex": "896216", "r": "A6-EOV", "t": "A388", "desc": "AIRBUS A-380-800", "flight": "UAE149  ",
+                        "alt_baro": 36000, "gs": 431.2, "track": 290.1, "lat": 48.5, "lon": 16.9, "seen_pos": 1.2}]}
+        with mock.patch("urllib.request.urlopen", return_value=io.BytesIO(json.dumps(body).encode())):
+            r = adsb.net_lookup("896216")
+        self.assertEqual((r["reg"], r["type"], r["callsign"], r["alt"], r["lat"]), ("A6-EOV", "A388", "UAE149", 36000, 48.5))
+        with mock.patch("urllib.request.urlopen", return_value=io.BytesIO(b'{"ac": []}')):
+            self.assertFalse(adsb.net_lookup("896216")["found"])
+        with mock.patch("urllib.request.urlopen", side_effect=OSError("no internet")):
+            self.assertIsNone(adsb.net_lookup("896216"))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -7184,11 +7184,20 @@ function adsbAlt(a) {
 }
 const adsbSpd = (a) => (a.gs != null ? `${Math.round(a.gs)}` : a.tas != null ? `TAS ${a.tas}` : a.ias != null ? `IAS ${a.ias}` : "");
 const adsbTrk = (a) => (a.track != null ? `${Math.round(a.track)}°` : a.hdg != null ? `hdg ${Math.round(a.hdg)}°` : "");
-const adsbLabel = (a) => a.flight || a.icao;
+const adsbLabel = (a) => a.flight || (a.net && a.net.callsign) || a.icao;
+/** Position to show: decoded here, else the one adsb.fi sees (net: true). */
+function adsbPos(a) {
+  if (a.lat != null) return { lat: a.lat, lon: a.lon, t: a.pos_time, dist: a.dist_km, az: a.az, net: false };
+  const n = a.net;
+  if (n && n.lat != null) return { lat: n.lat, lon: n.lon, t: n.time - (n.seen_pos || 0), dist: n.dist_km, az: n.az, net: true, src: n.src };
+  return null;
+}
+const adsbRegType = (a) => (a.net && a.net.found ? [a.net.reg, a.net.type].filter(Boolean).join(" · ") : "");
 
 function adsbSearch(a) {
   const c = icaoCountry(a.icao);
-  return [a.icao, a.flight, a.squawk, a.category, a.emergency, c && c.name].join(" ").toLowerCase();
+  const n = a.net || {};
+  return [a.icao, a.flight, a.squawk, a.category, a.emergency, c && c.name, n.reg, n.type, n.desc, n.callsign].join(" ").toLowerCase();
 }
 
 function adsbList() {
@@ -7308,38 +7317,43 @@ function renderAdsbView() {
 function renderAdsbAcTable() {
   const list = adsbList(), esc = escHtml, now = Date.now() / 1000;
   $("adsbAcRows").innerHTML = list.map((a) => {
+    const p = adsbPos(a);
     const cls = [adsbEmerg(a) ? "emerg" : "", now - a.last > ADSB_OLD_S ? "old" : "", a.icao === adsbSel ? "sel" : ""].filter(Boolean).join(" ");
     const sq = a.squawk ? `<span${adsbEmerg(a) ? ` class="sq-emerg" title="${esc(a.emergency || "emergency")}"` : ""}>${a.squawk}</span>` : (a.emergency ? `<span class="sq-emerg">${esc(a.emergency)}</span>` : "");
     return `<tr data-icao="${a.icao}" class="${cls}"><td class="cty">${adsbFlag(a.icao)}</td>` +
       `<td class="icao"><a href="${adsbGlobe(a.icao)}" target="_blank" rel="noopener" title="globe.adsb.fi${a.tisb ? " · TIS-B / ADS-R (relayed by the ground)" : ""}">${a.icao}</a>${a.tisb ? '<span class="muted"> T</span>' : ""}</td>` +
-      `<td class="flt">${a.flight ? `<a href="${adsbLol(a)}" target="_blank" rel="noopener" title="adsb.lol">${esc(a.flight)}</a>` : ""}</td>` +
+      `<td class="flt">${a.flight ? `<a href="${adsbLol(a)}" target="_blank" rel="noopener" title="adsb.lol">${esc(a.flight)}</a>` : (a.net && a.net.callsign ? `<span class="ext" title="Call sign from ${esc(a.net.src)}">${esc(a.net.callsign)}</span>` : "")}</td>` +
+      `<td class="ext" title="${esc((a.net && a.net.desc) || "")}">${esc(adsbRegType(a))}</td>` +
       `<td>${sq}</td><td class="num">${adsbAlt(a)}</td><td class="num">${a.vrate == null ? "" : (a.vrate > 0 ? "+" : "") + a.vrate}</td>` +
       `<td class="num">${adsbSpd(a)}</td><td class="num">${adsbTrk(a)}</td>` +
-      `<td>${a.lat != null ? `<a href="#" class="adsb-goto" title="Show on the MAP">${a.lat.toFixed(3)}, ${a.lon.toFixed(3)}</a> <span class="muted">${adsbAge(a.pos_time)}</span>` : ""}</td>` +
-      `<td class="num">${a.dist_km == null ? "" : `${Math.round(a.dist_km)} km`}</td><td class="num">${a.az == null ? "" : `${a.az}°`}</td>` +
+      `<td>${p ? `<a href="#" class="adsb-goto${p.net ? " ext" : ""}" title="${p.net ? `From ${esc(p.src)}: not received here. ` : ""}Show on the MAP">${p.lat.toFixed(3)}, ${p.lon.toFixed(3)}</a> <span class="muted">${adsbAge(p.t)}</span>` : ""}</td>` +
+      `<td class="num${p && p.net ? " ext" : ""}">${!p || p.dist == null ? "" : `${Math.round(p.dist)} km`}</td><td class="num${p && p.net ? " ext" : ""}">${!p || p.az == null ? "" : `${p.az}°`}</td>` +
       `<td title="${esc(a.cat || "")}">${esc(a.category || "")}</td><td class="num">${a.level == null ? "" : `${a.level.toFixed(0)} dB`}</td>` +
       `<td class="num">${a.n}</td><td class="num">${adsbAge(a.last)}</td></tr>`;
   }).join("");
   $("adsbAcEmpty").hidden = list.length > 0;
 }
 
-function adsbIcon(a, sel) {
+function adsbIcon(a, sel, net) {
   const old = Date.now() / 1000 - a.last > ADSB_OLD_S;
-  const cls = `hfdl-plane adsb-plane${sel ? " sel" : ""}${old ? " old" : ""}${adsbEmerg(a) ? " emerg" : ""}${a.ground ? " ground" : ""}`;
-  const svg = `<svg viewBox="0 0 24 24" style="transform: rotate(${Math.round(a.track ?? a.hdg ?? 0)}deg)"><path d="M12 2c.6 0 1 .9 1 2v5.2l8 4.6v2l-8-2.5v4.9l2.2 1.6V21L12 20.2 8.8 21v-1.2L11 18.2v-4.9l-8 2.5v-2l8-4.6V4c0-1.1.4-2 1-2z"/></svg>`;
+  const cls = `hfdl-plane adsb-plane${sel ? " sel" : ""}${old ? " old" : ""}${adsbEmerg(a) ? " emerg" : ""}${a.ground ? " ground" : ""}${net ? " net" : ""}`;
+  const trk = net ? a.track ?? a.net.track ?? a.hdg : a.track ?? a.hdg;
+  const svg = `<svg viewBox="0 0 24 24" style="transform: rotate(${Math.round(trk ?? 0)}deg)"><path d="M12 2c.6 0 1 .9 1 2v5.2l8 4.6v2l-8-2.5v4.9l2.2 1.6V21L12 20.2 8.8 21v-1.2L11 18.2v-4.9l-8 2.5v-2l8-4.6V4c0-1.1.4-2 1-2z"/></svg>`;
   return L.divIcon({ className: cls, html: svg, iconSize: [22, 22], iconAnchor: [11, 11] });
 }
 
 function adsbPopup(a) {
   const esc = escHtml, c = icaoCountry(a.icao);
   const lines = [`<b>${esc(a.flight || a.icao)}</b> ICAO ${a.icao}${c ? ` · ${esc(c.name)}` : ""}`];
-  if (a.category) lines.push(esc(a.category));
+  if (adsbRegType(a) || a.category) lines.push(esc([adsbRegType(a), a.net && a.net.desc, a.category].filter(Boolean).join(" · ")));
   const nav = [a.squawk ? `squawk ${a.squawk}` : "", adsbAlt(a) ? `${adsbAlt(a)} ft` : "", a.vrate != null ? `${a.vrate > 0 ? "+" : ""}${a.vrate} ft/min` : "",
     adsbSpd(a) ? `${adsbSpd(a)} kt` : "", adsbTrk(a)].filter(Boolean).join(" · ");
   if (nav) lines.push(esc(nav));
   if (a.emergency) lines.push(`<span class="sq-emerg">${esc(a.emergency.toUpperCase())}</span>`);
   if (a.sel_alt != null || a.qnh != null) lines.push(esc([a.sel_alt != null ? `selected ${a.sel_alt} ft` : "", a.qnh != null ? `QNH ${a.qnh} hPa` : ""].filter(Boolean).join(" · ")));
-  if (a.lat != null) lines.push(`position ${a.lat.toFixed(4)}, ${a.lon.toFixed(4)} (${adsbAge(a.pos_time)} ago)${a.dist_km != null ? ` · ${Math.round(a.dist_km)} km, ${a.az}°` : ""}`);
+  const p = adsbPos(a);
+  if (p) lines.push(`${p.net ? `<span class="ext">position from ${esc(p.src)}</span>` : "position"} ${p.lat.toFixed(4)}, ${p.lon.toFixed(4)} (${adsbAge(p.t)} ago)${p.dist != null ? ` · ${Math.round(p.dist)} km, ${p.az}°` : ""}`);
+  if (p && p.net && a.net.alt != null && a.alt == null) lines.push(`<span class="ext">${a.net.alt.toLocaleString("en-US")} ft · ${a.net.gs != null ? Math.round(a.net.gs) : "?"} kt (${esc(a.net.src)})</span>`);
   lines.push(`last message ${adsbUtc(a.last)} UTC · ${a.n} msgs · <a href="${adsbGlobe(a.icao)}" target="_blank" rel="noopener">globe.adsb.fi</a> · <a href="${adsbLol(a)}" target="_blank" rel="noopener">adsb.lol</a>`);
   return lines.join("<br>");
 }
@@ -7379,22 +7393,22 @@ async function renderAdsbMap() {
   adsbMap.invalidateSize();
   const lay = adsbMapLayers;
   lay.tracks.clearLayers();
-  const list = adsbList().filter((a) => a.lat != null);
+  const list = adsbList().filter((a) => adsbPos(a));
   const keep = new Set();
   for (const a of list) {
     keep.add(a.icao);
-    const sel = a.icao === adsbSel;
+    const sel = a.icao === adsbSel, p = adsbPos(a);
     if (a.pts.length > 1) L.polyline(a.pts.map((p) => [p[0], p[1]]), { color: sel ? "#ff4b3c" : "#fff", weight: sel ? 2.5 : 1.5, opacity: sel ? 0.9 : 0.5, interactive: false }).addTo(lay.tracks);
     let mk = lay.marks.get(a.icao);
-    const alt = adsbAlt(a);
+    const alt = adsbAlt(a) || (p.net && a.net.alt != null ? a.net.alt.toLocaleString("en-US") : "");
     const label = `${escHtml(adsbLabel(a))}${alt ? `<br>${alt}` : ""}`;
     if (!mk) {
-      mk = L.marker([a.lat, a.lon]).bindPopup("").bindTooltip("", { permanent: true, direction: "bottom", offset: [0, 8], className: "ais-label" }).addTo(lay.planes);
+      mk = L.marker([p.lat, p.lon]).bindPopup("").bindTooltip("", { permanent: true, direction: "bottom", offset: [0, 8], className: "ais-label" }).addTo(lay.planes);
       mk.on("click", () => adsbSelect(a.icao, false));
       lay.marks.set(a.icao, mk);
     }
-    mk.setLatLng([a.lat, a.lon]);
-    mk.setIcon(adsbIcon(a, sel));
+    mk.setLatLng([p.lat, p.lon]);
+    mk.setIcon(adsbIcon(a, sel, p.net));
     mk.setTooltipContent(label);
     mk.setPopupContent(adsbPopup(a));
   }
@@ -7403,15 +7417,16 @@ async function renderAdsbMap() {
     adsbMapFitted = true;
     adsbMap.fitBounds(L.featureGroup([...lay.marks.values()]).getBounds().pad(0.3), { maxZoom: 10 });
   }
-  $("adsbMapList").innerHTML = `<div class="ais-ml-head">${list.length} aircraft with a position${adsbAc.size > list.length ? ` (${adsbAc.size - list.length} without)` : ""}</div>` +
+  const nNet = list.filter((a) => adsbPos(a).net).length;
+  $("adsbMapList").innerHTML = `<div class="ais-ml-head">${list.length} aircraft with a position${nNet ? `, <span class="ext">${nNet} from adsb.fi</span>` : ""}${adsbAc.size > list.length ? ` (${adsbAc.size - list.length} without)` : ""}</div>` +
     list.map((a) => {
-      const c = icaoCountry(a.icao);
+      const c = icaoCountry(a.icao), p = adsbPos(a);
       return `<div class="ais-ml adsb-ml${a.icao === adsbSel ? " sel" : ""}${Date.now() / 1000 - a.last > ADSB_OLD_S ? " old" : ""}${adsbEmerg(a) ? " emerg" : ""}" data-icao="${a.icao}">` +
         `${c && c.cc ? `<img src="${flagUrl(c.cc)}" alt="" title="${escHtml(c.name)}">` : "<span></span>"}` +
         `<b>${escHtml(adsbLabel(a))}</b><span class="mmsi">${a.icao}</span><span class="stype">${adsbAlt(a)}</span>` +
-        `<span>${a.dist_km == null ? "" : `${Math.round(a.dist_km)} km`}</span><span class="age">${adsbAge(a.last)}</span></div>`;
+        `<span${p.net ? ' class="ext"' : ""}>${p.dist == null ? "" : `${Math.round(p.dist)} km`}</span><span class="age">${adsbAge(a.last)}</span></div>`;
     }).join("");
-  $("adsbMapNote").textContent = `${list.length} with a position · yellow = aircraft turned to its track · red = selected · grey = not heard for 1 min · white trail = decoded positions${adsbQth ? " · blue rings 50 / 100 / 200 / 300 km" : ""} · map © OpenStreetMap`;
+  $("adsbMapNote").textContent = `${list.length} with a position · yellow = aircraft turned to its track · blue = position from adsb.fi (not received here) · red = selected · grey = not heard for 1 min · white trail = decoded positions${adsbQth ? " · blue rings 50 / 100 / 200 / 300 km" : ""} · map © OpenStreetMap`;
 }
 
 function adsbSelect(icao, pan = true) {
