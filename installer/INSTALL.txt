@@ -98,18 +98,35 @@ Main Features
   LIM = soft limiter instead of hard clipping (+4 dB with ALC). Parts in SETTINGS -> AUDIO -> DYN.
   Smooth ALC gain (no clicks): SETTINGS -> SDR DONGLE -> ADVANCED, on by default. SETTINGS -> AUDIO
   rearranged; smaller gaps between key groups.
+- New look - a front panel like a real rack receiver: one glass over all the displays, the VFO keys (each with its
+  CUE key) under their windows, function keys as two-row modules, logo / MONITOR / RECORD in a column at the right,
+  band keys across the whole width, rack ears with screws. Keys with an LED window, each key group in its own colour
+  (DECODE fuchsia), the lit tab and its accents in the colour of its group. Clock with faint unlit segments and the
+  date, faders with a dB scale, level meter with peak hold and CLIP LEDs.
 - ISM (by Brano, brjanicek): about twice as many messages - narrow 256 kS/s channels cut out of the dongle
   samples, one rtl_433 each (433.92 + 433.42 MHz, or 868.30 MHz), about 6x less CPU. RAW checkbox: packages
   no decoder read shown as grey rows (pulses, bits, link to triq.org/pdv). One packet read by two decoders
   = one row, repeats merged (xN), SI units.
-- DECODERS (by Brano, brjanicek): page keys in groups with separators - CW, FT8, PACKET, RTTY, SSTV, WEFAX |
-  ACARS, ADS-B, HFDL, VDL2 | AIS | ISM.
-- SCAN: new tile FM BCAST (right of RANGE) - searches 88-108 MHz in WFM for broadcast stations: grid 50 kHz, only
-  the core of each channel is measured and a station must be the strongest point +-100 kHz around, so the VFO lands
-  on the centre of the station. Each station is heard LISTEN s (8), then the next one up the band. STORE FOUND puts
-  the stations into the group "FM YYYY-MM-DD", named by their RDS PS. A station found is checked over 3 blocks
-  before tuning (no more the same station twice, once 50 kHz off).
-- SCAN: VISIBLE BAND and RANGE scan only in AM or FM (WFM, USB, LSB, CW keys removed).
+- SCAN: scanner of memories, ranges and the FM broadcast band. New key SCAN in the MENU group -> SCAN tab. All
+  channels in the band of the dongle are measured at once from the spectrum; the tuner moves only between windows.
+  What is scanned = four tiles: MEMORY (all / favourites / a group, as chips; each channel in its own mode),
+  VISIBLE BAND (the spectrum shown; the tuner is not moved), RANGE FROM-TO-STEP-MODE-BW (presets: airband 8.33 kHz,
+  PMR446, 2 m, 70 cm, LPD433, marine VHF, CB; STORE FOUND = found frequencies into the memory group
+  "Scan YYYY-MM-DD"); VISIBLE BAND and RANGE in AM or FM only, the MODE keys switch the VFO too. FM BCAST searches
+  88-108 MHz in WFM: grid 50 kHz, only the core of each channel is measured and a station must be the strongest point
+  +-100 kHz around (checked over 3 blocks), so the VFO lands on its centre; each station is heard LISTEN s (8), then
+  the next one up the band; STORE FOUND puts them into the group "FM YYYY-MM-DD", named by their RDS PS.
+  Keys: START/STOP; HOLD, SKIP (5 min), LOCK OUT (the channel heard now, until STOP), prev / next only while
+  scanning; REC = WAV of each activity with 0.5 s before the signal came back (recordings folder\scan). Settings
+  behind the gear key: AUTO SQUELCH (noise floor of each channel + MARGIN), CONTINUE after signal / at once / after
+  time, PRIORITY EVERY x s, CARRIER LOCKOUT (30 s - 30 min), PICK next / strongest, KEEP HISTORY days; REC and these
+  settings changed while scanning take effect at once. Pages: CHANNELS (per memory SCAN on/off, own SQ, own ASQ
+  margin, PRIO, edited in place; x in a row = locked out until STOP, easy to hit while scanning; the channel heard
+  has a speaker icon), ACTIVITY (what was heard, with the name and note of a memory at that frequency; CSV export,
+  play), HEATMAP (frequency x hour of the day). Both show THIS SCAN: a START of another source / range begins a new
+  one, so they start empty; CLR empties them by hand; the history of all VFOs (data\logs\scan_YYYY-MM-DD.csv) is
+  kept KEEP HISTORY days (31). Range in the spectrum blue, locked out grey. Decoder and recording of a memory are
+  ignored; the decoders of the scanning VFO pause. scanner.py, /api/scan.
 - DAB and DSD are modes with their own tabs (by Brano, brjanicek): MODE has a new key DAB (DAB on + DAB tab with the
   DAB+ card); another mode, a band button or a memory that is not DAB turns DAB off. DSD opens its own DSD tab.
   The DAB and DSD pages are gone from DECODERS.
@@ -148,29 +165,10 @@ Main Features
   (ADS-B data, position with its source and age, ground station, message count). MAP = aircraft with a known position (ADS-B, ADS-C, and on VDL2 the
   approximate position from XID frames), tracks, VDL2 ground stations, list beside the map; the square key in the top
   right corner opens the map alone in a new browser tab.
-- SCAN: scanner of memories and ranges. New key SCAN in the MENU group -> SCAN tab. All channels in the band of the
-  dongle are measured at once from the spectrum; the tuner moves only between windows. What is scanned = three tiles:
-  MEMORY (all / favourites / a group, as chips), VISIBLE BAND (the spectrum shown; MODE keys switch the VFO too; the
-  tuner is not moved, the spectrum stays as it is), RANGE FROM-TO-STEP-MODE-BW (presets: airband 8.33 kHz, PMR446, 2 m,
-  70 cm, LPD433, marine VHF, CB; STORE FOUND = found frequencies into the memory group "Scan YYYY-MM-DD"). Keys:
-  START/STOP; HOLD, SKIP (5 min), prev / next only while scanning; REC = WAV of each activity with 0.5 s before the
-  signal came back (recordings folder\scan). Settings behind the gear key: AUTO SQUELCH (noise floor of each channel +
-  MARGIN), CONTINUE after signal / at once / after time, PRIORITY EVERY x s, CARRIER LOCKOUT (30 s - 30 min), PICK next
-  / strongest, KEEP HISTORY days. Pages: CHANNELS (per memory SCAN on/off, own SQ, own ASQ margin, PRIO, edited in
-  place; x in a row = locked out until STOP), ACTIVITY (what was heard, CSV export, play), HEATMAP (frequency x hour of
-  the day). Both show THIS SCAN: a START of another source / range begins a new one, so they start empty; CLR empties
-  them by hand; the history of all VFOs (data\logs\scan_YYYY-MM-DD.csv) is kept KEEP HISTORY days (31). Range in the
-  spectrum blue, locked out grey. Decoder and recording of a memory are ignored; the decoders of the scanning VFO pause.
-  scanner.py, /api/scan.
 Minor Fixes
 - RECS key tooltip: the broken path data\recordings fixed.
-- DECODE colour (key group, DECODERS tab and its accent) changed from pink to fuchsia (#e45cff).
-- SCAN: REC and the settings behind the gear changed while scanning now take effect at once (REC switched on
-  during a scan recorded nothing). WAV files: subfolder "scan" of the recordings folder.
-- SCAN -> CHANNELS: the x (LOCK OUT) is easy to hit while scanning (rows do not move under the mouse);
-  HEARD shows a speaker instead of the play arrow. New key LOCK OUT beside SKIP: the channel heard now is left
-  out until STOP.
-- SCAN -> ACTIVITY: a row at the frequency of a memory shows its name (when it has none) and its note.
+- DECODERS (by Brano, brjanicek): page keys in groups with separators - CW, FT8, PACKET, RTTY, SSTV, WEFAX |
+  ACARS, ADS-B, HFDL, VDL2 | AIS | ISM.
 - AGC+ PRESETS above the sliders (SETTINGS -> VFO -> ADVANCED -> AGC+), the matching one lit: CAREFUL (the old
   behaviour, no clipping), MODERATE (new default: gain up to a -2...-5 dBFS peak, short clipping up to 100 ppm tolerated,
   2.5-4 dB more gain), BOLD (new setting "Bold: up while clipping <=": climbs into clipping up to 20 ppm, down above 300 ppm,
@@ -181,25 +179,8 @@ Minor Fixes
 - VIEW key at the far left of the key row: hides the whole lower part with the tabs (slides closed) and shows it
   again; lit while hidden. A key that opens a tab (DECODE, MEM, SCAN ...) shows it again. Remembered in the browser.
   Hidden: the window can be as low as the head; a lower or narrower window shrinks the panel whole (aspect kept).
-- Rack mount look: a narrow ear at the left and right edge of the panel, with the corner screws in it.
 - The keys no longer overflow into a second line in a window wider than 1920 x 820, nor on macOS (wider system
   font): the whole panel is drawn a little smaller instead.
-- Front panel like a real set: the clock shows the unlit segments faintly, with the date and LOC / UTC under the
-  digits; faders with a dB scale (+3 ... -inf dB) and ribbed caps, no level colours in the slot; level meter with dB
-  numbers, peak hold (1 s) and a CLIP LED for each channel; the logo printed on the panel with SDR COMMUNICATIONS
-  RECEIVER under it; legends TIME, MONITOR and RECORD.
-- Keys with an LED window: every key of the head (MODE ... MENU, band keys, VFO keys) has a small LED window in its
-  top left corner in place of the LED line along the bottom; the keys keep their size. Each group of function keys
-  has its own colour of the LED and the lit legend (VIEW white, MODE yellow, FILTER orange, GAIN green, STEP cyan,
-  TUNE lime, AUDIO violet, DECODE pink, TRACKING blue, MENU teal); the lit tab of the lower part has the colour of
-  the group whose key opens it, and the same colour is the accent inside the tab (lit sub-tab keys, headings,
-  table heads, values); the main action keys of MEMORIES and SCAN are keys like the others, not gold. Speaker, REC and REC SQ have a wider LED window
-  at the left.
-- New layout of the head: one glass over all the displays (S-meter, VFO windows, clock with the additional
-  display), the VFO keys under their windows (each with a CUE key of that VFO), the function keys as modules of two rows (LED in the top middle), the logo, MONITOR and
-  RECORD in a column at the right, the band keys across the whole width; the lower part sunk deeper into the panel.
-- VFO windows: the mode (LSB, FM ...) starts at the same left edge as RX above it; CTCSS / DCS that are off are as
-  dark as the other unlit annunciators (AFI, ASQ ...).
 - WFM filters 50, 75, 150 and 200 kHz (default 200 kHz).
 - Memory channel location: LAT / LON (decimal degrees) or CHOOSE ON MAP in the channel form, saved in memories.json and
   in the JSON / CSV export and import; the CHANNELS table shows LAT, LON, azimuth and distance from the
