@@ -762,10 +762,11 @@ ecordings), play them in the browser">RECS</button>
         <div class="bands" id="ismBands"></div>
         <span id="ismInfo" class="muted"></span>
         <label class="wf-opt log-opt" title="Write to the daily log data\logs\ism_YYYY-MM-DD.txt (UTC, shared by all VFOs; a repeated message once)"><input type="checkbox" data-log="ism">LOG</label>
+        <label class="wf-opt" title="RAW: also show packages of pulses no decoder of rtl_433 could read (grey rows): modulation guess, pulses, length and the demodulated bits; ⧉ opens the pulses at triq.org/pdv. Many of them are noise or unknown devices. Not written to the log."><input type="checkbox" id="ismRaw">RAW</label>
         <button id="ismClear" class="key small" title="Clear the list">CLR</button>
       </div>
       <p class="note">Devices on 433 and 868 MHz: weather sensors, remote controls, tyre sensors and more, decoded by rtl_433.
-        The VFO runs at 2.048 MS/s, so everything within about ±1 MHz of the centre is decoded at once, and its audio is muted. The buttons centre the VFO.
+        The VFO runs at 2.048 MS/s and its audio is muted; RADIMCOM cuts narrow channels of 256 kHz out of it for rtl_433 (433.92 and 433.42 MHz, or 868.30 MHz), which decodes about twice as many messages as the whole band at once. The buttons centre the VFO.
         Gain stays the VFO's: a nearby sensor can overload the dongle at high gain. RTL-SDR only.</p>
       <div class="ft8-table">
         <table>
