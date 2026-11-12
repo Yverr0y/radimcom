@@ -218,7 +218,7 @@
       <button id="recsKey" class="key" aria-controls="recsPane" title="RECS: the RECORDINGS tab – the MP3 files recorded by REC / REC SQ (data\recordings), play them in the browser">RECS</button>
     </div></div>
     <div class="kgroup" data-g="DECODE"><span class="klabel">DECODE</span><div class="keys">
-      <button id="decKey" class="key" aria-controls="decPane" title="DEC: decoders on/off – shows or hides the DECODERS tab, one page for each decoder (FT8, WEFAX, CW, RTTY, SSTV, PACKET, ACARS, VDL2, HFDL, AIS, ADS-B, ISM); DAB and DSD are modes with their own tabs">DEC</button>
+      <button id="decKey" class="key" aria-controls="decPane" title="DEC: decoders on/off – shows or hides the DECODERS tab, one page for each decoder (CW, FT8, PACKET, RTTY, SSTV, WEFAX | ACARS, ADS-B, HFDL, VDL2 | AIS | ISM); DAB and DSD are modes with their own tabs">DEC</button>
     </div></div>
     <div class="kgroup" data-g="TRACKING"><span class="klabel">TRACKING</span><div class="keys">
       <button id="satKey" class="key sat-key" aria-label="Satellite tracking" aria-controls="amsatPane" title="Satellite tracking: the SATELLITES tab (passes, map, Doppler, rotor)"><svg class="sat-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.6 7C3.2 12.6 8.4 18.8 15 17.4Z"/><path d="M9.8 12.2L13.4 8.6"/><circle cx="14.6" cy="7.4" r="1.6"/><path d="M16.6 3.1A5 5 0 0 1 19 5.5"/><path d="M17.2.6A8 8 0 0 1 21.5 4.9"/><path d="M7.6 15.4L5.8 20.6M11 17.2L12.4 20.6M3.2 21.2H15"/></svg></button>
@@ -775,10 +775,11 @@
         <div class="bands" id="ismBands"></div>
         <span id="ismInfo" class="muted"></span>
         <label class="wf-opt log-opt" title="Write to the daily log data\logs\ism_YYYY-MM-DD.txt (UTC, shared by all VFOs; a repeated message once)"><input type="checkbox" data-log="ism">LOG</label>
+        <label class="wf-opt" title="RAW: also show packages of pulses no decoder of rtl_433 could read (grey rows): modulation guess, pulses, length and the demodulated bits; ⧉ opens the pulses at triq.org/pdv. Many of them are noise or unknown devices. Not written to the log."><input type="checkbox" id="ismRaw">RAW</label>
         <button id="ismClear" class="key small" title="Clear the list">CLR</button>
       </div>
       <p class="note">Devices on 433 and 868 MHz: weather sensors, remote controls, tyre sensors and more, decoded by rtl_433.
-        The VFO runs at 2.048 MS/s, so everything within about ±1 MHz of the centre is decoded at once, and its audio is muted. The buttons centre the VFO.
+        The VFO runs at 2.048 MS/s and its audio is muted; RADIMCOM cuts narrow channels of 256 kHz out of it for rtl_433 (433.92 and 433.42 MHz, or 868.30 MHz), which decodes about twice as many messages as the whole band at once. The buttons centre the VFO.
         Gain stays the VFO's: a nearby sensor can overload the dongle at high gain. RTL-SDR only.</p>
       <div class="ft8-table">
         <table>

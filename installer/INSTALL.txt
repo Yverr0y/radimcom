@@ -98,6 +98,12 @@ Main Features
   LIM = soft limiter instead of hard clipping (+4 dB with ALC). Parts in SETTINGS -> AUDIO -> DYN.
   Smooth ALC gain (no clicks): SETTINGS -> SDR DONGLE -> ADVANCED, on by default. SETTINGS -> AUDIO
   rearranged; smaller gaps between key groups.
+- ISM (by Brano, brjanicek): about twice as many messages - narrow 256 kS/s channels cut out of the dongle
+  samples, one rtl_433 each (433.92 + 433.42 MHz, or 868.30 MHz), about 6x less CPU. RAW checkbox: packages
+  no decoder read shown as grey rows (pulses, bits, link to triq.org/pdv). One packet read by two decoders
+  = one row, repeats merged (xN), SI units.
+- DECODERS (by Brano, brjanicek): page keys in groups with separators - CW, FT8, PACKET, RTTY, SSTV, WEFAX |
+  ACARS, ADS-B, HFDL, VDL2 | AIS | ISM.
 - SCAN: new tile FM BCAST (right of RANGE) - searches 88-108 MHz in WFM for broadcast stations: grid 50 kHz, only
   the core of each channel is measured and a station must be the strongest point +-100 kHz around, so the VFO lands
   on the centre of the station. Each station is heard LISTEN s (8), then the next one up the band. STORE FOUND puts

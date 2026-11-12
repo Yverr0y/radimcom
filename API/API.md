@@ -160,6 +160,7 @@ Send any combination of these keys:
 | `dab`, `dab_channel` | DAB on / off and channel. `dab: true` starts welle-cli and switches the VFO to 2.048 MS/s on the channel centre (ACARS and VDL2 off, RTL-SDR only); `dab: false` restores the sample rate; `dab_channel` alone retunes a running DAB |
 | `hfdl`, `hfdl_band` | HFDL decoder on / off; `hfdl_band` (index into `hfdl_bands`) centres and tunes the VFO on the middle of that band and turns HFDL on (ACARS, VDL2, DAB and ISM off). HFDL decodes all channels inside the band of the VFO and mutes its audio; not on a chained VFO |
 | `ais`, `ais_center` | AIS decoder on / off; `ais_center: true` centres and tunes the VFO on 162.000 MHz in FM (between the two AIS channels, both are decoded) and turns AIS on (ACARS, VDL2, DAB, ISM and HFDL off). AIS decodes the channels inside the band of the VFO and mutes its audio; not on a chained VFO |
+| `ism_raw` | ISM: also show packages no decoder read (rtl_433 pulse analyzer), saved per VFO |
 | `ism`, `ism_hz` | ISM decoder on / off and preset (one of `ism_freqs`). `ism: true` starts rtl_433, mutes the audio and switches the VFO to 2.048 MS/s on that preset in AM (ACARS, VDL2 and DAB off, RTL-SDR only); `ism: false` restores the sample rate; `ism_hz` alone re-centres a running decoder |
 | `rec`, `rec_sq` | MP3 recording on / off: `rec` everything, a new file after 15 min; `rec_sq` only with an open squelch, each session in its own file |
 | `log` | daily logs, e.g. `{"log": {"cw": true, "ft8": false}}` |
@@ -187,7 +188,7 @@ On connect a `status` event with the full state, then:
 | `vdl2state` | VDL2 decoder state |
 | `dabstate` | DAB state (channel, welle-cli connected, dongle on channel, error) |
 | `adsb`, `adsbstate` | ADS-B: changed aircraft and new messages once a second; decoder state (see `/api/adsb`) |
-| `ism`, `ismstate` | ISM device message (the same `id` again = the repeat count `n` of a message grew); decoder state (`enabled`, `error`, `count`, `dropped`, `running`) |
+| `ism`, `ismstate` | ISM device message (the same `id` again = the repeat count `n` of a message grew); decoder state (`enabled`, `error`, `count`, `dropped`, `running`, `raw`, `raw_count`, `channels` = centres of the 256 kS/s rtl_433 channels); a RAW row has `raw: true`, `view` (triq.org link) and `flex` |
 
 A comment line `: ping` is sent every 15 s when nothing else happens.
 
