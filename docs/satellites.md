@@ -36,6 +36,8 @@ Downloaded data (internet needed only for the download; the last copy is used of
 
 ## Doppler correction (TRACK)
 
+![TRACK page with a yellow callout for each part: pages, satellite, Doppler, transmitters, rotor plan, TRACK / STOP, polar plot and pass data](images/satellites_annotated.png)
+
 ![TRACK page with FO-29: the Doppler correction on its linear transponder (VFO tuned to 435.855 MHz, +5.4 kHz), the transmitters from SatNOGS DB, and the rotor waiting for the pass with an overlap plan, TRACK and STOP and the polar plot of the pass](images/sat_track.png)
 
 A click on a transmitter of the list tunes the VFO to its downlink (the middle of a transponder), sets its mode (FM, USB, CW...) and keeps
@@ -94,4 +96,13 @@ broadcast transmitter or a repeater, taken from the channels of **MEMORIES** tha
   azimuth and distance, and a filter (name, frequency, group, note); a click on a point scrolls the list to its row. The channel
   aimed at last is selected and scrolled into view in **MEMORIES › CHANNELS** when that tab opens next. A change in MEMORIES shows on the map at once.
 - **Recalling a channel with a location** (a row of **MEMORIES › CHANNELS**, a memory tag in the spectrum, RECALL in the editor, the memory
-  step) opens the **ROTOR CONTROL** tab by itself (the RCTRL key goes on), centres the map on the channel and turns the rotor to it.
+  step) opens the **ROTOR CONTROL** tab by itself (the RCTRL key goes on), centres the map on the channel and turns the rotor to it
+  – unless **MEMORY RECALL** is disconnected on the CONNECTION page.
+- **CONNECTION:** a block diagram of the three sources of the wanted AZ / EL – **SAT TRACKER** (SATELLITES › TRACK), **MEMORY RECALL**
+  (a recalled channel with a location) and **RCTRL MAP** (a click on the map, a point or the list). Each goes through a switch to one bus
+  and on to the **ROTOR** block (antenna, AZ / EL now, state). A click on a source or on its switch connects or disconnects it: connected =
+  green, disconnected = grey with the switch open. The rotor block **glows green** while at least one source is connected, **grey** when
+  none is. A disconnected source does not move the rotor: the SAT TRACKER only calculates the pass (**CALC ONLY** on the TRACK page; the
+  rotor takes hand commands meanwhile), a recalled memory only tunes (useful when going through a band: the antenna does not swing to
+  every stored channel), a click on the map only draws the target. The switches belong to the station (`data\rotor.json`, key `links`),
+  the same for all VFOs and browsers; the top line of the tab lists the disconnected sources on both pages.

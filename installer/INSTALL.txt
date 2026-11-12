@@ -103,6 +103,11 @@ Main Features
 - DAB now on air in the AD window (in the place of RDS, same colours): DAB / DAB+ tag, station name, SNR (green /
   yellow / red) and the DLS text (artist / song), running when wider than the window. AD priority: 1. errors,
   2. rotor AZ / EL (MONITOR), 3. DAB, 4. RDS.
+- ROTOR CONTROL: new page CONNECTION (beside MAP) - a block diagram of the sources of the wanted AZ / EL: SAT TRACKER,
+  MEMORY RECALL and RCTRL MAP, each with a switch to the ROTOR. A click connects / disconnects a source; the rotor
+  block glows green while at least one is connected, grey when none is. Disconnected: the tracker only calculates
+  (CALC ONLY), a recalled memory only tunes (the antenna does not turn), a map click only draws the target.
+  For the whole station (data\rotor.json).
 - Recalling a MEMORIES channel with a location (LAT / LON) opens the ROTOR CONTROL tab (RCTRL on), centres the map
   on it and turns the rotor to its azimuth from the QTH (elevation 0).
 - Station location moved from SATELLITES -> SETUP to SETTINGS -> GENERAL -> LOCATION (locator or lat / lon,
@@ -140,6 +145,13 @@ Main Features
   spectrum blue, locked out grey. Decoder and recording of a memory are ignored; the decoders of the scanning VFO pause.
   scanner.py, /api/scan.
 Minor Fixes
+- AGC+ PRESETS above the sliders (SETTINGS -> VFO -> ADVANCED -> AGC+), the matching one lit: CAREFUL (the old
+  behaviour, no clipping), MODERATE (new default: gain up to a -2...-5 dBFS peak, short clipping up to 100 ppm tolerated,
+  2.5-4 dB more gain), BOLD (new setting "Bold: up while clipping <=": climbs into clipping up to 20 ppm, down above 300 ppm,
+  3-7 dB more; a gain that clipped is not tried again for 1 min). WFM: the blocks around an AGC+ gain step are played in mono, so the stereo no longer turns to noise.
+  Fixed: AGC+ no longer stays low when the next tuner gain step is bigger than the wanted one.
+- RF bar red on A/D clipping: with AGC and AGC+ off (manual RF gain) the whole RF bar and its dB value in the
+  VFO window turn red while the A/D converter clips (held 1 s); A/D peak in the tooltip.
 - VIEW key at the far left of the key row: hides the whole lower part with the tabs (slides closed) and shows it
   again; lit while hidden. A key that opens a tab (DECODE, MEM, SCAN ...) shows it again. Remembered in the browser.
   Hidden: the window can be as low as the head; a lower or narrower window shrinks the panel whole (aspect kept).
@@ -166,8 +178,10 @@ Minor Fixes
 - Memory channel location: LAT / LON (decimal degrees) or CHOOSE ON MAP in the channel form, saved in memories.json and
   in the JSON / CSV export and import; the CHANNELS table shows LAT, LON, azimuth and distance from the
   station location (SETTINGS -> GENERAL -> LOCATION).
-- STEP keys: 10 Hz / 100 Hz / 1 kHz / 10 kHz in AM, FM, SSB, CW; WFM keeps all seven steps (each set remembers its own).
+- STEP keys: 10 Hz / 100 Hz / 1 kHz / 10 kHz in every mode, WFM included (WFM remembers its own chosen step).
 - Default S-meter layout: amber needle.
+- Docs: annotated screenshots (main screen, SATELLITES > TRACK, DAB) with callouts to each part, drawn by
+  docs/annotate.py.
 
 Ver. 0.113
 (after the test betas 0.113beta1 and 0.113beta2; memory editor by Brano, github.com/brjanicek)

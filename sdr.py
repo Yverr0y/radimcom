@@ -215,16 +215,18 @@ class RtlSdr:
 # R820T (gain "auto") watches only its LNA and mixer and keeps the IF gain fixed, so it does not see the A/D;
 # this loop measures the raw samples of the whole band and sets the manual tuner gain from them.
 # Settings of AGC+ (SET, DONGLE tab), name: (default, min, max). Kept in the config as "sagc".
+# The defaults = the preset MODERATE of the page (SAGC_PRESETS in app.js); CAREFUL and BOLD are there too.
 SAGC_PARAMS = {
-    "clip_ppm": (20, 0, 1000),        # clipped samples per million in a block above which the gain goes down
-    "heavy_ppm": (1000, 1, 100000),   # above this the gain goes down by heavy_db at once
-    "down_db": (3.0, 0.5, 15),        # gain down on clipping
+    "clip_ppm": (100, 0, 1000),       # clipped samples per million in a block above which the gain goes down
+    "heavy_ppm": (2000, 1, 100000),   # above this the gain goes down by heavy_db at once
+    "down_db": (2.5, 0.5, 15),        # gain down on clipping
     "heavy_db": (6.0, 1, 30),         # gain down on heavy clipping
-    "low_dbfs": (-8.0, -40, -1),      # A/D peak over hold_s below this -> gain up
-    "target_dbfs": (-5.0, -30, 0),    # where a gain increase aims
-    "hold_s": (0.2, 0.1, 30),         # no clipping for this long before going up
+    "low_dbfs": (-5.0, -40, -1),      # A/D peak over hold_s below this -> gain up
+    "target_dbfs": (-2.0, -30, 0),    # where a gain increase aims
+    "hold_s": (0.5, 0.1, 30),         # no clipping for this long before going up
     "up_db": (6.0, 0.5, 30),          # at most per step up
     "settle": (2, 0, 20),             # blocks ignored after a gain change (the tuner settles), plus those already queued
+    "allow_ppm": (0, 0, 1000),        # bold mode (> 0): clipping up to this still lets the gain go up, a step at a time
 }
 SAGC_SETTLE = SAGC_PARAMS["settle"][0]
 
@@ -240,6 +242,7 @@ class SmartAgc:
 
     def __init__(self):
         self.peak, self.clip = 0.0, 0.0          # last block, for the state on the web page
+        self.t, self.ceil, self.ceil_until = 0.0, None, 0.0   # bold: a gain that clipped is not tried again for a while
         self.reset()
 
     def reset(self, settle=0):
@@ -261,14 +264,19 @@ class SmartAgc:
     def step(self, raw, gains, gain, block_s, backlog, p, db_per_unit=1.0):
         """p = sagc_params(): the settings from SET."""
         self.clip, self.peak = self.measure(raw)
+        self.t += block_s
         if self.skip > 0:
             self.skip -= 1
             return None
-        if self.clip * 1e6 > p["clip_ppm"]:
-            db = p["heavy_db"] if self.clip * 1e6 > p["heavy_ppm"] else p["down_db"]
+        ppm, allow = self.clip * 1e6, p.get("allow_ppm", 0)
+        if ppm > p["clip_ppm"]:
+            db = p["heavy_db"] if ppm > p["heavy_ppm"] else p["down_db"]
             lower = [g for g in gains if g <= gain - db / db_per_unit]
             new = lower[-1] if lower else gains[0]
-        elif self.clip > 0:
+            hold_more = 3 * p["hold_s"] if allow > 0 else 0.0   # bold: wait 4x hold after a step down (no see-saw)
+            if allow > 0:                         # bold: this gain clipped too much, do not climb back to it soon
+                self.ceil, self.ceil_until = gain, self.t + 60 * p["hold_s"]
+        elif ppm > allow:
             self.quiet_s = 0.0                    # tolerated, but no reason to go up
             return None
         else:
@@ -277,14 +285,27 @@ class SmartAgc:
             if self.quiet_s < p["hold_s"]:
                 return None
             peak, self.win_peak, self.quiet_s = self.win_peak, 0.0, 0.0
-            if 20 * np.log10(max(peak, 1e-4)) >= p["low_dbfs"]:
+            peak_db = 20 * np.log10(max(peak, 1e-4))
+            above = [g for g in gains if g > gain]
+            if not above:
                 return None
-            db = min(p["up_db"], p["target_dbfs"] - 20 * np.log10(max(peak, 1e-3)))
-            up = [g for g in gains if gain < g <= gain + db / db_per_unit]
-            new = up[-1] if up else None
+            if peak_db < p["low_dbfs"]:
+                db = min(p["up_db"], p["target_dbfs"] - max(peak_db, -60.0))
+                up = [g for g in above if g <= gain + db / db_per_unit]
+                new = up[-1] if up else None
+                if new is None and peak_db + (above[0] - gain) * db_per_unit < -1.0:
+                    new = above[0]                # the next step is bigger than the wanted one but still fits
+            elif allow > 0:
+                new = above[0]                    # bold: a step up while the clipping stays within allow_ppm
+                if self.ceil is not None and self.t < self.ceil_until and new >= self.ceil:
+                    return None                   # that gain clipped above clip_ppm a short while ago
+            else:
+                return None
+            hold_more = 0.0
         if new is None or new == gain:
             return None
         self.reset(backlog + int(p["settle"]))
+        self.quiet_s = -hold_more
         return new
 
 
@@ -357,6 +378,7 @@ class Wfm:
         self.pilot_snr = 0.0
         self.stereo = False                      # pilot locked (ST flag)
         self.allow_stereo = True                 # False = forced mono (STEREO button off)
+        self.hold_mono = False                   # True = a tuner gain step in this block: mono, pilot not measured
         self.st_count = 0
         self.rds = RdsDecoder(self.r1)
         self.mpx_tail = None                     # last MPX block, before the pilot is subtracted
@@ -396,6 +418,13 @@ class Wfm:
         q = complex(np.mean(mpx * osc.conj()))
         ref = abs(np.mean(mpx * np.exp(-1j * (self.phref + self.wref * k))))
         self.phref = (self.phref + self.wref * n) % (2 * np.pi)
+        if self.hold_mono:
+            # The tuner gain changed (AGC+): its transient bends the pilot phase measured over the block, and L−R
+            # decoded with it is a burst of noise. The block goes out in mono; lock, drift and SNR stay as they were.
+            self.q_prev = q
+            x, self.zi = self._lfilter(self.b, self.a, mpx.astype(np.complex64), zi=self.zi)
+            y = self.dec2.process(x.astype(np.complex64))
+            return np.clip(np.stack((y.real, y.real), axis=1) * 0.8, -1, 1).astype(np.float32), 10 * np.log10(power)
         if self.q_prev is not None:
             step = np.angle(q * np.conj(self.q_prev))
             self.drift = 0.8 * self.drift + 0.2 * step if abs(step) < 0.5 else self.drift
@@ -879,6 +908,7 @@ class Receiver:
         self.has_rtl_agc = cfg.get("driver", "rtl") == "rtl"
         self.smeter = -150.0
         self.sagc = SmartAgc()
+        self.gain_glitch = 0                    # blocks left that may carry the transient of a tuner gain step (WFM: mono)
         self.sq_open, self.sq_hang, self.sq_gain = True, 0, 1.0
         self.tsq = ToneSquelch()                 # TSQ-C / TSQ-D: CTCSS / DCS detector (tonesq.py)
         self.tsq_hpf = PassFilter("highpass")    # with a tone squelch on, the tone is not heard
@@ -1351,6 +1381,15 @@ class Receiver:
                 self.iq_server.publish(raw, self._share_meta())
             if self.cfg.get("smart_agc") and not self.chained and self.gains:
                 self._smart_agc(sdr, raw, blocks.qsize())
+            elif self.cfg.get("gain", "auto") != "auto":
+                # manual RF gain: only watch the A/D, so the RF bar turns red on clipping
+                # (worst block over 0.3 s, the state goes out every 0.2 s and must not miss a short clip)
+                clip, peak = SmartAgc.measure(raw)
+                now = time.monotonic()
+                if now - getattr(self, "_man_clip_t", 0) > 0.3:
+                    self._man_clip_t, self.sagc.clip, self.sagc.peak = now, clip, peak
+                else:
+                    self.sagc.clip, self.sagc.peak = max(self.sagc.clip, clip), max(self.sagc.peak, peak)
             if self.on_raw and (raw.dtype == np.complex64 or len(raw) == READ_SAMPLES * 2):
                 self.on_raw(raw, self.fs, self.cfg["center_hz"])   # VDL2: raw samples to dumpvdl2
             if raw.dtype == np.complex64:
@@ -1364,6 +1403,8 @@ class Receiver:
             iq = self._remove_dc(iq)
 
             self._waterfall(iq)
+            if self.gain_glitch > 0:
+                self.gain_glitch -= 1
             if self.scan.on or self.scan.cmds:
                 self.scan.block(self, blocks.qsize())   # may retune for this very block (scanner.py)
 
@@ -1403,6 +1444,7 @@ class Receiver:
                     self.wfm = Wfm(self.fs, bw) if mode == "WFM" else WideFm(self.fs, bw)
                     self.wfm_key = (self.fs, mode, bw)
                 self.wfm.allow_stereo = c.get("stereo_on", True)
+                self.wfm.hold_mono = self.gain_glitch > 0
                 audio, self.smeter = self.wfm.process(shifted)
                 sub_db = self.wfm.sub_db
             else:
@@ -1455,6 +1497,7 @@ class Receiver:
         if new is not None:
             c["gain"] = new
             sdr.set_gain(new)
+            self.gain_glitch = backlog + 3      # the step lands in one of the next blocks (those queued + 1, + spare ones)
             self.on_status()
 
     def _share_meta(self):
@@ -1472,6 +1515,8 @@ class Receiver:
         self.shared_lo = float(meta["lo"])
         self.gains = meta.get("gains", self.gains)
         self.has_bias_tee, self.has_rtl_agc = meta.get("has_bias_tee", True), meta.get("has_rtl_agc", True)
+        if meta.get("smart_agc") and "gain" in meta and meta["gain"] != c.get("gain"):
+            self.gain_glitch = 4                # AGC+ of the owner VFO changed the gain: same transient here
         for k in ("gain", "rtl_agc", "smart_agc", "sagc", "bias_tee", "ppm"):
             if k in meta:
                 c[k] = meta[k]

@@ -749,11 +749,17 @@ ecordings), play them in the browser">RECS</button>
     </div>
     <!-- ROTOR CONTROL tab (RCTRL key, TRACKING group): a map – a click on the map, on a channel point or on a row of the list
          turns the rotor to that place (azimuth from the QTH, elevation 0). The points are the MEMORIES channels with LAT / LON,
-         shown by their groups (one checkbox per group beside the map). -->
+         shown by their groups (one checkbox per group beside the map).
+         Pages MAP and CONNECTION: the block diagram of the sources of the wanted AZ / EL (SAT TRACKER, MEMORY RECALL, RCTRL MAP),
+         each with a switch that disconnects it from the rotor (data\rotor.json, the whole station). -->
     <div class="set-pane rot-pane" id="rotPane" hidden aria-label="Rotor control">
       <div class="amsat-head">
-        <label class="rc-beam" title="Beam width of the antenna (−3 dB), drawn on the map as a sector around the line to the target">BEAM <input id="rcBeam" type="number" min="1" max="360" step="1"> °</label>
-        <button id="rcClear" class="key small" title="Remove the target (dashed line of the wanted azimuth) from the map; the rotor stays where it is">CLEAR</button>
+        <div class="amsat-pages" id="rcPages" role="tablist">
+          <button class="key small" data-rc-page="map" role="tab" title="The map: a click turns the rotor to that place">MAP</button>
+          <button class="key small" data-rc-page="conn" role="tab" title="Which sources of the wanted AZ / EL move the rotor: SAT TRACKER, MEMORY RECALL, RCTRL MAP">CONNECTION</button>
+        </div>
+        <label class="rc-beam rc-map-only" title="Beam width of the antenna (−3 dB), drawn on the map as a sector around the line to the target">BEAM <input id="rcBeam" type="number" min="1" max="360" step="1"> °</label>
+        <button id="rcClear" class="key small rc-map-only" title="Remove the target (dashed line of the wanted azimuth) from the map; the rotor stays where it is">CLEAR</button>
         <button id="rcStop" class="key small" title="Stop both motors of the rotor">STOP</button>
         <span class="amsat-info" id="rcInfo"></span>
       </div>
@@ -764,6 +770,13 @@ ecordings), play them in the browser">RECS</button>
           <input id="rcFilter" class="recs-filter" type="search" placeholder="filter: name, MHz, group, note…" title="Shows only the channels whose name, frequency, groups or note contain the text">
           <div class="rc-list" id="rcList"></div>
         </div>
+      </div>
+      <div class="rc-body rc-conn" id="rcConnBox" hidden>
+        <div class="rc-conn-wrap" id="rcConn"></div>
+        <p class="note">A click on a source or on its switch connects / disconnects it. A disconnected source does not move the rotor:
+          the SAT TRACKER only calculates the pass (CALC ONLY), a recalled memory with a location only tunes (the rotor and the
+          RCTRL tab stay), a click on the map only draws the target. The rotor block glows green while at least one source is connected.
+          The setting belongs to the station (data\rotor.json), for all VFOs and browsers.</p>
       </div>
     </div>
     <!-- SCAN tab (SCAN key in MENU): the scanner of the active VFO (scanner.py, data\poznamky_scan.md). Pages SCAN (memories or a
@@ -1436,11 +1449,20 @@ ecordings, played in the browser -->
               </div>
               <div class="setting" id="sagcSetting" data-blk="11">
                 <div class="row"><span>AGC+</span><span id="sagcNow" class="value"></span></div>
+                <div class="sagc-presets" id="sagcPresets"><span class="sagc-presets-label">PRESETS</span>
+                  <button data-preset="careful" class="key small" title="Careful: no A/D clipping tolerated (the defaults before 0.114beta1)">CAREFUL</button>
+                  <button data-preset="moderate" class="key small" title="Moderate (default): up to the A/D peak at −5 dBFS, short clipping up to 100 ppm tolerated">MODERATE</button>
+                  <button data-preset="bold" class="key small" title="Bold: the gain climbs into occasional A/D clipping (up to 20 ppm), down only above 300 ppm">BOLD</button></div>
                 <div id="sagcRows"></div>
-                <button id="sagcDefaults" class="key small">DEFAULTS</button>
                 <p class="note">AGC+ key (GAIN): the tuner gain from the A/D level. On clipping it goes down at once, then waits
                   <i>settle</i> blocks; it goes up only after <i>hold</i> without clipping and with the A/D peak under <i>up below</i>,
-                  aiming at <i>target</i>. One block ≈ 55–130 ms by the sample rate.</p>
+                  aiming at <i>target</i>. One block ≈ 55–130 ms by the sample rate.
+                  <b>Bold</b> (<i>up while clipping</i> &gt; 0): after each <i>hold</i> the gain goes one step up while the clipping stays
+                  at or under this many ppm, also with the peak at full scale; between that and <i>clipping above</i> it holds, above it
+                  goes down and then waits 4× <i>hold</i>. Keep <i>clipping above</i> ≥ 10× of it. <b>PRESETS</b> from careful to bold, the one matching
+                  the sliders is lit: <b>CAREFUL</b> = no clipping (the defaults before 0.114beta1), <b>MODERATE</b> (default) = gain up to
+                  a −5 dBFS peak, short clipping up to 100 ppm tolerated, <b>BOLD</b> = climbs into clipping up to 20 ppm, down above 300 ppm.
+                  With WFM a block with a gain step is played in mono (the step would turn the stereo into noise).</p>
               </div>
             </div>
             <!-- ===== AUDIO ===== -->

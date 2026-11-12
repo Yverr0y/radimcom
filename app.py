@@ -1871,7 +1871,7 @@ def rotor_elsewhere():
 
 rotor_link = rotor_module.RotorLink()
 doppler = sattrack.Doppler(rotor_set_freq, lambda: cfg["tune_hz"], lambda: cfg["mode"], rotor_set_mode) if sattrack else None
-sat_tracker = satplan.Tracker(rotor_link.rotor) if sattrack else None
+sat_tracker = satplan.Tracker(rotor_link.rotor, linked=lambda: rotor_module.links_of(rotor_cfg)["sat"]) if sattrack else None
 
 
 def rotor_raw_moved(raw):
@@ -1896,6 +1896,8 @@ def rotor_info():
     """Rotor state with what the SAT window shows of the satellite tracking: where the satellite is (aim)
     and the time to its next AOS or LOS (next_pass)."""
     info = rotor_link.info()
+    info["links"] = rotor_module.links_of(rotor_cfg)      # RCTRL › CONNECTION
+    info["sat_on"] = bool(sat_tracker is not None and sat_tracker.on)
     info["aim"], info["next_pass"] = None, None
     if sat_tracker is not None and sat_tracker.on:
         t = sat_tracker.info()
@@ -1959,11 +1961,22 @@ def api_rotor_cmd():
         err = start_rotor() if saved["enabled"] else rotor_link.stop()
         if err:
             return jsonify({"error": err}), 409
+    if isinstance(body.get("links"), dict):
+        # RCTRL › CONNECTION: which sources of the wanted AZ / EL move the rotor
+        links = rotor_module.links_of(rotor_cfg)
+        links.update({k: bool(v) for k, v in body["links"].items() if k in rotor_module.LINK_SOURCES})
+        rotor_cfg["links"] = links
+        save_rotor_later()
+        if sat_tracker is not None:
+            sat_tracker.relink()
     if body.get("start"):
         err = rotor.start_control()
         if err:
             return jsonify({"error": err}), 409
     if "goto" in body:
+        src = body.get("source")
+        if src in rotor_module.LINK_SOURCES and not rotor_module.links_of(rotor_cfg)[src]:
+            return jsonify({"error": f"{rotor_module.LINK_NAMES[src]} is disconnected from the rotor (RCTRL › CONNECTION)"}), 409
         try:
             az, el = (float(v) for v in body["goto"])
         except (TypeError, ValueError):

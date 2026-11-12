@@ -2,6 +2,8 @@
 
 # Controls
 
+![The main screen with a yellow callout for each part: S-meter, VFO windows, key groups, monitor and recording, spectrum, waterfall and their controls](images/main_annotated.png)
+
 ## Tuning
 
 | Action | How |
@@ -63,7 +65,7 @@ of that VFO (orange LED): that VFO stays audible at CUE level while another VFO 
 - **MODE**: demodulation. **FILTER**: bandwidth for the current mode (WFM: 50, 75, 150 or 200 kHz, default 200 kHz = the full broadcast signal with the best stereo and RDS; 150 kHz is a compromise, 50–75 kHz help with a weak station next to a strong one but distort and usually lose stereo and RDS; any width up to 250 kHz by dragging the filter edge).
 - **GAIN**: AGC switches automatic tuner gain on/off (manual gain with the RF GAIN slider or in SET). **AGC+** sets the tuner gain from the level of the A/D converter: as high as possible without clipping it (the tuner AGC of the R820T watches only its LNA and mixer, not the A/D). The gain flag under the display shows `+` and the gain; the AGC+ key gets a red underline while the A/D clips. With the squelch set, AGC+ makes it work as auto squelch (ASQ lights up), because a fixed level would not fit the changing gain; the slider then only turns it on / off, and ASQ pressed in this state turns the squelch off.
 - **TUNE**: **ATU** (autotune) in USB, LSB and AM. With ATU on, a click on a signal in the spectrum or waterfall tunes to the clicked point (without the step grid), listens for a moment and moves the tuning onto the carrier; the key blinks while listening and the passband label shows the shift (e.g. *ATU +130 Hz*) or *no signal*. Tuning by the wheel, the arrow keys, dragging or the VFO display digits starts it too, 0.7 s after the tuning rests, when it moved by at least 150 Hz. AM: the carrier is found within a few Hz in under 1 s. SSB: the edge of the voice band goes onto the red line (the tuned frequency): the lower edge in USB, the upper one in LSB, within a few Hz after ~2 s of speech (up to 6.5 s while nobody speaks). Tuning elsewhere while listening cancels it.
-- **STEP**: tuning step: 10 Hz, 100 Hz, 1 kHz, 10 kHz in AM, FM, SSB and CW; in WFM also 500 Hz, 5 kHz and 9 kHz. Each of the two sets remembers its own step (in the browser). **Zoom** (1×–32×) is the bar in the top right corner of the frequency scale: − / +, a click on a cell, or the mouse wheel over it. **Waterfall speed** (WF, 1/8 – 4×) is the same bar in the top right corner of the waterfall: below 1× several rows are averaged into one line (slower, longer history), above 1× each row is drawn taller (faster); the setting is kept in the browser. **Waterfall settings**: the gear in a square above the speed bar; with the mouse over it a half transparent window opens with the **colour scheme** (Classic, Inferno, Viridis, Turbo, Ice; only new rows take the new colours), **colour range** and **colour offset**. Kept in the browser.
+- **STEP**: tuning step: 10 Hz, 100 Hz, 1 kHz, 10 kHz in every mode, WFM included. WFM remembers its own chosen step, the other modes share one (in the browser). **Zoom** (1×–32×) is the bar in the top right corner of the frequency scale: − / +, a click on a cell, or the mouse wheel over it. **Waterfall speed** (WF, 1/8 – 4×) is the same bar in the top right corner of the waterfall: below 1× several rows are averaged into one line (slower, longer history), above 1× each row is drawn taller (faster); the setting is kept in the browser. **Waterfall settings**: the gear in a square above the speed bar; with the mouse over it a half transparent window opens with the **colour scheme** (Classic, Inferno, Viridis, Turbo, Ice; only new rows take the new colours), **colour range** and **colour offset**. Kept in the browser.
 - **DECODE**: turns on the FT8, WEFAX, CW, RTTY, SSTV, PACKET, ACARS, VDL2, HFDL, AIS or ISM decoder (DAB and DSD are keys in MODE with their own tabs). The panels are in the
   **DECODERS** tab next to SPECTRUM; turning a decoder on opens it, a green dot signals a new message/image.
   Every panel has a LOG checkbox for the daily log:
@@ -140,7 +142,7 @@ of that VFO (orange LED): that VFO stays audible at CUE level while another VFO 
     shows or hides the tab for all VFOs and is remembered in the browser.
 - **TRACKING** group:
   - **SAT**: the satellite key switches to the SATELLITES tab and back, see [Satellite tracking](satellites.md).
-  - **RCTRL**: shows or hides the **ROTOR CONTROL** tab (for all VFOs, remembered in the browser): a map to aim the rotor at a place, see [Rotor control map](satellites.md#rotor-control-map).
+  - **RCTRL**: shows or hides the **ROTOR CONTROL** tab (for all VFOs, remembered in the browser): a map to aim the rotor at a place (page MAP) and the switches of the sources that move the rotor (page CONNECTION), see [Rotor control map](satellites.md#rotor-control-map).
 - **Volume** (top right, MONITOR): vertical MAIN (active VFO) and CUE faders with a dB scale between them (+3 … −∞ dB; 0 = no gain),
   stereo L/R level meter with the dB numbers (0 dB = −6 dBFS), a peak hold of 1 s and a round CLIP LED above each column (0 dBFS reached).
   Below them the speaker key is MUTE (green LED = sound on, red = muted). Under it are two recording keys for the active VFO, which work independently of each other and go on with the page closed:
@@ -198,7 +200,7 @@ of that VFO (orange LED): that VFO stays audible at CUE level while another VFO 
       - **SP – Spurs removal**: for a switching power supply and the like. **LEARN** finds lines at a regular spacing of 12 kHz or more in the band received now, so learn on a quiet band.
         Each line gets a band-stop set by **Width**, **Edge**, **Shift** and **Depth**, which takes it down to the noise around it. Cleans the waterfall and the channel you listen to (not WFM and wide FM).
         A signal on a spur is removed with it.
-      - **AGC+**: its parameters (clipping thresholds, steps down and up, the level for going up, target, hold time, settle blocks) with the gain and A/D level live; DEFAULTS returns them.
+      - **AGC+**: its parameters (clipping thresholds, steps down and up, the level for going up, target, hold time, settle blocks, and *Bold: up while clipping ≤* – occasional A/D clipping tolerated for a higher gain) with the gain and A/D level live; **PRESETS** above the sliders, from careful to bold, the matching one lit: **CAREFUL** (no clipping), **MODERATE** (default: peak up to −2…−5 dBFS, short clipping up to 100 ppm tolerated), **BOLD** (climbs while the clipping stays ≤ 20 ppm, down above 300 ppm). With WFM the blocks around a gain step are played in mono, so the stereo does not turn to noise.
       - **S-meter: S9 =**: calibration of the S-meter of this VFO (the level in dBFS shown as S9; was on UI › S-METER).
     - **AUDIO**: AFI inversion frequency, the ASQ (auto squelch) margin above the noise (2–30 dB), the CTCSS tone (TSQ-C) and DCS code with polarity (TSQ-D), HPF and LPF frequency. The squelch level itself is set by the SQL bar of the VFO window.
     - **TX** (LimeSDR only): Enable TX, see [Transmitting (LimeSDR)](configuration.md#transmitting-limesdr).

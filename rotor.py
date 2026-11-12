@@ -432,7 +432,18 @@ class RotorLink:
 
 # ---------- rotor settings: one rotor for the whole station (data\rotor.json), not tied to a VFO ----------
 # Versions up to 0.114beta1 kept them in the config of one VFO (config_X.json, key "rotor"); migrate() moves them.
-SETTINGS_KEYS = ("enabled", "port", "usb_serial", "az_cal", "k3ng_az")
+SETTINGS_KEYS = ("enabled", "port", "usb_serial", "az_cal", "k3ng_az", "links")
+# Sources of the wanted AZ / EL that can be disconnected from the rotor (RCTRL › CONNECTION): the satellite tracker,
+# the recall of a memory with a location, the map of RCTRL. Connected unless switched off.
+LINK_SOURCES = ("sat", "mem", "map")
+LINK_NAMES = {"sat": "SAT TRACKER", "mem": "MEMORY RECALL", "map": "RCTRL MAP"}
+
+
+def links_of(settings):
+    """{"sat", "mem", "map": True / False} from the rotor settings (missing = connected)."""
+    links = settings.get("links")
+    links = links if isinstance(links, dict) else {}
+    return {k: bool(links.get(k, True)) for k in LINK_SOURCES}
 
 
 def load_settings(path):

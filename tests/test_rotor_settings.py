@@ -60,5 +60,39 @@ class MigrateTest(unittest.TestCase):
         self.assertEqual(rotor.load_settings(self.rot), {})
 
 
+class LinksTest(unittest.TestCase):
+    """RCTRL › CONNECTION: the sources of the wanted AZ / EL connected to the rotor."""
+
+    def test_missing_means_connected(self):
+        self.assertEqual(rotor.links_of({}), {"sat": True, "mem": True, "map": True})
+        self.assertEqual(rotor.links_of({"links": "bad"}), {"sat": True, "mem": True, "map": True})
+
+    def test_saved_and_read_back(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "rotor.json")
+            rotor.save_settings(p, {"enabled": True, "links": {"sat": True, "mem": False, "map": True}})
+            self.assertEqual(rotor.links_of(rotor.load_settings(p)), {"sat": True, "mem": False, "map": True})
+
+
+class TrackerLinkTest(unittest.TestCase):
+    """A disconnected SAT TRACKER does not hold the rotor: hand commands are taken again."""
+
+    def test_relink_releases_the_rotor(self):
+        try:
+            import satplan
+        except ImportError as e:
+            self.skipTest(f"satplan needs {e.name}")
+        r = rotor.Rotor(opener=None)
+        linked = [True]
+        t = satplan.Tracker(r, linked=lambda: linked[0])
+        t.on = True
+        t.relink()
+        self.assertTrue(r.tracker)
+        linked[0] = False
+        t.relink()
+        self.assertFalse(r.tracker)
+        self.assertFalse(t.info()["linked"])
+
+
 if __name__ == "__main__":
     unittest.main()

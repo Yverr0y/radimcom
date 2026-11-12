@@ -78,13 +78,12 @@ const BANDWIDTHS = {
   CW: [300, 500, 800, 1200],
   DSD: [12500],      // fixed channel width of the digital voice decoder
 };
-// STEP keys: AM, FM, SSB, CW (and DSD) have four steps, WFM keeps the full set; each set remembers its own step
+// STEP keys: the same four steps in every mode; WFM remembers its own chosen step, the other modes share one
 const STEPS = [10, 100, 1000, 10000];
-const STEPS_WFM = [10, 100, 500, 1000, 5000, 9000, 10000];
 // MODE keys: the demodulator modes and DAB (not a demodulator: DAB on with the DAB tab; lit while DAB runs)
 const MODE_KEYS = ["AM", "FM", "WFM", "LSB", "USB", "CW", "DAB", "DSD"];
 const stepSet = (mode) => (mode === "WFM" ? "wfm" : "narrow");
-const STEP_SETS = { narrow: STEPS, wfm: STEPS_WFM };
+const STEP_SETS = { narrow: STEPS, wfm: STEPS };
 const STEP_KEYS = { narrow: "step", wfm: "stepWfm" };   // browser storage
 const stepMem = { narrow: 1000, wfm: 1000 };
 let mems = [];   // memories (list in the panel and tags in the spectrum)
@@ -2249,7 +2248,7 @@ $("gainAuto").addEventListener("change", () => setAgc($("gainAuto").checked));
 $("agcKey").addEventListener("click", () => { if (st) setAgc(st.gain !== "auto" || st.smart_agc); });
 // AGC+ settings in SET: one slider per parameter, sent shortly after moving (as one "sagc" object)
 const SAGC_UI = [
-  ["clip_ppm", "Clipping above", 0, 200, 1, "ppm"],
+  ["clip_ppm", "Clipping above", 0, 1000, 5, "ppm"],
   ["down_db", "Down by", 0.5, 10, 0.5, "dB"],
   ["heavy_ppm", "Heavy clipping above", 50, 10000, 50, "ppm"],
   ["heavy_db", "Heavy: down by", 1, 20, 0.5, "dB"],
@@ -2258,7 +2257,17 @@ const SAGC_UI = [
   ["hold_s", "Hold before up", 0.2, 10, 0.1, "s"],
   ["up_db", "Up at most", 0.5, 15, 0.5, "dB"],
   ["settle", "Settle", 0, 10, 1, "blocks"],
+  ["allow_ppm", "Bold: up while clipping ≤", 0, 200, 1, "ppm"],
 ];
+// AGC+ presets, careful to bold. MODERATE = the defaults of the server (SAGC_PARAMS in sdr.py)
+const SAGC_PRESETS = {
+  careful: { clip_ppm: 20, heavy_ppm: 1000, down_db: 3, heavy_db: 6, low_dbfs: -8, target_dbfs: -5,
+    hold_s: 0.2, up_db: 6, settle: 2, allow_ppm: 0 },
+  moderate: { clip_ppm: 100, heavy_ppm: 2000, down_db: 2.5, heavy_db: 6, low_dbfs: -5, target_dbfs: -2,
+    hold_s: 0.5, up_db: 6, settle: 2, allow_ppm: 0 },
+  bold: { clip_ppm: 300, heavy_ppm: 5000, down_db: 2, heavy_db: 4, low_dbfs: -6, target_dbfs: -2,
+    hold_s: 1, up_db: 6, settle: 2, allow_ppm: 20 },
+};
 $("sagcRows").innerHTML = SAGC_UI.map(([k, label, min, max, step]) =>
   `<div><div class="row"><span>${label}</span><span id="sagc_${k}_t" class="value"></span></div>` +
   `<input id="sagc_${k}" type="range" min="${min}" max="${max}" step="${step}"></div>`).join("");
@@ -2273,6 +2282,10 @@ function renderSagc() {
   }
   const smart = st.smart_agc && st.gain !== "auto";
   $("sagcNow").textContent = smart ? `${gainLabel(st)} · A/D ${st.adc_peak} dBFS${st.adc_clip ? ` · clip ${st.adc_clip_ppm} ppm` : ""}` : "off";
+  for (const b of document.querySelectorAll("#sagcPresets [data-preset]")) {
+    const pre = SAGC_PRESETS[b.dataset.preset];
+    b.classList.toggle("on", Object.keys(pre).every((k) => Number(p[k]) === pre[k]));
+  }
 }
 for (const [k, , , , , unit] of SAGC_UI) {
   $(`sagc_${k}`).addEventListener("input", (e) => {
@@ -2283,7 +2296,12 @@ for (const [k, , , , , unit] of SAGC_UI) {
     sagcTimer = setTimeout(() => send({ sagc: { [k]: Number(e.target.value) } }), 150);
   });
 }
-$("sagcDefaults").addEventListener("click", () => { sagcLocalAt = 0; send({ sagc: null }); });
+document.querySelectorAll("#sagcPresets [data-preset]").forEach((b) => b.addEventListener("click", () => {
+  sagcLocalAt = 0;
+  st.sagc = { ...SAGC_PRESETS[b.dataset.preset] };
+  renderSagc();
+  send({ sagc: SAGC_PRESETS[b.dataset.preset] });
+}));
 
 // AGC+: the server sets the tuner gain from the A/D level; off = the last gain stays as a manual one
 $("agcPlusKey").addEventListener("click", () => {
@@ -2654,7 +2672,7 @@ for (const id of ["wfRange", "wfShift"]) {
   const saved = recall(id);
   if (saved !== null) $(id).value = saved;
 }
-// a step saved by an older version (one set for all modes) goes to WFM; the four-step set takes the nearest one
+// a step saved by an older version (one set for all modes, or the old seven WFM steps) snaps to the nearest of the four
 for (const set of ["narrow", "wfm"]) {
   const old = Number(recall("step")), saved = Number(recall(STEP_KEYS[set]) ?? (set === "wfm" ? old : NaN));
   const list = STEP_SETS[set];
@@ -3684,10 +3702,12 @@ function renderSatRot() {
   if (!box) return;
   const other = !!(d && d.on && d.norad !== satTrackNorad);     // the rotor follows another satellite than the one shown
   const mine = !!(d && d.on) && !other;
-  const moving = mine && !!(satInfo && satInfo.on && satInfo.control);     // the rotor link is on and takes the commands
+  const linked = !(d && d.linked === false);     // RCTRL › CONNECTION: SAT TRACKER connected to the rotor
+  const moving = mine && linked && !!(satInfo && satInfo.on && satInfo.control);     // the rotor link is on and takes the commands
   $("satRotStart").classList.toggle("on", mine);
   const flag = $("satRotFlag");
   const [text, cls, tip] = moving ? ["TRACKING", "", "The rotor follows this satellite"]
+    : mine && !linked ? ["CALC ONLY", "warn", "TRACK only calculates: SAT TRACKER is disconnected from the rotor in RCTRL › CONNECTION"]
     : mine ? ["CALC ONLY", "warn", "TRACK only calculates: the rotor link is off or the rotor was stopped (STOP, a fault). TRACK off and on again moves it"]
     : ["NOT TRACKING", "dim", other ? "The rotor follows another satellite" : "TRACK is off"];
   if (flag.textContent !== text) flag.textContent = text;
@@ -7714,6 +7734,17 @@ const RC_COLORS = ["#ff9f1c", "#2ec4b6", "#9b5de5", "#00bbf9", "#f15bb5", "#8ac9
 const rcRad = (d) => (d * Math.PI) / 180, rcDeg = (r) => (r * 180) / Math.PI;
 const rcKm = (km) => (km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`);
 const RC_NOTE = "dashed = wanted azimuth (target) · green sector = antenna now · red = QTH · map © OpenStreetMap";
+// Page CONNECTION: the sources of the wanted AZ / EL, each can be disconnected from the rotor (rotor.json "links",
+// the whole station; the server refuses a goto of a disconnected source and the tracker then only calculates)
+const RC_LINKS = [
+  { k: "sat", name: "SAT TRACKER", where: "SATELLITES › TRACK" },
+  { k: "mem", name: "MEMORY RECALL", where: "MEMORIES channels with LAT / LON" },
+  { k: "map", name: "RCTRL MAP", where: "RCTRL › MAP: map, points, list" },
+];
+const RC_LINK_NAME = Object.fromEntries(RC_LINKS.map((s) => [s.k, s.name]));
+/** Connected? Unknown links (no answer from the rotor yet) count as connected: the server decides then. */
+const rcLinkOn = (k) => !(rotorInfo && rotorInfo.links && rotorInfo.links[k] === false);
+let rcPage = recall("rcPage") === "conn" ? "conn" : "map";
 
 /** Great circle from a to b: [initial azimuth 0–360, distance km]. */
 function rcBearing(a, b) {
@@ -7754,8 +7785,12 @@ async function rcLoadQth() {
 
 /** The tab opened (RCTRL key, tab, page switch): the QTH may have changed in SETTINGS › GENERAL › LOCATION, read it again. */
 async function rctrlOpened() {
+  rcShowPage();
+  if (rcPage === "conn") {       // the switches need the links now, not at the next poll
+    fetch(rotorBase() + "/api/rotor").then((r) => r.json()).then(renderRotor).catch(() => rcRenderConn());
+  }
   await rcLoadQth();
-  await rcMapOpen();
+  if (rcPage === "map") await rcMapOpen();
   rcRenderAll();
 }
 
@@ -7791,8 +7826,9 @@ async function rcMapOpen() {
   return true;
 }
 
-/** Aim at a place: draws the target and sends the rotor there (when it can take a hand command). */
-function rcAim(t) {
+/** Aim at a place: draws the target and sends the rotor there (when it can take a hand command and the source
+ *  – "map" or "mem" – is connected in CONNECTION). */
+function rcAim(t, source = "map") {
   if (!rcQth) { rcSay("Set the station location first (SETTINGS › GENERAL › LOCATION)", true); return; }
   const [az, km] = rcBearing(rcQth, t);
   rcTarget = { lat: t.lat, lon: t.lon, name: t.name || "", az, km };
@@ -7802,21 +7838,26 @@ function rcAim(t) {
   rcDrawAntenna(rotorInfo);
   rcRenderList();
   rcShowSel();
+  if (!rcLinkOn(source)) { rcSay(`Target AZ ${Math.round(az)}° drawn, rotor not moved: ${RC_LINK_NAME[source]} is disconnected (CONNECTION)`, true); return; }
   const refusal = satDialRefusal(rotorInfo);
   if (refusal) { rcSay(`Target AZ ${Math.round(az)}° drawn, rotor not moved: ${refusal}`, true); return; }
-  rcPost({ goto: [Math.round(az) % 360, 0] }, `Rotor → AZ ${Math.round(az)}° EL 0°${t.name ? ` (${t.name})` : ""}`);
+  rcPost({ goto: [Math.round(az) % 360, 0], source }, `Rotor → AZ ${Math.round(az)}° EL 0°${t.name ? ` (${t.name})` : ""}`);
 }
 
 /** A channel of MEMORIES with a location recalled (list, spectrum tag, editor, step): the ROTOR CONTROL tab opens
- *  (the RCTRL key on), the map centres on the channel and the rotor turns to it, as a click on its point would. */
+ *  (the RCTRL key on), the map centres on the channel and the rotor turns to it, as a click on its point would.
+ *  With MEMORY RECALL disconnected (RCTRL › CONNECTION) nothing happens here: the recall only tunes. */
 async function rctrlAimMem(m) {
+  // a fresh rotor state is needed first: the rotor is not polled while another tab is open, so the last state may be
+  // missing or old (the links, or "not connected" that would refuse the command)
+  const info = await fetch(rotorBase() + "/api/rotor").then((r) => r.json()).catch(() => null);
+  if (info && info.links && !info.links.mem) return;
+  rcPage = "map";
+  store("rcPage", rcPage);
   if (bodyTab !== "rot") setRotOn(true);
-  // the QTH, the map and a fresh rotor state are needed before aiming: the rotor is not polled while another tab
-  // is open, so the last state may be missing or old and would refuse the command ("not connected")
-  const [, info] = await Promise.all([rctrlOpened(),
-    fetch(rotorBase() + "/api/rotor").then((r) => r.json()).catch(() => null)]);
+  await rctrlOpened();
   if (info) renderRotor(info);
-  rcAim({ id: m.id, name: m.name, lat: m.lat, lon: m.lon });
+  rcAim({ id: m.id, name: m.name, lat: m.lat, lon: m.lon }, "mem");
   if (rcMap) rcMap.panTo([m.lat, m.lon]);
 }
 
@@ -7879,6 +7920,7 @@ function rctrlRotor(info) {
   if (bodyTab !== "rot") return;
   rcRenderInfo();
   rcDrawAntenna(info);
+  rcRenderConn();
 }
 
 function rcRenderInfo() {
@@ -7888,6 +7930,8 @@ function rcRenderInfo() {
   parts.push(!i ? "rotor: no answer yet" : i.error && !i.on ? `rotor: ${i.error}` : !i.on ? "rotor off (SETTINGS › GENERAL › ROTOR)" : !i.connected ? "rotor connecting…"
     : i.fault ? `rotor fault: ${i.fault}`
     : `antenna AZ ${i.azShow != null ? Math.round(i.azShow) : "–"}° EL ${i.elShow != null ? Math.round(i.elShow) : "–"}°${rotorMoving(i) ? " (turning)" : ""}`);
+  const off = RC_LINKS.filter((s) => !rcLinkOn(s.k)).map((s) => s.name);
+  if (off.length) parts.push(`disconnected: ${off.join(", ")}`);
   const msg = Date.now() < rcMsgUntil ? rcMsg : "";
   $("rcInfo").textContent = (msg ? `${msg} · ` : "") + parts.join(" · ");
   $("rcInfo").classList.toggle("warn", !!msg && rcMsgWarn);
@@ -8018,6 +8062,169 @@ $("rcClear").addEventListener("click", () => {
   rcRenderInfo();
 });
 $("rcStop").addEventListener("click", () => rcPost({ stop: true }, "Rotor stopped"));
+
+/** MAP / CONNECTION: the page keys, the bodies and the keys of the map in the head. */
+function rcShowPage() {
+  for (const b of $("rcPages").querySelectorAll("button[data-rc-page]")) {
+    const on = b.dataset.rcPage === rcPage;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", String(on));
+  }
+  $("rcMapBox").hidden = rcPage !== "map";
+  $("rcConnBox").hidden = rcPage !== "conn";
+  for (const el of $("rotPane").querySelectorAll(".rc-map-only")) el.hidden = rcPage !== "map";
+}
+$("rcPages").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-rc-page]");
+  if (!b || b.dataset.rcPage === rcPage) return;
+  rcPage = b.dataset.rcPage;
+  store("rcPage", rcPage);
+  rctrlOpened();
+});
+
+/** What a source does now, for its block. */
+function rcSrcState(k, on, i) {
+  if (k === "sat") {
+    const name = satRot && satRot.on ? satShort(satRot.name) : "";
+    if (!(i && i.sat_on)) return "tracker idle";
+    return `${name || "tracking"} · ${on ? "drives the rotor" : "calc only"}`;
+  }
+  if (k === "mem") return on ? "recall turns the rotor" : "recall only tunes";
+  return on ? (rcTarget && rcTarget.az != null ? `target AZ ${Math.round(rcTarget.az)}°` : "click turns the rotor") : "click only draws target";
+}
+
+// geometry of the CONNECTION mimic (viewBox 960 × 384)
+const RCC = { Y: [92, 200, 308], CX: 24, CW: 260, CH: 92, S0: 340, S1: 410, BUS: 500, RX: 636, RY: 92, RW: 300, RH: 252, DX: 712, DY: 226, DR: 58 };
+const RC_ICONS = {
+  sat: '<path d="M9.5 9.5l5 5-2.5 2.5-5-5z"/><path d="M3.5 7.5l3-3 3.5 3.5-3 3z"/><path d="M14 17.5l3-3 3.5 3.5-3 3z"/><path d="M15 3.5a5.5 5.5 0 0 1 5.5 5.5"/><path d="M15 6.5a2.5 2.5 0 0 1 2.5 2.5"/>',
+  mem: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/>',
+  map: '<path d="M12 21s-6.5-5.8-6.5-11.5a6.5 6.5 0 0 1 13 0C18.5 15.2 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.4"/>',
+};
+
+/** Builds the mimic once; rcRenderConn() then only changes classes, texts and angles, so the levers swing,
+ *  the flow keeps running and a hover is not lost at every rotor reading. */
+function rcConnBuild() {
+  const { Y, CX, CW, CH, S0, S1, BUS, RX, RY, RW, RH, DX, DY, DR } = RCC, mid = Y[1];
+  let s = `<defs>
+    <pattern id="rcGrid" width="16" height="16" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#1b222b"/></pattern>
+    <linearGradient id="rcCardG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#161d26"/><stop offset="1" stop-color="#0a0e13"/></linearGradient>
+    <linearGradient id="rcCardOn" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#4cff7a" stop-opacity=".16"/><stop offset=".6" stop-color="#4cff7a" stop-opacity=".03"/><stop offset="1" stop-color="#4cff7a" stop-opacity="0"/></linearGradient>
+    <radialGradient id="rcDialG" cx=".5" cy=".42" r=".6"><stop offset="0" stop-color="#18202a"/><stop offset="1" stop-color="#07090c"/></radialGradient>
+  </defs>
+  <rect class="rc-bg" x="0" y="0" width="960" height="384" rx="10"/><rect x="0" y="0" width="960" height="384" rx="10" fill="url(#rcGrid)"/>
+  <text class="rc-col" x="${CX}" y="30">SOURCE OF AZ / EL</text><text class="rc-col rc-mid" x="${(S0 + S1) / 2}" y="30">LINK</text>
+  <text class="rc-col rc-mid" x="${BUS}" y="30">BUS</text><text class="rc-col" x="${RX}" y="30">ROTOR</text>
+  <text class="rc-count" id="rcCount" x="936" y="30"></text>`;
+  // the wires after the switches, the bus segments to the feeder and the feeder (under the switches)
+  RC_LINKS.forEach((src, n) => {
+    const y = Y[n], seg = (x1, y1, x2, y2) => `<line class="rc-w" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/><line class="rc-flow" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+    s += `<g class="rc-path" data-rc-path="${src.k}">${seg(S1, y, BUS, y)}${y !== mid ? seg(BUS, y, BUS, mid) : ""}<circle class="rc-node" cx="${BUS}" cy="${y}" r="5"/></g>`;
+  });
+  s += `<g class="rc-path rc-feed" id="rcFeed"><line class="rc-w rc-busbar" x1="${BUS}" y1="${Y[0]}" x2="${BUS}" y2="${Y[2]}"/>` +
+    `<line class="rc-w" x1="${BUS}" y1="${mid}" x2="${RX}" y2="${mid}"/><line class="rc-flow" x1="${BUS}" y1="${mid}" x2="${RX}" y2="${mid}"/>` +
+    `<circle class="rc-node" cx="${BUS}" cy="${mid}" r="6"/><text class="rc-tag rc-mid" x="${(BUS + RX) / 2}" y="${mid - 10}">AZ / EL</text></g>`;
+  // the sources with their switches: one clickable group each
+  RC_LINKS.forEach((src, n) => {
+    const y = Y[n], top = y - CH / 2;
+    s += `<g class="rc-link" data-rc-link="${src.k}" role="button" tabindex="0"><title></title>
+      <rect class="rc-hit" x="${CX - 6}" y="${top - 6}" width="${S1 + 18 - CX}" height="${CH + 12}"/>
+      <rect class="rc-card" x="${CX}" y="${top}" width="${CW}" height="${CH}" rx="10"/>
+      <rect class="rc-card-on" x="${CX}" y="${top}" width="${CW}" height="${CH}" rx="10"/>
+      <rect class="rc-accent" x="${CX}" y="${top + 12}" width="4" height="${CH - 24}" rx="2"/>
+      <circle class="rc-ico-bg" cx="${CX + 40}" cy="${y}" r="22"/>
+      <g class="rc-ico" transform="translate(${CX + 28} ${y - 12})">${RC_ICONS[src.k]}</g>
+      <text class="rc-name" x="${CX + 74}" y="${y - 14}">${src.name}</text>
+      <text class="rc-state" x="${CX + 74}" y="${y + 6}"></text>
+      <text class="rc-where" x="${CX + 74}" y="${y + 25}">${escHtml(src.where)}</text>
+      <circle class="rc-led" cx="${CX + CW - 16}" cy="${y - CH / 2 + 16}" r="4.5"/>
+      <line class="rc-w rc-in" x1="${CX + CW}" y1="${y}" x2="${S0}" y2="${y}"/>
+      <line class="rc-lever" x1="${S0}" y1="${y}" x2="${S1 - 4}" y2="${y}" style="transform-origin:${S0}px ${y}px"/>
+      <circle class="rc-pin" cx="${S0}" cy="${y}" r="5.5"/><circle class="rc-pin rc-pin2" cx="${S1}" cy="${y}" r="5.5"/>
+      <rect class="rc-pill" x="${(S0 + S1) / 2 - 32}" y="${y + 16}" width="64" height="18" rx="9"/>
+      <text class="rc-pill-t rc-mid" x="${(S0 + S1) / 2}" y="${y + 29}"></text></g>`;
+  });
+  // the rotor: frame, status badge, compass dial (antenna AZ needle, target mark), AZ / EL readout and an EL bar
+  let ticks = "";
+  for (let a = 0; a < 360; a += 10) {
+    const r1 = DR - (a % 90 === 0 ? 11 : a % 30 === 0 ? 8 : 4), t = rcRad(a);
+    ticks += `<line class="rc-tick${a % 30 ? "" : " big"}" x1="${(DX + Math.sin(t) * r1).toFixed(1)}" y1="${(DY - Math.cos(t) * r1).toFixed(1)}" x2="${(DX + Math.sin(t) * (DR - 1)).toFixed(1)}" y2="${(DY - Math.cos(t) * (DR - 1)).toFixed(1)}"/>`;
+  }
+  const card = (a, l) => `<text class="rc-card-l rc-mid" x="${(DX + Math.sin(rcRad(a)) * (DR - 21)).toFixed(1)}" y="${(DY - Math.cos(rcRad(a)) * (DR - 21) + 4).toFixed(1)}">${l}</text>`;
+  const ex = RX + 168, bw = RW - 168 - 22;
+  s += `<g class="rc-rot" id="rcRot"><title>The rotor: green while at least one source is connected, grey when none is</title>
+    <rect class="rc-frame" x="${RX}" y="${RY}" width="${RW}" height="${RH}" rx="12"/>
+    <rect class="rc-frame-head" x="${RX}" y="${RY}" width="${RW}" height="34" rx="12"/><rect class="rc-frame-head" x="${RX}" y="${RY + 22}" width="${RW}" height="12"/>
+    <text class="rc-name" x="${RX + 16}" y="${RY + 22}">ROTOR</text><text class="rc-where" id="rcRotDev" x="${RX + 76}" y="${RY + 22}"></text>
+    <rect class="rc-badge" x="${RX + RW - 92}" y="${RY + 8}" width="80" height="18" rx="9"/><text class="rc-badge-t rc-mid" id="rcRotBadge" x="${RX + RW - 52}" y="${RY + 21}"></text>
+    <circle class="rc-dial" cx="${DX}" cy="${DY}" r="${DR}"/>${ticks}${card(0, "N")}${card(90, "E")}${card(180, "S")}${card(270, "W")}
+    <g id="rcTgt" class="rc-tgt" style="transform-origin:${DX}px ${DY}px"><path d="M${DX} ${DY - DR + 1}l-5.5 -10h11z"/></g>
+    <g id="rcNeedle" class="rc-needle" style="transform-origin:${DX}px ${DY}px"><path d="M${DX} ${DY - DR + 13}L${DX + 5} ${DY}L${DX} ${DY + 12}L${DX - 5} ${DY}z"/></g>
+    <circle class="rc-cap" cx="${DX}" cy="${DY}" r="4"/>
+    <text class="rc-lbl" x="${ex}" y="${RY + 66}">AZIMUTH</text><text class="rc-big" id="rcRotAz" x="${ex}" y="${RY + 96}"></text>
+    <text class="rc-lbl" x="${ex}" y="${RY + 126}">ELEVATION</text><text class="rc-big" id="rcRotEl" x="${ex}" y="${RY + 156}"></text>
+    <rect class="rc-bar" x="${ex}" y="${RY + 166}" width="${bw}" height="6" rx="3"/><rect class="rc-bar-v" id="rcRotElBar" x="${ex}" y="${RY + 166}" width="0" height="6" rx="3"/>
+    <line class="rc-tick" x1="${ex + bw / 2}" y1="${RY + 163}" x2="${ex + bw / 2}" y2="${RY + 175}"/>
+    <text class="rc-state" id="rcRotSt" x="${RX + 16}" y="${RY + RH - 30}"></text>
+    <text class="rc-where" id="rcRotSrc" x="${RX + 16}" y="${RY + RH - 12}"></text></g>
+  <text class="rc-warn" id="rcConnWarn" x="${CX}" y="376"></text>`;
+  $("rcConn").innerHTML = `<svg id="rcConnSvg" viewBox="0 0 960 384" role="group" aria-label="Sources of the wanted AZ / EL and the rotor">${s}</svg>`;
+}
+
+/** CONNECTION: the mimic of the three sources, each through its switch to one bus, the bus to the rotor.
+ *  The rotor glows green while at least one source is connected, grey when none is. */
+function rcRenderConn() {
+  if (rcPage !== "conn" || bodyTab !== "rot") return;
+  if (!$("rcConnSvg")) rcConnBuild();
+  const i = rotorInfo, links = i && i.links ? i.links : null, svg = $("rcConnSvg");
+  const n = links ? RC_LINKS.filter((s) => links[s.k]).length : 0, any = n > 0;
+  const txt = (el, t) => { if (el && el.textContent !== t) el.textContent = t; };
+  for (const src of RC_LINKS) {
+    const on = !!links && links[src.k], g = svg.querySelector(`[data-rc-link="${src.k}"]`);
+    g.classList.toggle("on", on);
+    g.setAttribute("aria-pressed", String(on));
+    g.setAttribute("aria-label", `${src.name} ${on ? "connected" : "disconnected"}`);
+    txt(g.querySelector("title"), `${src.name}: ${on ? "connected – click to disconnect it from the rotor" : "disconnected – click to connect it to the rotor"}`);
+    txt(g.querySelector(".rc-state"), links ? rcSrcState(src.k, on, i) : "unknown");
+    txt(g.querySelector(".rc-pill-t"), on ? "LINKED" : "OPEN");
+    svg.querySelector(`[data-rc-path="${src.k}"]`).classList.toggle("on", on);
+  }
+  $("rcFeed").classList.toggle("on", any);
+  $("rcRot").classList.toggle("on", any);
+  txt($("rcCount"), links ? `${n} / ${RC_LINKS.length} CONNECTED` : "");
+  $("rcCount").classList.toggle("on", any);
+  txt($("rcRotBadge"), any ? "ACTIVE" : "ISOLATED");
+  txt($("rcRotDev"), i && i.device ? i.device : "");
+  const ok = !!(i && i.connected && i.azShow != null);
+  txt($("rcRotAz"), ok ? `${String(Math.round(i.azShow) % 360).padStart(3, "0")}°` : "---°");
+  txt($("rcRotEl"), ok && i.elShow != null ? `${String(Math.round(i.elShow)).padStart(2, "0")}°` : "--°");
+  $("rcRotElBar").setAttribute("width", ok && i.elShow != null ? (Math.min(Math.max(i.elShow, 0), 180) / 180 * (RCC.RW - 190)).toFixed(1) : "0");
+  $("rcNeedle").style.transform = `rotate(${ok ? i.azShow : 0}deg)`;
+  $("rcNeedle").classList.toggle("off", !ok);
+  const tgt = i && i.target ? i.target[0] : null;
+  $("rcTgt").style.transform = `rotate(${tgt ?? 0}deg)`;
+  $("rcTgt").classList.toggle("off", tgt == null);
+  txt($("rcRotSt"), !i ? "no answer" : i.error && !i.on ? i.error : !i.on ? "link off · SETTINGS › GENERAL › ROTOR" : !i.connected ? "connecting…"
+    : i.fault ? `FAULT: ${i.fault}` : rotorMoving(i) && i.target ? `turning → AZ ${Math.round(i.target[0])}° EL ${Math.round(i.target[1])}°` : "standing");
+  txt($("rcRotSrc"), !any ? "no source connected · hand commands only"
+    : `driven by ${RC_LINKS.filter((s) => links[s.k]).map((s) => ({ sat: "SAT", mem: "MEMORY", map: "MAP" })[s.k]).join(" · ")}`);
+  txt($("rcConnWarn"), links ? "" : "The receiver with the rotor did not answer yet: the state of the links is not known.");
+}
+
+async function rcToggleLink(k) {
+  const links = rotorInfo && rotorInfo.links;
+  if (!links) { rcSay("The receiver with the rotor is not reachable", true); return; }
+  const on = !links[k];
+  await rcPost({ links: { [k]: on } }, `${RC_LINK_NAME[k]} ${on ? "connected to" : "disconnected from"} the rotor`);
+  rcRenderConn();
+}
+$("rcConn").addEventListener("click", (e) => {
+  const g = e.target.closest("[data-rc-link]");
+  if (g) rcToggleLink(g.dataset.rcLink);
+});
+$("rcConn").addEventListener("keydown", (e) => {
+  const g = e.target.closest("[data-rc-link]");
+  if (g && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); rcToggleLink(g.dataset.rcLink); }
+});
 document.addEventListener("visibilitychange", () => { if (!document.hidden && bodyTab === "rot") rctrlOpened(); });
 
 // A click on the clock switches UTC / local time (LOC); the choice is remembered.
@@ -9776,6 +9983,12 @@ function renderVfoDisplays() {
         rf.value = best;
       }
       setBarFill(rf);
+      // manual RF gain (AGC and AGC+ off): the whole RF bar and its dB value red while the A/D clips, held 1 s
+      const manual = s.gain !== "auto" && !smart, now = performance.now();
+      if (manual && s.adc_clip) row._rfClipAt = now;
+      const rfClip = manual && now - (row._rfClipAt ?? -1e9) < 1000;
+      gain.closest(".vfo-foot").classList.toggle("clip", rfClip);
+      if (manual && !gain.matches(":hover")) gain.title = `RF gain, A/D peak ${s.adc_peak} dBFS${rfClip ? ", CLIPPING – lower the RF gain" : ""}`;
       // squelch only in AM/FM/WFM; in other modes it stays in place but dimmed and inactive
       const levels = s.squelch_levels || {};
       const sqOk = s.mode in levels, set = sqOk ? levels[s.mode] : SQUELCH_OFF;
