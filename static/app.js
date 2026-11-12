@@ -116,11 +116,11 @@ let vbase = ""; // receiver address of the active VFO ("" = server of this page,
 let vfos = []; // [{name, port, serial, note, base, st, rows, online}]
 let active = null; // active VFO
 
-// "?map=packet|hfdl|ais|acars&vfo=A": this tab shows only that map (opened by the □ key of the map) – no audio,
+// "?map=packet|hfdl|ais|adsb|acars&vfo=A": this tab shows only that map (opened by the □ key of the map) – no audio,
 // no spectrum, and it saves nothing to the browser, so the settings of the main window stay as they are
 const MAP_ONLY = (() => {
   const m = new URLSearchParams(location.search).get("map");
-  return ["packet", "hfdl", "ais", "acars"].includes(m) ? m : null;
+  return ["packet", "hfdl", "ais", "adsb", "acars"].includes(m) ? m : null;
 })();
 
 function store(key, value) { if (MAP_ONLY) return; try { localStorage.setItem(key, value); } catch (e) { /* no storage */ } }
@@ -2827,7 +2827,7 @@ function setBodyTab(tab, save = true) {
 const DEC_PAGES = [
   { key: "ft8", title: "FT8" }, { key: "wefax", title: "WEFAX" }, { key: "cw", title: "CW" }, { key: "rtty", title: "RTTY" },
   { key: "sstv", title: "SSTV" }, { key: "packet", title: "PACKET" }, { key: "acars", title: "ACARS" }, { key: "vdl2", title: "VDL2" }, { key: "hfdl", title: "HFDL" }, { key: "ais", title: "AIS" },
-  { key: "ism", title: "ISM" },
+  { key: "adsb", title: "ADS-B" }, { key: "ism", title: "ISM" },
 ];   // DAB and DSD are modes (MODE) with their own tabs
 // the open page is remembered for each VFO separately (decPage_A, decPage_B…)
 const decPageKey = () => (active ? `decPage_${active.name}` : "decPage");
@@ -2896,7 +2896,7 @@ const DEC_RTL_ONLY = { vdl2: "VDL2", ism: "ISM" };
 
 /** Why the decoder of the page cannot run on the receiver of the active VFO ("" = it can). */
 function decUnavailable(key) {
-  if ((key === "hfdl" || key === "ais") && st && st.chain_owner) return `${key.toUpperCase()} needs its own dongle: ${active ? `VFO ${active.name}` : "this VFO"} shares the dongle of VFO ${st.chain_owner}.`;
+  if ((key === "hfdl" || key === "ais" || key === "adsb") && st && st.chain_owner) return `${key === "adsb" ? "ADS-B" : key.toUpperCase()} needs its own dongle: ${active ? `VFO ${active.name}` : "this VFO"} shares the dongle of VFO ${st.chain_owner}.`;
   const name = DEC_RTL_ONLY[key];
   if (!name || !st) return "";
   const vfo = active ? `VFO ${active.name}` : "this VFO";
@@ -3008,7 +3008,7 @@ function renderScanKey() {
   $("scanTabDot").hidden = !(sc && sc.on);
 }
 $("scanKey").addEventListener("click", () => setScanOn(!scanTabShown()));
-for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "packetOn", "acarsOn", "vdl2On", "hfdlOn", "aisOn"]) {
+for (const id of ["ft8On", "wefaxOn", "cwOn", "rttyOn", "sstvOn", "packetOn", "acarsOn", "vdl2On", "hfdlOn", "aisOn", "adsbOn"]) {
   $(id).addEventListener("change", () => renderDecTab());
 }
 setBodyTab(bodyTab, false);
@@ -7150,6 +7150,401 @@ $("aisClear").addEventListener("click", () => {
   renderAisInfo({ count: 0, ships: 0, bad: 0 });
 });
 
+// ---------- ADS-B: aircraft on 1090 MHz (adsb.py: Mode S / ADS-B from the raw samples of the VFO) ----------
+
+const ADSB_MAX_MSGS = 300;
+const ADSB_TITLE = $("adsbOn").parentElement.title;   // tooltip from index.html (replaced on a chained VFO)
+const ADSB_OLD_S = 60;          // not heard for a minute: grey
+const ADSB_GONE_S = 600;        // the server drops it after 10 min
+let adsbLast = {};              // the status sends only on/off and the error; the rest comes from adsbstate / adsb
+let adsbFreq = 1090000000;
+const adsbAc = new Map();       // icao -> {…aircraft from the server, pts: [[lat, lon, t, alt]]}
+let adsbView = recall("adsbView") || "ac";
+let adsbMap = null, adsbMapLayers = null, adsbMapFitted = false, adsbSel = null, adsbViewTimer = null, adsbQth = null;
+
+const adsbUtc = (t) => new Date(t * 1000).toISOString().slice(11, 19);
+const adsbAge = (t) => { const s = Date.now() / 1000 - t; return s < 90 ? `${Math.max(0, Math.round(s))} s` : `${Math.round(s / 60)} min`; };
+const adsbGlobe = (icao) => `https://globe.adsb.fi/?icao=${icao.toLowerCase()}`;
+const adsbLol = (a) => `https://adsb.lol/?icao=${a.icao.toLowerCase()}`;
+const adsbEmerg = (a) => !!a.emergency || ["7500", "7600", "7700"].includes(a.squawk);
+
+function adsbFlag(icao) {
+  const c = icaoCountry(icao);
+  if (!c) return "";
+  if (!c.cc) return `<span class="muted" title="${escHtml(c.name)}">—</span>`;
+  return `<span class="cflag" title="${escHtml(c.name)}"><img src="${flagUrl(c.cc)}" alt="${c.cc.toUpperCase()}" onerror="this.replaceWith(this.alt)"><span>${c.cc.toUpperCase()}</span></span>`;
+}
+
+function adsbAlt(a) {
+  if (a.ground) return "ground";
+  const v = a.alt ?? a.alt_geo;
+  if (v == null) return "";
+  const arrow = a.vrate == null || Math.abs(a.vrate) < 256 ? "" : a.vrate > 0 ? " ▲" : " ▼";
+  return `${v.toLocaleString("en-US")}${a.alt == null ? " G" : ""}${arrow}`;
+}
+const adsbSpd = (a) => (a.gs != null ? `${Math.round(a.gs)}` : a.tas != null ? `TAS ${a.tas}` : a.ias != null ? `IAS ${a.ias}` : "");
+const adsbTrk = (a) => (a.track != null ? `${Math.round(a.track)}°` : a.hdg != null ? `hdg ${Math.round(a.hdg)}°` : "");
+const adsbLabel = (a) => a.flight || a.icao;
+
+function adsbSearch(a) {
+  const c = icaoCountry(a.icao);
+  return [a.icao, a.flight, a.squawk, a.category, a.emergency, c && c.name].join(" ").toLowerCase();
+}
+
+function adsbList() {
+  const q = $("adsbFilter").value.trim().toLowerCase();
+  return [...adsbAc.values()].sort((x, y) => (adsbEmerg(y) - adsbEmerg(x)) || (y.last - x.last)).filter((a) => !q || adsbSearch(a).includes(q));
+}
+
+/** Aircraft from the server (adsb event, /api/adsb): newest data and the track point of a new position. */
+function adsbAcUpdate(d) {
+  let a = adsbAc.get(d.icao);
+  if (!a) {
+    a = { pts: [] };
+    adsbAc.set(d.icao, a);
+  }
+  const trail = d.trail;
+  delete d.trail;
+  Object.assign(a, d);
+  if (trail) a.pts = trail;
+  else if (d.lat != null) {
+    const p = a.pts[a.pts.length - 1];
+    if (!p || p[0] !== d.lat || p[1] !== d.lon) {
+      a.pts.push([d.lat, d.lon, d.pos_time, d.alt]);
+      if (a.pts.length > 200) a.pts.shift();
+    }
+  }
+}
+
+function onAdsb(d) {
+  for (const a of d.ac || []) adsbAcUpdate(a);
+  for (const k of d.gone || []) adsbAc.delete(k);
+  if (d.msgs && d.msgs.length) addAdsbMsgs(d.msgs);
+  if (d.info) renderAdsbInfo(d.info);
+  if ((d.ac && d.ac.length) || (d.gone && d.gone.length)) adsbViewLater();
+}
+
+// ----- MESSAGES: the newest decoded messages (a click holds the list still, like AIS) -----
+
+let adsbPausedRow = null;
+
+function adsbMsgVisible(tr) {
+  const q = $("adsbFilter").value.trim().toLowerCase();
+  return !q || tr.dataset.search.includes(q);
+}
+
+function addAdsbMsgs(msgs) {
+  const tb = $("adsbMsgRows");
+  const frag = document.createDocumentFragment();
+  for (const m of msgs) {
+    const tr = document.createElement("tr");
+    const a = adsbAc.get(m.icao);
+    tr.dataset.search = [m.icao, m.kind, m.text, m.hex, a && a.flight].join(" ").toLowerCase();
+    tr.innerHTML = `<td>${adsbUtc(m.time)}</td><td class="num">${m.level == null ? "" : `${m.level.toFixed(0)} dB`}</td>` +
+      `<td class="icao"><a href="${adsbGlobe(m.icao)}" target="_blank" rel="noopener" title="${escHtml((a && a.flight) || "")} · globe.adsb.fi">${m.icao}</a></td>` +
+      `<td class="num">${m.df}</td><td>${escHtml(m.kind)}${m.fixed ? ' <span class="muted" title="Corrected with the CRC">(fixed)</span>' : ""}</td>` +
+      `<td class="data">${escHtml(m.text)}</td><td class="hex">${m.hex}</td>`;
+    tr.hidden = !adsbMsgVisible(tr);
+    frag.prepend(tr);
+  }
+  adsbKeepView(() => {
+    tb.prepend(frag);
+    const max = adsbPausedRow ? ADSB_MAX_MSGS * 2 : ADSB_MAX_MSGS;
+    while (tb.rows.length > max) (tb.lastChild === adsbPausedRow ? adsbPausedRow.previousSibling : tb.lastChild).remove();
+  });
+  $("adsbMsgEmpty").hidden = tb.rows.length > 0;
+}
+
+function adsbPause(tr) {
+  adsbPausedRow?.classList.remove("picked");
+  adsbPausedRow = tr;
+  tr.classList.add("picked");
+  $("adsbMsgBox").classList.add("paused");
+  $("adsbPaused").hidden = false;
+}
+
+function adsbResume() {
+  if (!adsbPausedRow) return;
+  adsbPausedRow.classList.remove("picked");
+  adsbPausedRow = null;
+  const box = $("adsbMsgBox");
+  box.classList.remove("paused");
+  $("adsbPaused").hidden = true;
+  box.scrollTop = 0;
+  const tb = $("adsbMsgRows");
+  while (tb.rows.length > ADSB_MAX_MSGS) tb.lastChild.remove();
+}
+
+function adsbKeepView(change) {
+  const tr = adsbPausedRow;
+  if (!tr) { change(); return; }
+  const y = tr.offsetTop;
+  change();
+  if (adsbPausedRow === tr) $("adsbMsgBox").scrollTop += tr.offsetTop - y;
+}
+
+$("adsbMsgBox").addEventListener("wheel", (e) => {
+  if (!adsbPausedRow) return;
+  e.preventDefault();
+  adsbResume();
+}, { passive: false });
+$("adsbMsgRows").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr");
+  if (tr && !e.target.closest("a")) adsbPause(tr);
+});
+
+// ----- AIRCRAFT table and MAP -----
+
+function adsbViewLater() {
+  if (adsbView === "msgs" || adsbViewTimer) return;
+  adsbViewTimer = setTimeout(() => { adsbViewTimer = null; renderAdsbView(); }, 500);
+}
+
+function renderAdsbView() {
+  if (adsbView === "ac") renderAdsbAcTable();
+  else if (adsbView === "map") renderAdsbMap();
+}
+
+function renderAdsbAcTable() {
+  const list = adsbList(), esc = escHtml, now = Date.now() / 1000;
+  $("adsbAcRows").innerHTML = list.map((a) => {
+    const cls = [adsbEmerg(a) ? "emerg" : "", now - a.last > ADSB_OLD_S ? "old" : "", a.icao === adsbSel ? "sel" : ""].filter(Boolean).join(" ");
+    const sq = a.squawk ? `<span${adsbEmerg(a) ? ` class="sq-emerg" title="${esc(a.emergency || "emergency")}"` : ""}>${a.squawk}</span>` : (a.emergency ? `<span class="sq-emerg">${esc(a.emergency)}</span>` : "");
+    return `<tr data-icao="${a.icao}" class="${cls}"><td class="cty">${adsbFlag(a.icao)}</td>` +
+      `<td class="icao"><a href="${adsbGlobe(a.icao)}" target="_blank" rel="noopener" title="globe.adsb.fi${a.tisb ? " · TIS-B / ADS-R (relayed by the ground)" : ""}">${a.icao}</a>${a.tisb ? '<span class="muted"> T</span>' : ""}</td>` +
+      `<td class="flt">${a.flight ? `<a href="${adsbLol(a)}" target="_blank" rel="noopener" title="adsb.lol">${esc(a.flight)}</a>` : ""}</td>` +
+      `<td>${sq}</td><td class="num">${adsbAlt(a)}</td><td class="num">${a.vrate == null ? "" : (a.vrate > 0 ? "+" : "") + a.vrate}</td>` +
+      `<td class="num">${adsbSpd(a)}</td><td class="num">${adsbTrk(a)}</td>` +
+      `<td>${a.lat != null ? `<a href="#" class="adsb-goto" title="Show on the MAP">${a.lat.toFixed(3)}, ${a.lon.toFixed(3)}</a> <span class="muted">${adsbAge(a.pos_time)}</span>` : ""}</td>` +
+      `<td class="num">${a.dist_km == null ? "" : `${Math.round(a.dist_km)} km`}</td><td class="num">${a.az == null ? "" : `${a.az}°`}</td>` +
+      `<td title="${esc(a.cat || "")}">${esc(a.category || "")}</td><td class="num">${a.level == null ? "" : `${a.level.toFixed(0)} dB`}</td>` +
+      `<td class="num">${a.n}</td><td class="num">${adsbAge(a.last)}</td></tr>`;
+  }).join("");
+  $("adsbAcEmpty").hidden = list.length > 0;
+}
+
+function adsbIcon(a, sel) {
+  const old = Date.now() / 1000 - a.last > ADSB_OLD_S;
+  const cls = `hfdl-plane adsb-plane${sel ? " sel" : ""}${old ? " old" : ""}${adsbEmerg(a) ? " emerg" : ""}${a.ground ? " ground" : ""}`;
+  const svg = `<svg viewBox="0 0 24 24" style="transform: rotate(${Math.round(a.track ?? a.hdg ?? 0)}deg)"><path d="M12 2c.6 0 1 .9 1 2v5.2l8 4.6v2l-8-2.5v4.9l2.2 1.6V21L12 20.2 8.8 21v-1.2L11 18.2v-4.9l-8 2.5v-2l8-4.6V4c0-1.1.4-2 1-2z"/></svg>`;
+  return L.divIcon({ className: cls, html: svg, iconSize: [22, 22], iconAnchor: [11, 11] });
+}
+
+function adsbPopup(a) {
+  const esc = escHtml, c = icaoCountry(a.icao);
+  const lines = [`<b>${esc(a.flight || a.icao)}</b> ICAO ${a.icao}${c ? ` · ${esc(c.name)}` : ""}`];
+  if (a.category) lines.push(esc(a.category));
+  const nav = [a.squawk ? `squawk ${a.squawk}` : "", adsbAlt(a) ? `${adsbAlt(a)} ft` : "", a.vrate != null ? `${a.vrate > 0 ? "+" : ""}${a.vrate} ft/min` : "",
+    adsbSpd(a) ? `${adsbSpd(a)} kt` : "", adsbTrk(a)].filter(Boolean).join(" · ");
+  if (nav) lines.push(esc(nav));
+  if (a.emergency) lines.push(`<span class="sq-emerg">${esc(a.emergency.toUpperCase())}</span>`);
+  if (a.sel_alt != null || a.qnh != null) lines.push(esc([a.sel_alt != null ? `selected ${a.sel_alt} ft` : "", a.qnh != null ? `QNH ${a.qnh} hPa` : ""].filter(Boolean).join(" · ")));
+  if (a.lat != null) lines.push(`position ${a.lat.toFixed(4)}, ${a.lon.toFixed(4)} (${adsbAge(a.pos_time)} ago)${a.dist_km != null ? ` · ${Math.round(a.dist_km)} km, ${a.az}°` : ""}`);
+  lines.push(`last message ${adsbUtc(a.last)} UTC · ${a.n} msgs · <a href="${adsbGlobe(a.icao)}" target="_blank" rel="noopener">globe.adsb.fi</a> · <a href="${adsbLol(a)}" target="_blank" rel="noopener">adsb.lol</a>`);
+  return lines.join("<br>");
+}
+
+async function adsbMapOpen() {
+  try {
+    await Promise.all([satAsset("/static/leaflet/leaflet.css"), satAsset("/static/leaflet/leaflet.js")]);
+  } catch (e) {
+    $("adsbMapNote").textContent = e.message;
+    return false;
+  }
+  if (!adsbMap) {
+    adsbMap = L.map($("adsbMap"), { worldCopyJump: true, minZoom: 2 }).setView([49, 18], 6);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 16, className: "hfdl-dark",
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a> contributors',
+    }).addTo(adsbMap);
+    mapPopout(adsbMap, "adsb");
+    adsbMapLayers = { rings: L.layerGroup().addTo(adsbMap), tracks: L.layerGroup().addTo(adsbMap), planes: L.layerGroup().addTo(adsbMap), marks: new Map() };
+    try {
+      const s = await satFetch("/api/location");
+      if (s && Number.isFinite(s.lat) && Number.isFinite(s.lon) && (s.lat || s.lon)) {
+        adsbQth = s;
+        for (const km of [50, 100, 200, 300]) {
+          L.circle([s.lat, s.lon], { radius: km * 1000, color: "#6cb8ff", weight: 1, opacity: 0.35, fill: false, interactive: false }).addTo(adsbMapLayers.rings);
+        }
+        L.circleMarker([s.lat, s.lon], { radius: 6, color: "#000", weight: 2, fillColor: "#ff5a3c", fillOpacity: 1 }).bindTooltip("QTH · rings 50, 100, 200, 300 km").addTo(adsbMap);
+        adsbMap.setView([s.lat, s.lon], 7);
+      }
+    } catch { /* server unreachable */ }
+  }
+  return true;
+}
+
+async function renderAdsbMap() {
+  if (!(await adsbMapOpen())) return;
+  adsbMap.invalidateSize();
+  const lay = adsbMapLayers;
+  lay.tracks.clearLayers();
+  const list = adsbList().filter((a) => a.lat != null);
+  const keep = new Set();
+  for (const a of list) {
+    keep.add(a.icao);
+    const sel = a.icao === adsbSel;
+    if (a.pts.length > 1) L.polyline(a.pts.map((p) => [p[0], p[1]]), { color: sel ? "#ff4b3c" : "#fff", weight: sel ? 2.5 : 1.5, opacity: sel ? 0.9 : 0.5, interactive: false }).addTo(lay.tracks);
+    let mk = lay.marks.get(a.icao);
+    const alt = adsbAlt(a);
+    const label = `${escHtml(adsbLabel(a))}${alt ? `<br>${alt}` : ""}`;
+    if (!mk) {
+      mk = L.marker([a.lat, a.lon]).bindPopup("").bindTooltip("", { permanent: true, direction: "bottom", offset: [0, 8], className: "ais-label" }).addTo(lay.planes);
+      mk.on("click", () => adsbSelect(a.icao, false));
+      lay.marks.set(a.icao, mk);
+    }
+    mk.setLatLng([a.lat, a.lon]);
+    mk.setIcon(adsbIcon(a, sel));
+    mk.setTooltipContent(label);
+    mk.setPopupContent(adsbPopup(a));
+  }
+  for (const [k, mk] of lay.marks) if (!keep.has(k)) { mk.remove(); lay.marks.delete(k); }
+  if (!adsbMapFitted && lay.marks.size && !adsbQth) {
+    adsbMapFitted = true;
+    adsbMap.fitBounds(L.featureGroup([...lay.marks.values()]).getBounds().pad(0.3), { maxZoom: 10 });
+  }
+  $("adsbMapList").innerHTML = `<div class="ais-ml-head">${list.length} aircraft with a position${adsbAc.size > list.length ? ` (${adsbAc.size - list.length} without)` : ""}</div>` +
+    list.map((a) => {
+      const c = icaoCountry(a.icao);
+      return `<div class="ais-ml adsb-ml${a.icao === adsbSel ? " sel" : ""}${Date.now() / 1000 - a.last > ADSB_OLD_S ? " old" : ""}${adsbEmerg(a) ? " emerg" : ""}" data-icao="${a.icao}">` +
+        `${c && c.cc ? `<img src="${flagUrl(c.cc)}" alt="" title="${escHtml(c.name)}">` : "<span></span>"}` +
+        `<b>${escHtml(adsbLabel(a))}</b><span class="mmsi">${a.icao}</span><span class="stype">${adsbAlt(a)}</span>` +
+        `<span>${a.dist_km == null ? "" : `${Math.round(a.dist_km)} km`}</span><span class="age">${adsbAge(a.last)}</span></div>`;
+    }).join("");
+  $("adsbMapNote").textContent = `${list.length} with a position · yellow = aircraft turned to its track · red = selected · grey = not heard for 1 min · white trail = decoded positions${adsbQth ? " · blue rings 50 / 100 / 200 / 300 km" : ""} · map © OpenStreetMap`;
+}
+
+function adsbSelect(icao, pan = true) {
+  adsbSel = icao;
+  renderAdsbMap().then(() => {
+    const mk = adsbMapLayers && adsbMapLayers.marks.get(icao);
+    if (!mk) return;
+    if (pan) adsbMap.setView(mk.getLatLng(), Math.max(adsbMap.getZoom(), 8));
+    mk.openPopup();
+  });
+}
+
+function setAdsbView(v) {
+  adsbView = v;
+  store("adsbView", v);
+  for (const b of $("adsbViews").children) b.classList.toggle("on", b.dataset.view === v);
+  $("adsbAcBox").hidden = v !== "ac";
+  $("adsbMapBox").hidden = v !== "map";
+  $("adsbMsgBox").hidden = v !== "msgs";
+  renderAdsbView();
+}
+
+function setAdsbInfo(on) {
+  store("adsbInfo", on ? "1" : "0");
+  $("adsbInfoKey").classList.toggle("on", on);
+  $("adsbNote").hidden = !on;
+  if (adsbMap) setTimeout(() => adsbMap.invalidateSize());
+}
+$("adsbInfoKey").addEventListener("click", () => setAdsbInfo($("adsbNote").hidden));
+setAdsbInfo(recall("adsbInfo") === "1");
+$("adsbViews").addEventListener("click", (e) => { const b = e.target.closest("button[data-view]"); if (b) setAdsbView(b.dataset.view); });
+$("adsbMapList").addEventListener("click", (e) => { const r = e.target.closest("[data-icao]"); if (r) adsbSelect(r.dataset.icao); });
+$("adsbAcRows").addEventListener("click", (e) => {
+  if (!e.target.closest(".adsb-goto")) return;
+  e.preventDefault();
+  const icao = e.target.closest("tr").dataset.icao;
+  setAdsbView("map");
+  adsbSelect(icao);
+});
+setTimeout(() => setAdsbView(adsbView));
+setInterval(() => { if (adsbAc.size && adsbView !== "msgs" && !$("adsbCard").hidden) renderAdsbView(); }, 5000);   // ages, grey after 1 min
+
+function adsbReset() {
+  adsbLast = {};
+  adsbAc.clear();
+  adsbSel = null;
+  adsbMapFitted = false;
+  if (adsbMapLayers) { adsbMapLayers.planes.clearLayers(); adsbMapLayers.tracks.clearLayers(); adsbMapLayers.marks.clear(); }
+  $("adsbMsgRows").innerHTML = "";
+  $("adsbMsgEmpty").hidden = false;
+  $("adsbStatus").textContent = "";
+  adsbResume();
+  renderAdsbView();
+}
+
+async function adsbLoad() {
+  const v = active;
+  try {
+    const d = await fetch(vbase + "/api/adsb").then((r) => r.json());
+    if (v !== active) return;
+    adsbAc.clear();
+    for (const a of d.aircraft || []) adsbAcUpdate(a);
+    $("adsbMsgRows").innerHTML = "";
+    addAdsbMsgs(d.messages || []);
+    renderAdsbInfo(d);
+    renderAdsbView();
+  } catch { /* an older receiver without ADS-B */ }
+}
+
+function renderAdsbBands(freq) {
+  adsbFreq = freq || 1090000000;
+  $("adsbBands").innerHTML = `<button data-f="${adsbFreq}" title="ADS-B on: the VFO goes to ${fmtMHz(adsbFreq, 3)} MHz at 2.4 MS/s">${fmtMHz(adsbFreq, 3)}</button>`;
+}
+
+function renderAdsbInfo(d) {
+  const i = (adsbLast = { ...adsbLast, ...d });
+  const el = $("adsbInfo");
+  el.classList.toggle("err", !!i.error);
+  if (i.error) el.textContent = `ADS-B: ${i.error}`;
+  else el.textContent = !i.enabled ? "" : !i.running ? "waiting for the VFO…"
+    : `${i.aircraft || 0} aircraft (${i.with_pos || 0} with a position) · ${i.count || 0} messages${i.rate ? ` · ${i.rate.toFixed(0)}/s` : ""}${i.fixed ? ` · ${i.fixed} fixed` : ""}${i.dropped ? ` · ${i.dropped} blocks dropped` : ""}`;
+  $("adsbStatus").textContent = i.enabled && i.running && i.fs ? `Listening on ${fmtMHz(adsbFreq, 3)} MHz at ${(i.fs / 1e6).toFixed(1)} MS/s` : "";
+}
+
+function renderAdsb(s) {
+  const on = !!s.adsb;
+  $("adsbOn").checked = on;
+  $("adsbCard").hidden = !on;
+  const no = !!s.chain_owner;
+  $("adsbOn").disabled = no;
+  $("adsbOn").parentElement.classList.toggle("disabled", no);
+  $("adsbOn").parentElement.title = no ? `ADS-B needs its own dongle (this VFO shares the dongle of VFO ${s.chain_owner})` : ADSB_TITLE;
+  for (const b of $("adsbBands").children) b.classList.toggle("active", on && s.center_hz === Number(b.dataset.f));
+  renderAdsbInfo({ enabled: on, error: s.adsb_error });
+}
+
+/** ADS-B on takes the dongle to 1090 MHz: the decoders that need it elsewhere go off (the server does the same). */
+function adsbOthersOff() {
+  if (!st) return;
+  st.acars = st.vdl2 = st.dab = st.ism = st.hfdl = st.ais = false;
+  $("acarsOn").checked = $("vdl2On").checked = $("hfdlOn").checked = $("aisOn").checked = false;
+}
+
+$("adsbOn").addEventListener("change", () => {
+  st.adsb = $("adsbOn").checked;
+  if (st.adsb) adsbOthersOff();
+  $("adsbCard").hidden = !st.adsb;
+  send({ adsb: st.adsb });
+  renderAdsbInfo({ enabled: st.adsb });
+});
+$("adsbBands").addEventListener("click", async (e) => {
+  const b = e.target.closest("[data-f]");
+  if (!b || !st) return;
+  await ensureVfoFor(Number(b.dataset.f));
+  if (!st) return;
+  adsbOthersOff();
+  st.adsb = true;
+  $("adsbOn").checked = true;
+  send({ adsb: true });
+  setDecPage("adsb");
+  renderDecTab();
+});
+$("adsbFilter").addEventListener("input", () => {
+  for (const tr of $("adsbMsgRows").rows) tr.hidden = !adsbMsgVisible(tr);
+  if (adsbPausedRow?.hidden) adsbResume();
+  renderAdsbView();
+});
+$("adsbClear").addEventListener("click", () => {
+  fetch(vbase + "/api/adsb", { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"action":"clear"}' });
+  adsbReset();
+  renderAdsbInfo({ count: 0, aircraft: 0, with_pos: 0, fixed: 0, dropped: 0, rate: 0 });
+});
+
 // ---------- DSD: digital voice (a mode with its own DSD tab, not a DECODE key: it replaces the audio) ----------
 
 const DSD_MAX_ROWS = 300;
@@ -8488,7 +8883,7 @@ $("medSaveCur").addEventListener("click", () => {   // the tuned frequency, mode
 
 const RECORD_NAMES = { off: "OFF", on: "ON", sq: "SQ", asq: "ASQ" };   // RECORD of a memory: recording at recall
 const DECODER_NAMES = { "": "—", ft8: "FT8", wefax: "WEFAX", cw: "CW", rtty: "RTTY", sstv: "SSTV", packet: "PACKET",
-  acars: "ACARS", vdl2: "VDL2", hfdl: "HFDL", ais: "AIS", ism: "ISM" };
+  acars: "ACARS", vdl2: "VDL2", hfdl: "HFDL", ais: "AIS", adsb: "ADS-B", ism: "ISM" };
 const NO_GROUP = "\u0000none";   // value of "(no group)" in the group filters
 let memGroupList = [];           // [{name, note, count}] from /api/memory_groups
 let medTab = recall("medTab") || "channels";
@@ -9576,7 +9971,7 @@ function onStatus(s) {
   const rateChanged = st && st.audio_rate !== s.audio_rate;
   // Shortly after a local change, do not let an older state from the server overwrite tuning and selection.
   if (st && Date.now() - localChangeAt < 700) {
-    for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "smart_agc", "dc_remove", "dc_hz", "dc_db", "spur_on", "spur_hz", "spur_edge", "spur_shift", "spur_db", "spur_learning", "stereo_on", "notch", "autotune", "ft8", "wefax", "cw", "rtty", "sstv", "packet", "hfdl", "ais", "acars", "cpdlc", "dab", "dab_channel", "dab_sids", "logs", "upconv", "device", "squelch_levels", "auto_sql", "auto_sql_on", "auto_sql_level", "ctcss", "ctcss_hz", "dcs", "dcs_code"]) s[k] = st[k];
+    for (const k of ["tune_hz", "mode", "bandwidth", "zoom", "gain", "rtl_agc", "smart_agc", "dc_remove", "dc_hz", "dc_db", "spur_on", "spur_hz", "spur_edge", "spur_shift", "spur_db", "spur_learning", "stereo_on", "notch", "autotune", "ft8", "wefax", "cw", "rtty", "sstv", "packet", "hfdl", "ais", "adsb", "acars", "cpdlc", "dab", "dab_channel", "dab_sids", "logs", "upconv", "device", "squelch_levels", "auto_sql", "auto_sql_on", "auto_sql_level", "ctcss", "ctcss_hz", "dcs", "dcs_code"]) s[k] = st[k];
   }
   s.sample_rates = sampleRates;
   st = s;
@@ -9602,6 +9997,7 @@ function onStatus(s) {
   $("packetCard").hidden = !s.packet;
   renderHfdl(s);
   renderAis(s);
+  renderAdsb(s);
   renderLogs(s.logs);
   $("sstvOn").checked = !!s.sstv;
   $("sstvCard").hidden = !s.sstv;
@@ -9701,6 +10097,8 @@ function connectEvents(v) {
   on("hfdlinfo", onHfdlInfo);
   on("ais", (m) => { addAis(m); decActivity("ais"); });
   on("aisstate", (d) => { if (st) renderAisInfo(d); });
+  on("adsb", (d) => { onAdsb(d); if (d.msgs && d.msgs.length) decActivity("adsb"); });
+  on("adsbstate", (d) => { if (st) renderAdsbInfo(d); });
   on("acarsinfo", onAcarsInfo);
   on("acarspos", acarsPosUpdate);
   on("ft8cycle", (d) => renderFt8Info(`cycle ${d.time} · decoding…`));
@@ -10100,6 +10498,7 @@ async function selectVfo(v, keepTab) {
   ismReset();
   hfdlReset();
   aisReset();
+  adsbReset();
   $("convWarn").hidden = true;
   if (v.st) {
     onStatus(v.st);
@@ -10131,6 +10530,7 @@ async function loadDecoders() {
   await ismLoad();
   await hfdlLoad();
   await aisLoad();
+  await adsbLoad();
   await packetLoad();
   const cwi = await fetch(vbase + "/api/cw").then((r) => r.json());
   if (v !== active) return;
@@ -11178,8 +11578,8 @@ function mapOnlySetup() {
   document.body.append(box);
   box.classList.add("map-only-box");
   document.body.classList.add("map-only");
-  document.title = `${({ packet: "APRS", acars: "ACARS / VDL2" })[MAP_ONLY] || MAP_ONLY.toUpperCase()} map${active && active.name ? ` · VFO ${active.name}` : ""} · RADIMCOM`;
-  ({ packet: setPktView, hfdl: setHfdlView, ais: setAisView, acars: setAcarsView })[MAP_ONLY]("map");
+  document.title = `${({ packet: "APRS", acars: "ACARS / VDL2", adsb: "ADS-B" })[MAP_ONLY] || MAP_ONLY.toUpperCase()} map${active && active.name ? ` · VFO ${active.name}` : ""} · RADIMCOM`;
+  ({ packet: setPktView, hfdl: setHfdlView, ais: setAisView, adsb: setAdsbView, acars: setAcarsView })[MAP_ONLY]("map");
 }
 
 /** □ key in the top right corner of a map: the same map in a new browser tab. */
@@ -11239,6 +11639,7 @@ async function init() {
   $("dabChannel").innerHTML = (info.dab_channels || []).map(([n, f]) => `<option value="${n}">${n} · ${fmtMHz(f, 3)}</option>`).join("");
   renderHfdlBands(info.hfdl_bands || [], info.hfdl_stations || []);
   renderAisBands(info.ais_center, info.ais_channels);
+  renderAdsbBands(info.adsb_freq);
   $("ismBands").innerHTML = (info.ism_freqs || []).map((f) => `<button data-f="${f}" title="Centre the VFO on ${fmtMHz(f, 2)} MHz">${fmtMHz(f, 2)}</button>`).join("");
   linkFreqs = { acars: info.acars_freqs || [], vdl2Center: info.vdl2_center || 136500000,
     vdl2Rate: info.vdl2_rate || 2100000,

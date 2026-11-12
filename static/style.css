@@ -2330,6 +2330,36 @@ html[data-ink="dark"] .r-top, html[data-ink="dark"] .r-keys { border-bottom-colo
 .ais-ship.sar svg { fill: #ff8a6b; }
 .ais-ship.old svg { fill: #8a929c; }
 .ais-ship.sel svg { fill: #ff4b3c; }
+/* ADS-B card (DECODERS › ADS-B): AIRCRAFT, MAP and MESSAGES like AIS */
+#adsbInfo.err { color: #ff7b6b; }
+.adsb table { table-layout: fixed; }
+.adsb table.adsb-ac-table { min-width: 1240px; }
+.adsb table.adsb-msg-table { min-width: 1100px; }
+.adsb .c-cty { width: 64px; } .adsb .c-icao { width: 74px; } .adsb .c-flt { width: 86px; } .adsb .c-sqk { width: 62px; }
+.adsb .c-alt { width: 84px; } .adsb .c-vr { width: 62px; } .adsb .c-gs { width: 70px; } .adsb .c-trk { width: 70px; }
+.adsb .c-pos { width: 170px; } .adsb .c-dist { width: 62px; } .adsb .c-az { width: 48px; } .adsb .c-cat { width: 150px; }
+.adsb .c-sig { width: 66px; } .adsb .c-n { width: 54px; } .adsb .c-age { width: 58px; }
+.adsb .c-utc { width: 84px; } .adsb .c-df { width: 36px; } .adsb .c-kind { width: 200px; } .adsb .c-hex { width: 250px; }
+.adsb td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.adsb td.data { white-space: normal; overflow-wrap: anywhere; }
+.adsb td.hex { font-family: ui-monospace, Consolas, monospace; font-size: 11px; color: var(--muted); }
+.adsb td.num { text-align: right; }
+.adsb td a { color: #6cb8ff; text-decoration: underline dotted; }
+.adsb td.icao a { color: var(--text); }
+.adsb td.flt, .adsb td.flt a { color: var(--amber); }
+.adsb .cflag { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; color: var(--muted); }
+.adsb .cflag img { width: 20px; height: 15px; object-fit: cover; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .15); }
+.adsb tr.old td { opacity: .5; }
+.adsb tr.sel td { background: rgba(255, 75, 60, .15); }
+.adsb tr.emerg td { background: rgba(255, 60, 60, .18); }
+.adsb tr.picked td { background: rgba(255, 255, 255, .17); }
+.adsb .ft8-table.paused { overflow-anchor: none; }
+.sq-emerg { color: #fff; background: #d83a2e; border-radius: 3px; padding: 0 4px; font-weight: 600; }
+#adsbMap { flex: 1 1 0; min-height: 300px; border: 1px solid var(--line); border-radius: 6px; background: #0e1116; }
+#adsbMap.leaflet-container { font: 12px system-ui, sans-serif; }
+.adsb-ml.emerg { box-shadow: inset 3px 0 0 #d83a2e; }
+.adsb-plane.ground svg { fill: #c9a227; }
+.adsb-plane.emerg svg { fill: #ff4bd8; }
 .leaflet-tooltip.ais-label { background: rgba(20, 24, 30, .85); color: #fff; border: 1px solid #444; box-shadow: none; padding: 0 4px;
   font-size: 10px; line-height: 12px; white-space: nowrap; }
 .leaflet-tooltip.ais-label::before { display: none; }

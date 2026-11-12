@@ -107,7 +107,14 @@ the state has `ais` and `ais_error`; `GET /api/ais` gives the decoder state (`ch
 `messages` (each with `type`, `type_name`, `mmsi`, `cc`, `country`, `station`, `name`, `callsign`, `shiptype`, `status`, `lat`, `lon`, `sog`, `cog`, `hdg`,
 `dest`, `text`, `nmea`, `channel`, `freq_hz`, `level`, `time`) and `ships` (the newest data of each station: the same fields plus `pos_time`, `imo`, `size`,
 `draught`, `eta`, `first`, `last`, `n`); `POST /api/ais` with `{"action": "clear"}` clears them. The event `ais` carries a message with `ship`,
-the newest data of its station; `aisstate` the decoder state.
+the newest data of its station; `aisstate` the decoder state. ADS-B: `adsb_freq` (1090000000); the state has `adsb` and `adsb_error`;
+`GET /api/adsb` gives the decoder state (`count`, `fixed` = messages with corrected bits, `dropped`, `rate` messages per second, `aircraft`,
+`with_pos`, `fs`, `running`) with the last 300 `messages` (`time`, `hex`, `df`, `icao`, `kind`, `text`, `level` dBFS, `fixed`) and `aircraft`
+(`icao`, `flight`, `category`, `cat`, `squawk`, `emergency`, `alt`, `alt_geo`, `gs`, `track`, `hdg`, `ias`, `tas`, `vrate`, `sel_alt`, `qnh`,
+`lat`, `lon`, `pos_time`, `dist_km`, `az`, `ground`, `tisb`, `level`, `n`, `first`, `last` and `trail`, the last 200 positions as
+`[lat, lon, time, alt]`); `POST /api/adsb` with `{"action": "clear"}` clears them. The event `adsb` comes once a second with `ac` (the
+aircraft changed since the last one, without `trail`), `msgs` (new messages, at most 60), `gone` (ICAO addresses dropped after 10 min) and `info`;
+`adsbstate` the decoder state.
 
 ### POST /api/set
 
@@ -176,6 +183,7 @@ On connect a `status` event with the full state, then:
 | `cpdlc`, `cpdlcstate` | CPDLC message, state |
 | `vdl2state` | VDL2 decoder state |
 | `dabstate` | DAB state (channel, welle-cli connected, dongle on channel, error) |
+| `adsb`, `adsbstate` | ADS-B: changed aircraft and new messages once a second; decoder state (see `/api/adsb`) |
 | `ism`, `ismstate` | ISM device message (the same `id` again = the repeat count `n` of a message grew); decoder state (`enabled`, `error`, `count`, `dropped`, `running`) |
 
 A comment line `: ping` is sent every 15 s when nothing else happens.
